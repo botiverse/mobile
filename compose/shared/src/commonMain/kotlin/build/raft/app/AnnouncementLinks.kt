@@ -17,6 +17,6 @@ internal fun resolveAnnouncementLink(href: String, webBaseUrl: String, serverSlu
         href.startsWith("https://", ignoreCase = true) -> href
         else -> return null
     }
-    return resolveSlockLinkOpenDecision(url, LinkOpenMode.InAppBrowser)
-        .takeIf { it.target != SlockLinkOpenTarget.Rejected }?.url
+    return resolveRaftLinkOpenDecision(url, LinkOpenMode.InAppBrowser)
+        .takeIf { it.target != RaftLinkOpenTarget.Rejected }?.url
 }

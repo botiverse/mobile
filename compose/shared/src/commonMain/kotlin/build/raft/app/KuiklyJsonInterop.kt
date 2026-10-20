@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /*
  * Structural conversion between Kuikly's JSON types (Kuikly pages, page data, bridge payloads) and
  * the kotlinx types the UI-free data layer uses. Values map one to one, so serializing either side
- * yields the same bytes (`JSONObject.toString()` == `JsonObject.toSlockJsonString()`).
+ * yields the same bytes (`JSONObject.toString()` == `JsonObject.toRaftJsonString()`).
  */
 
 fun JsonObject.toKuiklyJson(): JSONObject {
@@ -51,7 +51,7 @@ private fun JsonElement.toKuiklyValue(): Any? =
         is JsonObject -> toKuiklyJson()
         is JsonArray -> toKuiklyJson()
         is JsonNull -> null
-        is JsonPrimitive -> slockRawValue()
+        is JsonPrimitive -> raftRawValue()
     }
 
 private fun kuiklyValueToJsonElement(value: Any?): JsonElement =

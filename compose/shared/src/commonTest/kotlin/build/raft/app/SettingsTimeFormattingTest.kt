@@ -1,8 +1,8 @@
 package build.raft.app
 
-import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.SlockTimeFormat12Hour
-import build.raft.app.model.slockEpochDayForDate
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
+import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -11,9 +11,9 @@ class SettingsTimeFormattingTest {
     @Test
     fun formatsSettingsTimestampsThroughSharedTimeContext() {
         val context =
-            SlockTimeContext(
+            RaftTimeContext(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 1)
+                todayEpochDay = raftEpochDayForDate(2026, 6, 1)
             )
 
         assertEquals("09:00", formatSettingsTimestampLabel("2026-06-01T01:00:00Z", context))
@@ -24,10 +24,10 @@ class SettingsTimeFormattingTest {
     @Test
     fun honorsTwelveHourPreferenceAndPreservesNonTimestampLabels() {
         val context =
-            SlockTimeContext(
+            RaftTimeContext(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 1),
-                timeFormat = SlockTimeFormat12Hour
+                todayEpochDay = raftEpochDayForDate(2026, 6, 1),
+                timeFormat = RaftTimeFormat12Hour
             )
 
         assertEquals("09:00 AM", formatSettingsTimestampLabel("2026-06-01T01:00:00Z", context))

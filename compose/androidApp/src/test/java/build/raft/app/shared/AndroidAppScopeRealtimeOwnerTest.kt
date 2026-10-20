@@ -8,9 +8,9 @@ import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
-import build.raft.app.data.realtime.SlockRealtimeAppScopeConnection
-import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
-import build.raft.app.data.realtime.SlockRealtimeAppScopeSink
+import build.raft.app.data.realtime.RaftRealtimeAppScopeConnection
+import build.raft.app.data.realtime.RaftRealtimeAppScopeRuntime
+import build.raft.app.data.realtime.RaftRealtimeAppScopeSink
 import build.raft.app.data.realtime.bootstrapRealtime
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.model.ChannelId
@@ -108,11 +108,11 @@ class AndroidAppScopeRealtimeOwnerTest {
     @Test
     fun lifecycleEventsKeepTheActualActivityPageIdentity() {
         assertEquals(
-            SlockCmpActivity.PAGE_THREAD,
-            normalizedAndroidLifecyclePageName(SlockCmpActivity.PAGE_THREAD)
+            RaftCmpActivity.PAGE_THREAD,
+            normalizedAndroidLifecyclePageName(RaftCmpActivity.PAGE_THREAD)
         )
         assertEquals(
-            SlockCmpActivity.PAGE_APP_SHELL,
+            RaftCmpActivity.PAGE_APP_SHELL,
             normalizedAndroidLifecyclePageName("  ")
         )
     }
@@ -312,7 +312,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             parentMessageId = parentMessageId?.let(::MessageId)
         )
 
-    private fun realtimeRuntime(): SlockRealtimeAppScopeRuntime =
+    private fun realtimeRuntime(): RaftRealtimeAppScopeRuntime =
         bootstrapRealtime(
             connection = FakeAppScopeConnection(),
             sink = FakeAppScopeSink(),
@@ -320,7 +320,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             dispatch = { block -> kotlinx.coroutines.runBlocking { block() } }
         )
 
-    private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
+    private class FakeAppScopeConnection : RaftRealtimeAppScopeConnection {
         override val state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
 
         override suspend fun connect(
@@ -344,7 +344,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             RealtimeSubscription {}
     }
 
-    private class FakeAppScopeSink : SlockRealtimeAppScopeSink {
+    private class FakeAppScopeSink : RaftRealtimeAppScopeSink {
         override fun log(message: String) = Unit
 
         override fun fanOutRawRealtimeEvent(

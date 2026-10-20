@@ -158,7 +158,7 @@ not a task-status snapshot. Older dated audits may still be useful historical
 context, but check this section and the code before treating an audit claim as
 current.
 
-`SlockSharedStoreProvider` is the app/session provider for process-level shared
+`RaftSharedStoreProvider` is the app/session provider for process-level shared
 stores and shared infrastructure:
 
 - auth/session: `KuiklyMMKVAuthSessionStore`, `SharedAuthDataSource`,
@@ -213,7 +213,7 @@ prerequisite for using that store as the product state owner.
 - Draft text, task-mode state, and persisted active-draft records flow through
   typed intents.
 - `SharedThreadComposerDraftPersistSlice` persists accepted transitions and is
-  provided from `SlockSharedStoreProvider` so Home and Thread consume the same
+  provided from `RaftSharedStoreProvider` so Home and Thread consume the same
   draft source.
 
 Thread, Home, Activity, Members, Settings, and Search/Saved already have shared

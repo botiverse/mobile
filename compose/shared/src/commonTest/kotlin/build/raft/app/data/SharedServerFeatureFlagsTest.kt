@@ -24,7 +24,7 @@ class SharedServerFeatureFlagsTest {
 
     private val server = ServerId("s1")
 
-    private class FakeApi(private val response: HomeNetworkResponse) : SlockFeatureFlagsApi {
+    private class FakeApi(private val response: HomeNetworkResponse) : RaftFeatureFlagsApi {
         var lastKeys: List<String>? = null
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
             lastKeys = keys
@@ -183,7 +183,7 @@ class SharedServerFeatureFlagsTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0
         val api =
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(
                     serverId: ServerId,
                     keys: List<String>
@@ -220,7 +220,7 @@ class SharedServerFeatureFlagsTest {
         val release = CompletableDeferred<Unit>()
         var calls = 0
         val api =
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(
                     serverId: ServerId,
                     keys: List<String>
@@ -252,7 +252,7 @@ class SharedServerFeatureFlagsTest {
         var calls = 0
         val observed = mutableListOf<Boolean>()
         val api =
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(
                     serverId: ServerId,
                     keys: List<String>
@@ -428,7 +428,7 @@ class SharedServerFeatureFlagsTest {
         val releaseFirst = CompletableDeferred<Unit>()
         var callCount = 0
         val api =
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(
                     serverId: ServerId,
                     keys: List<String>
@@ -477,7 +477,7 @@ class SharedServerFeatureFlagsTest {
         val releaseFirst = CompletableDeferred<Unit>()
         var callCount = 0
         val api =
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(
                     serverId: ServerId,
                     keys: List<String>
@@ -516,7 +516,7 @@ class SharedServerFeatureFlagsTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val api =
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(
                     serverId: ServerId,
                     keys: List<String>
@@ -568,7 +568,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     // Captures the raw request body the network API encodes, so we can assert the wire contract directly.
-    private class BodyCapturingClient(private val response: HomeNetworkResponse) : SlockNetworkClient {
+    private class BodyCapturingClient(private val response: HomeNetworkResponse) : RaftNetworkClient {
         var lastBody: String? = null
         var lastPath: String? = null
         override suspend fun request(
@@ -590,7 +590,7 @@ class SharedServerFeatureFlagsTest {
         // slock #186: the server evaluates a `platform` rule stage; the mobile client must report "mobile"
         // so a mobile-only rollout (e.g. sync_core_messages_v1) targets this client and not web.
         val client = BodyCapturingClient(ok("""{"evaluations":[]}"""))
-        SlockFeatureFlagsNetworkApi(client).evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        RaftFeatureFlagsNetworkApi(client).evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         val body = client.lastBody ?: error("no request body captured")
         assertEquals("feature-flags/evaluate", client.lastPath)
         assertTrue(body.contains("\"platform\":\"mobile\""), "request must send platform=mobile, got: $body")
@@ -601,7 +601,7 @@ class SharedServerFeatureFlagsTest {
     fun networkApiSendsClientContextForOsAndBuildTargeting() = runBlocking {
         // task #1144: server rules can require an OS and a minimum build; the client reports both.
         val client = BodyCapturingClient(ok("""{"evaluations":[]}"""))
-        SlockFeatureFlagsNetworkApi(client) {
+        RaftFeatureFlagsNetworkApi(client) {
             FeatureFlagClientContext(os = "android", appVersion = "1.12.0", buildNumber = "1120131", buildType = "alpha")
         }.evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         val body = Json.parseToJsonElement(client.lastBody ?: error("no request body captured")).jsonObject
@@ -615,7 +615,7 @@ class SharedServerFeatureFlagsTest {
     @Test
     fun missingAppIdentityIsSentAsNullNotAsAGuess() = runBlocking {
         val client = BodyCapturingClient(ok("""{"evaluations":[]}"""))
-        SlockFeatureFlagsNetworkApi(client) {
+        RaftFeatureFlagsNetworkApi(client) {
             FeatureFlagClientContext(os = "ios", appVersion = null, buildNumber = null, buildType = null)
         }.evaluate(server, REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         val body = Json.parseToJsonElement(client.lastBody ?: error("no request body captured")).jsonObject

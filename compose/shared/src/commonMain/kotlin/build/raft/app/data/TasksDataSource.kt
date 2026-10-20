@@ -5,7 +5,7 @@ import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictTaskStatusOrNull
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -34,10 +34,10 @@ private val tasksJson = Json {
 }
 
 class SharedTasksDataSource(
-    private val api: SlockTasksApi,
+    private val api: RaftTasksApi,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : SharedTasksRemoteDataSource {
-    private val typedApi = SlockTasksApiClient(api, diagnosticsLogger)
+    private val typedApi = RaftTasksApiClient(api, diagnosticsLogger)
 
     override suspend fun loadTasks(
         serverId: ServerId,
@@ -255,7 +255,7 @@ data class TaskCreateDraft(
     val description: String? = null
 )
 
-private suspend fun SlockNetworkClient.serverTasks(
+private suspend fun RaftNetworkClient.serverTasks(
     priority: DataRequestPriority,
     serverId: ServerId
 ): HomeNetworkResponse =
@@ -266,7 +266,7 @@ private suspend fun SlockNetworkClient.serverTasks(
  * opaque `cursor` for subsequent pages. `cursor` is only sent alongside a
  * `limit` (the server 400s a cursor without a page size).
  */
-private suspend fun SlockNetworkClient.serverTasksPage(
+private suspend fun RaftNetworkClient.serverTasksPage(
     priority: DataRequestPriority,
     serverId: ServerId,
     detail: String?,
@@ -285,29 +285,29 @@ private suspend fun SlockNetworkClient.serverTasksPage(
     return request(priority, "tasks/server", serverIdOverride = serverId, query = query)
 }
 
-private suspend fun SlockNetworkClient.channelTasks(
+private suspend fun RaftNetworkClient.channelTasks(
     priority: DataRequestPriority,
     channelId: ChannelId,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "tasks/channel/${channelId.value}", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.claimTask(
+private suspend fun RaftNetworkClient.claimTask(
     priority: DataRequestPriority,
     taskId: TaskId
 ): HomeNetworkResponse =
     request(priority, "tasks/${taskId.value}/claim", method = "PATCH")
 
-private suspend fun SlockNetworkClient.updateTaskStatus(
+private suspend fun RaftNetworkClient.updateTaskStatus(
     priority: DataRequestPriority,
     taskId: TaskId,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "tasks/${taskId.value}/status", method = "PATCH", bodyText = bodyText)
 
-internal class NetworkSlockTasksApi(
-    private val networkClient: SlockNetworkClient
-) : SlockTasksApi {
+internal class NetworkRaftTasksApi(
+    private val networkClient: RaftNetworkClient
+) : RaftTasksApi {
     override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "tasks/server", serverIdOverride = serverId)
 
@@ -465,8 +465,8 @@ internal class NetworkSlockTasksApi(
 }
 
 class RealTaskRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient
 ) : TaskRepository {
     override suspend fun getTasks(
         serverId: ServerId,
@@ -518,7 +518,7 @@ class RealTaskRepository(
  * mutation sends the canonical API status value. Unsupported platform routes
  * return 501 instead of exposing guessed wrappers to shared UI.
  */
-interface SlockTasksApi {
+interface RaftTasksApi {
     suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse
     /**
      * Paginated server Tasks read (task #345): `?detail=summary&limit=200`, then
@@ -675,8 +675,8 @@ internal fun taskAssignConflictErrorCode(payload: String?): Boolean {
     return envelope.error?.trim()?.equals("task state changed concurrently", ignoreCase = true) == true
 }
 
-internal class SlockTasksApiClient(
-    private val transport: SlockTasksApi,
+internal class RaftTasksApiClient(
+    private val transport: RaftTasksApi,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) {
     suspend fun serverTasks(
@@ -880,10 +880,10 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
     val parseStartedAt = TimeSource.Monotonic.markNow()
     diagnosticsLogger(
         "tasks_parse_start source=$source responseBytes=$responseBytes " +
-            "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+            "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     val result =
-        withContext(SlockJsonParseDispatcher) {
+        withContext(RaftJsonParseDispatcher) {
             toTasksResult(filter = filter, source = source, diagnostics = diagnosticsLogger)
         }
     val durationMs = parseStartedAt.elapsedNow().inWholeMilliseconds
@@ -897,11 +897,11 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
         }
     diagnosticsLogger(
         "tasks_parse_result source=$source result=$resultLabel tasks=$taskCount " +
-            "durationMs=$durationMs dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+            "durationMs=$durationMs dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     diagnosticsLogger(
         "tasks_map_result source=$source result=$resultLabel tasks=$taskCount " +
-            "durationMs=$durationMs dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+            "durationMs=$durationMs dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     return result
 }
@@ -1225,7 +1225,7 @@ internal fun TaskWireDto.toTaskSummary(
         parentMessageId = resolvedMessageId,
         channelId = channelId?.let(::ChannelId),
         threadId = resolvedThreadId,
-        isThreadTask = channelType == KuiklyThreadSurfaceKind.ReplyThread,
+        isThreadTask = channelType == RaftThreadSurfaceKind.ReplyThread,
         assignee = memberFrom(claimedByType, claimedById, claimedByName, "task_assignee", diagnostics),
         creator = memberFrom(createdByType, createdById, createdByName, "task_creator", diagnostics),
         channelName = channelName,
@@ -1263,14 +1263,14 @@ private fun memberFrom(
 
 private data class TaskServerContext(val currentUserId: String)
 
-private suspend fun SlockAuthSessionStore.taskServerContext(serverId: ServerId): TaskServerContext? {
+private suspend fun RaftAuthSessionStore.taskServerContext(serverId: ServerId): TaskServerContext? {
     val session = readSession() ?: return null
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
     if (session.servers.none { it.id == requestedId }) return null
     return TaskServerContext(currentUserId = session.user.id)
 }
 
-private suspend fun SlockAuthSessionStore.currentTaskContext(): TaskServerContext? {
+private suspend fun RaftAuthSessionStore.currentTaskContext(): TaskServerContext? {
     val session = readSession() ?: return null
     val selectedId = session.currentServerId ?: return null
     return taskServerContext(ServerId(selectedId))

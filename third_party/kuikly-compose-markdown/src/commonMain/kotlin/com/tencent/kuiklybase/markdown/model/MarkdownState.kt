@@ -5,7 +5,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.utils.lookupLinkDefinition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +51,7 @@ internal fun rememberMarkdownParserState(
     initialContent: MarkdownParserContent? = null
 ): MarkdownState {
     val state = remember(lookupLinks, isShareMode, initialContent) {
-        val flavour = SlockGFMFlavourDescriptor()
+        val flavour = RaftGFMFlavourDescriptor()
         val initialParserContent = initialContent?.parserContent
         MarkdownState(
             Input(
@@ -64,12 +64,12 @@ internal fun rememberMarkdownParserState(
             )
         ).also { state ->
             if (initialParserContent != null) {
-                slockMarkdownLogSubTrace {
+                raftMarkdownLogSubTrace {
                     "phase=markdown.state.initial_sync_start " +
                         "hash=${initialParserContent.hashCode().toString(16)} length=${initialParserContent.length}"
                 }
                 val cacheHit = state.applyInitialContentSynchronously(initialParserContent)
-                slockMarkdownLogSubTrace {
+                raftMarkdownLogSubTrace {
                     "phase=markdown.state.initial_sync_end " +
                         "hash=${initialParserContent.hashCode().toString(16)} length=${initialParserContent.length} " +
                         "cacheHit=$cacheHit nodeListSize=${state.nodeListState.size}"
@@ -88,20 +88,20 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
     val parserContent = content.parserContent
     val cacheKey = MarkdownParseResultCacheKey(parserContent, lookupLinks)
     MarkdownParseResultCache.get(cacheKey)?.let {
-        slockMarkdownLogSubTrace {
+        raftMarkdownLogSubTrace {
             "phase=markdown.preparse.cache_hit " +
                 "hash=${parserContent.hashCode().toString(16)} length=${parserContent.length} " +
                 "nodeCount=${it.nodes.size} lookupLinks=$lookupLinks"
         }
         return true
     }
-    slockMarkdownLogSubTrace {
+    raftMarkdownLogSubTrace {
         "phase=markdown.preparse.parse_start " +
             "hash=${parserContent.hashCode().toString(16)} length=${parserContent.length} lookupLinks=$lookupLinks"
     }
     val parsed =
-        withContext(SlockMarkdownParseDispatcher) {
-            val flavour = SlockGFMFlavourDescriptor()
+        withContext(RaftMarkdownParseDispatcher) {
+            val flavour = RaftGFMFlavourDescriptor()
             parseMarkdownContent(
                 content = parserContent,
                 lookupLinks = lookupLinks,
@@ -109,7 +109,7 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
             )
         }
     val (cached, cacheHit) = MarkdownParseResultCache.putIfAbsent(cacheKey, parsed)
-    slockMarkdownLogSubTrace {
+    raftMarkdownLogSubTrace {
         "phase=markdown.preparse.parse_end " +
             "hash=${parserContent.hashCode().toString(16)} length=${parserContent.length} " +
             "cacheHit=$cacheHit nodeCount=${cached.nodes.size} lookupLinks=$lookupLinks"
@@ -147,7 +147,7 @@ fun parseMarkdownInlineSyntax(
     val key = MarkdownParseResultCacheKey(content, lookupLinks)
     val (cached, _) =
         MarkdownParseResultCache.getOrPut(key) {
-            val flavour = SlockGFMFlavourDescriptor()
+            val flavour = RaftGFMFlavourDescriptor()
             parseMarkdownContent(
                 content = content,
                 lookupLinks = lookupLinks,
@@ -176,7 +176,7 @@ internal fun parseMarkdownTopLevelNodes(
     val key = MarkdownParseResultCacheKey(content, lookupLinks)
     val (cached, _) =
         MarkdownParseResultCache.getOrPut(key) {
-            val flavour = SlockGFMFlavourDescriptor()
+            val flavour = RaftGFMFlavourDescriptor()
             parseMarkdownContent(
                 content = content,
                 lookupLinks = lookupLinks,
@@ -233,7 +233,7 @@ class MarkdownState internal constructor(
             } catch (error: Throwable) {
                 return false
             }
-        slockMarkdownLogSubTrace {
+        raftMarkdownLogSubTrace {
             "phase=markdown.state.initial_apply " +
                 "hash=${content.hashCode().toString(16)} length=${content.length} " +
                 "cacheHit=$cacheHit nodeCount=${cached.nodes.size} before=${nodeListState.size}"
@@ -243,7 +243,7 @@ class MarkdownState internal constructor(
     }
 
     suspend fun parse(content: String, immediate: Boolean): Boolean {
-        slockMarkdownLogSubTrace {
+        raftMarkdownLogSubTrace {
             "phase=markdown.state.parse_request " +
                 "hash=${content.hashCode().toString(16)} length=${content.length} " +
                 "immediate=$immediate currentHash=${input.content.hashCode().toString(16)} " +
@@ -278,20 +278,20 @@ class MarkdownState internal constructor(
         val content = input.content
         val cacheKey = currentCacheKey()
         MarkdownParseResultCache.get(cacheKey)?.let { cached ->
-            slockMarkdownLogSubTrace {
+            raftMarkdownLogSubTrace {
                 "phase=markdown.state.async_cache_hit " +
                     "hash=${content.hashCode().toString(16)} length=${content.length} nodeCount=${cached.nodes.size}"
             }
             applyParseResult(cached)
             return true
         }
-        slockMarkdownLogSubTrace {
+        raftMarkdownLogSubTrace {
             "phase=markdown.state.async_parse_start " +
                 "hash=${content.hashCode().toString(16)} length=${content.length}"
         }
         val parsed =
             try {
-                withContext(SlockMarkdownParseDispatcher) {
+                withContext(RaftMarkdownParseDispatcher) {
                     mutex.withLock {
                         parseContent(content)
                     }
@@ -301,7 +301,7 @@ class MarkdownState internal constructor(
                 null
             } ?: return false
         val (cached, cacheHit) = MarkdownParseResultCache.putIfAbsent(cacheKey, parsed)
-        slockMarkdownLogSubTrace {
+        raftMarkdownLogSubTrace {
             "phase=markdown.state.async_parse_end " +
                 "hash=${content.hashCode().toString(16)} length=${content.length} " +
                 "cacheHit=$cacheHit nodeCount=${cached.nodes.size}"
@@ -367,7 +367,7 @@ class MarkdownState internal constructor(
         if (cached.nodes.size < nodeListState.size) {
             nodeListState.removeRange(cached.nodes.size, nodeListState.size)
         }
-        slockMarkdownLogSubTrace {
+        raftMarkdownLogSubTrace {
             "phase=markdown.state.apply_result " +
                 "hash=${input.content.hashCode().toString(16)} length=${input.content.length} " +
                 "before=$beforeSize after=${nodeListState.size} nodeCount=${cached.nodes.size} links=${cached.links.size}"

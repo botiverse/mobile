@@ -16,7 +16,7 @@ import platform.Foundation.NSData
 import platform.posix.memcpy
 
 /**
- * Implemented by the iOS app (Swift, `SlockIosAvatarCacheHost`): the committed bytes of one managed
+ * Implemented by the iOS app (Swift, `RaftIosAvatarCacheHost`): the committed bytes of one managed
  * avatar render read (`slock-avatar-render-v1:` models), matched exactly on slot, commit identity
  * and model revision, or null when the durable store has no such entry (or reads are held).
  * Called off the main thread.
@@ -35,7 +35,7 @@ interface RaftIosManagedImageStore {
 /**
  * Implemented by the iOS app (Swift, `RaftIosUnhandledExceptionRecorder`): records a Kotlin
  * unhandled exception synchronously into the durable diagnostics log
- * (`SlockIosDiagnosticsRecordUnhandledException`) before the process terminates. Called on the
+ * (`RaftIosDiagnosticsRecordUnhandledException`) before the process terminates. Called on the
  * thread that threw, possibly not the main thread; must not throw and must not block on the main
  * thread.
  */
@@ -51,10 +51,10 @@ class RaftIosManagedImageBytes(
 
 /**
  * The iOS host hooks :shared's CMP runtime reads, installed once at app start (`iOSApp.init`),
- * before the first page is created. The iOS counterpart of Android's `SlockApplication`
+ * before the first page is created. The iOS counterpart of Android's `RaftApplication`
  * `RaftPageRegistry.install()` + `RaftAndroidHostHooks.install`:
  *
- * - [RaftPageRegistry.install]: every :shared page renders through `SlockCmpRoot`, and the Raft
+ * - [RaftPageRegistry.install]: every :shared page renders through `RaftCmpRoot`, and the Raft
  *   Coil image loader becomes the singleton.
  * - [RaftImageHost.managedImageReader]: managed avatar bytes from the app's durable avatar store
  *   ([managedImages]; the Kuikly image handler read the same store through `imageForRenderModel:`).

@@ -5,7 +5,7 @@
 // so mobile and web avatars can never drift (task #352).
 //
 // Outputs:
-//   compose/shared/src/commonMain/kotlin/build/raft/app/SlockPixelAvatarData.kt
+//   compose/shared/src/commonMain/kotlin/build/raft/app/RaftPixelAvatarData.kt
 //     (palette maps, fixed specs, reserved keys, default key, data version)
 //
 // Point SLOCK_SOURCE_REPO (or SLOCK_REACT_REPO_DIR) at a Slock web checkout,
@@ -181,7 +181,7 @@ internal const val PixelAvatarDefaultKey = "${canonical.defaultKey}"
 
 const outPath = resolve(
   repoRoot,
-  "compose/shared/src/commonMain/kotlin/build/raft/app/SlockPixelAvatarData.kt",
+  "compose/shared/src/commonMain/kotlin/build/raft/app/RaftPixelAvatarData.kt",
 );
 const checkMode = process.argv.includes("--check");
 

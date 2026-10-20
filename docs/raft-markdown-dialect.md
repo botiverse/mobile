@@ -33,18 +33,18 @@ keeps the whole label under the outer link and creates no nested task action.
 
 ```text
 normalized source
-  -> SlockGFMFlavourDescriptor lexer emits GFM + Raft ref tokens
+  -> RaftGFMFlavourDescriptor lexer emits GFM + Raft ref tokens
   -> one JetBrains Markdown parse / one cached AST result
   -> canonical inline syntax snapshot (Raft refs + inline-code spans)
        RaftMarkdownDialect collects ref nodes outside Markdown-owned ancestry
   -> app validation (known task/channel/member)
   -> MarkdownInlineTokenPlan
-  -> SlockRichTextDocument (tokens + chrome + actions)
+  -> RaftRichTextDocument (tokens + chrome + actions)
   -> Kuikly Markdown renderer
 ```
 
 The planner and renderer consume the same cached parse result produced by
-`SlockGFMFlavourDescriptor`. A planner cache miss publishes that canonical
+`RaftGFMFlavourDescriptor`. A planner cache miss publishes that canonical
 result for `MarkdownState`; the renderer does not parse the content again.
 Raft candidates are first-class `RAFT_REFERENCE` lexer/AST tokens, not an
 AST-external overlay pass. There is no second implementation of Markdown
@@ -136,9 +136,9 @@ changing Android-only behavior.
 
 ## Typed rich-text contract
 
-Recognized and context-valid candidates become `SlockRef` tokens in
-`SlockRichTextDocument`. Each action has one source range and one click
-identity. A Markdown-owned range must contain zero nested `SlockRef` tokens and
+Recognized and context-valid candidates become `RaftRef` tokens in
+`RaftRichTextDocument`. Each action has one source range and one click
+identity. A Markdown-owned range must contain zero nested `RaftRef` tokens and
 zero nested Raft actions.
 
 Presentation labels may be resolved (`@id` -> `@display-name`), but action
@@ -154,11 +154,11 @@ after validation and never changes parsing.
 - image, inline code, fenced code, autolink, and HTML ownership;
 - escaping and word/CJK adjacency.
 
-`SlockMarkdownTest` owns renderer/action behavior, including standalone refs
+`RaftMarkdownTest` owns renderer/action behavior, including standalone refs
 remaining clickable and the production link remaining one external link.
 
-`SlockRichTextContractTest` owns IR serialization and asserts that a Markdown
-link produces no nested `SlockRef` action.
+`RaftRichTextContractTest` owns IR serialization and asserts that a Markdown
+link produces no nested `RaftRef` action.
 
 When adding syntax, update all three layers. A screenshot alone is not a parser
 contract, and a parser-only test is not proof that click/chrome behavior stayed
@@ -172,5 +172,5 @@ Markdown protection-range helpers, `ensureThreadMarkdownTableSeparation`, and
 belongs in `RaftMarkdownDialect`; Markdown nesting belongs to the GFM AST; data
 validation belongs to the app adapter. Inline-code ownership and delimiter
 semantics also belong to the canonical AST. Raft's chat-friendly tight-table
-continuation is a block-parser rule in `SlockGFMFlavourDescriptor`, so parsing
+continuation is a block-parser rule in `RaftGFMFlavourDescriptor`, so parsing
 never rewrites the source and all AST offsets remain bound to the original body.

@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 
 class ThreadAgentFollowersRepositoryTest {
     @Test fun getRemoveAndRestoreUseBoundAuthorityExactRoutesAndTypedBody() = runTest {
-        val auth = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val auth = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         auth.saveSession(authSessionFixture())
         val network = RecordingFollowerNetwork()
         val repository = repository(network, auth)
@@ -41,7 +41,7 @@ class ThreadAgentFollowersRepositoryTest {
     }
 
     @Test fun every404IsAnErrorRatherThanAnEmptyOrDisabledRoster() = runTest {
-        val auth = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val auth = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         auth.saveSession(authSessionFixture())
         val network = RecordingFollowerNetwork()
         val repository = repository(network, auth)
@@ -54,7 +54,7 @@ class ThreadAgentFollowersRepositoryTest {
     }
 
     @Test fun accountServerAndEnvironmentChangesRejectWritesAndStaleReadback() = runTest {
-        val auth = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val auth = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         auth.saveSession(authSessionFixture(selectedServerId = "server-2"))
         val network = RecordingFollowerNetwork()
         assertIs<DataResult.Error>(repository(network, auth).remove("agent"))
@@ -74,7 +74,7 @@ class ThreadAgentFollowersRepositoryTest {
     }
 
     private fun repository(
-        network: RecordingFollowerNetwork, auth: SlockAuthSessionStore,
+        network: RecordingFollowerNetwork, auth: RaftAuthSessionStore,
         environment: () -> String = { "https://api.example.test/api" },
     ) = RealThreadAgentFollowersRepository(
         network, auth, "user-1", "server-1", "thread", "https://api.example.test/api", environment,
@@ -83,9 +83,9 @@ class ThreadAgentFollowersRepositoryTest {
 
 private data class FollowerRequest(
     val priority: DataRequestPriority, val path: String, val method: String,
-    val query: List<Pair<String, String>>, val body: String?, val authority: SlockExpectedAuthBinding,
+    val query: List<Pair<String, String>>, val body: String?, val authority: RaftExpectedAuthBinding,
 )
-private class RecordingFollowerNetwork : SlockNetworkClient, AuthorityBoundSlockNetworkClient {
+private class RecordingFollowerNetwork : RaftNetworkClient, AuthorityBoundRaftNetworkClient {
     val requests = mutableListOf<FollowerRequest>()
     var response = HomeNetworkResponse(500, null)
     var onRequest: () -> Unit = {}
@@ -96,7 +96,7 @@ private class RecordingFollowerNetwork : SlockNetworkClient, AuthorityBoundSlock
     override suspend fun requestBound(
         priority: DataRequestPriority, path: String, method: String,
         query: List<Pair<String, String>>, serverIdOverride: ServerId?, bodyText: String?,
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse {
         assertEquals(expectedAuthority.serverId, serverIdOverride?.value)
         requests += FollowerRequest(priority, path, method, query, bodyText, expectedAuthority)
@@ -105,6 +105,6 @@ private class RecordingFollowerNetwork : SlockNetworkClient, AuthorityBoundSlock
     }
     override suspend fun uploadAttachmentsBound(
         priority: DataRequestPriority, channelId: ChannelId, files: List<MultipartFile>,
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse = error("Not an upload")
 }

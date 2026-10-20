@@ -19,70 +19,70 @@ private val externalShareDraftJson = Json {
  * Bottom capability installed by Android, OHOS, or iOS when that host owns a native share inbox.
  * Shared code never derives a filesystem path from the opaque token.
  */
-data class SlockExternalShareEnvelopeHostItem(
+data class RaftExternalShareEnvelopeHostItem(
     val localRef: String,
     val displayName: String,
     val mimeType: String,
     val sizeBytes: Long
 )
 
-data class SlockExternalShareEnvelopeHostRecord(
+data class RaftExternalShareEnvelopeHostRecord(
     val token: String,
     val createdAtEpochMillis: Long,
     val sourcePlatform: String,
     val text: String = "",
     val subject: String = "",
-    val items: List<SlockExternalShareEnvelopeHostItem> = emptyList()
+    val items: List<RaftExternalShareEnvelopeHostItem> = emptyList()
 )
 
-sealed interface SlockExternalShareEnvelopeHostReadResult {
-    data class Content(val record: SlockExternalShareEnvelopeHostRecord) : SlockExternalShareEnvelopeHostReadResult
-    data object Missing : SlockExternalShareEnvelopeHostReadResult
-    data class Failure(val code: String, val retryable: Boolean) : SlockExternalShareEnvelopeHostReadResult
+sealed interface RaftExternalShareEnvelopeHostReadResult {
+    data class Content(val record: RaftExternalShareEnvelopeHostRecord) : RaftExternalShareEnvelopeHostReadResult
+    data object Missing : RaftExternalShareEnvelopeHostReadResult
+    data class Failure(val code: String, val retryable: Boolean) : RaftExternalShareEnvelopeHostReadResult
 }
 
-sealed interface SlockExternalShareEnvelopeHostMutationResult {
-    data object Success : SlockExternalShareEnvelopeHostMutationResult
-    data object Missing : SlockExternalShareEnvelopeHostMutationResult
-    data class Failure(val code: String, val retryable: Boolean) : SlockExternalShareEnvelopeHostMutationResult
+sealed interface RaftExternalShareEnvelopeHostMutationResult {
+    data object Success : RaftExternalShareEnvelopeHostMutationResult
+    data object Missing : RaftExternalShareEnvelopeHostMutationResult
+    data class Failure(val code: String, val retryable: Boolean) : RaftExternalShareEnvelopeHostMutationResult
 }
 
-interface SlockExternalShareEnvelopeHost {
-    suspend fun load(token: String): SlockExternalShareEnvelopeHostReadResult
-    suspend fun consume(token: String, consumptionId: String): SlockExternalShareEnvelopeHostMutationResult
+interface RaftExternalShareEnvelopeHost {
+    suspend fun load(token: String): RaftExternalShareEnvelopeHostReadResult
+    suspend fun consume(token: String, consumptionId: String): RaftExternalShareEnvelopeHostMutationResult
     suspend fun delete(token: String)
 }
 
-object SlockExternalShareEnvelopeHostProvider {
-    private var appScopeFactory: (() -> SlockExternalShareEnvelopeHost)? = null
+object RaftExternalShareEnvelopeHostProvider {
+    private var appScopeFactory: (() -> RaftExternalShareEnvelopeHost)? = null
 
-    fun installAppScopeHost(factory: () -> SlockExternalShareEnvelopeHost) {
+    fun installAppScopeHost(factory: () -> RaftExternalShareEnvelopeHost) {
         appScopeFactory = factory
     }
 
-    internal fun create(): SlockExternalShareEnvelopeHost? = appScopeFactory?.invoke()
+    internal fun create(): RaftExternalShareEnvelopeHost? = appScopeFactory?.invoke()
 
     internal fun clearForTests() {
         appScopeFactory = null
     }
 }
 
-internal object SlockExternalShareEnvelopeRepositoryProvider {
+internal object RaftExternalShareEnvelopeRepositoryProvider {
     internal fun create(): ExternalShareEnvelopeRepository =
-        SlockExternalShareEnvelopeHostProvider.create()?.let(::HostExternalShareEnvelopeRepository)
+        RaftExternalShareEnvelopeHostProvider.create()?.let(::HostExternalShareEnvelopeRepository)
             ?: UnavailableExternalShareEnvelopeRepository
 
     internal fun clearAppScopeRepositoryForTests() {
-        SlockExternalShareEnvelopeHostProvider.clearForTests()
+        RaftExternalShareEnvelopeHostProvider.clearForTests()
     }
 }
 
 private class HostExternalShareEnvelopeRepository(
-    private val host: SlockExternalShareEnvelopeHost
+    private val host: RaftExternalShareEnvelopeHost
 ) : ExternalShareEnvelopeRepository {
     override suspend fun load(token: String): DataResult<ExternalShareEnvelope> =
         when (val result = host.load(token)) {
-            is SlockExternalShareEnvelopeHostReadResult.Content ->
+            is RaftExternalShareEnvelopeHostReadResult.Content ->
                 DataResult.Content(
                     ExternalShareEnvelope(
                         token = result.record.token,
@@ -101,18 +101,18 @@ private class HostExternalShareEnvelopeRepository(
                             }
                     )
                 )
-            SlockExternalShareEnvelopeHostReadResult.Missing ->
+            RaftExternalShareEnvelopeHostReadResult.Missing ->
                 DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            is SlockExternalShareEnvelopeHostReadResult.Failure ->
+            is RaftExternalShareEnvelopeHostReadResult.Failure ->
                 DataResult.Error(ScreenError(result.code, result.retryable))
         }
 
     override suspend fun consume(token: String, consumptionId: String): DataResult<Unit> =
         when (val result = host.consume(token, consumptionId)) {
-            SlockExternalShareEnvelopeHostMutationResult.Success -> DataResult.Content(Unit)
-            SlockExternalShareEnvelopeHostMutationResult.Missing ->
+            RaftExternalShareEnvelopeHostMutationResult.Success -> DataResult.Content(Unit)
+            RaftExternalShareEnvelopeHostMutationResult.Missing ->
                 DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            is SlockExternalShareEnvelopeHostMutationResult.Failure ->
+            is RaftExternalShareEnvelopeHostMutationResult.Failure ->
                 DataResult.Error(ScreenError(result.code, result.retryable))
         }
 

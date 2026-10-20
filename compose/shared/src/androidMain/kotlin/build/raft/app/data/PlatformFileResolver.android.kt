@@ -1,3 +1,3 @@
 package build.raft.app.data
 
-internal actual fun createDefaultPlatformFileResolver(): SlockPlatformFileResolver? = null
+internal actual fun createDefaultPlatformFileResolver(): RaftPlatformFileResolver? = null

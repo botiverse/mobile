@@ -28,7 +28,7 @@ class AppLoginCoordinatorTest {
         }
     }
     @Test fun processRestartRetainsVerifierAndDuplicateCallbackCannotExchangeAgain() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val runtime = Runtime()
         val first = AppLoginCoordinator(store, { runtime }, { 1000 })
         assertNotNull(first.start("generation", verifier, challenge, uri))
@@ -42,7 +42,7 @@ class AppLoginCoordinatorTest {
     }
     @Test fun internalChannelSchemesAreAcceptedAndUnknownSchemesRejected() = runBlocking {
         val runtime = Runtime()
-        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
+        val coordinator = AppLoginCoordinator(InMemoryRaftKeyValueStore(), { runtime }, { 0 })
         assertNull(coordinator.start("generation", verifier, challenge, "raft-evil://login/callback"))
         assertEquals(0, runtime.starts)
         assertNotNull(coordinator.start("generation", verifier, challenge, "raft-alpha://login/callback"))
@@ -52,7 +52,7 @@ class AppLoginCoordinatorTest {
         val logs = mutableListOf<String>()
         var available = false
         val runtime = Runtime()
-        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { if (available) runtime else null }, { 0 }, logs::add)
+        val coordinator = AppLoginCoordinator(InMemoryRaftKeyValueStore(), { if (available) runtime else null }, { 0 }, logs::add)
         available = true
         coordinator.start("generation", verifier, challenge, uri)
         available = false
@@ -74,7 +74,7 @@ class AppLoginCoordinatorTest {
         for (changed in listOf(false, true)) {
             val runtime = Runtime()
             var now = 0L
-            val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { now })
+            val coordinator = AppLoginCoordinator(InMemoryRaftKeyValueStore(), { runtime }, { now })
             coordinator.start("generation", verifier, challenge, uri)
             if (changed) runtime.environment = "staging" else now = 600_000L
             assertEquals("login_error", coordinator.complete(uri, "request-1", "code", ""))
@@ -84,7 +84,7 @@ class AppLoginCoordinatorTest {
     }
     @Test fun retryReplacesCredentialsAndOldBrowserFailureCannotCancelNewRequest() = runBlocking {
         val runtime = Runtime()
-        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
+        val coordinator = AppLoginCoordinator(InMemoryRaftKeyValueStore(), { runtime }, { 0 })
         coordinator.start("old", verifier, challenge, uri)
         coordinator.start("new", "n".repeat(43), challenge, uri)
         coordinator.cancel("old")
@@ -97,7 +97,7 @@ class AppLoginCoordinatorTest {
     }
     @Test fun cancelAndInvalidPreparationCannotDeliverSession() = runBlocking {
         val runtime = Runtime()
-        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
+        val coordinator = AppLoginCoordinator(InMemoryRaftKeyValueStore(), { runtime }, { 0 })
         assertNull(coordinator.start("generation", verifier, challenge, "raft://oauth/callback"))
         coordinator.start("generation", verifier, challenge, uri)
         assertEquals("login_error", coordinator.complete(uri, "request-1", "", "access_denied"))
@@ -105,7 +105,7 @@ class AppLoginCoordinatorTest {
         assertEquals("ignored", coordinator.complete(uri, "request-1", "code", ""))
     }
     @Test fun coldStartupCanRetryUntilSharedRuntimeIsReady() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val active = Runtime()
         var runtime: AppLoginRuntime? = active
         val coordinator = AppLoginCoordinator(store, { runtime }, { 0 })
@@ -118,7 +118,7 @@ class AppLoginCoordinatorTest {
     }
     @Test fun failedExchangeRequiresFreshLogin() = runBlocking {
         val runtime = Runtime().apply { success = false }
-        val coordinator = AppLoginCoordinator(InMemorySlockKeyValueStore(), { runtime }, { 0 })
+        val coordinator = AppLoginCoordinator(InMemoryRaftKeyValueStore(), { runtime }, { 0 })
         coordinator.start("generation", verifier, challenge, uri)
         assertEquals("login_error", coordinator.complete(uri, "request-1", "code", ""))
         assertEquals("ignored", coordinator.complete(uri, "request-1", "code", ""))

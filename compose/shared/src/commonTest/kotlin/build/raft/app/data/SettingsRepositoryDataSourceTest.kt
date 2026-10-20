@@ -382,7 +382,7 @@ class SettingsRepositoryDataSourceTest {
 
     @Test
     fun timeFormatWriteUpdatesCanonicalSessionWithoutReplacingTokens() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(
             sampleSession().copy(
                     user =
@@ -424,7 +424,7 @@ class SettingsRepositoryDataSourceTest {
     @Test
     fun unrelatedLanguageRegionWriteCannotRollbackCanonicalTimeFormat() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession().copy(
                     user =
                         sampleSession().user.copy(
@@ -572,7 +572,7 @@ class SettingsRepositoryDataSourceTest {
 
     @Test
     fun settingsRepositoryMapsAuthPermissionAndServerErrors() = runBlocking {
-        val noSession = RealSettingsRepository(InMemorySlockAuthSessionStore(null), FakeSettingsNetworkClient()).getAccount()
+        val noSession = RealSettingsRepository(InMemoryRaftAuthSessionStore(null), FakeSettingsNetworkClient()).getAccount()
         val forbidden = RealSettingsRepository(sampleStore(), FakeSettingsNetworkClient(responseCode = 403)).getAccount()
         val unavailable = RealSettingsRepository(sampleStore(), FakeSettingsNetworkClient(responseCode = 503)).getAccount()
         val parse = RealSettingsRepository(sampleStore(), FakeSettingsNetworkClient(accountJson = """{"user":""")).getAccount()
@@ -1327,7 +1327,7 @@ class SettingsRepositoryDataSourceTest {
         private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200,
         private val errorJson: String? = """{"error":"failed"}"""
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         private var currentConnectedAppClientsJson = connectedAppClientsJson
         private var currentServerPushMode =
             when {
@@ -1628,8 +1628,8 @@ class SettingsRepositoryDataSourceTest {
         }
     }
 
-    private fun sampleStore(session: StoredAuthSession = sampleSession()): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(session)
+    private fun sampleStore(session: StoredAuthSession = sampleSession()): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(session)
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(

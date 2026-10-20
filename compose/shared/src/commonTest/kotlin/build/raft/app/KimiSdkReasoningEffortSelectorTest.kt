@@ -8,7 +8,7 @@ import build.raft.app.data.CREATE_AGENT_FORM_PROTOCOL_VERSION
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RawServerMessagePriority
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.SharedAgentCreateDataSchema
@@ -24,12 +24,12 @@ import build.raft.app.data.SharedCreateAgentExactFormKey
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
-import build.raft.app.data.SlockComputersApi
-import build.raft.app.data.SlockComputersApiClient
+import build.raft.app.data.RaftComputersApi
+import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
-import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.buildCreateAgentBody
 import build.raft.app.data.buildSharedAgentProfileUpdateBody
 import build.raft.app.data.errorPresentation
@@ -326,7 +326,7 @@ class KimiSdkReasoningEffortSelectorTest {
     @Test
     fun kimiSdkFormLoadsThroughSharedRuntimeFormChain() = runPortableCoroutineTest {
         val api = KimiFormComputersApi(deferDefinitions = true)
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val load = async { store.loadSupportedKimiSdkForm("server-1", "machine-1") }
         api.definitionResponses.receive().complete(ok(kimiSdkDefinitionBody))
         val form = assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(load.await()).data
@@ -347,7 +347,7 @@ class KimiSdkReasoningEffortSelectorTest {
                         ""
                     )
             )
-        val missingRefStore = SharedCreateAgentFormStore(SlockComputersApiClient(missingRefApi), this)
+        val missingRefStore = SharedCreateAgentFormStore(RaftComputersApiClient(missingRefApi), this)
         assertEquals(
             "runtime_form_unavailable_form_ref_missing",
             assertIs<DataResult.Error>(missingRefStore.loadSupportedKimiSdkForm("server-1", "machine-1")).error.code
@@ -361,7 +361,7 @@ class KimiSdkReasoningEffortSelectorTest {
                         .replace("\"availableForNew\":true", "\"availableForNew\":false")
                         .replace("\"canSelectInThisContext\":true", "\"canSelectInThisContext\":false")
             )
-        val notSelectableStore = SharedCreateAgentFormStore(SlockComputersApiClient(notSelectableApi), this)
+        val notSelectableStore = SharedCreateAgentFormStore(RaftComputersApiClient(notSelectableApi), this)
         assertEquals(
             "runtime_form_unavailable_runtime_not_selectable",
             assertIs<DataResult.Error>(notSelectableStore.loadSupportedKimiSdkForm("server-1", "machine-1")).error.code
@@ -377,7 +377,7 @@ class KimiSdkReasoningEffortSelectorTest {
                 .replace("\"availableForNew\":true", "\"availableForNew\":false")
                 .replace("\"canSelectInThisContext\":true", "\"canSelectInThisContext\":false")
         val api = KimiFormComputersApi(runtimeOptionsBody = currentManageableBody, deferDefinitions = true)
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
 
         assertEquals(
             "runtime_form_unavailable_runtime_not_selectable",
@@ -393,7 +393,7 @@ class KimiSdkReasoningEffortSelectorTest {
     @Test
     fun kimiSdkStaleForcedCompletionCannotReplaceNewerFormGeneration() = runPortableCoroutineTest {
         val api = KimiFormComputersApi(deferDefinitions = true)
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val older = async { store.loadExactForm("server-1", "machine-1", kimiSdkRef, force = true) }
         val olderResponse = api.definitionResponses.receive()
         val newer = async { store.loadExactForm("server-1", "machine-1", kimiSdkRef, force = true) }
@@ -412,7 +412,7 @@ class KimiSdkReasoningEffortSelectorTest {
     @Test
     fun kimiSdkFormChainRejectsUnsupportedRefsAndDriftedDefinitions() = runPortableCoroutineTest {
         val api = KimiFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         listOf(
             SharedRuntimeFormDefinitionRef(1, "kimi-sdk", "kimi-sdk.create.v2"),
             SharedRuntimeFormDefinitionRef(2, "kimi-sdk", "kimi-sdk.create.v1"),
@@ -429,7 +429,7 @@ class KimiSdkReasoningEffortSelectorTest {
         val driftedApi = KimiFormComputersApi(
             definitionBody = kimiSdkDefinitionBody.replace("kimi-sdk.create.v1", "kimi-sdk.create.v2")
         )
-        val driftedClient = SlockComputersApiClient(driftedApi)
+        val driftedClient = RaftComputersApiClient(driftedApi)
         assertEquals(
             "runtime_form_definition_contract_mismatch",
             assertIs<DataResult.Error>(driftedClient.runtimeFormDefinition(ServerId("server-1"), "machine-1", kimiSdkRef)).error.code
@@ -447,7 +447,7 @@ class KimiSdkReasoningEffortSelectorTest {
             )
         ).forEach { body ->
             val result =
-                SlockComputersApiClient(KimiFormComputersApi(definitionBody = body))
+                RaftComputersApiClient(KimiFormComputersApi(definitionBody = body))
                     .runtimeFormDefinition(ServerId("server-1"), "machine-1", kimiSdkRef)
             assertEquals("runtime_form_definition_contract_mismatch", assertIs<DataResult.Error>(result).error.code)
         }
@@ -744,7 +744,7 @@ class KimiSdkReasoningEffortSelectorTest {
         var definitionBody: String = kimiSdkDefinitionBody,
         var modelSourceBody: String = kimiSdkModelSourceBody,
         private val deferDefinitions: Boolean = false
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         val definitionResponses = Channel<CompletableDeferred<HomeNetworkResponse>>(Channel.UNLIMITED)
         var runtimeOptionsCallCount = 0
         var definitionCallCount = 0
@@ -787,7 +787,7 @@ class KimiSdkReasoningEffortSelectorTest {
 
     private class RecordingKimiMemberNetworkClient(
         var patchResponse: HomeNetworkResponse
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         val patchBodies = mutableListOf<String?>()
 
         override suspend fun request(
@@ -806,8 +806,8 @@ class KimiSdkReasoningEffortSelectorTest {
         }
     }
 
-    private fun sampleKimiSessionStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun sampleKimiSessionStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user =
                     StoredAuthUser(

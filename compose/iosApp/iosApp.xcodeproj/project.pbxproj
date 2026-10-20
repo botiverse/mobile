@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A51000010000000000000003 /* SlockCmpBridgeHost.m in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000003 /* SlockCmpBridgeHost.m */; };
-		A51000010000000000000004 /* SlockPageControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000004 /* SlockPageControllerFactory.swift */; };
+		A51000010000000000000003 /* RaftCmpBridgeHost.m in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000003 /* RaftCmpBridgeHost.m */; };
+		A51000010000000000000004 /* RaftPageControllerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51000020000000000000004 /* RaftPageControllerFactory.swift */; };
 		0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */ = {isa = PBXBuildFile; fileRef = 0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */; };
 		04E32B3E29F01975000A6BC5 /* RaftPageRouter.m in Sources */ = {isa = PBXBuildFile; fileRef = 04E32B3D29F01975000A6BC5 /* RaftPageRouter.m */; };
 		058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 058557BA273AAA24004C7B11 /* Assets.xcassets */; };
@@ -21,25 +21,25 @@
 		A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47100020000000000000001 /* RaftIosSceneDelegate.swift */; };
 		A47200010000000000000001 /* RaftIosShellWindowContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47200020000000000000001 /* RaftIosShellWindowContract.swift */; };
 		8DFBDFF355CB77B1EFE78055 /* Pods_iosApp_iosAppTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E6FE20F52F0830F7F4E65579 /* Pods_iosApp_iosAppTests.framework */; };
-		A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
-		A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */; };
-		A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */; };
-		A13000010000000000000001 /* SlockIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */; };
-		A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */; };
-		A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */; };
-		A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */; };
+		A12900010000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */; };
+		A12900010000000000000002 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */; };
+		A12900010000000000000003 /* RaftIosNetworkRequestLifetimeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000002 /* RaftIosNetworkRequestLifetimeAdapterTests.swift */; };
+		A13000010000000000000001 /* RaftIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */; };
+		A13000010000000000000002 /* RaftIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */; };
+		A13000010000000000000003 /* RaftIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */; };
+		A13000010000000000000004 /* RaftAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */; };
 		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
-		A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */; };
-		A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
-		A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */; };
-		A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */; };
+		A42100010000000000000001 /* RaftAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */; };
+		A42400010000000000000001 /* RaftIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */; };
+		A42400010000000000000002 /* RaftIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */; };
+		A42400010000000000000003 /* RaftIosAvatarCacheProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000002 /* RaftIosAvatarCacheProviderTests.swift */; };
 		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
 		B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
-		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
-		D41350122E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350142E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift */; };
-		D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */; };
-		D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */; };
+		D41350022E0F000100C0DE02 /* RaftIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* RaftIosRealtimeHost.swift */; };
+		D41350122E0F000100C0DE12 /* RaftIosNetworkPathMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350142E0F000100C0DE12 /* RaftIosNetworkPathMonitor.swift */; };
+		D41350062E140100100C0DE03 /* RaftIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* RaftIosAppScopeMMKV.swift */; };
+		D46363012E17000100C0DE09 /* RaftIosMobileOAuthHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D46363022E17000100C0DE09 /* RaftIosMobileOAuthHost.swift */; };
 		D49163022E14000100C0DE01 /* space_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */; };
 		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
 		D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */; };
@@ -64,15 +64,15 @@
 		D49196CCA797D21E0914926C /* geist_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D4919B06F22394D9CC1F67FA /* geist_mono_bold.ttf */; };
 		D49163072E14000100C0DE01 /* space_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163172E14000100C0DE01 /* space_mono_bold.ttf */; };
 		D9E4627AB87B13FE4B46DA69 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */; };
-		FD8955B78ECFD1C7E8071ED2 /* SlockAdaptiveEditorSnapshotTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */; };
+		FD8955B78ECFD1C7E8071ED2 /* RaftAdaptiveEditorSnapshotTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */; };
 		FF6B714429A2A174009349F1 /* RaftPageViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B713F29A2A173009349F1 /* RaftPageViewController.m */; };
 		FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714129A2A173009349F1 /* HRBridgeModule.m */; };
 		FF6B714729A2A315009349F1 /* RaftPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* RaftPageView.swift */; };
-		J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */; };
-		A19300010000000000000001 /* SlockInteractivePopGestureTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A19300020000000000000001 /* SlockInteractivePopGestureTests.m */; };
-		A20500010000000000000001 /* SlockRouterLoginTransitionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A20500020000000000000001 /* SlockRouterLoginTransitionTests.m */; };
+		J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */; };
+		A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A19300020000000000000001 /* RaftInteractivePopGestureTests.m */; };
+		A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */; };
 		RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */; };
-		J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */; };
+		J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */; };
 		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -94,9 +94,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A51000020000000000000002 /* SlockCmpBridgeHost.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockCmpBridgeHost.h; sourceTree = "<group>"; };
-		A51000020000000000000003 /* SlockCmpBridgeHost.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SlockCmpBridgeHost.m; sourceTree = "<group>"; };
-		A51000020000000000000004 /* SlockPageControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockPageControllerFactory.swift; sourceTree = "<group>"; };
+		A51000020000000000000002 /* RaftCmpBridgeHost.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RaftCmpBridgeHost.h; sourceTree = "<group>"; };
+		A51000020000000000000003 /* RaftCmpBridgeHost.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeHost.m; sourceTree = "<group>"; };
+		A51000020000000000000004 /* RaftPageControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftPageControllerFactory.swift; sourceTree = "<group>"; };
 		0423580F44476A8BFD9068C7 /* Pods-iosApp-iosAppTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp-iosAppTests.debug.xcconfig"; path = "Target Support Files/Pods-iosApp-iosAppTests/Pods-iosApp-iosAppTests.debug.xcconfig"; sourceTree = "<group>"; };
 		0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "UINavigationController+FDFullscreenPopGesture.h"; sourceTree = "<group>"; };
 		0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = "UINavigationController+FDFullscreenPopGesture.m"; sourceTree = "<group>"; };
@@ -116,32 +116,32 @@
 		7555FF82242A565900829871 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
-		A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
-		A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
+		A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
+		A12900020000000000000002 /* RaftIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
 		A12900020000000000000003 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
-		A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
-		A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockAdaptivePaneRuntimeTests.swift; sourceTree = "<group>"; };
+		A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
+		A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
+		A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftAdaptivePaneRuntimeTests.swift; sourceTree = "<group>"; };
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockAdaptiveNavigationSession.m; sourceTree = "<group>"; };
-		A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockAdaptiveNavigationSession.h; sourceTree = "<group>"; };
-		A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProvider.swift; sourceTree = "<group>"; };
-		A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAvatarCacheProviderTests.swift; sourceTree = "<group>"; };
-		A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockAdaptiveEditorSnapshotTests.m; sourceTree = "<group>"; };
-		A42700020000000000000002 /* SlockAdaptiveEditorSnapshot.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SlockAdaptiveEditorSnapshot.h; sourceTree = "<group>"; };
-		A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
-		A82F000229F6A41000F43E31 /* SlockInteractivePopGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SlockInteractivePopGestureAdmission.h; sourceTree = "<group>"; };
+		A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftAdaptiveNavigationSession.m; sourceTree = "<group>"; };
+		A42100020000000000000002 /* RaftAdaptiveNavigationSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RaftAdaptiveNavigationSession.h; sourceTree = "<group>"; };
+		A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAvatarCacheProvider.swift; sourceTree = "<group>"; };
+		A42400020000000000000002 /* RaftIosAvatarCacheProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAvatarCacheProviderTests.swift; sourceTree = "<group>"; };
+		A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftAdaptiveEditorSnapshotTests.m; sourceTree = "<group>"; };
+		A42700020000000000000002 /* RaftAdaptiveEditorSnapshot.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RaftAdaptiveEditorSnapshot.h; sourceTree = "<group>"; };
+		A82F000129F6A41000F43E31 /* RaftConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
+		A82F000229F6A41000F43E31 /* RaftInteractivePopGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftInteractivePopGestureAdmission.h; sourceTree = "<group>"; };
 		B8FDA997E9DD2D474C82E853 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		C465599FD991429AC545C211 /* IosUseInteractionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosUseInteractionTests.swift; sourceTree = "<group>"; };
 		C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QaAcceptanceLoopTests.swift; sourceTree = "<group>"; };
 		CFD86DD765CA5210E2F6061E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
-		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
-		D41350142E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosNetworkPathMonitor.swift; sourceTree = "<group>"; };
-		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
-		D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosMobileOAuthHost.swift; sourceTree = "<group>"; };
+		D41350042E0F000100C0DE02 /* RaftIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosRealtimeHost.swift; sourceTree = "<group>"; };
+		D41350142E0F000100C0DE12 /* RaftIosNetworkPathMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNetworkPathMonitor.swift; sourceTree = "<group>"; };
+		D41350052E140100100C0DE03 /* RaftIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAppScopeMMKV.swift; sourceTree = "<group>"; };
+		D46363022E17000100C0DE09 /* RaftIosMobileOAuthHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosMobileOAuthHost.swift; sourceTree = "<group>"; };
 		D49163122E14000100C0DE01 /* space_grotesk_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_regular.ttf; sourceTree = "<group>"; };
 		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
 		D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_semibold.ttf; sourceTree = "<group>"; };
@@ -173,11 +173,11 @@
 		FF6B714329A2A174009349F1 /* RaftPageViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftPageViewController.h; sourceTree = "<group>"; };
 		FF6B714629A2A315009349F1 /* RaftPageView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RaftPageView.swift; sourceTree = "<group>"; };
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
-		J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
-		A19300020000000000000001 /* SlockInteractivePopGestureTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockInteractivePopGestureTests.m; sourceTree = "<group>"; };
-		A20500020000000000000001 /* SlockRouterLoginTransitionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockRouterLoginTransitionTests.m; sourceTree = "<group>"; };
+		J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftShareControllerFailureReasonTests.m; sourceTree = "<group>"; };
+		A19300020000000000000001 /* RaftInteractivePopGestureTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftInteractivePopGestureTests.m; sourceTree = "<group>"; };
+		A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftRouterLoginTransitionTests.m; sourceTree = "<group>"; };
 		RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeSelectorTests.m; sourceTree = "<group>"; };
-		J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SlockIosOpenAttachmentTests.m; sourceTree = "<group>"; };
+		J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosOpenAttachmentTests.m; sourceTree = "<group>"; };
 		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -221,9 +221,9 @@
 		A51000020000000000000001 /* Cmp */ = {
 			isa = PBXGroup;
 			children = (
-				A51000020000000000000004 /* SlockPageControllerFactory.swift */,
-				A51000020000000000000002 /* SlockCmpBridgeHost.h */,
-				A51000020000000000000003 /* SlockCmpBridgeHost.m */,
+				A51000020000000000000004 /* RaftPageControllerFactory.swift */,
+				A51000020000000000000002 /* RaftCmpBridgeHost.h */,
+				A51000020000000000000003 /* RaftCmpBridgeHost.m */,
 				FF6B714329A2A174009349F1 /* RaftPageViewController.h */,
 				FF6B713F29A2A173009349F1 /* RaftPageViewController.m */,
 				04E32B3C29F01971000A6BC5 /* RaftPageRouter.h */,
@@ -243,8 +243,8 @@
 		0474A3F029F6A41000F43E31 /* FDFullscreenPopGesture */ = {
 			isa = PBXGroup;
 			children = (
-				A82F000129F6A41000F43E31 /* SlockConversationForwardGestureAdmission.h */,
-				A82F000229F6A41000F43E31 /* SlockInteractivePopGestureAdmission.h */,
+				A82F000129F6A41000F43E31 /* RaftConversationForwardGestureAdmission.h */,
+				A82F000229F6A41000F43E31 /* RaftInteractivePopGestureAdmission.h */,
 				0474A3F129F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.h */,
 				0474A3F229F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m */,
 			);
@@ -309,11 +309,11 @@
 				0474A3EF29F6A3FE00F43E31 /* Vendor */,
 				FF6B714629A2A315009349F1 /* RaftPageView.swift */,
 				D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */,
-				D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */,
-				D41350142E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift */,
-				D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */,
-				D46363022E17000100C0DE09 /* SlockIosMobileOAuthHost.swift */,
-				A42400020000000000000001 /* SlockIosAvatarCacheProvider.swift */,
+				D41350042E0F000100C0DE02 /* RaftIosRealtimeHost.swift */,
+				D41350142E0F000100C0DE12 /* RaftIosNetworkPathMonitor.swift */,
+				D41350052E140100100C0DE03 /* RaftIosAppScopeMMKV.swift */,
+				D46363022E17000100C0DE09 /* RaftIosMobileOAuthHost.swift */,
+				A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */,
 				FF6B713E29A2A10E009349F1 /* Host */,
 				A51000020000000000000001 /* Cmp */,
 				058557BA273AAA24004C7B11 /* Assets.xcassets */,
@@ -324,8 +324,8 @@
 				7555FF8C242A565B00829871 /* Info.plist */,
 				A39600020000000000000001 /* InfoPlist.strings */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
-				A12900020000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift */,
-				A13000020000000000000001 /* SlockIosAdaptivePanePublisher.swift */,
+				A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */,
+				A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */,
 				058557D7273AAEEB004C7B11 /* Preview Content */,
 			);
 			path = iosApp;
@@ -337,7 +337,7 @@
 				C465599FD991429AC545C211 /* IosUseInteractionTests.swift */,
 				T25800010000000000000002 /* T258ConsumerUITests.swift */,
 				C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */,
-				A13000020000000000000003 /* SlockAdaptivePaneRuntimeTests.swift */,
+				A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */,
 			);
 			path = iosAppUITests;
 			sourceTree = "<group>";
@@ -345,15 +345,15 @@
 		A12900030000000000000001 /* iosAppTests */ = {
 			isa = PBXGroup;
 			children = (
-				A42400020000000000000002 /* SlockIosAvatarCacheProviderTests.swift */,
-				A12900020000000000000002 /* SlockIosNetworkRequestLifetimeAdapterTests.swift */,
-				A13000020000000000000002 /* SlockIosAdaptivePanePublisherTests.swift */,
-				A42700020000000000000001 /* SlockAdaptiveEditorSnapshotTests.m */,
-				J0NY00020000000000000001 /* SlockShareControllerFailureReasonTests.m */,
-				A19300020000000000000001 /* SlockInteractivePopGestureTests.m */,
-				A20500020000000000000001 /* SlockRouterLoginTransitionTests.m */,
+				A42400020000000000000002 /* RaftIosAvatarCacheProviderTests.swift */,
+				A12900020000000000000002 /* RaftIosNetworkRequestLifetimeAdapterTests.swift */,
+				A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */,
+				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
+				J0NY00020000000000000001 /* RaftShareControllerFailureReasonTests.m */,
+				A19300020000000000000001 /* RaftInteractivePopGestureTests.m */,
+				A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */,
 				RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */,
-				J0NY00040000000000000001 /* SlockIosOpenAttachmentTests.m */,
+				J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */,
 			);
 			path = iosAppTests;
 			sourceTree = "<group>";
@@ -404,9 +404,9 @@
 			children = (
 				FF6B714129A2A173009349F1 /* HRBridgeModule.m */,
 				FF6B714229A2A173009349F1 /* HRBridgeModule.h */,
-				A42100020000000000000001 /* SlockAdaptiveNavigationSession.m */,
-				A42100020000000000000002 /* SlockAdaptiveNavigationSession.h */,
-				A42700020000000000000002 /* SlockAdaptiveEditorSnapshot.h */,
+				A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */,
+				A42100020000000000000002 /* RaftAdaptiveNavigationSession.h */,
+				A42700020000000000000002 /* RaftAdaptiveEditorSnapshot.h */,
 			);
 			path = Host;
 			sourceTree = "<group>";
@@ -768,7 +768,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FD8955B78ECFD1C7E8071ED2 /* SlockAdaptiveEditorSnapshotTests.m in Sources */,
+				FD8955B78ECFD1C7E8071ED2 /* RaftAdaptiveEditorSnapshotTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -777,21 +777,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				FF6B714429A2A174009349F1 /* RaftPageViewController.m in Sources */,
-				A42100010000000000000001 /* SlockAdaptiveNavigationSession.m in Sources */,
+				A42100010000000000000001 /* RaftAdaptiveNavigationSession.m in Sources */,
 				04E32B3E29F01975000A6BC5 /* RaftPageRouter.m in Sources */,
-				A51000010000000000000003 /* SlockCmpBridgeHost.m in Sources */,
-				A51000010000000000000004 /* SlockPageControllerFactory.swift in Sources */,
+				A51000010000000000000003 /* RaftCmpBridgeHost.m in Sources */,
+				A51000010000000000000004 /* RaftPageControllerFactory.swift in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
-				A12900010000000000000001 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
-				A13000010000000000000001 /* SlockIosAdaptivePanePublisher.swift in Sources */,
+				A12900010000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A13000010000000000000001 /* RaftIosAdaptivePanePublisher.swift in Sources */,
 				D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */,
-				D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */,
-				D46363012E17000100C0DE09 /* SlockIosMobileOAuthHost.swift in Sources */,
-				A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */,
+				D41350062E140100100C0DE03 /* RaftIosAppScopeMMKV.swift in Sources */,
+				D46363012E17000100C0DE09 /* RaftIosMobileOAuthHost.swift in Sources */,
+				A42400010000000000000001 /* RaftIosAvatarCacheProvider.swift in Sources */,
 				FF6B714529A2A174009349F1 /* HRBridgeModule.m in Sources */,
-				D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */,
-				D41350122E0F000100C0DE12 /* SlockIosNetworkPathMonitor.swift in Sources */,
+				D41350022E0F000100C0DE02 /* RaftIosRealtimeHost.swift in Sources */,
+				D41350122E0F000100C0DE12 /* RaftIosNetworkPathMonitor.swift in Sources */,
 				FF6B714729A2A315009349F1 /* RaftPageView.swift in Sources */,
 				7555FF83242A565900829871 /* ContentView.swift in Sources */,
 				A47100010000000000000001 /* RaftIosSceneDelegate.swift in Sources */,
@@ -806,7 +806,7 @@
 				B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */,
 				B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */,
 				T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */,
-				A13000010000000000000004 /* SlockAdaptivePaneRuntimeTests.swift in Sources */,
+				A13000010000000000000004 /* RaftAdaptivePaneRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -814,17 +814,17 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */,
-				A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */,
-				A12900010000000000000002 /* SlockIosNetworkRequestLifetimeAdapter.swift in Sources */,
-				A12900010000000000000003 /* SlockIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
-				A13000010000000000000002 /* SlockIosAdaptivePanePublisher.swift in Sources */,
-				A13000010000000000000003 /* SlockIosAdaptivePanePublisherTests.swift in Sources */,
-				J0NY00010000000000000001 /* SlockShareControllerFailureReasonTests.m in Sources */,
-				A19300010000000000000001 /* SlockInteractivePopGestureTests.m in Sources */,
-				A20500010000000000000001 /* SlockRouterLoginTransitionTests.m in Sources */,
+				A42400010000000000000002 /* RaftIosAvatarCacheProvider.swift in Sources */,
+				A42400010000000000000003 /* RaftIosAvatarCacheProviderTests.swift in Sources */,
+				A12900010000000000000002 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A12900010000000000000003 /* RaftIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
+				A13000010000000000000002 /* RaftIosAdaptivePanePublisher.swift in Sources */,
+				A13000010000000000000003 /* RaftIosAdaptivePanePublisherTests.swift in Sources */,
+				J0NY00010000000000000001 /* RaftShareControllerFailureReasonTests.m in Sources */,
+				A19300010000000000000001 /* RaftInteractivePopGestureTests.m in Sources */,
+				A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */,
 				RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */,
-				J0NY00030000000000000001 /* SlockIosOpenAttachmentTests.m in Sources */,
+				J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

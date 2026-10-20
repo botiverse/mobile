@@ -14,7 +14,7 @@ private val inboxSavedSearchRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private suspend fun SlockNetworkClient.inbox(
+private suspend fun RaftNetworkClient.inbox(
     priority: DataRequestPriority,
     filter: InboxFilter,
     limit: Int,
@@ -32,13 +32,13 @@ private suspend fun SlockNetworkClient.inbox(
         serverIdOverride = serverId
     )
 
-private suspend fun SlockNetworkClient.markInboxDone(
+private suspend fun RaftNetworkClient.markInboxDone(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/inbox/done", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.saved(
+private suspend fun RaftNetworkClient.saved(
     priority: DataRequestPriority,
     limit: Int,
     offset: Int,
@@ -51,28 +51,28 @@ private suspend fun SlockNetworkClient.saved(
         serverIdOverride = serverId
     )
 
-private suspend fun SlockNetworkClient.saveMessage(
+private suspend fun RaftNetworkClient.saveMessage(
     priority: DataRequestPriority,
     bodyText: String,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/saved", method = "POST", bodyText = bodyText, serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.unsaveMessage(
+private suspend fun RaftNetworkClient.unsaveMessage(
     priority: DataRequestPriority,
     messageId: MessageId,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/saved/${messageId.value}", method = "DELETE", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.checkSavedMessages(
+private suspend fun RaftNetworkClient.checkSavedMessages(
     priority: DataRequestPriority,
     bodyText: String,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/saved/check", method = "POST", bodyText = bodyText, serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.searchMessages(
+private suspend fun RaftNetworkClient.searchMessages(
     priority: DataRequestPriority,
     query: String,
     limit: Int,
@@ -105,8 +105,8 @@ private suspend fun SlockNetworkClient.searchMessages(
     )
 
 class RealInboxRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : InboxRepository {
@@ -190,8 +190,8 @@ class RealInboxRepository(
 }
 
 internal class ProcessActivityUnreadRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) {
@@ -232,8 +232,8 @@ internal class ProcessActivityUnreadRepository(
 }
 
 class RealSavedRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {}
 ) : SavedRepository, SavedStatusRepository {
     override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
@@ -338,8 +338,8 @@ class RealSavedRepository(
 }
 
 class RealSearchRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {}
 ) : SearchRepository {
     override suspend fun search(
@@ -411,7 +411,7 @@ fun buildSharedSaveMessageBody(messageId: MessageId): String =
 
 private data class InboxLikeServerContext(val server: ServerSummary)
 
-private suspend fun SlockAuthSessionStore.serverContext(serverId: ServerId): InboxLikeServerContext? {
+private suspend fun RaftAuthSessionStore.serverContext(serverId: ServerId): InboxLikeServerContext? {
     val session = readSession() ?: return null
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
     val server = session.servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null

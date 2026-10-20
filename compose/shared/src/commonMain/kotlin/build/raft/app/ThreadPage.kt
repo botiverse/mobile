@@ -1,19 +1,19 @@
 package build.raft.app
 
-import build.raft.app.SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY
-import build.raft.app.data.SLOCK_SHELL_OVERLAY_REQUEST_EVENT
-import build.raft.app.data.SLOCK_SHELL_OVERLAY_RESULT_EVENT
+import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
+import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
-import build.raft.app.data.slockShouldApplyShellOverlayResult
-import build.raft.app.data.SlockShellOverlayRequest
-import build.raft.app.data.SlockShellOverlayItem
-import build.raft.app.data.cancelSlockShellOverlayJson
+import build.raft.app.data.raftShouldApplyShellOverlayResult
+import build.raft.app.data.RaftShellOverlayRequest
+import build.raft.app.data.RaftShellOverlayItem
+import build.raft.app.data.cancelRaftShellOverlayJson
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.sideThreadFocusActive
 import build.raft.app.data.showsSideThreadFocusEntry
 import build.raft.app.data.toggleSideThreadFocusFromPanel
-import build.raft.app.data.SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
+import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
 import build.raft.app.data.parentFocusOutcomeAfterWait
@@ -23,33 +23,33 @@ import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 
-import build.raft.app.components.SlockAnchoredMetaChip
-import build.raft.app.components.SlockAttachmentPreviewCard
-import build.raft.app.components.SlockAttachmentPreviewCardWidth
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockExternalBridgeBadge
-import build.raft.app.components.SlockChipLoadingIndicator
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalSearchField
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockRaftUiBanner
-import build.raft.app.components.SlockRaftUiBannerSize
-import build.raft.app.components.SlockRaftUiBannerStatus
-import build.raft.app.components.SlockRaftUiSuccessBanner
-import build.raft.app.components.SlockRaftUiControlledMenu
-import build.raft.app.components.SlockRaftUiMenuItem
-import build.raft.app.components.SlockSwitchButton
+import build.raft.app.components.RaftAnchoredMetaChip
+import build.raft.app.components.RaftAttachmentPreviewCard
+import build.raft.app.components.RaftAttachmentPreviewCardWidth
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftExternalBridgeBadge
+import build.raft.app.components.RaftChipLoadingIndicator
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.components.RaftUiSuccessBanner
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
+import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.SlockToolbarChip
-import build.raft.app.components.slockRaftOverlaySurface
-import build.raft.app.components.slockRaftCardSurface
-import build.raft.app.components.slockRaftControlSurface
-import build.raft.app.components.SlockRaftMetrics
+import build.raft.app.components.RaftToolbarChip
+import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.RaftMetrics
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.reduceAttachmentDownloadProgress
-import build.raft.app.data.KuiklyHostNetworkEvents
+import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -71,9 +71,9 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.NetworkSlockTasksApi
-import build.raft.app.data.NetworkSlockThreadApi
-import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.NetworkRaftTasksApi
+import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -83,7 +83,7 @@ import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SlockEventBus
+import build.raft.app.data.RaftEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentUploadResult
@@ -103,22 +103,22 @@ import build.raft.app.data.ThreadReadAnchorStore
 import build.raft.app.data.ThreadUnreadAnchorMessage
 import build.raft.app.data.advanceThreadReadAnchorFrontier
 import build.raft.app.data.projectThreadUnreadJump
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.formatAttachmentSizeLabel
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
-import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
-import build.raft.app.data.isSlockHostVisible
+import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
@@ -158,11 +158,11 @@ import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.defaultNowMillis
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.typedPinnedOrLegacy
@@ -202,22 +202,22 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
-import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
-import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
-import build.raft.app.markdown.SlockMarkdownBody
-import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
-import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
+import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
 import build.raft.app.markdown.threadMarkdownLightGateInputsOrNull
-import build.raft.app.markdown.slockMarkdownProvidedValuesWith
-import build.raft.app.markdown.slockTraceDiagnosticsEnabled
-import build.raft.app.markdown.SlockMarkdownRenderConfig
+import build.raft.app.markdown.raftMarkdownProvidedValuesWith
+import build.raft.app.markdown.raftTraceDiagnosticsEnabled
+import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
-import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
-import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
+import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
+import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
@@ -228,23 +228,23 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
-import build.raft.app.components.SlockAnchorPlacement
+import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
-import build.raft.app.model.formatSlockTimestampEpochMillis
-import build.raft.app.model.formatSlockTimestampLabel
-import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.model.formatRaftTimestampEpochMillis
+import build.raft.app.model.formatRaftTimestampLabel
+import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.currentFeatureFlagClientContext
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
-import build.raft.app.model.slockEpochMillisUtcIso
-import build.raft.app.model.SlockTimeFormat24Hour
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.raftEpochMillisUtcIso
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.isInternalJointStorageIdentity
@@ -706,10 +706,10 @@ internal fun resolveThreadComposerAttachmentRemoval(
     val nameExtension = threadComposerAttachmentExtension(attachment.fileName)
     val refExtension = threadComposerAttachmentExtension(normalizedRef.second)
     val extensions = listOf(nameExtension, refExtension).filter(String::isNotBlank)
-    val hasVideoExtension = extensions.any { it in SlockFilePreviewVideoExtensions }
+    val hasVideoExtension = extensions.any { it in RaftFilePreviewVideoExtensions }
     val hasImageExtension = extensions.any { it in ThreadComposerImageFileExtensions }
     val hasKnownNonImageExtension =
-        extensions.any { it !in ThreadComposerImageFileExtensions && it !in SlockFilePreviewVideoExtensions }
+        extensions.any { it !in ThreadComposerImageFileExtensions && it !in RaftFilePreviewVideoExtensions }
     val isVideoMime = normalizedMime.startsWith("video/")
     val isImageMime = normalizedMime.startsWith("image/")
 
@@ -764,7 +764,7 @@ internal data class ThreadComposerImageEventBatchKey(
 /** Parsed event retained by the batch accumulator until the whole N/N group is present. */
 internal data class ThreadComposerImageEventBatchItem(
     val eventData: JSONObject,
-    val payload: SlockFilePreviewComposerImageEventPayload,
+    val payload: RaftFilePreviewComposerImageEventPayload,
     val replaceAttachmentId: String? = null
 ) {
     val actionId: String
@@ -911,14 +911,14 @@ internal fun threadAttachmentPickerHasCompressionFailure(response: JSONObject?):
         if (entries == null) return false
         for (index in 0 until entries.length()) {
             val entry = entries.optJSONObject(index) ?: continue
-            if (entry.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE) {
+            if (entry.optString("errorCode").trim() == RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE) {
                 return true
             }
         }
         return false
     }
 
-    if (response.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
+    if (response.optString("errorCode").trim() == RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
         hasCompressionError(response.optJSONArray("errors"))
     ) {
         return true
@@ -929,7 +929,7 @@ internal fun threadAttachmentPickerHasCompressionFailure(response: JSONObject?):
             .takeIf { it.isNotBlank() }
             ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
             ?: return false
-    return body.optString("errorCode").trim() == SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
+    return body.optString("errorCode").trim() == RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE ||
         hasCompressionError(body.optJSONArray("errors"))
 }
 
@@ -983,18 +983,18 @@ internal fun threadAttachmentPickerCompressionFailureFileRefs(response: JSONObje
     return refs
 }
 
-internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean =
+internal fun raftComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean =
     files.isNotEmpty() &&
         files.all { file ->
-            slockComposerImagePickerIsStrictImage(
+            raftComposerImagePickerIsStrictImage(
                 fileName = file.fileName,
                 mimeType = file.mimeType.orEmpty(),
             )
         }
 private data class ThreadMembersProjection(
     val membersCount: Int,
-    val members: List<KuiklyThreadMemberItem>,
-    val memberCandidates: List<KuiklyThreadMemberItem>,
+    val members: List<RaftThreadMemberItem>,
+    val memberCandidates: List<RaftThreadMemberItem>,
     val canAddMembers: Boolean
 )
 
@@ -1123,10 +1123,10 @@ internal fun threadTransientBackTarget(
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
 
-internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Boolean =
+internal fun RaftThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Boolean =
     shouldRenderThreadEarlyLoadingShell(toThreadTimelineSlice())
 
-internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(
+internal fun RaftThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(
     timelineSlice: ThreadTimelineSlice
 ): Boolean =
     (backgroundRefreshing && timelineSlice.messages.isEmpty() && timelineSlice.originMessage == null && originPreview.isNullOrBlank()) ||
@@ -1138,7 +1138,7 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(
                 !hasProgressiveThreadLoadingShell()
         )
 
-internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
+internal fun RaftThreadScreenPayload.shouldRenderThreadLoadingShell(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution
 ): Boolean =
@@ -1147,7 +1147,7 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
     (
         accessResolution == ThreadAccessResolution.Loading &&
             (
-                KuiklyThreadTab.fromWireValue(selectedTab) != KuiklyThreadTab.Chat ||
+                RaftThreadTab.fromWireValue(selectedTab) != RaftThreadTab.Chat ||
                     timelineSlice.status !in ThreadResolvedContentStatuses
             )
     ) ||
@@ -1212,7 +1212,7 @@ internal fun threadFeatureOwnerMountPlan(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.threadRouteMountPlan(
+internal fun RaftThreadScreenPayload.threadRouteMountPlan(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution
 ): ThreadRouteMountPlan {
@@ -1338,13 +1338,13 @@ internal fun jointBillingNoticeState(
         // flipped jointBillingLocked yet. When no clock is available, keep the
         // deadline-agnostic Grace (fail-open for an unknown now is safer than
         // wrongly locking a still-writable channel).
-        val deadlineMillis = parseSlockTimestampEpochMillisOrNull(graceEndsAt, 0)
+        val deadlineMillis = parseRaftTimestampEpochMillisOrNull(graceEndsAt, 0)
         if (nowEpochMillis != null && deadlineMillis != null && nowEpochMillis >= deadlineMillis) {
             return JointBillingNotice.Locked
         }
         return JointBillingNotice.Grace
     }
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
         val parent = noticeFor(parentChannelId)
         if (parent != JointBillingNotice.None) return parent
     }
@@ -1394,9 +1394,9 @@ internal fun ThreadAttachmentCommentsDialogState?.retainForThreadWriteAuthority(
     writeActionsEnabled: Boolean
 ): ThreadAttachmentCommentsDialogState? = takeIf { writeActionsEnabled }
 
-internal fun KuiklyThreadScreenPayload.withThreadWriteActionsEnabled(
+internal fun RaftThreadScreenPayload.withThreadWriteActionsEnabled(
     enabled: Boolean
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     if (enabled) {
         this
     } else {
@@ -1439,14 +1439,14 @@ internal fun handleThreadStoreRetryEvent(
     return true
 }
 
-private fun KuiklyThreadScreenPayload.hasProgressiveThreadLoadingShell(): Boolean {
+private fun RaftThreadScreenPayload.hasProgressiveThreadLoadingShell(): Boolean {
     if (status != "loading") return false
     val routeIdentity = resolveThreadRouteIdentity()
     val timelineKey = routeIdentity.timelineKey?.takeIf { it.isNotBlank() }
     if (timelineKey != null) return true
     val replyParentId = parentMessageId?.takeIf { it.isNotBlank() }
         ?: originParentMessageId?.takeIf { it.isNotBlank() }
-    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+    return surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         parentChannelId?.isNotBlank() == true &&
         replyParentId != null
 }
@@ -1674,11 +1674,11 @@ private val ThreadHeaderActionGroupSpacing = 6.dp
 private val ThreadHeaderActionIconSize = 16.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
-private val ThreadHeaderDmAgentActivityLeadingGap = SlockSpacing.Sm
+private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
 // Keep the mobile header on the same canonical inline token instead of a
 // smaller one-off dot.
-private val ThreadHeaderDmAgentActivityDotSize = SlockStatusIndicatorTokens.InlineSize
+private val ThreadHeaderDmAgentActivityDotSize = RaftStatusIndicatorTokens.InlineSize
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
 private val ThreadHeaderContentSpacing = 6.dp
@@ -1735,7 +1735,7 @@ internal fun existingThreadChannelHeaderSubtitle(subtitle: String?): String? =
 
 internal fun threadHeaderDisplayTitle(
     title: String?,
-    surfaceKind: String = KuiklyThreadSurfaceKind.Channel
+    surfaceKind: String = RaftThreadSurfaceKind.Channel
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
 
@@ -1749,17 +1749,17 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
      * initiation source: the fact is captured here at the pager boundary and reduced by the
      * screen so a DualPane arrival can trigger one guarded prepare/commit transaction.
      */
-    private var adaptivePaneState by mutableStateOf(SlockAdaptivePaneState())
-    private var adaptivePaneEvent by mutableStateOf<SlockAdaptivePaneEvent?>(null)
+    private var adaptivePaneState by mutableStateOf(RaftAdaptivePaneState())
+    private var adaptivePaneEvent by mutableStateOf<RaftAdaptivePaneEvent?>(null)
 
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent {
-            SlockInputFocusDismissHost { focusDismissModifier ->
+            RaftInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
                     ThreadPageScreen(
-                        pageVisibleTick = slockPageVisibleResumeTick,
-                        pageVisible = slockPageVisible,
+                        pageVisibleTick = raftPageVisibleResumeTick,
+                        pageVisible = raftPageVisible,
                         adaptivePaneState = adaptivePaneState,
                         adaptivePaneEvent = adaptivePaneEvent,
                     )
@@ -1768,9 +1768,9 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
         }
     }
 
-    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
-        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
-        adaptivePaneState = reduceSlockAdaptivePane(adaptivePaneState, event)
+    override fun onRaftAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toRaftAdaptivePaneEventOrNull() ?: return
+        adaptivePaneState = reduceRaftAdaptivePane(adaptivePaneState, event)
         adaptivePaneEvent = event
     }
 }
@@ -1784,7 +1784,7 @@ internal class ComposeThreadMembersPage : AuthenticatedProductPager(Authenticate
 }
 
 @Serializable
-internal data class KuiklyThreadScreenPayload(
+internal data class RaftThreadScreenPayload(
     val instanceId: String = "",
     val title: String = "",
     val subtitle: String? = null,
@@ -1808,7 +1808,7 @@ internal data class KuiklyThreadScreenPayload(
      * never mistakes a paging failure or a permission answer for it (LiBai #2782).
      */
     val mainLoadFailed: Boolean = false,
-    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val surfaceKind: String = RaftThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
@@ -1827,16 +1827,16 @@ internal data class KuiklyThreadScreenPayload(
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour,
-    val messages: List<KuiklyThreadMessageItem> = emptyList(),
-    val originMessage: KuiklyThreadMessageItem? = null,
+    val timeFormat: String = RaftTimeFormat24Hour,
+    val messages: List<RaftThreadMessageItem> = emptyList(),
+    val originMessage: RaftThreadMessageItem? = null,
     val originPreview: String? = null,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
     val focusedMessageRequestNonce: Int = 0,
     val originStatus: String = "none",
     val originErrorCode: String? = null,
-    val tasks: List<KuiklyThreadTaskItem> = emptyList(),
+    val tasks: List<RaftThreadTaskItem> = emptyList(),
     val knownMarkdownChannelNames: List<String> = emptyList(),
     val knownMarkdownMentionNames: List<String> = emptyList(),
     val knownMarkdownDirectMessagePeerNames: List<String> = emptyList(),
@@ -1849,20 +1849,20 @@ internal data class KuiklyThreadScreenPayload(
     val errorServerMessage: String? = null,
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
-    val composer: KuiklyThreadComposerPayload = KuiklyThreadComposerPayload(),
+    val composer: RaftThreadComposerPayload = RaftThreadComposerPayload(),
     val showComposer: Boolean = true,
     val joined: Boolean = true,
     val canSend: Boolean = true,
     val membersCount: Int = 0,
-    val members: List<KuiklyThreadMemberItem> = emptyList(),
-    val memberCandidates: List<KuiklyThreadMemberItem> = emptyList(),
+    val members: List<RaftThreadMemberItem> = emptyList(),
+    val memberCandidates: List<RaftThreadMemberItem> = emptyList(),
     val canAddMembers: Boolean = true,
     val addMemberStatus: String = "idle",
     val addMemberErrorCode: String? = null,
     val removeMemberStatus: String = "idle",
     val removingMemberId: String? = null,
     val removeMemberErrorCode: String? = null,
-    val settingsActions: List<KuiklyThreadSettingsAction> = emptyList(),
+    val settingsActions: List<RaftThreadSettingsAction> = emptyList(),
     val showMembersAction: Boolean = true,
     val showSettingsAction: Boolean = true,
     val showOpenInChannelAction: Boolean = false,
@@ -2013,7 +2013,7 @@ internal fun threadMembersRemovalChannelName(
 }
 
 internal fun threadMemberRemovalConfirmation(
-    member: KuiklyThreadMemberItem,
+    member: RaftThreadMemberItem,
     serverId: ServerId,
     channelId: ChannelId,
     channelName: String
@@ -2033,7 +2033,7 @@ internal fun threadMemberRemovalConfirmation(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
+internal fun RaftThreadScreenPayload.toThreadMembersPageData(
     serverId: ServerId,
     channelId: ChannelId
 ): JSONObject =
@@ -2058,7 +2058,7 @@ internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute
         localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: RaftTimeFormat24Hour
     )
 }
 
@@ -2092,16 +2092,16 @@ internal data class ThreadConversationPinUiState(
     val available: Boolean
 )
 
-internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
+internal fun RaftThreadScreenPayload.threadActivityMuteState(
     projection: SharedConversationDirectoryProjection?
 ): ThreadActivityMuteUiState? {
     // Route payload self-identity is authoritative (§5): projection enriches mute data,
     // but must not rewrite what surface this page is.
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) return null
     val supported = projection?.activityMuteSupported ?: activityMuteSupported
     if (!supported) return null
     val resolvedJoined = projection?.joined ?: joined
-    if (surfaceKind != KuiklyThreadSurfaceKind.DirectMessage && !resolvedJoined) return null
+    if (surfaceKind != RaftThreadSurfaceKind.DirectMessage && !resolvedJoined) return null
     val channelId =
         projection?.canonicalChannelId?.takeIf { it.isNotBlank() }
             ?: streamChannelId?.takeIf { it.isNotBlank() }
@@ -2115,7 +2115,7 @@ internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.threadActivityMutedIndicatorVisible(
+internal fun RaftThreadScreenPayload.threadActivityMutedIndicatorVisible(
     projection: SharedConversationDirectoryProjection?
 ): Boolean {
     val supported = projection?.activityMuteSupported ?: activityMuteSupported
@@ -2128,23 +2128,23 @@ internal data class ThreadConversationPinTarget(
     val id: String
 )
 
-internal fun KuiklyThreadScreenPayload.threadConversationPinTarget(
+internal fun RaftThreadScreenPayload.threadConversationPinTarget(
     projection: SharedConversationDirectoryProjection?
 ): ThreadConversationPinTarget? {
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) return null
     val conversationId =
         projection?.canonicalChannelId?.trim()?.takeIf { it.isNotBlank() }
             ?: streamChannelId?.trim()?.takeIf { it.isNotBlank() }
             ?: sourceThreadId?.trim()?.takeIf { it.isNotBlank() }
             ?: return null
-    if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+    if (surfaceKind == RaftThreadSurfaceKind.Channel) {
         return ThreadConversationPinTarget(
             conversationId = conversationId,
             kind = "channel",
             id = conversationId
         )
     }
-    if (surfaceKind != KuiklyThreadSurfaceKind.DirectMessage) return null
+    if (surfaceKind != RaftThreadSurfaceKind.DirectMessage) return null
     val peer = projection?.peerIdentity ?: dmPeerIdentity ?: return null
     val kind =
         when (peer.kind) {
@@ -2186,31 +2186,31 @@ internal fun threadHeaderSettingsActionVisible(
     payloadShowSettingsAction: Boolean,
     surfaceKind: String
 ): Boolean =
-    payloadShowSettingsAction || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+    payloadShowSettingsAction || surfaceKind == RaftThreadSurfaceKind.DirectMessage
 
 internal fun threadHeaderInlineActivityMuteVisible(surfaceKind: String): Boolean =
-    surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
+    surfaceKind != RaftThreadSurfaceKind.DirectMessage
 
 internal fun threadSettingsUsesStandalonePage(
     surfaceKind: String,
     newDesignSettingsEnabled: Boolean
 ): Boolean =
-    surfaceKind != KuiklyThreadSurfaceKind.DirectMessage &&
+    surfaceKind != RaftThreadSurfaceKind.DirectMessage &&
         channelSettingsUsesStandalonePage(newDesignSettingsEnabled)
 
-internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
+internal fun RaftThreadScreenPayload.joinChannelTargetId(): ChannelId? =
     (parentChannelId?.takeIf { it.isNotBlank() }
         ?: sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
-internal fun KuiklyThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? =
+internal fun RaftThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? =
     (sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() }
         ?: parentChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
-internal fun KuiklyThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
+internal fun RaftThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
     listOfNotNull(
         parentChannelId,
         sourceThreadId,
@@ -2222,15 +2222,15 @@ internal fun KuiklyThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
         .distinct()
         .toList()
 
-internal fun KuiklyThreadScreenPayload.threadMessagePermalink(
-    message: KuiklyThreadMessageItem,
+internal fun RaftThreadScreenPayload.threadMessagePermalink(
+    message: RaftThreadMessageItem,
     serverSlug: String?,
     webBaseUrl: String? = null
 ): String? {
     val cleanServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val cleanMessageId = message.id.trim().takeIf { it.isNotBlank() } ?: return null
     val replyParentMessageId =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: parentMessageId?.takeIf { it.isNotBlank() }
         } else {
@@ -2247,7 +2247,7 @@ internal fun KuiklyThreadScreenPayload.threadMessagePermalink(
     val routeKind =
         if (
             (replyParentMessageId != null && parentChannelKind.isThreadPermalinkDmKind()) ||
-            (replyParentMessageId == null && (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()))
+            (replyParentMessageId == null && (surfaceKind == RaftThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()))
         ) {
             "dm"
         } else {
@@ -2266,10 +2266,10 @@ private fun String?.isThreadPermalinkDmKind(): Boolean =
     // #417 contract parse (accepts "direct"); no private DM vocab table (t432 PR-A).
     parseConversationKindOrNull(this) == ConversationKind.DirectMessage
 
-internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
+internal fun RaftThreadScreenPayload.consumeComposerSeedForSend(
     sentBody: String,
     sentAttachmentIds: Set<String>
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val sentBodyTrimmed = sentBody.trim()
     val nextSeedText =
         if (composer.seedText.trim() == sentBodyTrimmed) {
@@ -2408,7 +2408,7 @@ internal fun threadComposerAggregateReceiptIsValid(
     return true
 }
 
-internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
+internal fun RaftThreadScreenPayload.toThreadMemberDetailPageData(
     identity: MemberDetailIdentity
 ): JSONObject? {
     val selected = identity.memberId.value.takeIf { it.isNotBlank() } ?: return null
@@ -2425,37 +2425,37 @@ internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(
     }
 }
 
-internal fun KuiklyThreadScreenPayload.threadChannelSearchChannelId(): String? =
+internal fun RaftThreadScreenPayload.threadChannelSearchChannelId(): String? =
     sourceThreadId
         ?.trim()
-        ?.takeIf { it.isNotBlank() && surfaceKind == KuiklyThreadSurfaceKind.Channel }
+        ?.takeIf { it.isNotBlank() && surfaceKind == RaftThreadSurfaceKind.Channel }
 
 internal enum class ThreadHeaderSearchAction {
     ChannelSearch,
     InlineThreadSearch
 }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderSearchAction(): ThreadHeaderSearchAction? =
+internal fun RaftThreadScreenPayload.threadHeaderSearchAction(): ThreadHeaderSearchAction? =
     when {
         threadChannelSearchChannelId() != null -> ThreadHeaderSearchAction.ChannelSearch
-        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread -> ThreadHeaderSearchAction.InlineThreadSearch
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread -> ThreadHeaderSearchAction.InlineThreadSearch
         else -> null
     }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderOpenInParentActionVisible(): Boolean =
+internal fun RaftThreadScreenPayload.threadHeaderOpenInParentActionVisible(): Boolean =
     showOpenInChannelAction ||
         (
-            resolveThreadRouteIdentity().surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            resolveThreadRouteIdentity().surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                 parentChannelId?.isNotBlank() == true &&
                 (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
             )
 
-internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest(
+internal fun RaftThreadScreenPayload.resolveReplyParentConversationOpenRequest(
     serverId: String,
     conversationIdentityProvider: SharedConversationIdentityProvider?
 ): HomeMessageOpenRequest? {
     val routeIdentity = resolveThreadRouteIdentity()
-    if (routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    if (routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
     val parentKind = routeIdentity.parentConversationKind ?: return null
     val parentId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val server = threadParentNavigationServerId(serverId)?.let(::ServerId) ?: return null
@@ -2565,7 +2565,7 @@ private fun ThreadHeaderProjectionInput.acceptedHeaderProjectionMap(
         }
         .toMap()
 
-internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
+internal fun RaftThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
     val channelId = threadChannelSearchChannelId() ?: return null
     return JSONObject().apply {
         put("pageName", HOME_SEARCH_PAGE)
@@ -2579,18 +2579,18 @@ internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObje
     }
 }
 
-private fun Pager.openThreadChannelSearch(payload: KuiklyThreadScreenPayload): Boolean {
+private fun Pager.openThreadChannelSearch(payload: RaftThreadScreenPayload): Boolean {
     val pageData = payload.toThreadChannelSearchPageData() ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(HOME_SEARCH_PAGE, pageData)
     return true
 }
 
-private fun KuiklyThreadScreenPayload.findThreadAuthorProfile(memberId: String): MemberProfile? =
+private fun RaftThreadScreenPayload.findThreadAuthorProfile(memberId: String): MemberProfile? =
     (listOfNotNull(originMessage) + messages)
         .firstOrNull { it.authorId == memberId }
         ?.toMemberProfile()
 
-private fun KuiklyThreadMemberItem.toMemberProfile(): MemberProfile? {
+private fun RaftThreadMemberItem.toMemberProfile(): MemberProfile? {
     val identity = memberDetailIdentity() ?: return null
     return MemberProfile(
         id = identity.memberId,
@@ -2605,7 +2605,7 @@ private fun KuiklyThreadMemberItem.toMemberProfile(): MemberProfile? {
     )
 }
 
-private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile? {
+private fun RaftThreadMessageItem.toMemberProfile(): MemberProfile? {
     val identity = memberDetailIdentity() ?: return null
     return MemberProfile(
         id = identity.memberId,
@@ -2618,7 +2618,7 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile? {
     )
 }
 
-private fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =
+private fun RaftThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =
     memberDetailIdentityFromWire(
         memberId = id,
         kindWireValue = kind,
@@ -2626,7 +2626,7 @@ private fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity?
         source = MemberDetailIdentitySource.ThreadMember
     )
 
-private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? {
+private fun RaftThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? {
     // External authors are never member-detail identities; short-circuit before the
     // Identity contract rejects "external" with a diagnostic on every tap.
     if (externalAuthor != null) return null
@@ -2637,7 +2637,7 @@ private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity
     )
 }
 
-internal fun KuiklyThreadMessageItem.threadAuthorGestureIdentity(): String =
+internal fun RaftThreadMessageItem.threadAuthorGestureIdentity(): String =
     "${id.trim()}|${authorId.trim()}|${authorKind.trim().lowercase()}"
 
 private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSnapshot? {
@@ -2662,11 +2662,11 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
     )
 }
 
-internal fun KuiklyThreadScreenPayload.replyThreadHeaderSubtitle(): String? =
+internal fun RaftThreadScreenPayload.replyThreadHeaderSubtitle(): String? =
     threadChannelHeaderSubtitle(title)
 
 @Serializable
-internal data class KuiklyThreadMessageItem(
+internal data class RaftThreadMessageItem(
     val id: String,
     val authorId: String,
     val authorName: String,
@@ -2708,12 +2708,12 @@ internal data class KuiklyThreadMessageItem(
     val taskAssigneeKind: String? = null,
     val taskAssigneeId: String? = null,
     val taskAssigneeName: String? = null,
-    val reactions: List<KuiklyThreadReactionItem> = emptyList(),
-    val attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
-    val commentRef: KuiklyThreadMessageCommentRef? = null,
+    val reactions: List<RaftThreadReactionItem> = emptyList(),
+    val attachments: List<RaftThreadAttachmentItem> = emptyList(),
+    val commentRef: RaftThreadMessageCommentRef? = null,
     val forwardBundle: ForwardMessageBundle? = null,
     val deliveryState: String = ThreadMessageDeliverySent,
-    val pendingSendContext: KuiklyThreadPendingSendContext? = null,
+    val pendingSendContext: RaftThreadPendingSendContext? = null,
     val pendingSendErrorCode: String? = null,
     val pendingSendErrorMessage: String? = null,
     /** Canonical numeric creation time. Sorting must not parse the localized timestamp label. */
@@ -2727,12 +2727,12 @@ internal const val ThreadMessageDeliverySent = "sent"
 internal const val ThreadMessageDeliveryFailed = "failed"
 
 @Serializable
-internal data class KuiklyThreadPendingSendContext(
+internal data class RaftThreadPendingSendContext(
     val channelId: String,
     val body: String,
     val asTask: Boolean = false,
     val attachmentIds: List<String> = emptyList(),
-    val attachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val attachments: List<RaftPendingAttachmentItem> = emptyList(),
     val ownedTemporaryFileRefs: List<String> = emptyList(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
     val mentionChannelId: String? = null,
@@ -2780,29 +2780,29 @@ internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount
     return "[$attachmentCount $suffix]"
 }
 
-internal fun KuiklyThreadMessageItem.hasLocalSendState(): Boolean =
+internal fun RaftThreadMessageItem.hasLocalSendState(): Boolean =
     deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) ||
         pendingSendContext != null
 
-private fun KuiklyThreadMessageItem.canRetryLocalSend(): Boolean =
+private fun RaftThreadMessageItem.canRetryLocalSend(): Boolean =
     isFailedLocalSend()
 
-private fun KuiklyThreadMessageItem.isFailedLocalSend(): Boolean =
+private fun RaftThreadMessageItem.isFailedLocalSend(): Boolean =
     deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) && pendingSendContext != null
 
-private fun KuiklyThreadMessageItem.isSendingLocalSend(): Boolean =
+private fun RaftThreadMessageItem.isSendingLocalSend(): Boolean =
     deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) && pendingSendContext != null
 
 private fun buildThreadPendingSendMessage(
     localMessageId: String,
-    context: KuiklyThreadPendingSendContext,
+    context: RaftThreadPendingSendContext,
     session: StoredAuthSession?,
     timestampLabel: String = "Now"
-): KuiklyThreadMessageItem {
+): RaftThreadMessageItem {
     val user = session?.user
     val authorName = user?.bestDisplayName ?: "You"
-    return KuiklyThreadMessageItem(
+    return RaftThreadMessageItem(
         id = localMessageId,
         authorId = user?.id ?: "local-user",
         authorName = authorName,
@@ -2812,7 +2812,7 @@ private fun buildThreadPendingSendMessage(
         avatarLabel = authorName.take(1).uppercase(),
         avatarWireValue = user?.avatarUrl,
         timestampLabel = timestampLabel,
-        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(timestampLabel),
+        createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(timestampLabel),
         randomId = context.randomId?.takeIf { it.isNotBlank() },
         body = context.body,
         // Phase 3 #3 #3 (#280): explicit nullable instead of \`context.streamChannelId ?: context.channelId\`
@@ -2824,7 +2824,7 @@ private fun buildThreadPendingSendMessage(
         threadChannelId = context.streamChannelId?.takeIf { it.isNotBlank() },
         attachments =
             context.attachments.map { attachment ->
-                KuiklyThreadAttachmentItem(
+                RaftThreadAttachmentItem(
                     id = attachment.id,
                     name = attachment.fileName,
                     mimeType = attachment.mimeType.orEmpty(),
@@ -2850,20 +2850,20 @@ private fun buildThreadPendingSendTimestampLabel(
         bridgeEpochMillis.takeIf { it > 0L }
             ?: fallbackNowEpochMillis?.takeIf { it > 0L }
             ?: return "Now"
-    return slockEpochMillisUtcIso(epochMillis)
+    return raftEpochMillisUtcIso(epochMillis)
 }
 
 @Serializable
-internal data class KuiklyThreadMessageCommentRef(
+internal data class RaftThreadMessageCommentRef(
     val attachmentId: String,
     val filename: String,
     val hostMessageId: String? = null,
-    val hostSource: KuiklyThreadMessageCommentHostSource? = null,
+    val hostSource: RaftThreadMessageCommentHostSource? = null,
     val anchorLabel: String? = null
 )
 
 @Serializable
-internal data class KuiklyThreadMessageCommentHostSource(
+internal data class RaftThreadMessageCommentHostSource(
     val type: String,
     val routeKind: String,
     val channelId: String,
@@ -2873,7 +2873,7 @@ internal data class KuiklyThreadMessageCommentHostSource(
 )
 
 @Serializable
-internal data class KuiklyThreadReactionItem(
+internal data class RaftThreadReactionItem(
     val emoji: String,
     val count: Int = 0,
     val selected: Boolean = false,
@@ -2882,7 +2882,7 @@ internal data class KuiklyThreadReactionItem(
 )
 
 @Serializable
-internal data class KuiklyThreadAttachmentItem(
+internal data class RaftThreadAttachmentItem(
     val id: String,
     val name: String,
     val mimeType: String = "",
@@ -2898,18 +2898,18 @@ private data class ThreadImagePreviewUrl(
 )
 
 private data class ThreadImagePreviewState(
-    val images: List<KuiklyThreadAttachmentItem>,
+    val images: List<RaftThreadAttachmentItem>,
     val currentIndex: Int,
     val loadingAttachmentIds: Set<String> = emptySet(),
     val failedAttachmentIds: Set<String> = emptySet()
 ) {
-    val current: KuiklyThreadAttachmentItem? get() = images.getOrNull(currentIndex)
+    val current: RaftThreadAttachmentItem? get() = images.getOrNull(currentIndex)
 }
 
 private const val ThreadAttachmentPreviewOpenWithActionId = "open-with"
 
 internal data class ThreadAttachmentCommentsDialogState(
-    val attachment: KuiklyThreadAttachmentItem,
+    val attachment: RaftThreadAttachmentItem,
     val status: String = "loading",
     val page: ThreadAttachmentCommentsPage? = null,
     val filter: String = "all",
@@ -3012,13 +3012,13 @@ private data class ThreadMarkdownMentionOpenTarget(
 )
 
 internal data class ThreadImageAttachmentGroup(
-    val images: List<KuiklyThreadAttachmentItem>,
+    val images: List<RaftThreadAttachmentItem>,
     val currentIndex: Int
 )
 
 internal data class ThreadAttachmentCommentTarget(
-    val attachment: KuiklyThreadAttachmentItem,
-    val parentMessage: KuiklyThreadMessageItem
+    val attachment: RaftThreadAttachmentItem,
+    val parentMessage: RaftThreadMessageItem
 )
 
 private data class ThreadAttachmentOpenResult(
@@ -3026,7 +3026,7 @@ private data class ThreadAttachmentOpenResult(
     val message: String = ""
 )
 
-internal fun slockThreadAttachmentOpenStatus(nativeStatus: String): String =
+internal fun raftThreadAttachmentOpenStatus(nativeStatus: String): String =
     when (nativeStatus) {
         "opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed", "download_failed" -> nativeStatus
         else -> "failed"
@@ -3040,22 +3040,22 @@ private fun <T> DataResult<T>.threadActionErrorCode(fallback: String): String =
         is DataResult.NoPermission -> blocker.code
     }
 
-internal data class SlockThreadWebLinkTarget(
+internal data class RaftThreadWebLinkTarget(
     val channelId: String,
     val messageId: String? = null,
-    val routeKind: String = KuiklyThreadSurfaceKind.Channel,
+    val routeKind: String = RaftThreadSurfaceKind.Channel,
     val threadParentMessageId: String? = null
 )
 
-internal fun SlockThreadWebLinkTarget.resolveMarkdownOpenRequest(
+internal fun RaftThreadWebLinkTarget.resolveMarkdownOpenRequest(
     serverId: String,
     conversationDirectory: SharedConversationDirectoryState
 ): HomeMessageOpenRequest? {
     val parentMessage = threadParentMessageId?.takeIf { it.isNotBlank() }
     val routeConversationKind =
         when (routeKind) {
-            KuiklyThreadSurfaceKind.Channel -> ConversationKind.Channel
-            KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+            RaftThreadSurfaceKind.Channel -> ConversationKind.Channel
+            RaftThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
             else -> null
         }
     val kind =
@@ -3080,7 +3080,7 @@ internal fun SlockThreadWebLinkTarget.resolveMarkdownOpenRequest(
 }
 
 @Serializable
-internal data class KuiklyThreadTaskItem(
+internal data class RaftThreadTaskItem(
     val id: String,
     val title: String,
     val status: String,
@@ -3092,7 +3092,7 @@ internal data class KuiklyThreadTaskItem(
 )
 
 @Serializable
-internal data class KuiklyThreadMemberItem(
+internal data class RaftThreadMemberItem(
     val id: String,
     val displayName: String,
     val handle: String = "",
@@ -3108,7 +3108,7 @@ internal data class KuiklyThreadMemberItem(
 )
 
 @Serializable
-internal data class KuiklyThreadSettingsAction(
+internal data class RaftThreadSettingsAction(
     val id: String,
     val enabled: Boolean = true,
     val permission: String? = null
@@ -3118,14 +3118,14 @@ internal data class ThreadSettingsActionUi(
     val id: String,
     val title: String,
     val subtitle: String = "",
-    val icon: SlockLucideIconName,
+    val icon: RaftLucideIconName,
     val destructive: Boolean
 )
 
 private fun String.normalizedThreadMentionLookupKey(): String =
     trim().removePrefix("@").trim().lowercase()
 
-private fun KuiklyThreadMemberItem.matchesThreadMentionLookupKey(key: String): Boolean =
+private fun RaftThreadMemberItem.matchesThreadMentionLookupKey(key: String): Boolean =
     id.equals(key, ignoreCase = true) ||
         handle.removePrefix("@").equals(key, ignoreCase = true) ||
         displayName.equals(key, ignoreCase = true)
@@ -3135,13 +3135,13 @@ private fun MemberProfile.matchesThreadMentionLookupKey(key: String): Boolean =
         handle.removePrefix("@").equals(key, ignoreCase = true) ||
         displayName.equals(key, ignoreCase = true)
 
-private fun KuiklyThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkdownTag): KuiklyThreadMemberItem? {
+private fun RaftThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkdownTag): RaftThreadMemberItem? {
     val key = tag.label.normalizedThreadMentionLookupKey()
     if (key.isBlank()) return null
     return members.firstOrNull { member -> member.matchesThreadMentionLookupKey(key) }
 }
 
-private fun KuiklyThreadScreenPayload.resolveMarkdownMentionOpenTarget(
+private fun RaftThreadScreenPayload.resolveMarkdownMentionOpenTarget(
     label: String,
     serverMembers: List<MemberProfile>
 ): ThreadMarkdownMentionOpenTarget? {
@@ -3160,7 +3160,7 @@ private fun KuiklyThreadScreenPayload.resolveMarkdownMentionOpenTarget(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
+internal fun RaftThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
     when (tag.kind) {
         ThreadMarkdownTagKind.UserMention ->
             findMarkdownMentionMember(tag)
@@ -3178,7 +3178,7 @@ internal fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
     mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
         .toSet()
 
-internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String> =
+internal fun RaftThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<String> =
     if (knownMarkdownMentionNames.isNotEmpty()) {
         buildSet {
             knownMarkdownMentionNames.forEach { name -> addKnownThreadMentionValue(name) }
@@ -3192,7 +3192,7 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Stri
         }
     }
 
-internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> {
+internal fun RaftThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet(): Set<String> {
     val homeNames = buildSet { knownMarkdownDirectMessagePeerNames.forEach { name -> addKnownThreadMentionValue(name) } }
     val names =
         buildSet {
@@ -3202,8 +3202,8 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet()
                 addKnownThreadMentionValue(identity.memberId.value)
                 dmPeerName?.let { name -> addKnownThreadMentionValue(formatRaftDirectMessagePeerRef(name, identity.kind)) }
             }
-            if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
-                parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+            if (surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+                parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage ||
                 channelKind == "dm" ||
                 parentChannelKind == "dm"
             ) {
@@ -3214,7 +3214,7 @@ internal fun KuiklyThreadScreenPayload.toKnownMarkdownDirectMessagePeerNameSet()
     return names
 }
 
-internal fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
+internal fun RaftThreadScreenPayload.toKnownMarkdownTaskNumberSetOrNull(): Set<Int>? =
     knownMarkdownTaskNumbers.takeIf { it.isNotEmpty() }
         ?.filterTo(mutableSetOf()) { it > 0 }
 
@@ -3231,13 +3231,13 @@ internal fun threadMarkdownTagContextSignature(
         "dmPeers=${knownDirectMessagePeerNames.size}:${knownDirectMessagePeerNames.hashCode().toString(16)} " +
         "tasks=${knownTaskNumbers?.size ?: -1}:${knownTaskNumbers?.hashCode()?.toString(16) ?: "all"}"
 
-private fun MutableSet<String>.addKnownThreadMentionValues(member: KuiklyThreadMemberItem) {
+private fun MutableSet<String>.addKnownThreadMentionValues(member: RaftThreadMemberItem) {
     addKnownThreadMentionValue(member.id)
     addKnownThreadMentionValue(member.handle)
     addKnownThreadMentionValue(member.displayName)
 }
 
-private fun MutableSet<String>.addKnownThreadMentionValues(message: KuiklyThreadMessageItem) {
+private fun MutableSet<String>.addKnownThreadMentionValues(message: RaftThreadMessageItem) {
     addKnownThreadMentionValue(message.authorId)
     addKnownThreadMentionValue(message.authorHandle)
     addKnownThreadMentionValue(message.authorName)
@@ -3276,7 +3276,7 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
 private fun defaultThreadMarkdownTagIsValid(tag: ThreadMarkdownTag): Boolean =
     tag.kind == ThreadMarkdownTagKind.Task
 
-internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
+internal fun RaftThreadScreenPayload.resolveTaskAssigneeDisplayName(
     value: String?,
     id: String? = null
 ): String? {
@@ -3301,25 +3301,25 @@ internal data class ThreadTimelineRenderConfig(
     val errorServerMessage: String? = null,
     val originPreview: String?,
     val originErrorCode: String?,
-    val timeContext: SlockTimeContext,
-    val members: List<KuiklyThreadMemberItem>
+    val timeContext: RaftTimeContext,
+    val members: List<RaftThreadMemberItem>
 )
 
-internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTimelineRenderConfig =
+internal fun RaftThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTimelineRenderConfig =
     ThreadTimelineRenderConfig(
         backgroundRefreshing = backgroundRefreshing,
         errorCode = errorCode,
         errorServerMessage = errorServerMessage,
         originPreview = originPreview,
         originErrorCode = originErrorCode,
-        timeContext = toSlockTimeContext(),
+        timeContext = toRaftTimeContext(),
         members = members
     )
 
 internal fun ThreadTimelineRenderConfig.formatTimestampLabel(value: String): String =
-    formatSlockTimestampLabel(value, timeContext)
+    formatRaftTimestampLabel(value, timeContext)
 
-internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay: Long?): SlockTimeContext =
+internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay: Long?): RaftTimeContext =
     timeContext.copy(
         todayEpochDay = liveTodayEpochDay ?: timeContext.todayEpochDay,
         nowEpochMillis = null
@@ -3327,30 +3327,30 @@ internal fun ThreadTimelineRenderConfig.dateDividerTimeContext(liveTodayEpochDay
 
 internal fun formatThreadCompactTimestampLabel(
     value: String,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ): String {
     val trimmed = value.trim()
     if (trimmed.isEmpty()) return ""
     val epochMillis =
-        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext?.localOffsetMinutes ?: 0)
+        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext?.localOffsetMinutes ?: 0)
             ?: return trimmed
     // Parseable wire timestamps must never leak when a standalone surface has
     // not established the shared time authority yet. Display-clock literals
     // remain safe for fixtures and legacy cached rows.
     val context = timeContext ?: return ""
     val localEpochDay = threadLocalEpochDay(epochMillis, context.localOffsetMinutes)
-    return formatSlockTimestampEpochMillis(
+    return formatRaftTimestampEpochMillis(
         epochMillis = epochMillis,
         localOffsetMinutes = context.localOffsetMinutes,
         todayEpochDay = localEpochDay,
-        timeFormat = SlockTimeFormat24Hour
+        timeFormat = RaftTimeFormat24Hour
     )
 }
 
-internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: KuiklyThreadMessageItem): String =
+internal fun ThreadTimelineRenderConfig.formatCompactTimestampLabel(message: RaftThreadMessageItem): String =
     formatThreadCompactTimestampLabel(message.timestampLabel, timeContext)
 
-internal fun ForwardMessageItem.formatThreadForwardedTimestampLabel(timeContext: SlockTimeContext?): String =
+internal fun ForwardMessageItem.formatThreadForwardedTimestampLabel(timeContext: RaftTimeContext?): String =
     formatThreadCompactTimestampLabel(timestampLabel, timeContext)
 
 internal fun ThreadTimelineRenderConfig.resolveTaskAssigneeDisplayName(
@@ -3380,13 +3380,13 @@ internal fun TaskSummary.threadLinkedTaskAssigneeDisplayName(): String? {
     return displayName.takeIf { it.isDisplaySafeTaskAssigneeName(assigneeId) }
 }
 
-internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
+internal fun RaftThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
 
 internal sealed interface MarkdownTaskNumberOpenResult {
     data class Found(
         val task: TaskSummary,
-        val payload: KuiklyThreadScreenPayload,
+        val payload: RaftThreadScreenPayload,
         val source: SharedTaskReferenceResolutionSource
     ) : MarkdownTaskNumberOpenResult
 
@@ -3416,7 +3416,7 @@ internal class MarkdownTaskNumberOpenRequestGate {
 internal suspend fun openMarkdownTaskNumberPayload(
     serverId: ServerId,
     taskNumber: Int,
-    currentPayload: KuiklyThreadScreenPayload,
+    currentPayload: RaftThreadScreenPayload,
     currentTaskChannelId: ChannelId?,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore?,
@@ -3464,11 +3464,11 @@ internal suspend fun openMarkdownTaskNumberPayload(
  * [resolveOpenRequest] contract used by Activity. Keep that identity intact instead of
  * reducing the row to a task id and searching only the currently loaded message window.
  */
-internal fun KuiklyThreadScreenPayload.taskThreadLaunchPayload(
+internal fun RaftThreadScreenPayload.taskThreadLaunchPayload(
     task: TaskSummary,
     serverId: ServerId,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null
-): KuiklyThreadScreenPayload? {
+): RaftThreadScreenPayload? {
     val taskIds = listOfNotNull(task.threadId?.value, task.channelId?.value).filter { it.isNotBlank() }
     val directory =
         taskIds
@@ -3482,7 +3482,7 @@ internal fun KuiklyThreadScreenPayload.taskThreadLaunchPayload(
             parseConversationKindOrNull(currentRoute.routeKind)
         } else if (
             taskParentId != null &&
-            currentRoute.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            currentRoute.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
             parentChannelId == taskParentId
         ) {
             currentRoute.parentConversationKind
@@ -3495,7 +3495,7 @@ internal fun KuiklyThreadScreenPayload.taskThreadLaunchPayload(
             serverId = serverId.value,
             conversationDirectory = directory,
             timeContext =
-                SlockTimeContext(
+                RaftTimeContext(
                     localOffsetMinutes = localOffsetMinutes,
                     todayEpochDay = todayEpochDay,
                     nowEpochMillis = nowEpochMillis,
@@ -3508,29 +3508,29 @@ internal fun KuiklyThreadScreenPayload.taskThreadLaunchPayload(
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
 
-internal fun KuiklyThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
+internal fun RaftThreadScreenPayload.canConvertMessagesToTasks(): Boolean =
     showTaskStatusActions &&
-        !surfaceKind.equals(KuiklyThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
+        !surfaceKind.equals(RaftThreadSurfaceKind.ReplyThread, ignoreCase = true) &&
         parentMessageId.isNullOrBlank() &&
         originParentMessageId.isNullOrBlank()
 
-internal fun KuiklyThreadMessageItem.canConvertToTask(): Boolean =
+internal fun RaftThreadMessageItem.canConvertToTask(): Boolean =
     !isSystemMessage() &&
         taskId.isNullOrBlank() &&
         taskNumber == null &&
         !hasLocalSendState()
 
 internal fun shouldStartThreadTasksJoin(
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     startedThreadId: String?,
     taskChannelId: ChannelId?
 ): Boolean =
     shouldStartThreadTasksLoad(payload, taskChannelId) &&
-        KuiklyThreadTab.fromWireValue(payload.selectedTab) == KuiklyThreadTab.Tasks &&
+        RaftThreadTab.fromWireValue(payload.selectedTab) == RaftThreadTab.Tasks &&
         startedThreadId != taskChannelId?.value
 
 internal fun shouldStartThreadTasksLoad(
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     taskChannelId: ChannelId?
 ): Boolean =
     taskChannelId != null &&
@@ -3539,22 +3539,22 @@ internal fun shouldStartThreadTasksLoad(
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
 internal fun shouldRefreshThreadTasksProjection(
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     taskChannelId: ChannelId?,
     refreshStarted: Boolean
 ): Boolean =
     shouldStartThreadTasksLoad(payload, taskChannelId) &&
-        KuiklyThreadTab.fromWireValue(payload.selectedTab) == KuiklyThreadTab.Chat &&
+        RaftThreadTab.fromWireValue(payload.selectedTab) == RaftThreadTab.Chat &&
         !refreshStarted
 
-internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
+internal fun RaftThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     val timelineChannelId = resolveThreadRouteIdentity().timelineChannelId ?: return null
     if (!isReplyThreadWithExplicitParentPair()) return timelineChannelId
     if (status == "loading") return null
     return timelineChannelId
 }
 
-internal fun KuiklyThreadScreenPayload.resolvedTaskLookupChannelId(
+internal fun RaftThreadScreenPayload.resolvedTaskLookupChannelId(
     writeActionsEnabled: Boolean = true
 ): String? {
     if (!writeActionsEnabled) return null
@@ -3563,7 +3563,7 @@ internal fun KuiklyThreadScreenPayload.resolvedTaskLookupChannelId(
     return parentChannelId.nonBlank() ?: timelineChannelId
 }
 
-internal fun KuiklyThreadScreenPayload.replyParentChannelIdForNestedOpen(): String? =
+internal fun RaftThreadScreenPayload.replyParentChannelIdForNestedOpen(): String? =
     if (isReplyThreadWithExplicitParentPair()) {
         parentChannelId.nonBlank()
     } else {
@@ -3572,18 +3572,18 @@ internal fun KuiklyThreadScreenPayload.replyParentChannelIdForNestedOpen(): Stri
             ?: parentChannelId.nonBlank()
     }
 
-private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+private fun RaftThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boolean =
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         parentChannelId.nonBlank() != null &&
         replyParentMessageIdForAuxiliary() != null
 
-private fun KuiklyThreadScreenPayload.replyParentMessageIdForAuxiliary(): String? =
+private fun RaftThreadScreenPayload.replyParentMessageIdForAuxiliary(): String? =
     parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
 
-private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(): String =
+private fun RaftThreadScreenPayload.threadRenderDiagnosticsSource(): String =
     threadRenderDiagnosticsSource(toThreadTimelineSlice())
 
-private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(timelineSlice: ThreadTimelineSlice): String =
+private fun RaftThreadScreenPayload.threadRenderDiagnosticsSource(timelineSlice: ThreadTimelineSlice): String =
     when {
         status == "loading" -> "loading"
         status == "content" && timelineSlice.messages.isNotEmpty() -> "content"
@@ -3593,10 +3593,10 @@ private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(timelineSlic
         else -> status.ifBlank { "unknown" }
     }
 
-private fun KuiklyThreadScreenPayload.isRenderableEmptyReplyThread(): Boolean =
-    status == "empty" && surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+private fun RaftThreadScreenPayload.isRenderableEmptyReplyThread(): Boolean =
+    status == "empty" && surfaceKind == RaftThreadSurfaceKind.ReplyThread
 
-private fun KuiklyThreadScreenPayload.isReadyForThreadPerformanceGate(): Boolean =
+private fun RaftThreadScreenPayload.isReadyForThreadPerformanceGate(): Boolean =
     status == "content" || isRenderableEmptyReplyThread()
 
 internal const val ThreadPayloadReadyBudgetMs = 1_500L
@@ -3732,13 +3732,13 @@ private fun requestKuiklyThreadPerformanceSnapshot(
     }
 }
 
-private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
+private enum class RaftThreadTab(val wireValue: String, val label: String) {
     Chat("chat", "Chat"),
     Tasks("tasks", "Tasks"),
     Files("files", "Files");
 
     companion object {
-        fun fromWireValue(value: String?): KuiklyThreadTab =
+        fun fromWireValue(value: String?): RaftThreadTab =
             entries.firstOrNull { it.wireValue == value?.trim()?.lowercase() } ?: Chat
     }
 }
@@ -3752,7 +3752,7 @@ internal fun shouldShowThreadComposerForTab(
 ): Boolean =
     joined &&
         showComposer &&
-        KuiklyThreadTab.fromWireValue(selectedTab) == KuiklyThreadTab.Chat
+        RaftThreadTab.fromWireValue(selectedTab) == RaftThreadTab.Chat
 
 internal fun shouldShowThreadComposerForReadyContent(
     joined: Boolean,
@@ -3761,19 +3761,19 @@ internal fun shouldShowThreadComposerForReadyContent(
 ): Boolean =
     shouldShowThreadComposerForTab(joined, showComposer, selectedTab)
 
-internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(): Boolean =
+internal fun RaftThreadScreenPayload.hasRenderableContentForComposer(): Boolean =
     hasRenderableContentForComposer(
         timelineSlice = toThreadTimelineSlice(),
         accessResolution = ThreadAccessResolution.Resolved
     )
 
-internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(
+internal fun RaftThreadScreenPayload.hasRenderableContentForComposer(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution = ThreadAccessResolution.Resolved
 ): Boolean =
     isThreadPrimaryFooterReady(timelineSlice, accessResolution)
 
-internal fun KuiklyThreadScreenPayload.isThreadPrimaryFooterReady(
+internal fun RaftThreadScreenPayload.isThreadPrimaryFooterReady(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution
 ): Boolean =
@@ -3788,23 +3788,23 @@ internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Bo
 private fun RealtimeEvent.isTaskProjectionEvent(): Boolean =
     this is TaskCreated || this is TaskUpdated || this is TaskDeleted
 
-private val KuiklyThreadTab.icon: SlockLucideIconName
+private val RaftThreadTab.icon: RaftLucideIconName
     get() =
         when (this) {
-            KuiklyThreadTab.Chat -> SlockLucideIconName.MessageSquare
-            KuiklyThreadTab.Tasks -> SlockLucideIconName.ListTodo
-            KuiklyThreadTab.Files -> SlockLucideIconName.Paperclip
+            RaftThreadTab.Chat -> RaftLucideIconName.MessageSquare
+            RaftThreadTab.Tasks -> RaftLucideIconName.ListTodo
+            RaftThreadTab.Files -> RaftLucideIconName.Paperclip
         }
 
 @Composable
-private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
-    SlockTabSpec(
+private fun RaftThreadTab.toRaftTabSpec(): RaftTabSpec<RaftThreadTab> =
+    RaftTabSpec(
         key = this,
         label =
             when (this) {
-                KuiklyThreadTab.Chat -> stringResource(MR.strings.thread_tab_chat)
-                KuiklyThreadTab.Tasks -> stringResource(MR.strings.thread_tab_tasks)
-                KuiklyThreadTab.Files -> stringResource(MR.strings.thread_tab_files)
+                RaftThreadTab.Chat -> stringResource(MR.strings.thread_tab_chat)
+                RaftThreadTab.Tasks -> stringResource(MR.strings.thread_tab_tasks)
+                RaftThreadTab.Files -> stringResource(MR.strings.thread_tab_files)
             },
         iconName = icon
     )
@@ -3814,8 +3814,8 @@ private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
 private fun ThreadPageScreen(
     pageVisibleTick: Int,
     pageVisible: Boolean,
-    adaptivePaneState: SlockAdaptivePaneState = SlockAdaptivePaneState(),
-    adaptivePaneEvent: SlockAdaptivePaneEvent? = null,
+    adaptivePaneState: RaftAdaptivePaneState = RaftAdaptivePaneState(),
+    adaptivePaneEvent: RaftAdaptivePaneEvent? = null,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -3823,7 +3823,7 @@ private fun ThreadPageScreen(
     var payloadText by remember { mutableStateOf(params.optString("payload")) }
     var instanceId by remember { mutableStateOf(params.optString("instanceId")) }
     var adaptiveCloseRequest by remember {
-        mutableStateOf(params.toSlockAdaptiveDetailCloseRequestOrNull())
+        mutableStateOf(params.toRaftAdaptiveDetailCloseRequestOrNull())
     }
     DisposableEffect(pager) {
         val observer =
@@ -3833,7 +3833,7 @@ private fun ThreadPageScreen(
                     eventData.optString("payload").takeIf { it.isNotBlank() }?.let { payloadText = it }
                     eventData.optString("instanceId").takeIf { it.isNotBlank() }?.let { instanceId = it }
                     adaptiveCloseRequest =
-                        updatedSlockAdaptiveDetailCloseRequest(adaptiveCloseRequest, eventData)
+                        updatedRaftAdaptiveDetailCloseRequest(adaptiveCloseRequest, eventData)
                 }
             }
         pager.addPagerEventObserver(observer)
@@ -3847,8 +3847,8 @@ private fun ThreadPageScreen(
     }
     val parsedPayload = payloadTrace.payload
     val liveTimeContextProvider =
-        rememberLiveSlockTimeContext(
-            capabilities = parsedPayload.toSlockTimeCapabilities(),
+        rememberLiveRaftTimeContext(
+            capabilities = parsedPayload.toRaftTimeCapabilities(),
             pageVisibleTick = pageVisibleTick,
             active = pageVisible
         )
@@ -3860,27 +3860,27 @@ private fun ThreadPageScreen(
         )
     }
     val storeScope = remember(params.toString(), pager.pagerId) {
-        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
 
     // A4 adoption (task #18): only a standalone (native-stack) page initiates. The embedded
-    // detail child is identified by SLOCK_EMBEDDED_CHILD_PAGE_PARAM, injected by
-    // slockEmbeddedChildPageData for every SlockKuiklyChildPage mount — not by shell scope
-    // presence, which every openSlockPage-pushed page also carries.
+    // detail child is identified by RAFT_EMBEDDED_CHILD_PAGE_PARAM, injected by
+    // raftEmbeddedChildPageData for every RaftChildPage mount — not by shell scope
+    // presence, which every openRaftPage-pushed page also carries.
     val isStandaloneThreadPage =
         adaptiveCloseRequest == null &&
-            !params.optBoolean(SLOCK_EMBEDDED_CHILD_PAGE_PARAM, false)
+            !params.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false)
     val adaptiveInitiationEnabled =
-        params.optBoolean(SLOCK_ADAPTIVE_INITIATION_ENABLED, false)
+        params.optBoolean(RAFT_ADAPTIVE_INITIATION_ENABLED, false)
     val adaptiveInitiationCaptureHolder =
         remember { ThreadAdaptiveInitiationCaptureHolder() }
     val adaptiveNativeEditingStateReader =
-        remember { SlockTextFieldNativeEditingStateReader() }
+        remember { RaftTextFieldNativeEditingStateReader() }
     val adaptiveDetailOpenInitiator =
         remember(storeScope.shellInstanceId, pager.pagerId, isStandaloneThreadPage) {
             if (!isStandaloneThreadPage) return@remember null
-            SlockAdaptiveDetailOpenInitiator(
+            RaftAdaptiveDetailOpenInitiator(
                 shellInstanceId = storeScope.shellInstanceId,
                 hostId = "pager:${pager.pagerId}",
                 anchorStore = sharedStores.adaptiveScrollAnchorStore(storeScope),
@@ -3931,15 +3931,15 @@ private fun ThreadPageScreen(
         val event = adaptivePaneEvent ?: return@LaunchedEffect
         if (!adaptiveInitiationEnabled || !isStandaloneThreadPage) return@LaunchedEffect
         val initiator = adaptiveDetailOpenInitiator ?: return@LaunchedEffect
-        if (reduceSlockAdaptivePane(adaptivePaneState, event).layout !=
-            SlockAdaptivePaneLayout.DualPane
+        if (reduceRaftAdaptivePane(adaptivePaneState, event).layout !=
+            RaftAdaptivePaneLayout.DualPane
         ) {
             return@LaunchedEffect
         }
         val launchPayload =
             parsedPayload.toWireThreadLaunchPayloadOrNull() ?: return@LaunchedEffect
         val identity =
-            launchPayload.toSlockAdaptiveDetailIdentity(
+            launchPayload.toRaftAdaptiveDetailIdentity(
                 serverId =
                     threadParentNavigationServerId(null)
                         ?: storeScope.initialServerId
@@ -3954,7 +3954,7 @@ private fun ThreadPageScreen(
             initiator.initiate(
                 identity = identity,
                 launchPayload = launchPayload,
-                windowFact = event.toSlockAdaptiveOpenWindowFact(defaultNowMillis()),
+                windowFact = event.toRaftAdaptiveOpenWindowFact(defaultNowMillis()),
                 requestId = "adopt-${pager.pagerId}-${Uuid.random()}",
             )
         bridge.log("adaptive_initiate_outcome outcome=$outcome identity=${identity.key}")
@@ -3966,13 +3966,13 @@ private fun ThreadPageScreen(
     var authLossReportInProgress by remember { mutableStateOf(false) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val agentsApiClient = remember(networkClient) {
-        SlockAgentsApiClient(
-            transport = SlockAgentsNetworkApi(networkClient),
+        RaftAgentsApiClient(
+            transport = RaftAgentsNetworkApi(networkClient),
             diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
         )
     }
     val computersApiClient = remember(networkClient) {
-        SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
+        RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     }
     val routeScope = rememberCoroutineScope()
     val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
@@ -4028,17 +4028,17 @@ private fun ThreadPageScreen(
                 }
             )
         }
-    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? =
+    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? =
         remember(networkClient) {
-            val client = SlockThreadApiClient(NetworkSlockThreadApi(networkClient))
-            val loader: suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem? = { target ->
+            val client = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
+            val loader: suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem? = { target ->
                 when (val result = client.messageContext(target.messageId.value, target.channelId.value)) {
                     is ThreadApiResult.Success -> {
                         val payload = result.data
                         val targetId = payload.targetMessageId?.value ?: target.messageId.value
                         payload.messages
                             .firstOrNull { it.id.value == targetId }
-                            ?.toKuiklyThreadMessageItem(null)
+                            ?.toRaftThreadMessageItem(null)
                     }
                     is ThreadApiResult.Failure -> null
                 }
@@ -4062,7 +4062,7 @@ private fun ThreadPageScreen(
             createAgentCoordinator
         ) {
             SharedThreadDataSource(
-                networkApi = NetworkSlockThreadApi(networkClient),
+                networkApi = NetworkRaftThreadApi(networkClient),
                 sessionStore = authStore,
                 pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
@@ -4109,12 +4109,12 @@ private fun ThreadPageScreen(
                 durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
                 durablePageExtender = sharedStores.threadDurablePageExtender,
-                agentsApiClient = SlockAgentsApiClient(
-                    transport = SlockAgentsNetworkApi(networkClient),
+                agentsApiClient = RaftAgentsApiClient(
+                    transport = RaftAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
                 ),
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
-                    SlockIntegrationsActionsPushNetworkApi(networkClient)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(
+                    RaftIntegrationsActionsPushNetworkApi(networkClient)
                 ),
                 savedStatusRepository =
                     RealSavedRepository(
@@ -4134,7 +4134,7 @@ private fun ThreadPageScreen(
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
-                api = NetworkSlockTasksApi(networkClient)
+                api = NetworkRaftTasksApi(networkClient)
             )
         }
     val routerModule = remember(pager) {
@@ -4143,7 +4143,7 @@ private fun ThreadPageScreen(
     val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
     val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
     fun openStandaloneThreadPayload(
-        nextPayload: KuiklyThreadScreenPayload,
+        nextPayload: RaftThreadScreenPayload,
         serverIdOverride: String? = null
     ) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
@@ -4153,7 +4153,7 @@ private fun ThreadPageScreen(
             return
         }
         val targetStoreScope =
-            SlockShellStoreScope.create(
+            RaftShellStoreScope.create(
                 shellInstanceId = storeScope.shellInstanceId,
                 initialServerId = threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId
             )
@@ -4163,7 +4163,7 @@ private fun ThreadPageScreen(
             val session = workspaceStore.snapshot()
             val pane = session.workspace
             val desktopModeEnabled =
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
             // task #36: an adaptive page is validated before any route, so a retired main/side
             // page opens nothing even after desktop mode turns off, the pane goes compact or the
             // server changes.
@@ -4180,7 +4180,7 @@ private fun ThreadPageScreen(
                     bridge.toast(unableToOpenThreadLabel)
                     bridge.logWarn("thread_open_skip reason=stale_adaptive_source")
                 }
-            } else pager.openSlockPage(
+            } else pager.openRaftPage(
                 pageName = THREAD_PAGE,
                 pageData = launchPayload.toThreadPageData(),
                 storeScopeOverride = targetStoreScope,
@@ -4234,7 +4234,7 @@ private fun ThreadPageScreen(
             val closeRequest = adaptiveCloseRequest
             if (closeRequest != null) {
                 sharedStores.eventBus.post(
-                    eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                    eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
                     eventData = closeRequest.toJson(),
                     crossProcess = true,
                     source = "adaptive_thread_root_back",
@@ -4256,7 +4256,7 @@ private fun ThreadPageScreen(
             val parentPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
-                    timeContext = currentPayload.toSlockTimeCapabilities().staticContext(),
+                    timeContext = currentPayload.toRaftTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
                     onWarn = bridge::logWarn
@@ -4326,7 +4326,7 @@ private fun ThreadPageScreen(
                 authorProfile
                     ?.toThreadCandidateAgentDetailSnapshot()
                     ?.let { candidate ->
-                        val agentDetailStore = SlockSharedStoreRegistry.get(bridge).agentDetailStore
+                        val agentDetailStore = RaftSharedStoreRegistry.get(bridge).agentDetailStore
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(candidate.agentId))
                         agentDetailStore.dispatch(
                             SharedAgentDetailIntent.SetDetail(
@@ -4336,7 +4336,7 @@ private fun ThreadPageScreen(
                             )
                         )
                     }
-                pager.openSlockPage(
+                pager.openRaftPage(
                     pageName = MEMBER_DETAIL_PAGE,
                     pageData = pageData,
                     onMissingScope = {
@@ -4350,7 +4350,7 @@ private fun ThreadPageScreen(
             }
         },
         onOpenMembersPager = { currentPayload, serverId, channelId, currentStoreScope ->
-            pager.openSlockPage(
+            pager.openRaftPage(
                 pageName = THREAD_MEMBERS_PAGE,
                 pageData = currentPayload.toThreadMembersPageData(serverId, channelId),
                 storeScopeOverride = currentStoreScope,
@@ -4358,7 +4358,7 @@ private fun ThreadPageScreen(
             )
         },
         onOpenChannelSettings = { serverId, channelId, currentStoreScope ->
-            pager.openSlockPage(
+            pager.openRaftPage(
                 pageName = CHANNEL_SETTINGS_PAGE,
                 pageData = channelSettingsPageData(serverId, channelId),
                 storeScopeOverride = currentStoreScope,
@@ -4375,14 +4375,14 @@ private fun ThreadMembersPageScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val route = remember(pager.pageData.params.toString()) { pager.pageData.params.toThreadMembersPageRouteOrNull() }
     if (route == null) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                SlockTopPageHeader(
+                RaftTopPageHeader(
                     title = "Members",
-                    iconName = SlockLucideIconName.Users,
+                    iconName = RaftLucideIconName.Users,
                     leadingContent = {
-                        SlockTopPageHeaderAction(
-                            icon = SlockLucideIconName.ArrowLeft,
+                        RaftTopPageHeaderAction(
+                            icon = RaftLucideIconName.ArrowLeft,
                             onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                         )
                     }
@@ -4393,23 +4393,23 @@ private fun ThreadMembersPageScreen() {
         return
     }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val routeOwner =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.authenticatedRouteOwnerOrNull()
         }
     if (routeOwner == null || routeOwner.serverId != route.serverId.value) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                SlockTopPageHeader(
+                RaftTopPageHeader(
                     title = stringResource(MR.strings.thread_members_title, 0),
-                    iconName = SlockLucideIconName.Users,
+                    iconName = RaftLucideIconName.Users,
                     leadingContent = {
-                        SlockTopPageHeaderAction(
-                            icon = SlockLucideIconName.ArrowLeft,
+                        RaftTopPageHeaderAction(
+                            icon = RaftLucideIconName.ArrowLeft,
                             onClick = router::closePage,
                         )
                     },
@@ -4483,22 +4483,22 @@ private fun ThreadMembersPageScreen() {
     val members = remember(channelMembersSlice.members, channelMembersSlice.canRemoveMembers, route.serverId) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
-            .map { it.toKuiklyThreadMemberItem(route.serverId).let { row ->
+            .map { it.toRaftThreadMemberItem(route.serverId).let { row ->
                 row.copy(canRemove = row.canRemove && channelMembersSlice.canRemoveMembers)
             } }
     }
     val candidates = remember(serverMembersEntry.members, route.serverId, members) {
         threadAddMemberCandidatesExcludingJoined(
-            candidates = serverMembersEntry.members.map { it.toKuiklyThreadMemberItem(route.serverId) },
+            candidates = serverMembersEntry.members.map { it.toRaftThreadMemberItem(route.serverId) },
             members = members,
             localServerId = route.serverId.value
         )
     }
     val agentStatusResolver = remember(serverMembersStore, route.serverId) {
-        slockScopedAgentStatusResolver(serverMembersStore, route.serverId.value)
+        raftScopedAgentStatusResolver(serverMembersStore, route.serverId.value)
     }
     val memberAvatarResolver = remember(serverMembersStore, route.serverId) {
-        slockMemberAvatarResolver(
+        raftMemberAvatarResolver(
             serverMembersStore = serverMembersStore,
             serverId = route.serverId.value,
             diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") },
@@ -4562,7 +4562,7 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
-    fun openMember(member: KuiklyThreadMemberItem) {
+    fun openMember(member: RaftThreadMemberItem) {
         val identity = member.memberDetailIdentity() ?: return
         val pageData = route.toMemberDetailPageData(identity) ?: return
         memberScope.launch {
@@ -4573,7 +4573,7 @@ private fun ThreadMembersPageScreen() {
                 ?.let { profile ->
                     agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(profile))
                 }
-            pager.openSlockPage(
+            pager.openRaftPage(
                 pageName = MEMBER_DETAIL_PAGE,
                 pageData = pageData,
                 onMissingScope = {
@@ -4616,7 +4616,7 @@ private fun ThreadMembersPageScreen() {
                 "thread_member_profile_open memberId=${memberId.value} kind=${kind.name} " +
                     "instanceId=${route.instanceId}"
             )
-            pager.openSlockPage(
+            pager.openRaftPage(
                 pageName = MEMBER_DETAIL_PAGE,
                 pageData = pageData,
                 onMissingScope = {
@@ -4630,7 +4630,7 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
-    fun requestRemoveMember(member: KuiklyThreadMemberItem) {
+    fun requestRemoveMember(member: RaftThreadMemberItem) {
         if (authorityRejected || !channelMembersSlice.canRemoveMembers || !member.canRemove) return
         val confirmation =
             threadMemberRemovalConfirmation(
@@ -4712,7 +4712,7 @@ private fun ThreadMembersPageScreen() {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadMembersPageContent(
             members = members, filteredMembers = filteredMembers, filteredExternal = filteredExternal,
             externalMemberCount = channelMembersSlice.externalMembers.size, candidates = candidates,
@@ -4776,7 +4776,7 @@ private fun ThreadMembersPageScreen() {
                 }
             }
         )
-        SlockBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
+        RaftBackHandler(enabled = addDialogVisible, label = "thread_members_inline_add") {
             if (addMemberStatus != "adding") addDialogVisible = false
         }
         createAgentName?.let { initialName ->
@@ -4828,11 +4828,11 @@ private fun ThreadMembersPageScreen() {
 /** The production roster renderer; visual fixtures supply typed state without route payloads. */
 @Composable
 internal fun ThreadMembersPageContent(
-    members: List<KuiklyThreadMemberItem>,
-    filteredMembers: List<KuiklyThreadMemberItem>,
+    members: List<RaftThreadMemberItem>,
+    filteredMembers: List<RaftThreadMemberItem>,
     filteredExternal: List<build.raft.app.model.ChannelExternalMemberProfile>,
     externalMemberCount: Int,
-    candidates: List<KuiklyThreadMemberItem>,
+    candidates: List<RaftThreadMemberItem>,
     rosterQuery: TextFieldValue,
     onQueryChange: (TextFieldValue) -> Unit,
     agentsExpanded: Boolean,
@@ -4850,13 +4850,13 @@ internal fun ThreadMembersPageContent(
     membersLoading: Boolean,
     refreshing: Boolean,
     canAddMembers: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenMember: (KuiklyThreadMemberItem) -> Unit,
-    onRemoveMember: (KuiklyThreadMemberItem) -> Unit,
-    onSubmit: (List<KuiklyThreadMemberItem>) -> Unit,
+    onOpenMember: (RaftThreadMemberItem) -> Unit,
+    onRemoveMember: (RaftThreadMemberItem) -> Unit,
+    onSubmit: (List<RaftThreadMemberItem>) -> Unit,
     canCreateAgents: Boolean = false,
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
     localServerId: String? = null,
@@ -4864,22 +4864,22 @@ internal fun ThreadMembersPageContent(
     val rosterListState = rememberLazyListState()
     // task #175: the page draws under the system navigation bar; whichever
     // element sits last (the Add Member bar, else the roster) keeps clear of it.
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     Column(modifier = Modifier.fillMaxSize()) {
-        SlockTopPageHeader(
+        RaftTopPageHeader(
             title = stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
             titleContent = {
                 Text(stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
-                    style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp), color = SlockColor.TextBlack)
-                if (!addDialogVisible) SlockMemberCountBadge(members.size + externalMemberCount)
+                    style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp), color = RaftColor.TextBlack)
+                if (!addDialogVisible) RaftMemberCountBadge(members.size + externalMemberCount)
                 Spacer(Modifier.weight(1f))
             },
-            iconName = SlockLucideIconName.Users,
-            backgroundColor = SlockColor.BrandYellow,
+            iconName = RaftLucideIconName.Users,
+            backgroundColor = RaftColor.BrandYellow,
             refreshing = refreshing,
             leadingContent = {
-                SlockTopPageHeaderAction(
-                    icon = SlockLucideIconName.ArrowLeft,
+                RaftTopPageHeaderAction(
+                    icon = RaftLucideIconName.ArrowLeft,
                     onClick = {
                         if (addDialogVisible) {
                             if (addMemberStatus != "adding") onAddVisibleChange(false)
@@ -4901,14 +4901,14 @@ internal fun ThreadMembersPageContent(
             )
         } else {
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            SlockBrutalSearchField(
+            RaftBrutalSearchField(
                 value = rosterQuery,
                 placeholder = stringResource(MR.strings.thread_members_search_placeholder),
-                leadingIcon = SlockLucideIconName.Search,
+                leadingIcon = RaftLucideIconName.Search,
                 onValueChange = onQueryChange,
             )
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
         if (removalGate.failure != null) {
             Text(
                 text =
@@ -4917,8 +4917,8 @@ internal fun ThreadMembersPageContent(
                     } else {
                         stringResource(MR.strings.thread_members_remove_failed)
                     },
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                color = RaftColor.AccentRed,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
             )
         }
@@ -4936,13 +4936,13 @@ internal fun ThreadMembersPageContent(
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                     ) {
                         ThreadModalEmptyState(
                             title = stringResource(MR.strings.common_error),
                             detail = stringResource(MR.strings.thread_members_refresh_detail),
                         )
-                        SlockBrutalActionButton(
+                        RaftBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
                             minWidth = 0.dp,
@@ -4967,7 +4967,7 @@ internal fun ThreadMembersPageContent(
                 val agents = filteredMembers.filter { it.kind.equals("agent", ignoreCase = true) }
                 val humans = filteredMembers.filterNot { it.kind.equals("agent", ignoreCase = true) }
                 if (humans.isNotEmpty()) {
-                    item { SlockCollapsibleSectionHeader(
+                    item { RaftCollapsibleSectionHeader(
                         label = stringResource(MR.strings.thread_members_humans), count = humans.size,
                         expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
                         uppercaseLabel = false, countPrefix = " · ",
@@ -4984,7 +4984,7 @@ internal fun ThreadMembersPageContent(
                     }
                 }
                 if (agents.isNotEmpty()) {
-                    item { SlockCollapsibleSectionHeader(
+                    item { RaftCollapsibleSectionHeader(
                         label = stringResource(MR.strings.thread_members_agents), count = agents.size,
                         expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
                         uppercaseLabel = false, countPrefix = " · ",
@@ -5001,18 +5001,18 @@ internal fun ThreadMembersPageContent(
                     }
                 }
                 if (filteredExternal.isNotEmpty()) {
-                    item { SlockCollapsibleSectionHeader(
+                    item { RaftCollapsibleSectionHeader(
                         label = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
                         expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
                     ) }
                     if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
                         val member = filteredExternal[index]
-                        SlockModalCompactMemberRow(
+                        RaftModalCompactMemberRow(
                             title = member.displayName,
                             subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
                             avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
                             statusColor = member.lastSeenAt?.let { seen ->
-                                if (isExternalAgentSeenOnline(seen, defaultNowMillis())) SlockColor.AccentLime else SlockColor.AccentCyan
+                                if (isExternalAgentSeenOnline(seen, defaultNowMillis())) RaftColor.AccentLime else RaftColor.AccentCyan
                             }, sourceBadgeLabel = member.provider, clickEnabled = false,
                         )
                     }
@@ -5020,13 +5020,13 @@ internal fun ThreadMembersPageContent(
             }
         }
         if (canAddMembers) {
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
             Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp + bottomSafeArea)) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.thread_action_add_member),
                     modifier = Modifier.fillMaxWidth(),
                     minHeight = 32.dp,
-                    leadingIcon = if (addDialogVisible) SlockLucideIconName.X else SlockLucideIconName.Plus,
+                    leadingIcon = if (addDialogVisible) RaftLucideIconName.X else RaftLucideIconName.Plus,
                     onClick = { onAddVisibleChange(!addDialogVisible) },
                     enabled = addMemberStatus != "adding",
                 )
@@ -5039,12 +5039,12 @@ internal fun ThreadMembersPageContent(
 @Composable
 internal fun ThreadHeaderVisualScreen() {
     val payload = remember {
-        KuiklyThreadScreenPayload(
+        RaftThreadScreenPayload(
             instanceId = "visual-thread-header",
             title = "#首页专修",
             subtitle = "Home shell, server badge, and bottom dock polish",
             status = "content",
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             selectedTab = "chat",
             showModeTabs = true,
             showSettingsAction = true,
@@ -5054,13 +5054,13 @@ internal fun ThreadHeaderVisualScreen() {
         )
     }
     // React's thread-header element includes the Chat/Tasks/Files mode-tab strip
-    // that the real page renders via SlockTabbedScaffold directly below
-    // ThreadPageHeader, so the fixture renders the same SlockTopTabBar row with
+    // that the real page renders via RaftTabbedScaffold directly below
+    // ThreadPageHeader, so the fixture renders the same RaftTopTabBar row with
     // the thread tab specs (Chat selected). The explicit 120dp canvas matches the
     // react element height (1170x360px @3x = 390x120dp); the header+tabs measure
     // 62+32=94dp, so the white slack at the bottom exposes the real height delta
     // (task #370).
-    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(RaftColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
             applyTopSafeArea = false,
@@ -5071,9 +5071,9 @@ internal fun ThreadHeaderVisualScreen() {
             onShowMembers = {},
             onShowSettings = {}
         )
-        SlockTopTabBar(
-            items = KuiklyThreadTab.entries.map { it.toSlockTabSpec().toTopTabBarItem() },
-            selectedKey = KuiklyThreadTab.Chat.toString(),
+        RaftTopTabBar(
+            items = RaftThreadTab.entries.map { it.toRaftTabSpec().toTopTabBarItem() },
+            selectedKey = RaftThreadTab.Chat.toString(),
             onSelectedKeyChange = {},
             itemKeyPrefix = "thread-tab"
         )
@@ -5094,12 +5094,12 @@ internal fun Task797ThreadHeaderVisualScreen() {
         }
     val payload =
         remember(agentIdentity) {
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "task797-thread-header-evidence",
                 title = "Pixel visual verification for the unified secondary page header",
                 subtitle = "Working - measuring safe-area alignment and action centerlines",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 streamChannelId = "dm-task797-pixel",
                 selectedTab = "chat",
                 showModeTabs = false,
@@ -5118,23 +5118,23 @@ internal fun Task797ThreadHeaderVisualScreen() {
             ThreadHeaderDisplayModel(
                 title = "Pixel visual verification for the unified secondary page header",
                 subtitle = "Working - measuring safe-area alignment and action centerlines",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = RaftThreadSurfaceKind.DirectMessage,
                 dmPeerAvatarLabel = "PX",
                 dmPeerIdentity = agentIdentity,
             )
         }
     val activityState =
         remember {
-            slockAgentStatusIndicatorState(
+            raftAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
                 statusLabel = "Measuring safe-area alignment and action centerlines",
                 external = false,
             )
         }
-    val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
-    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
+    val activityResolver: RaftAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(RaftColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
             headerDisplay = headerDisplay,
@@ -5163,11 +5163,11 @@ internal fun ThreadDmAgentActivityHeaderVisualScreen() {
         }
     val payload =
         remember {
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "visual-thread-dm-agent-activity",
                 title = "Friday",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 dmPeerIdentity = agentIdentity,
                 showModeTabs = false,
                 showSettingsAction = false,
@@ -5180,23 +5180,23 @@ internal fun ThreadDmAgentActivityHeaderVisualScreen() {
             ThreadHeaderDisplayModel(
                 title = "Friday",
                 subtitle = null,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = RaftThreadSurfaceKind.DirectMessage,
                 dmPeerAvatarLabel = "FR",
                 dmPeerIdentity = agentIdentity
             )
         }
     val activityState =
         remember {
-            slockAgentStatusIndicatorState(
+            raftAgentStatusIndicatorState(
                 status = AgentStatus.Working,
                 presence = Presence.Active,
                 statusLabel = "Reviewing release readiness and visual diffs",
                 external = false
             )
         }
-    val activityResolver: SlockAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
-    Column(modifier = Modifier.width(390.dp).height(120.dp).background(SlockColor.SurfaceWhite)) {
+    val activityResolver: RaftAgentStatusResolver = remember(activityState) { { flowOf(activityState) } }
+    Column(modifier = Modifier.width(390.dp).height(120.dp).background(RaftColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = payload,
             headerDisplay = headerDisplay,
@@ -5216,12 +5216,12 @@ internal fun ThreadDmAgentActivityHeaderVisualScreen() {
 internal fun ThreadActivityMuteVisualScreen() {
     val unmutedPayload =
         remember {
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "visual-thread-activity-mute-unmuted",
                 title = "#visual-testing",
                 subtitle = "Visual parity and capture automation",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-visual-testing",
                 streamChannelId = "channel-visual-testing",
                 selectedTab = "chat",
@@ -5246,7 +5246,7 @@ internal fun ThreadActivityMuteVisualScreen() {
                 muteFromSeq = 45
             )
         }
-    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite)) {
         ThreadPageHeader(
             payload = unmutedPayload,
             applyTopSafeArea = false,
@@ -5267,13 +5267,13 @@ internal fun ThreadActivityMuteVisualScreen() {
             onShowMembers = {},
             onShowSettings = {},
         )
-        SlockStructuralHomeShell(
+        RaftStructuralHomeShell(
             modifier = Modifier.height(700.dp),
             currentServerName = "Raft Mobile",
             currentServerId = "server-visual",
             servers =
                 listOf(
-                    SlockServerSwitcherItem(
+                    RaftServerSwitcherItem(
                         id = "server-visual",
                         name = "Raft Mobile",
                         slug = "mobile"
@@ -5281,7 +5281,7 @@ internal fun ThreadActivityMuteVisualScreen() {
                 ),
             channels =
                 listOf(
-                    SlockHomeConversationItem(
+                    RaftHomeConversationItem(
                         id = "channel-loud",
                         name = "critical",
                         kind = "channel",
@@ -5289,7 +5289,7 @@ internal fun ThreadActivityMuteVisualScreen() {
                         joined = true,
                         activityMuted = false
                     ),
-                    SlockHomeConversationItem(
+                    RaftHomeConversationItem(
                         id = "channel-muted",
                         name = "announcements",
                         kind = "channel",
@@ -5316,9 +5316,9 @@ internal fun ThreadReactionAtlasVisualScreen() {
             modifier =
                 Modifier
                     .width(342.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Md),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                    .background(RaftColor.SurfaceWhite)
+                    .padding(RaftAppSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
         ) {
             ThreadReactionVisualSection("Atlas sprites") {
                 ThreadReactionAtlasImagePreview()
@@ -5328,9 +5328,9 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
-                            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
-                            .padding(vertical = SlockSpacing.Xs)
+                            .background(Color(0xFFF7F4EA), RoundedCornerShape(RaftAppRadius.Sm))
+                            .border(RaftAppStroke.Default, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sm))
+                            .padding(vertical = RaftAppSpacing.Xs)
                 ) {
                     ThreadMessageReactionRow(
                         reactionAtlasImage = LocalThreadReactionAtlasImage.current,
@@ -5342,39 +5342,39 @@ internal fun ThreadReactionAtlasVisualScreen() {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true))
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false))
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
+                    ThreadReactionChip(RaftThreadReactionItem(emoji = "👍", count = 3, selected = true))
+                    ThreadReactionChip(RaftThreadReactionItem(emoji = "❤️", count = 2, selected = false))
+                    ThreadReactionChip(RaftThreadReactionItem(emoji = "✅", count = 1, selected = true))
                 }
             }
             ThreadReactionVisualSection("Reaction chips (before + optimistic)") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false), onClick = {})
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true), onClick = {})
+                    ThreadReactionChip(RaftThreadReactionItem(emoji = "👍", count = 2, selected = false), onClick = {})
+                    ThreadReactionChip(RaftThreadReactionItem(emoji = "👍", count = 3, selected = true), onClick = {})
                 }
             }
             ThreadReactionVisualSection("Task meta (before + optimistic)") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
-                    SlockAnchoredMetaChip(
+                    RaftAnchoredMetaChip(
                         label = "#88 @Nathan",
-                        iconName = SlockLucideIconName.CircleDashed,
-                        color = SlockColor.AccentCyan,
+                        iconName = RaftLucideIconName.CircleDashed,
+                        color = RaftColor.AccentCyan,
                         onClick = {}
                     )
-                    SlockAnchoredMetaChip(
+                    RaftAnchoredMetaChip(
                         label = "#88 @Nathan",
-                        iconName = SlockLucideIconName.CircleCheck,
-                        color = SlockColor.AccentLime,
+                        iconName = RaftLucideIconName.CircleCheck,
+                        color = RaftColor.AccentLime,
                         onClick = {}
                     )
                 }
@@ -5383,18 +5383,18 @@ internal fun ThreadReactionAtlasVisualScreen() {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
-                    SlockToolbarChip(
+                    RaftToolbarChip(
                         label = "Todo",
-                        iconName = SlockLucideIconName.CircleDashed,
-                        trailingIconName = SlockLucideIconName.ChevronDown,
+                        iconName = RaftLucideIconName.CircleDashed,
+                        trailingIconName = RaftLucideIconName.ChevronDown,
                         onClick = {}
                     )
-                    SlockToolbarChip(
+                    RaftToolbarChip(
                         label = "In progress",
-                        iconName = SlockLucideIconName.CircleCheck,
-                        trailingIconName = SlockLucideIconName.ChevronDown,
+                        iconName = RaftLucideIconName.CircleCheck,
+                        trailingIconName = RaftLucideIconName.ChevronDown,
                         onClick = {}
                     )
                 }
@@ -5403,11 +5403,11 @@ internal fun ThreadReactionAtlasVisualScreen() {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
                 ) {
                     ThreadQuickReactionGlyph("☑️", modifier = Modifier.size(22.dp))
                     ThreadQuickReactionGlyph("🧪", modifier = Modifier.size(22.dp))
-                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
+                    ThreadReactionChip(RaftThreadReactionItem(emoji = "🧪", count = 1, selected = false))
                 }
             }
         }
@@ -5419,11 +5419,11 @@ private fun ThreadReactionVisualSection(
     title: String,
     content: @Composable () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+    Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
         Text(
             text = title,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.58f),
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+            color = RaftColor.TextBlack.copy(alpha = 0.58f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -5438,11 +5438,11 @@ private fun ThreadReactionAtlasImagePreview() {
             Modifier
                 .width(252.dp)
                 .height(36.dp)
-                .background(SlockColor.SurfaceCream),
+                .background(RaftColor.SurfaceCream),
         contentAlignment = Alignment.Center
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Lg),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Lg),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ThreadReactionSpriteCatalogV1.reactions.forEach { sprite ->
@@ -5454,7 +5454,7 @@ private fun ThreadReactionAtlasImagePreview() {
 
 @Composable
 internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
             subtitle = stringResource(MR.strings.channel_description_design),
@@ -5476,7 +5476,7 @@ internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
 
 @Composable
 internal fun DirectMessageSettingsPanelVisualScreen() {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadDirectMessageSettingsModal(
             activityMuteState =
                 ThreadActivityMuteUiState(
@@ -5504,7 +5504,7 @@ internal fun DirectMessageSettingsPanelVisualScreen() {
 internal fun ChannelAddMemberPanelVisualScreen() {
     val members = remember { channelPanelVisualMembers() }
     val candidates = remember { channelPanelVisualCandidates() }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadAddMemberModal(
             members = members,
             candidates = candidates,
@@ -5524,9 +5524,9 @@ internal fun ChannelAddMemberPanelVisualScreen() {
 // kind) — agent Cindy with her activity detail, human artin as Owner, both
 // removable, no remote-server badge. Identity/avatar/copy values come from
 // fixtureData.json via VisualFixtureData.
-private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
+private fun channelPanelVisualMembers(): List<RaftThreadMemberItem> =
     listOf(
-        KuiklyThreadMemberItem(
+        RaftThreadMemberItem(
             id = "agent-cindy",
             displayName = "Cindy",
             handle = "Cindy",
@@ -5536,7 +5536,7 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
             kind = "agent",
             canRemove = true
         ),
-        KuiklyThreadMemberItem(
+        RaftThreadMemberItem(
             id = "visual-user",
             displayName = "artin",
             handle = "artin",
@@ -5553,9 +5553,9 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
 // roster's "visual-user" so the android row renders plain like react's
 // (a matching memberKey would add the JOINED marker, which react does not
 // show for this fixture).
-private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
+private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
     listOf(
-        KuiklyThreadMemberItem(
+        RaftThreadMemberItem(
             id = "agent-product-ux",
             displayName = "Product UX Designer",
             handle = "Product-UX-Designer",
@@ -5565,7 +5565,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
             avatarLabel = "PU",
             kind = "agent"
         ),
-        KuiklyThreadMemberItem(
+        RaftThreadMemberItem(
             id = "user_artin",
             displayName = "artin",
             handle = "artin",
@@ -5574,7 +5574,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
             avatarLabel = "AR",
             kind = "human"
         ),
-        KuiklyThreadMemberItem(
+        RaftThreadMemberItem(
             id = "user_designer",
             displayName = "Designer",
             handle = "designer",
@@ -5585,13 +5585,13 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
         )
     )
 
-private fun channelPanelVisualSettingsActions(): List<KuiklyThreadSettingsAction> =
+private fun channelPanelVisualSettingsActions(): List<RaftThreadSettingsAction> =
     defaultThreadSettingsChannelActionCapabilities()
 
 @Composable
 private fun ThreadMessageVisualCard(
-    message: KuiklyThreadMessageItem,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    message: RaftThreadMessageItem,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     highlightedMentions: Set<String> = emptySet(),
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -5600,26 +5600,26 @@ private fun ThreadMessageVisualCard(
     timestampLabel: String = message.timestampLabel,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    outerPadding: androidx.compose.ui.unit.Dp = SlockSpacing.Sm
+    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
 ) {
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(
-            rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
+            rememberRaftMemberAvatarWireValue(memberAvatarResolver, message.authorId)
         )
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
+                .background(RaftColor.SurfaceWhite)
+                .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    .background(RaftColor.SurfaceWhite)
+                    .padding(horizontal = RaftAppSpacing.Xxs, vertical = RaftAppSpacing.Xs),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -5632,25 +5632,25 @@ private fun ThreadMessageVisualCard(
                         if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                     status = null,
                     cacheSubject =
-                        slockMemberAvatarCacheSubject(
+                        raftMemberAvatarCacheSubject(
                             message.authorKind.projectedMemberKindOrNull(),
                             message.authorId
                         )
                 )
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     horizontalAlignment = Alignment.Start
                 ) {
                     Row(
                         modifier = Modifier.threadMessageContentWidth(1f),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                     ) {
                         Text(
                             text = message.authorName,
-                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
-                            color = SlockColor.TextBlack,
+                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, lineHeight = 20.sp),
+                            color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 220.dp)
@@ -5667,20 +5667,20 @@ private fun ThreadMessageVisualCard(
                         Text(
                             text = timestampLabel,
                             style =
-                                SlockType.Caption.copy(
-                                    fontFamily = SlockMonoFamily,
-                                    color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                                RaftType.Caption.copy(
+                                    fontFamily = RaftMonoFamily,
+                                    color = RaftColor.TextBlack.copy(alpha = 0.4f)
                                 ),
-                            color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                            color = RaftColor.TextBlack.copy(alpha = 0.4f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                     if (message.body.isNotBlank()) {
                         Box(modifier = Modifier.threadMessageContentWidth(1f)) {
-                            SlockMarkdownBody(
+                            RaftMarkdownBody(
                                 body = message.body,
-                                textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                textStyle = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
                                 highlightedMentions = highlightedMentions,
                                 isTagValid = isMarkdownTagValid,
                                 resolveTagLabel = resolveMarkdownTagLabel,
@@ -5764,71 +5764,71 @@ internal val LocalThreadAdaptiveInitiationCapture =
  * UIKit walk, no stale value. Null outside an A4-wired standalone page.
  */
 internal val LocalThreadAdaptiveNativeEditingReader =
-    compositionLocalOf<SlockTextFieldNativeEditingStateReader?> { null }
+    compositionLocalOf<RaftTextFieldNativeEditingStateReader?> { null }
 
 private data class SharedThreadRouteContentData(
-    val initialPayload: KuiklyThreadScreenPayload,
-    val timeContextProvider: SlockTimeContextProvider,
+    val initialPayload: RaftThreadScreenPayload,
+    val timeContextProvider: RaftTimeContextProvider,
     val bridge: build.raft.app.base.BridgeModule,
     val dataSource: SharedThreadDataSource,
     val forwardTargetRepository: ForwardMessageTargetRepository?,
     val threadSendScope: CoroutineScope,
-    val authStore: SlockAuthSessionStore,
+    val authStore: RaftAuthSessionStore,
     val tasksDataSource: SharedTasksDataSource,
     val tasksDataStore: SharedTasksDataStore?,
     val computersStore: SharedComputersStore?,
     val membersStore: SharedMembersStore?,
     val serverMembersStore: SharedServerMembersStore?,
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
-    val storeScope: SlockShellStoreScope,
+    val storeScope: RaftShellStoreScope,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
-    val eventBus: SlockEventBus,
+    val eventBus: RaftEventBus,
     val active: Boolean,
-    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
+    val adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
 )
 
 /** Callback payload of [SharedThreadRouteContent]. See SharedThreadRouteContentData. */
 private class SharedThreadRouteContentCallbacks(
     val onBack: () -> Unit,
-    val onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
-    val onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit,
-    val onOpenParentThread: (KuiklyThreadScreenPayload, String?) -> Boolean,
+    val onOpenThreadPayload: (RaftThreadScreenPayload) -> Unit,
+    val onReplaceThreadPayload: (RaftThreadScreenPayload) -> Unit,
+    val onOpenParentThread: (RaftThreadScreenPayload, String?) -> Boolean,
     val onAuthRequired: (String) -> Unit,
     val onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit,
-    val onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
-    val onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit,
-    val onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit,
+    val onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit,
+    val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope) -> Unit,
+    val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit,
 )
 
 @Composable
 internal fun SharedThreadRouteContent(
-    initialPayload: KuiklyThreadScreenPayload,
-    timeContextProvider: SlockTimeContextProvider,
+    initialPayload: RaftThreadScreenPayload,
+    timeContextProvider: RaftTimeContextProvider,
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     forwardTargetRepository: ForwardMessageTargetRepository? = null,
     threadSendScope: CoroutineScope,
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
     tasksDataStore: SharedTasksDataStore? = null,
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
     serverMembersStore: SharedServerMembersStore? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
-    storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    storeScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
-    eventBus: SlockEventBus,
+    eventBus: RaftEventBus,
     onBack: () -> Unit,
-    onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
-    onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
-    onOpenParentThread: (KuiklyThreadScreenPayload, String?) -> Boolean = { _, _ -> false },
+    onOpenThreadPayload: (RaftThreadScreenPayload) -> Unit = {},
+    onReplaceThreadPayload: (RaftThreadScreenPayload) -> Unit = onOpenThreadPayload,
+    onOpenParentThread: (RaftThreadScreenPayload, String?) -> Boolean = { _, _ -> false },
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
-    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
-    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
-    onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> },
-    onOpenChannelSettings: (ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _ -> }
+    onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
+    onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope) -> Unit = { _, _, _, _ -> },
+    onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope) -> Unit = { _, _, _ -> }
 ) {
     SharedThreadRouteContentContent(
         data =
@@ -5900,16 +5900,16 @@ private fun SharedThreadRouteContentContent(
     val onOpenMembersPager = callbacks.onOpenMembersPager
     val onOpenChannelSettings = callbacks.onOpenChannelSettings
     val pager = LocalActivity.current.getPager() as Pager
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val externalAuthorHintTemplate =
         stringResource(MR.strings.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
     // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
     // tap surfaces a provider identity hint instead of silently doing nothing.
-    val onExternalAuthorHint: (KuiklyThreadMessageItem) -> Unit = { message ->
+    val onExternalAuthorHint: (RaftThreadMessageItem) -> Unit = { message ->
         val provider = message.externalAuthor?.providerLabel() ?: "external"
         bridge.toast(externalAuthorHintTemplate.replace(ThreadLocalizedFeedbackPlaceholder, provider))
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     // task #180: the thread panel's overflow menu toggles Focus mode on the shared workspace.
     // Read reactively so the label flips between Focus and Standard when it changes.
     // The side page never receives the shell's desktopModeOnLargeScreen, so ownership of the
@@ -5972,7 +5972,7 @@ private fun SharedThreadRouteContentContent(
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
     val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
-    val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
+    val realtimeEvents = remember(eventBus) { RaftRealtimeEvents(eventBus) }
     val realtimeEventMapper =
         remember(sharedStores) {
             RealtimeEventMapper(
@@ -6022,7 +6022,7 @@ private fun SharedThreadRouteContentContent(
         val subscription =
             page?.let {
                 eventBus.observe(
-                    eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                    eventName = RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
                     crossProcess = true,
                 ) { eventData ->
                     val request = eventData?.toAdaptiveParentFocusRequestOrNull() ?: return@observe
@@ -6053,7 +6053,7 @@ private fun SharedThreadRouteContentContent(
             threadViewModel.dispatch(
                 SharedThreadIntent.FocusMessage(
                     messageId = request.messageId,
-                    switchToTab = KuiklyThreadTab.Chat.wireValue,
+                    switchToTab = RaftThreadTab.Chat.wireValue,
                 )
             )
         }
@@ -6074,7 +6074,7 @@ private fun SharedThreadRouteContentContent(
         payload.originParentMessageId,
         sharedHomeState,
     ) {
-        if (payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return@LaunchedEffect
+        if (payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return@LaunchedEffect
         val parentChannelId =
             payload.parentChannelId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val parentMessageId =
@@ -6120,7 +6120,7 @@ private fun SharedThreadRouteContentContent(
         mutableStateOf<StoredAuthSession?>(null)
     }
     val threadReadAnchorStore = remember {
-        KeyValueThreadReadAnchorStore(slockSharedPreferenceStore())
+        KeyValueThreadReadAnchorStore(raftSharedPreferenceStore())
     }
     val threadReadAnchorOwner =
         remember(
@@ -6157,7 +6157,7 @@ private fun SharedThreadRouteContentContent(
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
     val resolvedMessageBodyTextStyle =
         remember(selectedMessageBodyFontSize) {
-            slockMessageBodyTextStyle(selectedMessageBodyFontSize)
+            raftMessageBodyTextStyle(selectedMessageBodyFontSize)
         }
     var replyCacheProvenanceOwner by remember(initialThreadInstanceKey) {
         mutableStateOf<ReplyCacheProvenance?>(null)
@@ -6277,7 +6277,7 @@ private fun SharedThreadRouteContentContent(
         }
     val memberAvatarResolver =
         remember(serverMembersStore, headerProjectionServerId) {
-            slockMemberAvatarResolver(
+            raftMemberAvatarResolver(
                 serverMembersStore = serverMembersStore,
                 serverId = headerProjectionServerId?.value,
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
@@ -6285,7 +6285,7 @@ private fun SharedThreadRouteContentContent(
         }
     val memberModelLabelResolver =
         remember(serverMembersStore, headerProjectionServerId) {
-            slockMemberModelLabelResolver(
+            raftMemberModelLabelResolver(
                 serverMembersStore = serverMembersStore,
                 serverId = headerProjectionServerId?.value,
             )
@@ -6331,7 +6331,7 @@ private fun SharedThreadRouteContentContent(
             val outcome = headerProjectionStateOwner.accept(projections)
             if (
                 outcome != null &&
-                headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+                headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.ReplyThread
             ) {
                 bridge.log(
                     "thread_header_reply_diag stage=owner_accept " +
@@ -6391,7 +6391,7 @@ private fun SharedThreadRouteContentContent(
     // new server snapshot. Recompute `jointBillingNotice` via a state bump.
     LaunchedEffect(jointGraceDeadlineLabel, payload.instanceId) {
         val deadline =
-            jointGraceDeadlineLabel?.let { parseSlockTimestampEpochMillisOrNull(it, 0) }
+            jointGraceDeadlineLabel?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
         if (deadline != null) {
             val remaining =
                 deadline -
@@ -6423,7 +6423,7 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
         val previous = lastAcceptedHeaderProjection
         val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::acceptsForDisplay)
-        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
             bridge.log(
                 "thread_header_dm_diag stage=accept_check " +
                     "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
@@ -6432,7 +6432,7 @@ private fun SharedThreadRouteContentContent(
                     "accepted=${accepted != null}"
             )
         }
-        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             bridge.log(
                 "thread_header_reply_diag stage=accept_check " +
                     "serverId=${headerProjectionServerId?.value ?: "null"} " +
@@ -6443,7 +6443,7 @@ private fun SharedThreadRouteContentContent(
             )
         }
         if (accepted != null) {
-            if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 bridge.log(
                     "thread_header_dm_diag stage=accepted_store " +
                         "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
@@ -6540,7 +6540,7 @@ private fun SharedThreadRouteContentContent(
     // offline and may fail back to the stand-in, so the retry fires once it settles.
     val offlineStandInRecovery = remember(threadViewModel) { OfflineStandInRecoveryGate() }
     // (the gate and attempt counter are per view model, so a new conversation starts clean)
-    fun refreshOfflineStandIn(reason: String, current: KuiklyThreadScreenPayload) {
+    fun refreshOfflineStandIn(reason: String, current: RaftThreadScreenPayload) {
         bridge.log(
             "thread_offline_standin_refresh reason=$reason " +
                 "threadId=${current.sourceThreadId.orEmpty()} status=${current.status}"
@@ -6563,7 +6563,7 @@ private fun SharedThreadRouteContentContent(
             )
             if (refresh) refreshOfflineStandIn(reason, current)
         }
-        val hostNetworkEvents = KuiklyHostNetworkEvents(sharedStores.eventBus)
+        val hostNetworkEvents = RaftHostNetworkEvents(sharedStores.eventBus)
         val networkSubscription = hostNetworkEvents.addAuthoritativeOnlineListener { onRecovered("network_recovered") }
         val realtimeSubscription =
             realtimeEvents.addListener { eventData ->
@@ -6610,7 +6610,7 @@ private fun SharedThreadRouteContentContent(
         ThreadVisibleResumeGate()
     }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
-        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+        mutableStateOf(isRaftHostVisible(storeScope.shellInstanceId))
     }
     var threadReadAnchorSessionGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
@@ -6694,11 +6694,11 @@ private fun SharedThreadRouteContentContent(
                 val eventDataSnapshot = eventData.toString()
                 coroutineScope.launch {
                     val lifecycleData = JSONObject(eventDataSnapshot)
-                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
+                    if (lifecycleData.optString(RaftRealtimeNotifyContract.KeyAction) != RaftRealtimeNotifyContract.ActionAppLifecycle) {
                         return@launch
                     }
-                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
-                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+                    val event = lifecycleData.optString(RaftRealtimeNotifyContract.KeyLifecycleEvent)
+                    val pageName = lifecycleData.optString(RaftRealtimeNotifyContract.KeyPageName)
                     bridge.log(
                         "thread_lifecycle_received event=$event page=$pageName " +
                             "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
@@ -6708,18 +6708,18 @@ private fun SharedThreadRouteContentContent(
                         return@launch
                     }
                     if (!appLifecycleEventTargetsShell(
-                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                            eventShellInstanceId = lifecycleData.optString(RaftRealtimeNotifyContract.KeyShellInstanceId),
                             routeShellInstanceId = storeScope.shellInstanceId
                     )
                     ) {
                         bridge.log("thread_lifecycle_drop reason=shell_target")
                         return@launch
                     }
-                    threadHostForeground = isSlockHostVisible(storeScope.shellInstanceId)
+                    threadHostForeground = isRaftHostVisible(storeScope.shellInstanceId)
                     bridge.log("thread_lifecycle_visibility hostForeground=$threadHostForeground routeActive=$latestRouteActive")
                     if (
-                        event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
-                        event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                        event == RaftRealtimeNotifyContract.LifecycleVisibleResume ||
+                        event == RaftRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
                         // Foreground is a drainer trigger: re-evaluate journaled sends whose
                         // network may have returned while the app was backgrounded.
@@ -6807,18 +6807,18 @@ private fun SharedThreadRouteContentContent(
         return
     }
     var selectedThreadTab by remember(threadInstanceKey, payload.selectedTab) {
-        mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
+        mutableStateOf(RaftThreadTab.fromWireValue(payload.selectedTab))
     }
     val availableThreadTabs =
         remember(payload.showTaskOpenActions, payload.showTaskStatusActions, payload.composer.showAsTaskToggle) {
-            KuiklyThreadTab.entries.filter { tab ->
-                tab != KuiklyThreadTab.Tasks || payload.supportsChannelTasks()
+            RaftThreadTab.entries.filter { tab ->
+                tab != RaftThreadTab.Tasks || payload.supportsChannelTasks()
             }
         }
     LaunchedEffect(availableThreadTabs, selectedThreadTab) {
         if (selectedThreadTab !in availableThreadTabs) {
-            selectedThreadTab = KuiklyThreadTab.Chat
-            threadViewModel.dispatch(SharedThreadIntent.SelectTab(KuiklyThreadTab.Chat.wireValue))
+            selectedThreadTab = RaftThreadTab.Chat
+            threadViewModel.dispatch(SharedThreadIntent.SelectTab(RaftThreadTab.Chat.wireValue))
         }
     }
     var composerSuggestionDemand by remember(threadInstanceKey) {
@@ -6857,7 +6857,7 @@ private fun SharedThreadRouteContentContent(
         initialHeaderRouteDiagnostics,
         payloadHeaderRouteDiagnostics
     ) {
-        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
             bridge.log(
                 "thread_header_dm_diag stage=render " +
                     "serverId=${currentSession?.currentServerId ?: "null"} " +
@@ -6872,7 +6872,7 @@ private fun SharedThreadRouteContentContent(
                     "final=${headerDisplayModel.headerDisplayDiagnostics()}"
             )
         }
-        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        if (headerProjectionInput.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
             bridge.log(
                 "thread_header_reply_diag stage=render " +
                     "serverId=${headerProjectionServerId?.value ?: "null"} " +
@@ -6926,7 +6926,7 @@ private fun SharedThreadRouteContentContent(
             markdownReferencePending = markdownReferencePending.finish(token)
         }
     }
-    var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<KuiklyThreadMessageItem?>(null) }
+    var textSelectionMessage by remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
     var createAgentDialogState by remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var markdownTaskCandidateModalState by remember(threadInstanceKey) {
         mutableStateOf<ThreadMarkdownTaskCandidateModalState?>(null)
@@ -6984,7 +6984,7 @@ private fun SharedThreadRouteContentContent(
     val pendingMentionActionBatchRequestGate =
         remember(threadInstanceKey) { PendingMentionActionBatchRequestGate() }
     var externalShareExpectedAuthority by remember(threadInstanceKey) {
-        mutableStateOf<build.raft.app.data.SlockExpectedAuthBinding?>(null)
+        mutableStateOf<build.raft.app.data.RaftExpectedAuthBinding?>(null)
     }
     val attachmentUploadSemaphore = remember(threadInstanceKey) {
         Semaphore(ThreadAttachmentUploadConcurrencyLimit)
@@ -7001,11 +7001,11 @@ private fun SharedThreadRouteContentContent(
     val composerImageEventSessionTracker = remember(threadInstanceKey, eventBus) {
         ThreadComposerImageEventSessionTracker()
     }
-    fun openTrackedComposerImagePreview(payload: SlockFilePreviewPayload): Boolean {
+    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean {
         var registeredSessionId = ""
         var registrationRejected = false
         val opened =
-            pager.openSlockFilePreviewPage(
+            pager.openRaftFilePreviewPage(
                 payload,
                 onEphemeralSessionRegistered = { sessionId ->
                     registeredSessionId = sessionId
@@ -7018,7 +7018,7 @@ private fun SharedThreadRouteContentContent(
                             // and its callback. Retire the process-owned row immediately; returning
                             // false alone is not enough if the opener has already crossed its open
                             // boundary.
-                            val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(rejectedSessionId)
+                            val cleanupRefs = raftFilePreviewAbortComposerImageEventSession(rejectedSessionId)
                             if (cleanupRefs.isNotEmpty()) {
                                 bridge.retireFilePreviewTemporaryFiles(
                                     sessionId = rejectedSessionId,
@@ -7043,7 +7043,7 @@ private fun SharedThreadRouteContentContent(
             // Disposal can close the tracker immediately after the opener callback returns but
             // before the router reports success. Do a second ownership check after the boundary
             // so a successfully opened preview can never retain an ownerless registry row.
-            val cleanupRefs = slockFilePreviewAbortComposerImageEventSession(registeredSessionId)
+            val cleanupRefs = raftFilePreviewAbortComposerImageEventSession(registeredSessionId)
             if (cleanupRefs.isNotEmpty()) {
                 bridge.retireFilePreviewTemporaryFiles(
                     sessionId = registeredSessionId,
@@ -7057,12 +7057,12 @@ private fun SharedThreadRouteContentContent(
     }
     val chatLayoutPreferenceStore =
         remember(pager) {
-            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         }
     // The Settings switch for the bottom-up list; null while it follows the flag default.
     val chatLayoutReverseLayoutStore =
         remember(pager) {
-            build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore(slockSharedPreferenceStore())
+            build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore(raftSharedPreferenceStore())
         }
     val actionCardSuccessLabels =
         mapOf(
@@ -7092,7 +7092,7 @@ private fun SharedThreadRouteContentContent(
     val unableToOpenAttachmentLabel = stringResource(MR.strings.thread_error_open_attachment)
     val unableToDownloadAttachmentLabel = stringResource(MR.strings.file_preview_error_download_attachment)
     val attachmentOpenResultTerms =
-        SlockAttachmentOpenResultTerms(
+        RaftAttachmentOpenResultTerms(
             downloadStopped = stringResource(MR.strings.file_preview_download_stopped),
             unableToDownloadAttachment = unableToDownloadAttachmentLabel,
             noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app),
@@ -7105,11 +7105,11 @@ private fun SharedThreadRouteContentContent(
     val attachmentSavedToPhotosLabel = stringResource(MR.strings.thread_image_preview_saved_to_photos)
     val attachmentDownloadedLabel = stringResource(MR.strings.file_preview_private_download_saved)
     val attachmentSavedLabel =
-        slockFilePreviewSavedMessage(
+        raftFilePreviewSavedMessage(
             exportPrivateDownload = false,
             toPhotos = false,
-            supportsPublicDownloadReadback = slockPlatformSupportsPublicAttachmentDownloadReadback(),
-            supportsPrivateAttachmentExport = slockPlatformSupportsPrivateAttachmentExport(),
+            supportsPublicDownloadReadback = raftPlatformSupportsPublicAttachmentDownloadReadback(),
+            supportsPrivateAttachmentExport = raftPlatformSupportsPrivateAttachmentExport(),
             downloadSaved = attachmentSavedToDownloadsLabel,
             privateDownloadSaved = attachmentDownloadedLabel,
             fileExportSaved = attachmentSavedToFilesLabel,
@@ -7296,19 +7296,19 @@ private fun SharedThreadRouteContentContent(
     // one INSTANCE per thread open — construction is the reset, so there is
     // no global collector state and no callback-order dependency; an
     // abandoned pass discards the instance together with its rows. Provided
-    // to the content subtree via LocalSlockMarkdownPlainCandidateSession
+    // to the content subtree via LocalRaftMarkdownPlainCandidateSession
     // (below), so non-Thread markdown surfaces never participate, and two
     // interleaved opens hold independent instances. Flushed by the latched
     // LaunchedEffect (effects run after the apply's observer callbacks).
     val plainCandidateCensusSession =
-        if (slockTraceDiagnosticsEnabled() && payload.isReadyForThreadPerformanceGate()) {
-            remember(threadInstanceKey) { SlockMarkdownPlainCandidateSession() }
+        if (raftTraceDiagnosticsEnabled() && payload.isReadyForThreadPerformanceGate()) {
+            remember(threadInstanceKey) { RaftMarkdownPlainCandidateSession() }
         } else {
             null
         }
     // #367 markdown light-path gate (default OFF): resolved ONCE per thread
     // route and provided as an ambient render config — the row-level
-    // SlockMarkdownBody performs no registry or StateFlow work of its own.
+    // RaftMarkdownBody performs no registry or StateFlow work of its own.
     // Mirrors the MOBILE_ACTIVITY_STABLE_ORDER wiring (SharedInboxPanel).
     // Identity comes from the reply-cache provenance (the server the route
     // actually renders), never from session.currentServerId alone; an
@@ -7455,7 +7455,7 @@ private fun SharedThreadRouteContentContent(
         if (
             payload.threadComposerMentionScopeChannelId() != null ||
             payload.memberScopedMentions ||
-            payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+            payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage
         ) {
             payload
         } else {
@@ -7485,7 +7485,7 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId) {
         val store = serverMembersStore ?: return@LaunchedEffect
         val serverId = threadMembersServerId ?: return@LaunchedEffect
-        if (selectedThreadTab == KuiklyThreadTab.Tasks) {
+        if (selectedThreadTab == RaftThreadTab.Tasks) {
             store.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
@@ -7748,11 +7748,11 @@ private fun SharedThreadRouteContentContent(
                 // draft would silently lose whatever is in the live editor (bridge contract).
                 val identityBefore = composerDraftViewModel.state.value
                 val nativeRead =
-                    suspendCancellableCoroutine<SlockTextFieldNativeEditingStateReadResult.Available?> {
+                    suspendCancellableCoroutine<RaftTextFieldNativeEditingStateReadResult.Available?> {
                             continuation ->
                         reader.readCurrentValue { readResult ->
                             continuation.resume(
-                                readResult as? SlockTextFieldNativeEditingStateReadResult.Available
+                                readResult as? RaftTextFieldNativeEditingStateReadResult.Available
                             )
                         }
                     } ?: return@captureLatestDraft null
@@ -8027,7 +8027,7 @@ private fun SharedThreadRouteContentContent(
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
             )
         }
-    fun currentComposerPayload(): KuiklyThreadComposerPayload =
+    fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
             draftState = composerDraftViewModel.state.value,
             renderedPayload = renderedPayload,
@@ -8035,7 +8035,7 @@ private fun SharedThreadRouteContentContent(
         )
     val agentStatusResolver =
         remember(serverMembersStore, headerProjectionServerId) {
-            slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
+            raftScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
         }
     val messagePermalinkLabelResolver =
         remember(
@@ -8045,7 +8045,7 @@ private fun SharedThreadRouteContentContent(
             renderedThread,
             stableHeaderProjection
         ) {
-            { target: SlockMessagePermalinkTarget ->
+            { target: RaftMessagePermalinkTarget ->
                 val currentServerId = currentSession?.currentServerId?.takeIf(String::isNotBlank)
                 val sameServer =
                     currentServerSlug?.takeIf(String::isNotBlank)?.let { slug ->
@@ -8124,7 +8124,7 @@ private fun SharedThreadRouteContentContent(
             return
         }
         target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
-            pager.openSlockFilePreviewPage(previewPayload)
+            pager.openRaftFilePreviewPage(previewPayload)
             return
         }
         val state =
@@ -8355,7 +8355,7 @@ private fun SharedThreadRouteContentContent(
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         val attachment = group.images[currentIndex]
         imagePreviewState = null
-        pager.openSlockFilePreviewPage(
+        pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = "image",
                 imageGallery = group.images,
@@ -8371,7 +8371,7 @@ private fun SharedThreadRouteContentContent(
         imagePreviewState = preview.copy(currentIndex = nextIndex)
         requestImagePreviewUrl(preview.images[nextIndex].id)
     }
-    fun openAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
+    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
         val owner = attachmentOwner ?: return
         nextAttachmentDownloadGeneration += 1L
@@ -8383,7 +8383,7 @@ private fun SharedThreadRouteContentContent(
                 (attachment.id to ThreadAttachmentOpenUiState(
                     status = "downloading",
                     downloadId = downloadId,
-                    progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
                 ))
         coroutineScope.launch {
             val result =
@@ -8429,7 +8429,7 @@ private fun SharedThreadRouteContentContent(
                         ))
                 if (result.status != "cancelled") {
                     bridge.toast(
-                        slockAttachmentOpenResultMessage(result.status, attachmentOpenResultTerms)
+                        raftAttachmentOpenResultMessage(result.status, attachmentOpenResultTerms)
                             ?: unableToOpenAttachmentLabel
                     )
                 }
@@ -8437,7 +8437,7 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    fun saveAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
+    fun saveAttachmentExternally(attachment: RaftThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
         val owner = attachmentOwner ?: return
         nextAttachmentDownloadGeneration += 1L
@@ -8449,7 +8449,7 @@ private fun SharedThreadRouteContentContent(
                 (attachment.id to ThreadAttachmentOpenUiState(
                     status = "downloading",
                     downloadId = downloadId,
-                    progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
                 ))
         coroutineScope.launch {
             val result =
@@ -8488,7 +8488,7 @@ private fun SharedThreadRouteContentContent(
                     attachmentOpenStates = attachmentOpenStates - attachment.id
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                     bridge.toast(
-                        slockThreadAttachmentSavedMessage(
+                        raftThreadAttachmentSavedMessage(
                             nativeMessage = attachmentSavedLabel,
                             fallbackMessage = attachmentDownloadedLabel
                         )
@@ -8518,7 +8518,7 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
+    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
         imagePreviewState = null
         val lazyPreviewKind =
@@ -8529,7 +8529,7 @@ private fun SharedThreadRouteContentContent(
                 attachment.isPreviewableAudioAttachment() -> "audio"
                 else -> "file"
             }
-        pager.openSlockFilePreviewPage(
+        pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = lazyPreviewKind,
                 attachmentCommentsEnabled = attachmentCommentsEnabled
@@ -8614,8 +8614,8 @@ private fun SharedThreadRouteContentContent(
         val name = attachment.fileName.ifBlank { "Attachment" }
         val meta = attachment.displaySizeLabel()
         if (!attachment.isReadyThreadAttachmentForSend()) {
-            pager.openSlockFilePreviewPage(
-                SlockFilePreviewPayload(
+            pager.openRaftFilePreviewPage(
+                RaftFilePreviewPayload(
                     kind = if (attachment.status == "failed") "error" else "loading",
                     requestedKind = "composer_attachment",
                     title = name,
@@ -8646,7 +8646,7 @@ private fun SharedThreadRouteContentContent(
             return
         }
         val threadAttachment =
-            KuiklyThreadAttachmentItem(
+            RaftThreadAttachmentItem(
                 id = attachment.id,
                 name = name,
                 mimeType = attachment.mimeType.orEmpty(),
@@ -8655,7 +8655,7 @@ private fun SharedThreadRouteContentContent(
                 thumbnailUrl = attachment.previewUri
         )
         val composerImageGroup = composerPayload.pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
-        // KuiklyPendingAttachmentItem is intentionally a render-only projection and therefore
+        // RaftPendingAttachmentItem is intentionally a render-only projection and therefore
         // does not carry the platform file handle. Resolve each gallery item back to the
         // session-owned draft/upload descriptor before opening an editable preview; otherwise
         // the gallery payload would contain only thumbnails and the Done/session registry could
@@ -8675,7 +8675,7 @@ private fun SharedThreadRouteContentContent(
             // ordinary preview rather than creating a composer session whose Done action can
             // never produce a deliverable event.
             if (galleryFiles.size != composerImageGroup.images.size || galleryFiles.isEmpty()) {
-                pager.openSlockFilePreviewPage(
+                pager.openRaftFilePreviewPage(
                     threadAttachment.toThreadAttachmentLazyPreviewPayload(
                         kind = "image",
                         imageGallery = composerImageGroup.images,
@@ -8705,7 +8705,7 @@ private fun SharedThreadRouteContentContent(
             // retired.  It is not safely editable/compressible in that state, so keep it a plain
             // read-only preview instead of creating a Done session that can never emit an event.
             if (composerImageFile == null) {
-                pager.openSlockFilePreviewPage(
+                pager.openRaftFilePreviewPage(
                     threadAttachment.toThreadAttachmentLazyPreviewPayload(
                         kind = "image"
                     ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
@@ -8799,7 +8799,7 @@ private fun SharedThreadRouteContentContent(
             shouldMarkThreadVisibleRead(
                 routeActive = active,
                 observedHostForeground = threadHostForeground,
-                currentHostVisibility = isSlockHostVisible(storeScope.shellInstanceId),
+                currentHostVisibility = isRaftHostVisible(storeScope.shellInstanceId),
                 markerKey = visibleReadMarkerKey
             )
         ) {
@@ -8808,7 +8808,7 @@ private fun SharedThreadRouteContentContent(
     }
     fun sendPendingLocalMessage(
         localMessageId: String,
-        context: KuiklyThreadPendingSendContext,
+        context: RaftThreadPendingSendContext,
         startedFromComposer: Boolean,
         authority: ThreadLocalSendAuthority
     ) {
@@ -8907,7 +8907,7 @@ private fun SharedThreadRouteContentContent(
                                 randomId = sendAttemptState.randomId
                             )
                         }
-                            ?: throw SlockRequestTimeoutException(
+                            ?: throw RaftRequestTimeoutException(
                                 "send request exceeded ${ThreadSendRequestTimeoutMs}ms"
                             )
                     }
@@ -9038,7 +9038,7 @@ private fun SharedThreadRouteContentContent(
                             "attempt" to attempt.toString()
                         )
                 )
-                val pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
+                val pendingMentionActions = sentPage.pendingMentionActions.map { it.toRaftPendingMentionActionItem() }
                 val externalShareTokens =
                     (context.externalShareSources.map { source -> source.token } +
                         context.attachments
@@ -9047,7 +9047,7 @@ private fun SharedThreadRouteContentContent(
                         .distinct()
                 if (externalShareTokens.isNotEmpty()) {
                     val envelopeRepository =
-                        build.raft.app.data.SlockExternalShareEnvelopeRepositoryProvider.create()
+                        build.raft.app.data.RaftExternalShareEnvelopeRepositoryProvider.create()
                     externalShareTokens.forEach { token ->
                         runCatchingPreservingCancellation { envelopeRepository.delete(token) }
                             .onFailure { error ->
@@ -10067,7 +10067,7 @@ private fun SharedThreadRouteContentContent(
                 attachmentIds = attachmentIds
             )
         val pendingContext =
-            KuiklyThreadPendingSendContext(
+            RaftThreadPendingSendContext(
                 channelId = threadId ?: return false,
                 body =
                     threadComposerMessageBodyForSend(
@@ -10287,7 +10287,7 @@ private fun SharedThreadRouteContentContent(
                 .forEach { key ->
                     composerImageEventBatches.remove(key)?.abort()
                 }
-            return slockFilePreviewAbortComposerImageEventSession(normalizedSessionId)
+            return raftFilePreviewAbortComposerImageEventSession(normalizedSessionId)
         }
 
         suspend fun abortBatchSession(sessionId: String, reason: String): Set<String> {
@@ -10310,7 +10310,7 @@ private fun SharedThreadRouteContentContent(
 
         data class ComposerImageBatchHandoff(
             val items: List<ThreadComposerImageEventBatchItem> = emptyList(),
-            val admissions: List<SlockFilePreviewComposerImageEventAdmission.Accepted> = emptyList(),
+            val admissions: List<RaftFilePreviewComposerImageEventAdmission.Accepted> = emptyList(),
             val ready: Boolean = false,
             val cleanupRefs: Set<String> = emptySet()
         )
@@ -10320,7 +10320,7 @@ private fun SharedThreadRouteContentContent(
                     // Parse through the shared wire-contract validator before applying this
                     // ThreadPage's session/ownership policy.  This keeps malformed callbacks
                     // from reaching the registry and ensures metadata semantics match Settings.
-                    val parsed = parseSlockFilePreviewComposerImageEvent(eventData)
+                    val parsed = parseRaftFilePreviewComposerImageEvent(eventData)
                     val rawThreadKey = eventData.optString("threadKey").trim()
                     if (parsed == null) {
                         // Event-bus delivery is process-wide.  Only retire an invalid event's
@@ -10423,14 +10423,14 @@ private fun SharedThreadRouteContentContent(
                                     } else {
                                         val claimedAdmissions =
                                             items.map { batchItem ->
-                                                slockFilePreviewClaimComposerImageEvent(
+                                                raftFilePreviewClaimComposerImageEvent(
                                                     eventData = batchItem.eventData,
                                                     expectedThreadKey = threadInstanceKey
                                                 )
                                             }
                                         val acceptedAdmissions =
                                             claimedAdmissions.mapNotNull { admission ->
-                                                admission as? SlockFilePreviewComposerImageEventAdmission.Accepted
+                                                admission as? RaftFilePreviewComposerImageEventAdmission.Accepted
                                             }
                                         val claimComplete =
                                             acceptedAdmissions.size == items.size &&
@@ -10533,7 +10533,7 @@ private fun SharedThreadRouteContentContent(
                                     .forEach { key ->
                                         composerImageEventBatches.remove(key)?.abort()
                                     }
-                                slockFilePreviewFinishComposerImageEventSession(
+                                raftFilePreviewFinishComposerImageEventSession(
                                     sessionId = previewSessionId,
                                     transferred = transferred
                                 )
@@ -10571,7 +10571,7 @@ private fun SharedThreadRouteContentContent(
                 }
             }
         val subscription =
-            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+            eventBus.observe(RAFT_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
                 val eventDataSnapshot = data?.toString() ?: return@observe
                 eventMailbox.trySend(eventDataSnapshot)
             }
@@ -10670,9 +10670,9 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    SlockForegroundBannerHost(
+    RaftForegroundBannerHost(
         banner = foregroundMessageBanner,
-        topSafeArea = slockTopSafeAreaPadding(),
+        topSafeArea = raftTopSafeAreaPadding(),
         serverMembersStore = serverMembersStore,
         currentServerStore = foregroundBannerCurrentServerStore,
         currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
@@ -10682,7 +10682,7 @@ private fun SharedThreadRouteContentContent(
             val bannerPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
-                    timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
+                    timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
                     alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
                     anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
@@ -10701,7 +10701,7 @@ private fun SharedThreadRouteContentContent(
         // diagnostics OFF the census session Local is NOT part of the vararg
         // at all — the base array is used by identity, so the production
         // provider scope is unchanged by P1.
-        val threadProvidedValues = slockMarkdownProvidedValuesWith(
+        val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
@@ -10718,17 +10718,17 @@ private fun SharedThreadRouteContentContent(
                         state = inlineImageFallbackState,
                         requestFallback = ::requestInlineImageFallback
                     ),
-                LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
-                LocalSlockMarkdownRenderConfig provides
-                    SlockMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
+                LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+                LocalRaftMarkdownRenderConfig provides
+                    RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
                 LocalThreadPendingReactionVisuals provides pendingReactionVisuals,
-                LocalSlockTimeContextProvider provides timeContextProvider
+                LocalRaftTimeContextProvider provides timeContextProvider
             ),
-            LocalSlockMarkdownPlainCandidateSession,
+            LocalRaftMarkdownPlainCandidateSession,
             plainCandidateCensusSession
         )
         CompositionLocalProvider(*threadProvidedValues) {
@@ -10738,7 +10738,7 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             agentFollowersHeader = {
-                if (renderedThread.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                if (renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                     ThreadAgentFollowersRoute(
                         threadId = renderedThread.streamChannelId,
                         serverId = currentServerId,
@@ -10957,7 +10957,7 @@ private fun SharedThreadRouteContentContent(
                     conversation?.let {
                         buildAppShellThreadPayload(
                             conversation = it,
-                            timeContext = renderedPayload.toSlockTimeCapabilities().staticContext(),
+                            timeContext = renderedPayload.toRaftTimeCapabilities().staticContext(),
                             alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
                             compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
                             anchorMessageId = banner.messageId.value,
@@ -10987,14 +10987,14 @@ private fun SharedThreadRouteContentContent(
                         } else {
                             val attachment =
                                 renderedTimelineSlice.findThreadAttachment(attachmentId)
-                                    ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
+                                    ?: RaftThreadAttachmentItem(id = attachmentId, name = "Attachment")
                             openAttachmentNoPreview(attachment)
                         }
                     }
                     action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
                         val attachment =
                             renderedTimelineSlice.findThreadAttachment(attachmentId)
-                                ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
+                                ?: RaftThreadAttachmentItem(id = attachmentId, name = "Attachment")
                         saveAttachmentExternally(attachment)
                     }
                     action == "openFileSource" && !itemId.isNullOrBlank() -> {
@@ -11008,7 +11008,7 @@ private fun SharedThreadRouteContentContent(
                         threadViewModel.dispatch(
                             SharedThreadIntent.FocusMessage(
                                 messageId = sourceMessageId,
-                                switchToTab = KuiklyThreadTab.Chat.wireValue
+                                switchToTab = RaftThreadTab.Chat.wireValue
                             )
                         )
                     }
@@ -11016,7 +11016,7 @@ private fun SharedThreadRouteContentContent(
                         threadViewModel.dispatch(
                             SharedThreadIntent.FocusMessage(
                                 messageId = itemId,
-                                switchToTab = KuiklyThreadTab.Chat.wireValue,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
                             )
                         )
                     }
@@ -11253,7 +11253,7 @@ private fun SharedThreadRouteContentContent(
                         adaptiveKeyboardController?.hide()
                         bridge.log("adaptive_side_thread_parent_focus result=requested generation=${sideParentFocus.target.generation}")
                         eventBus.post(
-                            eventName = SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
+                            eventName = RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT,
                             eventData = sideParentFocus.toJson(),
                             crossProcess = true,
                             source = "adaptive_side_thread_parent",
@@ -11594,7 +11594,7 @@ private fun SharedThreadRouteContentContent(
                     onOpenThreadPayload(loadingPayload)
                 }
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
-                    val target = itemId.toSlockThreadWebLinkTarget()
+                    val target = itemId.toRaftThreadWebLinkTarget()
                     if (target == null) {
                         linkNavigator.open(itemId)
                     } else {
@@ -11611,7 +11611,7 @@ private fun SharedThreadRouteContentContent(
                         val loadingPayload = request?.let { openRequest ->
                             buildAppShellThreadPayload(
                                 conversation = openRequest.conversationIdentity,
-                                timeContext = renderedThread.toSlockTimeCapabilities().staticContext(),
+                                timeContext = renderedThread.toRaftTimeCapabilities().staticContext(),
                                 alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
                                 compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
                                 anchorMessageId = openRequest.anchorMessageId,
@@ -12435,7 +12435,7 @@ private fun SharedThreadRouteContentContent(
                             bridge.toast(
                                 localizedAttachmentUploadFailedDetail(
                                     userFacingErrorLabels.forErrorCode(
-                                        SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
+                                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
                                     ) ?: genericThreadErrorLabel
                                 )
                             )
@@ -12469,7 +12469,7 @@ private fun SharedThreadRouteContentContent(
                             resolveThreadPickedAttachmentComposerAction(
                                 action = action,
                                 fileCount = files.size,
-                                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files),
+                                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
@@ -12736,7 +12736,7 @@ private fun ThreadMarkdownTaskCandidateModal(
     onDismiss: () -> Unit,
     onSelect: (TaskSummary) -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.thread_open_task_number, state.taskNumber),
         onDismiss = onDismiss,
         minWidth = 320.dp,
@@ -12748,8 +12748,8 @@ private fun ThreadMarkdownTaskCandidateModal(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 text = state.localizedThreadMarkdownTaskCandidateHelperText(),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.58f)
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextBlack.copy(alpha = 0.58f)
             )
             LazyColumn(
                 modifier =
@@ -12787,7 +12787,7 @@ private fun ThreadMarkdownTaskCandidateRow(
     onClick: () -> Unit
 ) {
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-    val background = if (currentChannel) SlockColor.BrandSoft else SlockColor.Card
+    val background = if (currentChannel) RaftColor.BrandSoft else RaftColor.Card
     Box(
         modifier =
             Modifier
@@ -12799,11 +12799,11 @@ private fun ThreadMarkdownTaskCandidateRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 82.dp)
-                    .slockRaftControlSurface(
+                    .raftControlSurface(
                         fill = background,
-                        border = if (currentChannel) SlockColor.BorderBlack else SlockColor.BorderHairline,
-                        radius = SlockRadius.Container,
-                        borderWidth = if (currentChannel) SlockStroke.Control else SlockStroke.Thin
+                        border = if (currentChannel) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                        radius = RaftAppRadius.Container,
+                        borderWidth = if (currentChannel) RaftAppStroke.Control else RaftAppStroke.Thin
                     )
                     .clickable(onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -12817,15 +12817,15 @@ private fun ThreadMarkdownTaskCandidateRow(
                 ) {
                     Text(
                         text = "#${task.taskNumber ?: "?"}",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = task.localizedThreadMarkdownTaskCandidateChannelLabel(),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -12833,15 +12833,15 @@ private fun ThreadMarkdownTaskCandidateRow(
                 }
                 Text(
                     text = task.title.ifBlank { stringResource(MR.strings.thread_task_candidate_untitled) },
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = task.localizedThreadMarkdownTaskCandidateDetail(currentChannel),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.48f),
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = RaftColor.TextBlack.copy(alpha = 0.48f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -12851,7 +12851,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                 horizontalAlignment = Alignment.End
             ) {
                 val statusMeta = task.status.sharedTaskStatusChipMeta()
-                SlockAnchoredMetaChip(
+                RaftAnchoredMetaChip(
                     label = statusMeta.label,
                     iconName = statusMeta.icon,
                     iconSize = statusMeta.iconSize,
@@ -12861,11 +12861,11 @@ private fun ThreadMarkdownTaskCandidateRow(
                     onClick = null
                 )
                 if (currentChannel) {
-                    SlockAnchoredMetaChip(
+                    RaftAnchoredMetaChip(
                         label = stringResource(MR.strings.thread_task_candidate_current),
-                        iconName = SlockLucideIconName.Hash,
+                        iconName = RaftLucideIconName.Hash,
                         iconSize = 10.dp,
-                        color = SlockColor.BrandYellow,
+                        color = RaftColor.BrandYellow,
                         modifier = Modifier.widthIn(max = 112.dp),
                         onClick = null
                     )
@@ -13000,7 +13000,7 @@ private fun ThreadCreateAgentActionDialogHost(
 private suspend fun openSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     owner: AttachmentOwnerLease,
     downloadId: String? = null,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
@@ -13020,7 +13020,7 @@ private suspend fun openSharedThreadAttachment(
                     onProgress = onProgress
                 )
             ThreadAttachmentOpenResult(
-                status = slockThreadAttachmentOpenStatus(nativeResult?.optString("status").orEmpty())
+                status = raftThreadAttachmentOpenStatus(nativeResult?.optString("status").orEmpty())
             )
         }
         is ThreadApiResult.Failure ->
@@ -13031,7 +13031,7 @@ private suspend fun openSharedThreadAttachment(
 private suspend fun saveSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     owner: AttachmentOwnerLease,
     downloadId: String? = null,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
@@ -13076,21 +13076,21 @@ private suspend fun saveSharedThreadAttachment(
     }
 }
 
-internal fun slockThreadAttachmentSavedMessage(
+internal fun raftThreadAttachmentSavedMessage(
     nativeMessage: String,
     fallbackMessage: String
 ): String = nativeMessage.trim().ifBlank { fallbackMessage }
 
-internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
-    toSlockMessagePermalinkTarget()?.let { target ->
-        return SlockThreadWebLinkTarget(
+internal fun String.toRaftThreadWebLinkTarget(): RaftThreadWebLinkTarget? {
+    toRaftMessagePermalinkTarget()?.let { target ->
+        return RaftThreadWebLinkTarget(
             channelId = target.channelId.value,
             messageId = target.messageId.value,
             routeKind =
                 if (target.routeKind == ConversationKind.DirectMessage) {
-                    KuiklyThreadSurfaceKind.DirectMessage
+                    RaftThreadSurfaceKind.DirectMessage
                 } else {
-                    KuiklyThreadSurfaceKind.Channel
+                    RaftThreadSurfaceKind.Channel
                 },
             threadParentMessageId = target.threadParentMessageId?.value
         )
@@ -13114,11 +13114,11 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     if (segments.firstOrNull() == "s") return null
     val routeIndex = segments.indexOfFirst {
         val segment = it.lowercase()
-        segment == KuiklyThreadSurfaceKind.Channel || segment == KuiklyThreadSurfaceKind.DirectMessage
+        segment == RaftThreadSurfaceKind.Channel || segment == RaftThreadSurfaceKind.DirectMessage
     }
     if (routeIndex < 0) return null
     val routeKind = segments.getOrNull(routeIndex)?.lowercase()
-        ?.takeIf { it == KuiklyThreadSurfaceKind.Channel || it == KuiklyThreadSurfaceKind.DirectMessage }
+        ?.takeIf { it == RaftThreadSurfaceKind.Channel || it == RaftThreadSurfaceKind.DirectMessage }
         ?: return null
     val channelId = segments.getOrNull(routeIndex + 1)?.takeIf { it.isNotBlank() } ?: return null
     val threadParam = query.queryParamValue("thread")
@@ -13132,7 +13132,7 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
                 return null
             }
     val messageId = query.queryParamValue("msg")?.takeIf { it.isNotBlank() } ?: threadParentMessageId
-    return SlockThreadWebLinkTarget(
+    return RaftThreadWebLinkTarget(
         channelId = channelId,
         messageId = messageId,
         routeKind = routeKind,
@@ -13146,9 +13146,9 @@ private fun String.queryParamValue(name: String): String? =
             val pieces = part.split('=', limit = 2)
             pieces.getOrNull(1)?.takeIf { pieces.firstOrNull() == name && it.isNotBlank() }
         }
-        ?.slockPercentDecode()
+        ?.raftPercentDecode()
 
-private fun String.slockPercentDecode(): String {
+private fun String.raftPercentDecode(): String {
     if ('%' !in this && '+' !in this) return this
     val builder = StringBuilder(length)
     var index = 0
@@ -13169,15 +13169,15 @@ private fun String.slockPercentDecode(): String {
     return builder.toString()
 }
 
-private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
-    ref: KuiklyThreadMessageCommentRef
-): KuiklyThreadScreenPayload? {
+private fun RaftThreadScreenPayload.commentHostLoadingPayload(
+    ref: RaftThreadMessageCommentRef
+): RaftThreadScreenPayload? {
     if (!ref.hasThreadCommentHostSource()) return null
     val source = ref.hostSource ?: return null
     val hostMessageId = ref.hostMessageId?.takeIf { it.isNotBlank() } ?: return null
     val rootThreadId = source.rootThreadChannelId?.takeIf { it.isNotBlank() }
     val threadStreamId = source.threadChannelId?.takeIf { it.isNotBlank() } ?: rootThreadId
-    val opensReplyThread = rootThreadId != null || source.type == KuiklyThreadSurfaceKind.ReplyThread
+    val opensReplyThread = rootThreadId != null || source.type == RaftThreadSurfaceKind.ReplyThread
     if (opensReplyThread) {
         val parentMessageId =
             source.parentMessageId?.takeIf { it.isNotBlank() }
@@ -13189,14 +13189,14 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
             title = ThreadReplyPageTitle,
             subtitle = replyThreadHeaderSubtitle(),
             status = "loading",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = streamId,
             streamChannelId = streamId,
             parentChannelId = source.channelId,
             parentMessageId = parentMessageId,
-            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+            parentSurfaceKind = RaftThreadSurfaceKind.Channel,
             navigationLabel = "Close",
-            selectedTab = KuiklyThreadTab.Chat.wireValue,
+            selectedTab = RaftThreadTab.Chat.wireValue,
             showModeTabs = false,
             showReplyActions = false,
             showOpenInChannelAction = true,
@@ -13212,7 +13212,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
             errorCode = null,
             composer =
                 buildThreadSurfaceComposerPayload(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     displayName = ThreadReplyPageTitle,
                     fallbackId = parentMessageId,
                     enabled = canSend,
@@ -13223,10 +13223,10 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
         )
     }
     val surfaceKind =
-        if (source.routeKind == KuiklyThreadSurfaceKind.DirectMessage) {
-            KuiklyThreadSurfaceKind.DirectMessage
+        if (source.routeKind == RaftThreadSurfaceKind.DirectMessage) {
+            RaftThreadSurfaceKind.DirectMessage
         } else {
-            KuiklyThreadSurfaceKind.Channel
+            RaftThreadSurfaceKind.Channel
         }
     return copy(
         instanceId = "shared-shell-thread-${source.channelId}",
@@ -13238,7 +13238,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
         streamChannelId = source.channelId,
         parentChannelId = null,
         parentMessageId = null,
-        selectedTab = KuiklyThreadTab.Chat.wireValue,
+        selectedTab = RaftThreadTab.Chat.wireValue,
         messages = emptyList(),
         originMessage = null,
         originPreview = null,
@@ -13248,7 +13248,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
         originErrorCode = null,
         errorCode = null,
         composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 surfaceKind = surfaceKind,
                 enabled = canSend,
                 streamChannelId = source.channelId
@@ -13256,7 +13256,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
     ).withLaunchHeaderContext()
 }
 
-private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
+private fun RaftThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }
     messageCandidates.forEach { message ->
         val images = message.attachments.filter { it.isImageAttachment() }
@@ -13268,18 +13268,18 @@ private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentI
     return null
 }
 
-private fun KuiklyThreadScreenPayload.findThreadAttachment(attachmentId: String): KuiklyThreadAttachmentItem? =
+private fun RaftThreadScreenPayload.findThreadAttachment(attachmentId: String): RaftThreadAttachmentItem? =
     (listOfNotNull(originMessage) + messages)
         .asSequence()
         .flatMap { it.attachments.asSequence() }
         .firstOrNull { it.id == attachmentId }
 
-private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
+private fun RaftThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val images =
         items
-            .filter { slockFilePreviewIsImageAttachment(fileName = it.name, mimeType = it.mimeType) }
+            .filter { raftFilePreviewIsImageAttachment(fileName = it.name, mimeType = it.mimeType) }
             .map { item ->
-                KuiklyThreadAttachmentItem(
+                RaftThreadAttachmentItem(
                     id = item.attachmentId,
                     name = item.name,
                     mimeType = item.mimeType,
@@ -13292,9 +13292,9 @@ private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId
     return if (currentIndex >= 0) ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex) else null
 }
 
-private fun KuiklyThreadFilesPayload.findThreadAttachment(attachmentId: String): KuiklyThreadAttachmentItem? =
+private fun RaftThreadFilesPayload.findThreadAttachment(attachmentId: String): RaftThreadAttachmentItem? =
     items.firstOrNull { it.attachmentId == attachmentId }?.let { item ->
-        KuiklyThreadAttachmentItem(
+        RaftThreadAttachmentItem(
             id = item.attachmentId,
             name = item.name,
             mimeType = item.mimeType,
@@ -13304,7 +13304,7 @@ private fun KuiklyThreadFilesPayload.findThreadAttachment(attachmentId: String):
         )
     }
 
-internal fun List<KuiklyPendingAttachmentItem>.composerPendingImageAttachmentGroup(
+internal fun List<RaftPendingAttachmentItem>.composerPendingImageAttachmentGroup(
     attachmentId: String
 ): ThreadImageAttachmentGroup? {
     val cleanAttachmentId = attachmentId.trim()
@@ -13317,7 +13317,7 @@ internal fun List<KuiklyPendingAttachmentItem>.composerPendingImageAttachmentGro
                     attachment.previewUri?.isNotBlank() == true
             }
             .map { attachment ->
-                KuiklyThreadAttachmentItem(
+                RaftThreadAttachmentItem(
                     id = attachment.id,
                     name = attachment.fileName.ifBlank { "Attachment" },
                     mimeType = attachment.mimeType.orEmpty(),
@@ -13340,7 +13340,7 @@ private fun ThreadImagePreviewOverlay(
     state: ThreadImagePreviewState,
     resolvedUrls: Map<String, ThreadImagePreviewUrl>,
     onDismiss: () -> Unit,
-    onOpenExternally: (KuiklyThreadAttachmentItem) -> Unit,
+    onOpenExternally: (RaftThreadAttachmentItem) -> Unit,
     onSelectIndex: (Int) -> Unit
 ) {
     val current = state.current ?: return
@@ -13352,35 +13352,35 @@ private fun ThreadImagePreviewOverlay(
     val failedWithoutImage = current.id in state.failedAttachmentIds && displayUrl == null
     val currentPreviewState by rememberUpdatedState(state)
     val currentOnSelectIndex by rememberUpdatedState(onSelectIndex)
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     val swipeThresholdPx =
         with(LocalDensity.current) {
             56.dp.toPx()
         }
     var menuOpen by remember { mutableStateOf(false) }
-    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    SlockBackHandler(
+    var menuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    RaftBackHandler(
         enabled = !menuOpen,
         label = "thread_image_preview",
         onBack = onDismiss
     )
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SlockTopPageHeader(
+            RaftTopPageHeader(
                 title = stringResource(MR.strings.thread_image_preview_title),
                 subtitle = null,
-                iconName = SlockLucideIconName.Image,
-                backgroundColor = SlockColor.Canvas,
+                iconName = RaftLucideIconName.Image,
+                backgroundColor = RaftColor.Canvas,
                 leadingContent = {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.ArrowLeft,
+                    RaftBrutalIconButton(
+                        iconName = RaftLucideIconName.ArrowLeft,
                         onClick = onDismiss,
                         size = 30.dp,
                         shadowOffset = 2.dp
                     )
                 },
                 trailingContent = {
-                    SlockFilePreviewOverflowMenuButton(
+                    RaftFilePreviewOverflowMenuButton(
                         onOpenMenu = { anchor ->
                             menuAnchor = anchor
                             menuOpen = true
@@ -13394,18 +13394,18 @@ private fun ThreadImagePreviewOverlay(
                     modifier = Modifier.fillMaxWidth()
                         .weight(1f)
                         .padding(
-                            start = SlockSpacing.Md,
-                            top = SlockSpacing.Md,
-                            end = SlockSpacing.Md,
-                            bottom = SlockSpacing.Md + previewBottomPadding
+                            start = RaftAppSpacing.Md,
+                            top = RaftAppSpacing.Md,
+                            end = RaftAppSpacing.Md,
+                            bottom = RaftAppSpacing.Md + previewBottomPadding
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize()
-                            .slockThemedCorners(SlockRadius.Container)
-                            .background(SlockImagePreviewLetterboxColor, RoundedCornerShape(SlockRadius.Container))
-                            .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Container))
+                            .raftThemedCorners(RaftAppRadius.Container)
+                            .background(RaftImagePreviewLetterboxColor, RoundedCornerShape(RaftAppRadius.Container))
+                            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
                             .then(
                                 if (hasMultiple) {
                                     Modifier.pointerInput(state.currentIndex, state.images.size) {
@@ -13434,7 +13434,7 @@ private fun ThreadImagePreviewOverlay(
                             )
                     ) {
                         if (displayUrl != null) {
-                            SlockCachedImage(
+                            RaftCachedImage(
                                 source = displayUrl,
                                 contentDescription = current.name,
                                 contentScale = ContentScale.Fit,
@@ -13475,7 +13475,7 @@ private fun ThreadImagePreviewOverlay(
                     LazyRow(
                         modifier = Modifier.fillMaxWidth()
                             .height(74.dp + bottomSafeArea)
-                            .background(SlockColor.SurfaceWhite)
+                            .background(RaftColor.SurfaceWhite)
                             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -13493,15 +13493,15 @@ private fun ThreadImagePreviewOverlay(
             }
         }
         if (menuOpen && menuAnchor != null) {
-            SlockRaftUiControlledMenu(
+            RaftUiControlledMenu(
                 expanded = menuOpen,
                 anchor = menuAnchor!!,
                 items =
                     listOf(
-                        SlockRaftUiMenuItem(
+                        RaftUiMenuItem(
                             id = ThreadAttachmentPreviewOpenWithActionId,
                             label = stringResource(MR.strings.thread_image_preview_open_with),
-                            icon = SlockLucideIconName.ExternalLink
+                            icon = RaftLucideIconName.ExternalLink
                         )
                     ),
                 onSelect = { id ->
@@ -13521,23 +13521,23 @@ private fun ThreadImagePreviewOverlay(
 private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
     Column(
         modifier = Modifier.widthIn(max = 260.dp)
-            .slockRaftCardSurface()
+            .raftCardSurface()
             .padding(18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(34.dp), color = "#FF000000")
+        RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(34.dp), color = "#FF000000")
         Text(
             text = title,
-            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = detail,
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -13548,14 +13548,14 @@ private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
 private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .slockRaftCardSurface()
+            .raftCardSurface()
             .padding(horizontal = 10.dp, vertical = 5.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = stringResource(MR.strings.thread_image_preview_loading_full),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1
         )
     }
@@ -13572,24 +13572,24 @@ private fun ThreadImagePreviewNavigationPill(
 ) {
     Row(
         modifier = modifier
-            .slockRaftCardSurface()
+            .raftCardSurface()
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         ThreadImagePreviewInlineNavButton(
-            icon = SlockLucideIconName.ChevronLeft,
+            icon = RaftLucideIconName.ChevronLeft,
             enabled = canGoPrevious,
             onClick = onPrevious
         )
         Text(
             text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1
         )
         ThreadImagePreviewInlineNavButton(
-            icon = SlockLucideIconName.ChevronRight,
+            icon = RaftLucideIconName.ChevronRight,
             enabled = canGoNext,
             onClick = onNext
         )
@@ -13598,7 +13598,7 @@ private fun ThreadImagePreviewNavigationPill(
 
 @Composable
 private fun ThreadImagePreviewInlineNavButton(
-    icon: SlockLucideIconName,
+    icon: RaftLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -13609,13 +13609,13 @@ private fun ThreadImagePreviewInlineNavButton(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+        RaftLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
     }
 }
 
 @Composable
 private fun ThreadImagePreviewThumbnail(
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     selected: Boolean,
     resolvedUrl: String?,
     onClick: () -> Unit
@@ -13625,56 +13625,56 @@ private fun ThreadImagePreviewThumbnail(
         onClick = onClick,
         pressOffset = 2.dp,
         modifier = Modifier.size(54.dp)
-            .background(if (selected) SlockColor.Brand else SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
-            .border(SlockStroke.Control, if (selected) SlockColor.StickerInk else SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
+            .background(if (selected) RaftColor.Brand else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
+            .border(RaftAppStroke.Control, if (selected) RaftColor.StickerInk else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
             .padding(if (selected) 3.dp else 1.dp)
     ) {
         Box(
             modifier = Modifier.fillMaxSize()
-                .slockThemedCorners(SlockRadius.Chip)
-                .background(SlockImagePreviewLetterboxColor, RoundedCornerShape(SlockRadius.Chip))
-                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Chip)),
+                .raftThemedCorners(RaftAppRadius.Chip)
+                .background(RaftImagePreviewLetterboxColor, RoundedCornerShape(RaftAppRadius.Chip))
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Chip)),
             contentAlignment = Alignment.Center
         ) {
             if (source != null) {
-                SlockAspectFitImagePreviewSurface(
+                RaftAspectFitImagePreviewSurface(
                     source = source,
                     contentDescription = attachment.name,
                     modifier = Modifier.fillMaxSize(),
                     borderWidth = 0.dp,
-                    contentScale = SlockImageThumbnailContentScale
+                    contentScale = RaftImageThumbnailContentScale
                 )
             } else {
-                SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
+                RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
             }
         }
     }
 }
 
-internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
+internal fun RaftThreadScreenPayload.replyThreadLoadingPayload(
     parentMessageId: String,
     parentChannelId: String?,
     threadChannelId: String?,
     focusedMessageId: String? = null
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val knownParentMessageId = parentMessageId.takeIf { it.isNotBlank() }
     val knownThreadChannelId = threadChannelId?.takeIf { it.isNotBlank() }
     val resolvedParentSurfaceKind =
         when {
-            surfaceKind == KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            channelKind.equals("dm", ignoreCase = true) -> KuiklyThreadSurfaceKind.DirectMessage
-            memberScopedMentions && parentChannelId.isNullOrBlank() -> KuiklyThreadSurfaceKind.DirectMessage
-            else -> KuiklyThreadSurfaceKind.Channel
+            surfaceKind == RaftThreadSurfaceKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+            channelKind.equals("dm", ignoreCase = true) -> RaftThreadSurfaceKind.DirectMessage
+            memberScopedMentions && parentChannelId.isNullOrBlank() -> RaftThreadSurfaceKind.DirectMessage
+            else -> RaftThreadSurfaceKind.Channel
         }
     val resolvedParentChannelKind =
-        if (resolvedParentSurfaceKind == KuiklyThreadSurfaceKind.Channel) {
+        if (resolvedParentSurfaceKind == RaftThreadSurfaceKind.Channel) {
             channelKind.normalizedThreadChannelKind()
         } else {
             null
         }
     val composer =
         buildThreadSurfaceComposerPayload(
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             displayName = ThreadReplyPageTitle,
             fallbackId = knownParentMessageId.orEmpty(),
             enabled = canSend,
@@ -13687,7 +13687,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         title = ThreadReplyPageTitle,
         subtitle = replyThreadHeaderSubtitle(),
         status = "loading",
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
         sourceThreadId = knownThreadChannelId,
         streamChannelId = knownThreadChannelId,
         parentChannelId = parentChannelId,
@@ -13713,9 +13713,9 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
+internal fun RaftThreadScreenPayload.parentMessageContextLoadingPayload(
     parentMessageId: String
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val focusedParentMessageId = parentMessageId.takeIf { it.isNotBlank() }
         ?: originParentMessageId?.takeIf { it.isNotBlank() }
         ?: this.parentMessageId?.takeIf { it.isNotBlank() }
@@ -13723,17 +13723,17 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
     val parentSurfaceKind =
         this.parentSurfaceKind.parsedThreadParentSurfaceKindOrNull()
             ?: if (channelKind.equals("dm", ignoreCase = true) || memberScopedMentions && parentThreadId == null) {
-                KuiklyThreadSurfaceKind.DirectMessage
+                RaftThreadSurfaceKind.DirectMessage
             } else {
-                KuiklyThreadSurfaceKind.Channel
+                RaftThreadSurfaceKind.Channel
             }
     val resolvedParentChannelKind =
-        if (parentSurfaceKind == KuiklyThreadSurfaceKind.Channel) {
+        if (parentSurfaceKind == RaftThreadSurfaceKind.Channel) {
             parentChannelKind.normalizedThreadChannelKind()
                 ?: channelKind.normalizedThreadChannelKind()
-                ?: KuiklyThreadSurfaceKind.Channel
+                ?: RaftThreadSurfaceKind.Channel
         } else {
-            KuiklyThreadSurfaceKind.DirectMessage
+            RaftThreadSurfaceKind.DirectMessage
         }
     return copy(
         instanceId = parentThreadId?.let { "shared-shell-thread-$it" }
@@ -13753,7 +13753,7 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         originParentMessageId = null,
         focusedMessageId = focusedParentMessageId,
         navigationLabel = "Back",
-        selectedTab = KuiklyThreadTab.Chat.wireValue,
+        selectedTab = RaftThreadTab.Chat.wireValue,
         showModeTabs = true,
         showReplyActions = true,
         showOpenInChannelAction = false,
@@ -13766,7 +13766,7 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         canLoadMoreAfter = false,
         errorCode = null,
         composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 surfaceKind = parentSurfaceKind,
                 enabled = canSend,
                 streamChannelId = parentThreadId
@@ -13776,7 +13776,7 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
     ).withLaunchHeaderContext()
 }
 
-private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
+private fun RaftThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
 
 private fun String.toSharedThreadTaskStatus(): TaskStatus? =
@@ -13799,7 +13799,7 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 
 
 
-private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
+private fun RaftThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
     val resolvedComposer = resolveThreadComposer()
     return resolvedComposer.mentionChannelId.nonBlank()
         ?: resolvedAuxiliaryThreadId()
@@ -13809,10 +13809,10 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
         ?: parentChannelId.nonBlank()
 }
 
-internal fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
+internal fun RaftThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> false
-        KuiklyThreadSurfaceKind.ReplyThread ->
+        RaftThreadSurfaceKind.DirectMessage -> false
+        RaftThreadSurfaceKind.ReplyThread ->
             typedReplyParentConversationKindOrNull(
                 parentSurfaceKind,
                 parentChannelKind
@@ -13820,11 +13820,11 @@ internal fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boo
         else -> memberScopedMentions
     }
 
-internal fun KuiklyThreadScreenPayload.threadComposerMemberSuggestionHeadersVisible(): Boolean =
+internal fun RaftThreadScreenPayload.threadComposerMemberSuggestionHeadersVisible(): Boolean =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> false
-        KuiklyThreadSurfaceKind.ReplyThread ->
-            parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
+        RaftThreadSurfaceKind.DirectMessage -> false
+        RaftThreadSurfaceKind.ReplyThread ->
+            parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() != RaftThreadSurfaceKind.DirectMessage
         else -> true
     }
 
@@ -13856,8 +13856,8 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
 
 
 
-internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
-    KuiklyPendingMentionActionItem(
+internal fun PendingMentionAction.toRaftPendingMentionActionItem(): RaftPendingMentionActionItem =
+    RaftPendingMentionActionItem(
         resolutionId = resolutionId,
         messageId = messageId?.value,
         channelId = channelId?.value,
@@ -13870,7 +13870,7 @@ internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPend
         expiresAt = expiresAt
     )
 
-internal fun KuiklyPendingMentionActionItem.mentionActionDeliveredNotice(
+internal fun RaftPendingMentionActionItem.mentionActionDeliveredNotice(
     action: String,
     channelLabel: String
 ): String {
@@ -13898,11 +13898,11 @@ internal fun formatMentionActionStatusNotice(
     strings: PendingMentionActionBatchStrings
 ): String = result.localizedPendingMentionActionFailure(action = action, strings = strings)
 
-private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
+private fun RaftThreadComposerPayload.withThreadComposerDraftState(
     draftState: SharedThreadComposerDraftState,
-    renderedPayload: KuiklyThreadScreenPayload,
+    renderedPayload: RaftThreadScreenPayload,
     resolvedAuxiliaryThreadId: String?
-): KuiklyThreadComposerPayload {
+): RaftThreadComposerPayload {
     val projectedPendingAttachments = pendingAttachments.map { attachment ->
         SharedThreadComposerAttachment(
             id = attachment.id,
@@ -13929,7 +13929,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
             .filterNot { attachment -> attachment.id in draftState.removedAttachmentIds }
     val pendingAttachmentItems =
         pendingAttachments.map { attachment ->
-            KuiklyPendingAttachmentItem(
+            RaftPendingAttachmentItem(
                 id = attachment.id,
                 fileName = attachment.fileName,
                 sizeLabel = attachment.sizeLabel,
@@ -13992,7 +13992,7 @@ private class ThreadRouteScaffoldSlots(
 private fun ThreadRouteScaffold(
     slots: ThreadRouteScaffoldSlots
 ) {
-    val surfaceColor = SlockColor.SurfaceWhite
+    val surfaceColor = RaftColor.SurfaceWhite
     key(slots.scaffoldPlan.rootIdentity) {
         Box(
             modifier =
@@ -14014,9 +14014,9 @@ private fun ThreadRouteScaffold(
 @Composable
 private fun ThreadDeferredLoadingRouteContent(
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
-    memberAvatarResolver: SlockMemberAvatarResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver,
     onBack: () -> Unit,
 ) {
     scaffold(
@@ -14043,7 +14043,7 @@ private fun ThreadDeferredLoadingRouteContent(
                         Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
+                            .background(RaftColor.SurfaceWhite)
                 ) {
                     ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
                 }
@@ -14073,7 +14073,7 @@ private class ThreadEventHandler(
 }
 
 /**
- * task #346: state payload of [ThreadPageContent]. See SlockStructuralHomeShellData for why
+ * task #346: state payload of [ThreadPageContent]. See RaftStructuralHomeShellData for why
  * the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
@@ -14085,7 +14085,7 @@ private data class ThreadPageContentData(
     val threadReadAnchorSessionGeneration: Long,
     val routeActive: Boolean,
     val hostForeground: Boolean,
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val messageBodyTextStyle: TextStyle,
     val timelineSlice: ThreadTimelineSlice,
     val accessResolution: ThreadAccessResolution,
@@ -14101,7 +14101,7 @@ private data class ThreadPageContentData(
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     val headerDisplay: ThreadHeaderDisplayModel,
     val composerSurface: ThreadComposerSurface,
-    val baseComposerState: KuiklyThreadComposerPayload,
+    val baseComposerState: RaftThreadComposerPayload,
     val composerDraftViewModel: SharedThreadComposerDraftViewModel,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val resolvedAuxiliaryThreadId: String?,
@@ -14112,8 +14112,8 @@ private data class ThreadPageContentData(
     val filesViewModel: SharedThreadFilesViewModel?,
     val memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     val channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
-    val selectedTab: KuiklyThreadTab,
-    val availableTabs: List<KuiklyThreadTab>,
+    val selectedTab: RaftThreadTab,
+    val availableTabs: List<RaftThreadTab>,
     val activityMuteState: ThreadActivityMuteUiState?,
     val activityMutedIndicatorVisible: Boolean,
     val conversationPinState: ThreadConversationPinUiState?,
@@ -14134,35 +14134,35 @@ private data class ThreadPageContentData(
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
     /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
-    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
-    val adaptiveStoreScope: SlockShellStoreScope,
-    val adaptiveEventBus: SlockEventBus,
+    val adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: RaftShellStoreScope,
+    val adaptiveEventBus: RaftEventBus,
     val onThreadEvent: ThreadEventHandler,
 )
 
 /** task #346: callback payload of [ThreadPageContent]. See ThreadPageContentData. */
 private class ThreadPageContentCallbacks(
     val scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
-    val onSelectedTabChanged: (KuiklyThreadTab) -> Unit,
+    val onSelectedTabChanged: (RaftThreadTab) -> Unit,
     val onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     val onToggleActivityMute: (() -> Unit)?,
     val onToggleConversationPin: (() -> Unit)?,
     val onOpenTaskSummary: (TaskSummary, String) -> Unit,
     val onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     val onFilesAuthRequired: (String?) -> Unit,
-    val onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
-    val onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    val onOpenFilesAttachment: (RaftThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    val onDownloadFilesAttachment: (RaftThreadAttachmentItem) -> Unit,
     val onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
-    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
-    val agentStatusResolver: SlockAgentStatusResolver,
-    val memberAvatarResolver: SlockMemberAvatarResolver,
-    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
+    val agentStatusResolver: RaftAgentStatusResolver,
+    val memberAvatarResolver: RaftMemberAvatarResolver,
+    val memberModelLabelResolver: RaftMemberModelLabelResolver,
     val diagnosticsLogger: (String) -> Unit,
     val onLayoutGeneration: (width: Int, height: Int) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
     val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
     val newDesignSettingsEnabled: () -> Boolean,
-    val mentionHandleResolver: (KuiklyThreadMessageItem) -> String?,
+    val mentionHandleResolver: (RaftThreadMessageItem) -> String?,
     val onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     val onSaveShareImage: suspend (String) -> JSONObject?,
     val onFirstContentReady: () -> Unit,
@@ -14193,7 +14193,7 @@ fun ThreadPageContent(
     threadReadAnchorSessionGeneration: Long,
     routeActive: Boolean,
     hostForeground: Boolean,
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     messageBodyTextStyle: TextStyle,
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
@@ -14209,7 +14209,7 @@ fun ThreadPageContent(
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
-    baseComposerState: KuiklyThreadComposerPayload,
+    baseComposerState: RaftThreadComposerPayload,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     resolvedAuxiliaryThreadId: String?,
@@ -14220,9 +14220,9 @@ fun ThreadPageContent(
     filesViewModel: SharedThreadFilesViewModel?,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
-    selectedTab: KuiklyThreadTab,
-    availableTabs: List<KuiklyThreadTab>,
-    onSelectedTabChanged: (KuiklyThreadTab) -> Unit,
+    selectedTab: RaftThreadTab,
+    availableTabs: List<RaftThreadTab>,
+    onSelectedTabChanged: (RaftThreadTab) -> Unit,
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
     activityMutedIndicatorVisible: Boolean = false,
@@ -14235,14 +14235,14 @@ fun ThreadPageContent(
     onOpenTaskSummary: (TaskSummary, String) -> Unit,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     onFilesAuthRequired: (String?) -> Unit,
-    onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
-    onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    onOpenFilesAttachment: (RaftThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    onDownloadFilesAttachment: (RaftThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
-    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
+    onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     highlightedMentions: Set<String>,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
     diagnosticsLogger: (String) -> Unit = {},
     onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
@@ -14259,16 +14259,16 @@ fun ThreadPageContent(
     newMessageMenuEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
-    mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
+    mentionHandleResolver: (RaftThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onFirstContentReady: () -> Unit = {},
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
     onViewportFollowsLatestChange: (Boolean) -> Unit = {},
-    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
-    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    adaptiveEventBus: SlockEventBus,
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
+    adaptiveEventBus: RaftEventBus,
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onBack: () -> Unit,
@@ -14499,8 +14499,8 @@ private fun ThreadPageContentContent(
     val inlineReplyParticipantsById =
         remember(payload.members, payload.memberCandidates) {
             (payload.members + payload.memberCandidates)
-                .distinctBy(KuiklyThreadMemberItem::id)
-                .associateBy(KuiklyThreadMemberItem::id)
+                .distinctBy(RaftThreadMemberItem::id)
+                .associateBy(RaftThreadMemberItem::id)
         }
     val renderEarlyLoadingShell =
         payload.shouldRenderThreadLoadingShell(
@@ -14512,7 +14512,7 @@ private fun ThreadPageContentContent(
     val shareExportScope = rememberCoroutineScope()
     LaunchedEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
         if (
-            selectedTab != KuiklyThreadTab.Chat &&
+            selectedTab != RaftThreadTab.Chat &&
             payload.isReadyForThreadPerformanceGate()
         ) {
             delay(ThreadLayoutStabilityFrameDelayMs)
@@ -14594,7 +14594,7 @@ private fun ThreadPageContentContent(
     }
     var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
-    var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(SlockForwardPickerFlowState()) }
+    var forwardPickerFlow by remember(threadInstanceKey) { mutableStateOf(RaftForwardPickerFlowState()) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
     var forwardSelectedReceipts by remember(threadInstanceKey) {
@@ -14608,7 +14608,7 @@ private fun ThreadPageContentContent(
     var forwardSuccessBanner by remember(threadInstanceKey) { mutableStateOf<ThreadForwardSuccessBanner?>(null) }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
     var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
-    val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
+    val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == RaftThreadTab.Chat
     val selectableShareMessageIds =
         remember(timelineSlice) {
             timelineSlice.threadSelectableShareMessageIds()
@@ -14640,7 +14640,7 @@ private fun ThreadPageContentContent(
         remember(forwardTargets, forwardSourceServerId, forwardSourceChannelId) {
             forwardTargets
                 .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
-                .map { it.toSlockForwardTargetPickerItem() }
+                .map { it.toRaftForwardTargetPickerItem() }
         }
     LaunchedEffect(
         forwardPickerFlow.sessionKey,
@@ -14651,14 +14651,14 @@ private fun ThreadPageContentContent(
         forwardTargetRepository
     ) {
         val sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect
-        if (forwardPickerFlow.step == SlockForwardPickerStep.Closed) return@LaunchedEffect
+        if (forwardPickerFlow.step == RaftForwardPickerStep.Closed) return@LaunchedEffect
         val requestGeneration = forwardPickerFlow.requestGeneration
         val repository = forwardTargetRepository
         val serverId = forwardSourceServerId
         if (repository == null || serverId == null) {
             forwardPickerFlow =
                 forwardPickerFlow.reduce(
-                    SlockForwardPickerFlowEvent.LoadFailed(
+                    RaftForwardPickerFlowEvent.LoadFailed(
                         generation = requestGeneration,
                         errorCode = "forward_target_repository_unavailable"
                     )
@@ -14670,7 +14670,7 @@ private fun ThreadPageContentContent(
             forwardDirectoryNextCursor = null
             forwardPickerFlow =
                 forwardPickerFlow.reduce(
-                    SlockForwardPickerFlowEvent.LoadFailed(
+                    RaftForwardPickerFlowEvent.LoadFailed(
                         generation = requestGeneration,
                         errorCode = "forward_source_server_changed"
                     )
@@ -14686,7 +14686,7 @@ private fun ThreadPageContentContent(
                 ForwardMessageTargetDirectoryCursor()
             }
         val requestIdentity =
-            SlockForwardPickerRequestIdentity(
+            RaftForwardPickerRequestIdentity(
                 serverId = serverId.value,
                 sessionKey = sessionKey,
                 query = query,
@@ -14753,14 +14753,14 @@ private fun ThreadPageContentContent(
                     if (query.isBlank()) result.data.nextCursor else null
                 forwardDirectoryGeneration += 1
                 forwardPickerFlow =
-                    forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
+                    forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
             }
             is DataResult.Empty -> {
                 if (!append) forwardTargets = emptyList()
                 forwardDirectoryNextCursor = null
                 forwardDirectoryGeneration += 1
                 forwardPickerFlow =
-                    forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
+                    forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadSucceeded(requestGeneration))
             }
             is DataResult.Error -> {
                 if (result.error.code == "forward_directory_snapshot_expired") {
@@ -14768,13 +14768,13 @@ private fun ThreadPageContentContent(
                 }
                 forwardPickerFlow =
                     forwardPickerFlow.reduce(
-                        SlockForwardPickerFlowEvent.LoadFailed(requestGeneration, result.error.code)
+                        RaftForwardPickerFlowEvent.LoadFailed(requestGeneration, result.error.code)
                     )
             }
             is DataResult.NoPermission -> {
                 forwardPickerFlow =
                     forwardPickerFlow.reduce(
-                        SlockForwardPickerFlowEvent.LoadFailed(requestGeneration, result.blocker.code)
+                        RaftForwardPickerFlowEvent.LoadFailed(requestGeneration, result.blocker.code)
                     )
             }
         }
@@ -14817,7 +14817,7 @@ private fun ThreadPageContentContent(
         }
         forwardPickerFlow =
             forwardPickerFlow.reduce(
-                SlockForwardPickerFlowEvent.Open(
+                RaftForwardPickerFlowEvent.Open(
                     sourceContext = threadInstanceKey,
                     serverId = forwardServerId?.value.orEmpty()
                 )
@@ -14834,7 +14834,7 @@ private fun ThreadPageContentContent(
             shareSelectionActive = shareSelectionActive,
             inlineSearchVisible = inlineSearchVisible
         )
-    SlockBackHandler(
+    RaftBackHandler(
         enabled = transientBackTarget != null,
         label = transientBackTarget?.label
     ) {
@@ -14975,8 +14975,8 @@ private fun ThreadPageContentContent(
         )
     }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
-    val composerBottomSafeArea = slockBottomSafeAreaPadding()
-    val composerKeyboardInsetExcludesBottomSafeArea = slockKeyboardInsetExcludesBottomSafeArea()
+    val composerBottomSafeArea = raftBottomSafeAreaPadding()
+    val composerKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
     val primaryFooterReady =
         payload.isThreadPrimaryFooterReady(
             timelineSlice = timelineSlice,
@@ -15131,20 +15131,20 @@ private fun ThreadPageContentContent(
         ) {
             payload.toThreadTimelineRenderConfig()
         }
-    val selectThreadTab: (KuiklyThreadTab) -> Unit = { tab ->
+    val selectThreadTab: (RaftThreadTab) -> Unit = { tab ->
         onSelectedTabChanged(tab)
-        if (tab != KuiklyThreadTab.Chat) {
+        if (tab != RaftThreadTab.Chat) {
             clearShareSelection()
         }
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
     var threadHeaderScrollToTopRequest by remember(threadInstanceKey) { mutableStateOf(0) }
-    val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier, Boolean) -> Unit =
+    val renderThreadTabContent: @Composable (RaftThreadTab, Modifier, Boolean) -> Unit =
         { tab, contentModifier, tabActive ->
         Box(
             modifier = contentModifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
         ) {
             if (renderAccessRetry) {
                 ThreadStateActionMessage(
@@ -15178,7 +15178,7 @@ private fun ThreadPageContentContent(
             } else if (renderEarlyLoadingShell) {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
             } else when (tab) {
-                KuiklyThreadTab.Chat ->
+                RaftThreadTab.Chat ->
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
                         readAnchorOwner = threadReadAnchorOwner,
@@ -15302,18 +15302,18 @@ private fun ThreadPageContentContent(
                         adaptiveStoreScope = adaptiveStoreScope,
                         adaptiveEventBus = adaptiveEventBus
                     )
-                KuiklyThreadTab.Tasks ->
+                RaftThreadTab.Tasks ->
                     ThreadTasksTab(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
                         identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
-                        timeContext = payload.toSlockTimeCapabilities().staticContext(),
+                        timeContext = payload.toRaftTimeCapabilities().staticContext(),
                         onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
                         onIntent = onTasksIntent
                     )
-                KuiklyThreadTab.Files ->
+                RaftThreadTab.Files ->
                     ThreadFilesTab(
                         threadInstanceKey = threadInstanceKey,
                         basePayload = payload,
@@ -15360,9 +15360,9 @@ private fun ThreadPageContentContent(
                             ThreadHeaderSearchAction.ChannelSearch ->
                                 onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
                             ThreadHeaderSearchAction.InlineThreadSearch -> {
-                                if (selectedTab != KuiklyThreadTab.Chat) {
-                                    onSelectedTabChanged(KuiklyThreadTab.Chat)
-                                    onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+                                if (selectedTab != RaftThreadTab.Chat) {
+                                    onSelectedTabChanged(RaftThreadTab.Chat)
+                                    onThreadEvent("selectTab", null, null, RaftThreadTab.Chat.wireValue)
                                 }
                                 inlineSearchVisible = !inlineSearchVisible
                             }
@@ -15410,10 +15410,10 @@ private fun ThreadPageContentContent(
             body = {
             if (jointBillingNotice != JointBillingNotice.None) {
                 val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
-                SlockRaftUiBanner(
+                RaftUiBanner(
                     status =
-                        if (jointBillingNotice == JointBillingNotice.Locked) SlockRaftUiBannerStatus.Destructive
-                        else SlockRaftUiBannerStatus.Warning,
+                        if (jointBillingNotice == JointBillingNotice.Locked) RaftUiBannerStatus.Destructive
+                        else RaftUiBannerStatus.Warning,
                     title =
                         stringResource(
                             if (jointBillingNotice == JointBillingNotice.Locked) MR.strings.joint_billing_locked_title
@@ -15425,14 +15425,14 @@ private fun ThreadPageContentContent(
                         } else {
                             stringResource(MR.strings.joint_over_limit_grace_detail, deadlineLabel ?: "")
                         },
-                    size = SlockRaftUiBannerSize.Medium,
-                    iconName = SlockLucideIconName.TriangleAlert,
+                    size = RaftUiBannerSize.Medium,
+                    iconName = RaftLucideIconName.TriangleAlert,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
             if (payload.showModeTabs) {
-                SlockTabbedScaffold(
-                    tabs = availableTabs.map { it.toSlockTabSpec() },
+                RaftTabbedScaffold(
+                    tabs = availableTabs.map { it.toRaftTabSpec() },
                     selectedKey = selectedTab,
                     onSelectedKeyChange = selectThreadTab,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -15442,7 +15442,7 @@ private fun ThreadPageContentContent(
             } else {
                 renderThreadTabContent(
                     selectedTab,
-                    Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite),
+                    Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite),
                     true
                 )
             }
@@ -15453,7 +15453,7 @@ private fun ThreadPageContentContent(
                 Unit
             } else if (
                 !writeActionsEnabled &&
-                payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                 (replyParentAuthority == ReplyParentAuthorityStatus.Unknown ||
                     replyParentAuthority == ReplyParentAuthorityStatus.ParentDeleted)
             ) {
@@ -15466,7 +15466,7 @@ private fun ThreadPageContentContent(
                 Column(
                     modifier =
                         Modifier.fillMaxWidth()
-                            .slockRaftCardSurface()
+                            .raftCardSurface()
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Text(
@@ -15478,10 +15478,10 @@ private fun ThreadPageContentContent(
                                     else -> MR.strings.thread_parent_authority_resolving
                                 }
                             ),
-                        style = SlockType.Body.copy(
+                        style = RaftType.Body.copy(
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
-                            color = SlockColor.TextBlack.copy(alpha = 0.7f)
+                            color = RaftColor.TextBlack.copy(alpha = 0.7f)
                         )
                     )
                 }
@@ -15510,7 +15510,7 @@ private fun ThreadPageContentContent(
                         selectableCount = selectableShareMessageIds.size,
                         onCancel = clearShareSelection,
                         onSelectAll =
-                            if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                            if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                                 { selectedShareMessageIds = selectableShareMessageIds }
                             } else {
                                 null
@@ -15584,14 +15584,14 @@ private fun ThreadPageContentContent(
                     )
                 }
             } else if (showComposerForSelectedTab) {
-                Column(modifier = Modifier.fillMaxWidth().background(SlockColor.Canvas)) {
-                    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
+                Column(modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas)) {
+                    Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
                     Box(
                         modifier = Modifier.fillMaxWidth()
                             .padding(
-                                start = SlockSpacing.Sm,
+                                start = RaftAppSpacing.Sm,
                                 top = 12.dp,
-                                end = SlockSpacing.Sm,
+                                end = RaftAppSpacing.Sm,
                                 bottom =
                                     threadComposerBottomPadding(
                                         keyboardInsetDp = composerKeyboardInsetDp,
@@ -15641,9 +15641,9 @@ private fun ThreadPageContentContent(
             overlays = {
         ThreadComposerSuggestionPortalHost(composerSuggestionPortal)
         val visibleForwardPickerSession = forwardPickerFlow.sessionKey
-        val forwardPickerBottomSafeArea = slockBottomSafeAreaPadding()
+        val forwardPickerBottomSafeArea = raftBottomSafeAreaPadding()
         if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
-                SlockForwardTargetPicker(
+                RaftForwardTargetPicker(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
@@ -15651,15 +15651,15 @@ private fun ThreadPageContentContent(
                     // Keep the search field composed while results load: swapping it
                     // for the read-only placeholder destroys the focused field and
                     // closes the IME on every keystroke (verify feedback #255).
-                    searchInputInteractive = forwardPickerFlow.step == SlockForwardPickerStep.Targets,
+                    searchInputInteractive = forwardPickerFlow.step == RaftForwardPickerStep.Targets,
                     bottomSafeArea = forwardPickerBottomSafeArea,
                     state =
-                        SlockForwardTargetPickerUiState(
+                        RaftForwardTargetPickerUiState(
                             sessionKey = visibleForwardPickerSession,
                             query = forwardPickerFlow.query,
                             items = forwardTargetItems,
                             selectedKey = forwardPickerFlow.selectedKey,
-                            selectedItems = forwardSelectedReceipts.map { it.target.toSlockForwardTargetPickerItem() },
+                            selectedItems = forwardSelectedReceipts.map { it.target.toRaftForwardTargetPickerItem() },
                             loadState = forwardPickerFlow.loadState,
                             errorCode = forwardPickerFlow.errorCode,
                             canLoadMore = forwardDirectoryNextCursor != null,
@@ -15670,52 +15670,52 @@ private fun ThreadPageContentContent(
                         ),
                     onIntent = { intent ->
                         when (intent) {
-                            is SlockForwardTargetPickerIntent.QueryChanged -> {
+                            is RaftForwardTargetPickerIntent.QueryChanged -> {
                                 forwardPickerFlow.sessionKey?.let { session ->
                                     forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
                                 }
                                 forwardPickerFlow =
                                     forwardPickerFlow.reduce(
-                                        SlockForwardPickerFlowEvent.QueryChanged(intent.query)
+                                        RaftForwardPickerFlowEvent.QueryChanged(intent.query)
                                     )
                                 forwardDirectoryNextCursor = null
                             }
-                            SlockForwardTargetPickerIntent.Retry -> {
+                            RaftForwardTargetPickerIntent.Retry -> {
                                 forwardPickerFlow =
                                     forwardPickerFlow.reduce(
-                                        SlockForwardPickerFlowEvent.Retry(
+                                        RaftForwardPickerFlowEvent.Retry(
                                             appending = forwardPickerFlow.query.isBlank() && forwardDirectoryNextCursor != null
                                         )
                                     )
                             }
-                            SlockForwardTargetPickerIntent.LoadMore -> {
+                            RaftForwardTargetPickerIntent.LoadMore -> {
                                 if (forwardDirectoryNextCursor != null && !forwardPickerFlow.appending) {
                                     forwardPickerFlow =
-                                        forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.LoadMore)
+                                        forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadMore)
                                 }
                             }
-                            SlockForwardTargetPickerIntent.Dismiss -> {
+                            RaftForwardTargetPickerIntent.Dismiss -> {
                                 forwardPickerFlow.sessionKey?.let { session ->
                                     forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
                                 }
-                                forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
+                                forwardPickerFlow = forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Dismiss)
                                 forwardMessageIds = emptySet()
                                 activeModal = null
                             }
-                            SlockForwardTargetPickerIntent.Continue -> {
-                                val nextFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Continue)
+                            RaftForwardTargetPickerIntent.Continue -> {
+                                val nextFlow = forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Continue)
                                 forwardPickerFlow = nextFlow
-                                if (nextFlow.step == SlockForwardPickerStep.Note) {
+                                if (nextFlow.step == RaftForwardPickerStep.Note) {
                                     if (forwardRequestId == null) {
                                         forwardRequestId = newThreadForwardRequestId()
                                     }
                                     activeModal = "forwardNote"
                                 }
                             }
-                            is SlockForwardTargetPickerIntent.RemoveSelection -> {
+                            is RaftForwardTargetPickerIntent.RemoveSelection -> {
                                 forwardPickerFlow =
                                     forwardPickerFlow.reduce(
-                                        SlockForwardPickerFlowEvent.TargetSelected(
+                                        RaftForwardPickerFlowEvent.TargetSelected(
                                             stableKey = intent.stableKey,
                                             renderGeneration = forwardPickerFlow.requestGeneration
                                         )
@@ -15725,10 +15725,10 @@ private fun ThreadPageContentContent(
                                 }
                                 forwardRequestId = null
                             }
-                            is SlockForwardTargetPickerIntent.TargetSelected -> {
+                            is RaftForwardTargetPickerIntent.TargetSelected -> {
                                 val nextFlow =
                                     forwardPickerFlow.reduce(
-                                        SlockForwardPickerFlowEvent.TargetSelected(
+                                        RaftForwardPickerFlowEvent.TargetSelected(
                                             stableKey = intent.item.stableKey,
                                             renderGeneration = intent.renderGeneration
                                         )
@@ -15774,7 +15774,7 @@ private fun ThreadPageContentContent(
                     sending = forwardSending,
                     onNoteChange = { forwardNote = it },
                     onDismiss = {
-                        forwardPickerFlow = forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.NoteBack)
+                        forwardPickerFlow = forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.NoteBack)
                         activeModal = "forwardTargets"
                     },
                     onSend = {
@@ -15833,7 +15833,7 @@ private fun ThreadPageContentContent(
                                                 forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
                                             }
                                             forwardPickerFlow =
-                                                forwardPickerFlow.reduce(SlockForwardPickerFlowEvent.Dismiss)
+                                                forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Dismiss)
                                             forwardSelectedReceipts = emptyList()
                                             forwardRequestId = null
                                             forwardMessageIds = emptySet()
@@ -15854,7 +15854,7 @@ private fun ThreadPageContentContent(
                                                         .map { it.target.threadForwardSelectionKey() }
                                                         .toSet()
                                                     forwardPickerFlow = forwardPickerFlow.reduce(
-                                                        SlockForwardPickerFlowEvent.ClearSelected(
+                                                        RaftForwardPickerFlowEvent.ClearSelected(
                                                             stableKeys = forwardPickerFlow.selectedKeys - failedKeys
                                                         )
                                                     )
@@ -15890,7 +15890,7 @@ private fun ThreadPageContentContent(
         }
         when (activeModal) {
             "settings" -> {
-                if (payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                     ThreadDirectMessageSettingsModal(
                         activityMuteState = activityMuteState,
                         conversationPinState = conversationPinState,
@@ -15970,13 +15970,13 @@ private fun ThreadPageContentContent(
 @Composable
 internal fun ThreadPageHeader(
     agentFollowersHeader: @Composable () -> Unit = {},
-    payload: KuiklyThreadScreenPayload,
+    payload: RaftThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
-    originMessage: KuiklyThreadMessageItem? = payload.originMessage,
+    originMessage: RaftThreadMessageItem? = payload.originMessage,
     originReplyCount: Int = 0,
     activityMutedIndicatorVisible: Boolean = payload.threadActivityMutedIndicatorVisible(null),
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
     showActions: Boolean = true,
     onBack: () -> Unit,
@@ -15996,9 +15996,9 @@ internal fun ThreadPageHeader(
     threadFollowed: Boolean? = null,
     onToggleThreadFollow: (() -> Unit)? = null,
 ) {
-    val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
     val replyThreadPreviewTitle =
-        if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle) {
+        if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle) {
             replyThreadHeaderPreviewTitle(
                 origin = originMessage,
                 imageLabel = stringResource(MR.strings.thread_reply_title_preview_image),
@@ -16009,7 +16009,7 @@ internal fun ThreadPageHeader(
         }
     val replyThreadReplyCountLabel =
         when {
-            headerDisplay.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || originReplyCount <= 0 -> null
+            headerDisplay.surfaceKind != RaftThreadSurfaceKind.ReplyThread || originReplyCount <= 0 -> null
             originReplyCount == 1 -> stringResource(MR.strings.thread_inline_reply_count_one)
             else -> stringResource(MR.strings.thread_inline_reply_count_many, originReplyCount)
         }
@@ -16023,40 +16023,40 @@ internal fun ThreadPageHeader(
             localizedDirectMessage = stringResource(MR.strings.thread_direct_message_title)
         )
     val resolvedDmPeerAvatarWireValue =
-        rememberSlockMemberAvatarWireValue(
+        rememberRaftMemberAvatarWireValue(
             memberAvatarResolver,
             headerDisplay.dmPeerIdentity?.memberId?.value
         )
     val dmAgentActivity =
-        rememberSlockAgentStatusIndicatorState(
+        rememberRaftAgentStatusIndicatorState(
             agentStatusResolver = agentStatusResolver,
             memberId = headerDisplay.dmAgentActivityMemberId()
         )
     val showHeaderActions =
         showActions &&
             (
-                headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                     payload.threadHeaderSearchAction() != null ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
                     payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
-    SlockTopPageHeader(
+    RaftTopPageHeader(
         title = localizedHeaderTitle,
-        backgroundColor = SlockColor.Canvas,
+        backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
         contentSpacing = ThreadHeaderContentSpacing,
         leadingContent = {
-            SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+            RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
         },
         titleLeadingContent = {
-            if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     avatarLabel = headerDisplay.dmPeerAvatarLabel,
                     cacheSubject =
                         headerDisplay.dmPeerIdentity?.let { identity ->
-                            slockMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
+                            raftMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
                         },
                     cacheServerId = headerDisplay.dmPeerIdentity?.sourceServerId?.value,
                     onClick =
@@ -16066,7 +16066,7 @@ internal fun ThreadPageHeader(
                 )
             } else if (payload.showModeTabs) {
                 Box(modifier = Modifier.padding(end = ThreadHeaderChannelTitleGapExtra)) {
-                    SlockChannelIdentityTile(
+                    RaftChannelIdentityTile(
                         channelKind = headerDisplay.channelKind,
                         onPublicPage = headerDisplay.channelOnPublicPage
                     )
@@ -16089,14 +16089,14 @@ internal fun ThreadPageHeader(
                     Text(
                         text = localizedHeaderTitle,
                         // raft-ui `PanelTitle`: text-headline (17/22 bold).
-                        style = SlockType.PageTitle.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.PageTitle.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.Channel) {
-                        SlockExternalBridgeBadge(headerDisplay.bridgeProvider)
+                    if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel) {
+                        RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
                     }
                     if (activityMutedIndicatorVisible) {
                         ThreadActivityMutedBadge()
@@ -16107,8 +16107,8 @@ internal fun ThreadPageHeader(
                     Text(
                         text = it,
                         // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
-                        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                        color = SlockColor.ForegroundHint,
+                        style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -16124,16 +16124,16 @@ internal fun ThreadPageHeader(
                 ) {
                     agentFollowersHeader()
                     if (payload.threadHeaderSearchAction() != null) {
-                        ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
+                        ThreadHeaderIconButton(icon = RaftLucideIconName.Search, onClick = onOpenSearch)
                     }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
-                        ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
+                        ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
                     }
                     if (payload.showMembersAction) {
                         ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
-                        ThreadHeaderIconButton(icon = SlockLucideIconName.MapPin, onClick = onOpenInChannel)
+                        ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
                     }
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu = toggleFocus != null || onToggleThreadFollow != null
@@ -16166,15 +16166,15 @@ private fun ThreadActivityMutedBadge() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.BellOff,
+        RaftLucideIcon(
+            RaftLucideIconName.BellOff,
             Modifier.size(11.dp),
-            color = slockArgbHex(SlockColor.ForegroundHint)
+            color = raftArgbHex(RaftColor.ForegroundHint)
         )
         Text(
             text = stringResource(MR.strings.member_label_muted),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
-            color = SlockColor.ForegroundHint,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
+            color = RaftColor.ForegroundHint,
             maxLines = 1
         )
     }
@@ -16188,10 +16188,10 @@ internal fun localizedThreadHeaderTitle(
     localizedDirectMessage: String
 ): String =
     when {
-        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
             title == ThreadReplyPageTitle -> localizedReplyThread
-        surfaceKind == KuiklyThreadSurfaceKind.Channel && title == "Channel" -> localizedChannel
-        surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
+        surfaceKind == RaftThreadSurfaceKind.Channel && title == "Channel" -> localizedChannel
+        surfaceKind == RaftThreadSurfaceKind.DirectMessage &&
             title == "Direct Message" -> localizedDirectMessage
         else -> title
     }
@@ -16199,7 +16199,7 @@ internal fun localizedThreadHeaderTitle(
 internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
     dmPeerIdentity
         ?.takeIf {
-            surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
+            surfaceKind == RaftThreadSurfaceKind.DirectMessage &&
                 it.kind == MemberKind.Agent
         }
         ?.memberId
@@ -16208,16 +16208,16 @@ internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
         ?.takeIf(String::isNotBlank)
 
 @Composable
-private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
+private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
     Row(
         modifier =
             Modifier
                 .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
                 .semantics { contentDescription = state.label },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
-        SlockStatusIndicator(
+        RaftStatusIndicator(
             color = state.color,
             size = ThreadHeaderDmAgentActivityDotSize,
             pulsing = state.pulsing
@@ -16225,11 +16225,11 @@ private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
         Text(
             text = state.label,
             style =
-                SlockType.Caption.copy(
-                    color = SlockColor.ForegroundHint,
-                    fontFamily = SlockMonoFamily
+                RaftType.Caption.copy(
+                    color = RaftColor.ForegroundHint,
+                    fontFamily = RaftMonoFamily
                 ),
-            color = SlockColor.ForegroundHint,
+            color = RaftColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -16237,44 +16237,44 @@ private fun ThreadDmAgentActivity(state: SlockAgentStatusIndicatorState) {
 }
 
 @Composable
-internal fun SlockChannelIdentityTile(
+internal fun RaftChannelIdentityTile(
     channelKind: String?,
     tileSize: Dp = ThreadHeaderChannelTileSize,
     iconSize: Dp = ThreadHeaderChannelIconSize,
     onPublicPage: Boolean = false
 ) {
     // raft-ui `PanelHeaderIcon`: Source Yellow sticker, sticker radius, 1.5dp sticker-ink edge.
-    val shape = RoundedCornerShape(SlockRadius.Sticker)
+    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
     Box(
         modifier = Modifier.size(tileSize)
-            .background(SlockColor.Brand, shape)
-            .border(SlockStroke.Control, SlockColor.StickerInk, shape),
+            .background(RaftColor.Brand, shape)
+            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
         contentAlignment = Alignment.Center
     ) {
         if (onPublicPage) {
-            build.raft.app.components.SlockHashGlobeIcon(size = iconSize, color = slockArgbHex(SlockColor.StickerInk))
+            build.raft.app.components.RaftHashGlobeIcon(size = iconSize, color = raftArgbHex(RaftColor.StickerInk))
         } else {
-            SlockLucideIcon(
+            RaftLucideIcon(
                 channelKind.threadChannelHeaderIcon(),
                 modifier = Modifier.size(iconSize),
-                color = slockArgbHex(SlockColor.StickerInk)
+                color = raftArgbHex(RaftColor.StickerInk)
             )
         }
     }
 }
 
-internal fun String?.threadChannelHeaderIcon(): SlockLucideIconName =
+internal fun String?.threadChannelHeaderIcon(): RaftLucideIconName =
     when (this?.lowercase()) {
-        "private" -> SlockLucideIconName.Lock
-        "joint" -> SlockLucideIconName.GitBranch
-        else -> SlockLucideIconName.Hash
+        "private" -> RaftLucideIconName.Lock
+        "joint" -> RaftLucideIconName.GitBranch
+        else -> RaftLucideIconName.Hash
     }
 
 @Composable
 private fun ThreadDmPeerAvatarTile(
     avatarWireValue: String?,
     avatarLabel: String,
-    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
+    cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     onClick: (() -> Unit)? = null
 ) {
@@ -16284,11 +16284,11 @@ private fun ThreadDmPeerAvatarTile(
                 .size(ThreadHeaderChannelTileSize)
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
             avatarSize = ThreadHeaderChannelTileSize,
-            borderWidth = SlockStroke.Default,
+            borderWidth = RaftAppStroke.Default,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId
         )
@@ -16296,21 +16296,21 @@ private fun ThreadDmPeerAvatarTile(
 }
 
 @Composable
-private fun ThreadHeaderIconButton(icon: SlockLucideIconName, onClick: () -> Unit) {
+private fun ThreadHeaderIconButton(icon: RaftLucideIconName, onClick: () -> Unit) {
     ThreadHeaderCompactAction(icon = icon, onClick = onClick)
 }
 
 @Composable
 private fun ThreadComposerRoute(
-    baseComposerState: KuiklyThreadComposerPayload,
+    baseComposerState: RaftThreadComposerPayload,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
-    renderedPayload: KuiklyThreadScreenPayload,
+    renderedPayload: RaftThreadScreenPayload,
     timelineSlice: ThreadTimelineSlice,
     resolvedAuxiliaryThreadId: String?,
     surface: ThreadComposerSurface,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
@@ -16318,7 +16318,7 @@ private fun ThreadComposerRoute(
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit,
-    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+    adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
@@ -16428,12 +16428,12 @@ internal fun threadComposerEditorReadyToMount(
 private fun ThreadComposerContentWithSuggestions(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
-    threadMessages: List<KuiklyThreadMessageItem>,
-    originMessage: KuiklyThreadMessageItem?,
+    threadMessages: List<RaftThreadMessageItem>,
+    originMessage: RaftThreadMessageItem?,
     prioritizeThreadParticipants: Boolean,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
@@ -16443,7 +16443,7 @@ private fun ThreadComposerContentWithSuggestions(
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp,
-    adaptiveNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+    adaptiveNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
@@ -16458,7 +16458,7 @@ private fun ThreadComposerContentWithSuggestions(
             memberSuggestionSlice.suggestions
                 .sortForThreadMentionParticipants(threadParticipantRanks)
                 .map { suggestion ->
-                    KuiklyComposerMemberItem(
+                    RaftComposerMemberItem(
                         displayName = suggestion.displayName,
                         handle = suggestion.handle,
                         inMentionChannel = suggestion.inMentionChannel,
@@ -16477,14 +16477,14 @@ private fun ThreadComposerContentWithSuggestions(
     val loadedChannelSuggestions =
         remember(channelSuggestionSlice.suggestions) {
             channelSuggestionSlice.suggestions.map { suggestion ->
-                KuiklyComposerChannelItem(
+                RaftComposerChannelItem(
                     name = suggestion.name,
                     subtitle = suggestion.subtitle
                 )
             }
         }
-    var retainedMemberSuggestions by remember(surface) { mutableStateOf(emptyList<KuiklyComposerMemberItem>()) }
-    var retainedChannelSuggestions by remember(surface) { mutableStateOf(emptyList<KuiklyComposerChannelItem>()) }
+    var retainedMemberSuggestions by remember(surface) { mutableStateOf(emptyList<RaftComposerMemberItem>()) }
+    var retainedChannelSuggestions by remember(surface) { mutableStateOf(emptyList<RaftComposerChannelItem>()) }
     LaunchedEffect(loadedMemberSuggestions, memberSuggestionSlice.status) {
         if (loadedMemberSuggestions.isNotEmpty() || memberSuggestionSlice.status == SharedMembersLoadStatus.Loaded) {
             retainedMemberSuggestions = loadedMemberSuggestions
@@ -16538,13 +16538,13 @@ private fun ThreadComposerContentWithSuggestions(
     )
 }
 
-internal fun KuiklyThreadScreenPayload.shouldPrioritizeThreadMentionParticipants(): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+internal fun RaftThreadScreenPayload.shouldPrioritizeThreadMentionParticipants(): Boolean =
+    surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
         parentChannelId.nonBlank() != null
 
 internal fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipants(
-    threadMessages: List<KuiklyThreadMessageItem>,
-    originMessage: KuiklyThreadMessageItem? = null,
+    threadMessages: List<RaftThreadMessageItem>,
+    originMessage: RaftThreadMessageItem? = null,
     prioritizeThreadParticipants: Boolean
 ): List<SharedMembersMemberSuggestion> {
     val ranks =
@@ -16584,15 +16584,15 @@ private fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipants
 }
 
 private fun threadMentionParticipantRanks(
-    threadMessages: List<KuiklyThreadMessageItem>,
-    originMessage: KuiklyThreadMessageItem?,
+    threadMessages: List<RaftThreadMessageItem>,
+    originMessage: RaftThreadMessageItem?,
     prioritizeThreadParticipants: Boolean
 ): Map<String, Int> {
     if (!prioritizeThreadParticipants || (threadMessages.isEmpty() && originMessage == null)) return emptyMap()
     return (listOfNotNull(originMessage) + threadMessages).recentThreadParticipantRanks()
 }
 
-private fun List<KuiklyThreadMessageItem>.recentThreadParticipantRanks(): Map<String, Int> {
+private fun List<RaftThreadMessageItem>.recentThreadParticipantRanks(): Map<String, Int> {
     val ranks = LinkedHashMap<String, Int>()
     val seenAuthorIds = mutableSetOf<String>()
     var nextRank = 0
@@ -16655,11 +16655,11 @@ private fun ThreadHeaderFocusModeMenu(
     onToggleFollow: (() -> Unit)? = null,
     focusEnabled: Boolean = true,
 ) {
-    val anchorRef = remember { SlockLiveRootAnchorRef(identity = "thread_header_focus_mode") }
+    val anchorRef = remember { RaftLiveRootAnchorRef(identity = "thread_header_focus_mode") }
     val items =
         buildList {
             add(
-                SlockBrutalDropdownMenuItem(
+                RaftBrutalDropdownMenuItem(
                     id = FOCUS_MODE_MENU_ITEM_ID,
                     label =
                         stringResource(
@@ -16670,7 +16670,7 @@ private fun ThreadHeaderFocusModeMenu(
                             }
                         ),
                     // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
-                    icon = if (focused) SlockLucideIconName.Square else SlockLucideIconName.Maximize2,
+                    icon = if (focused) RaftLucideIconName.Square else RaftLucideIconName.Maximize2,
                     enabled = focusEnabled
                 )
             )
@@ -16679,7 +16679,7 @@ private fun ThreadHeaderFocusModeMenu(
             // the row is not offered at all rather than shown disabled.
             if (followed != null && onToggleFollow != null) {
                 add(
-                    SlockBrutalDropdownMenuItem(
+                    RaftBrutalDropdownMenuItem(
                         id = FOLLOW_THREAD_MENU_ITEM_ID,
                         label =
                             stringResource(
@@ -16702,31 +16702,31 @@ private fun ThreadHeaderFocusModeMenu(
     // task #180: the EventBus must come from THIS page's own store registry, not from the host.
     // The thread column is a separate Kuikly @Page, so a host-supplied instance does not cross the
     // boundary -- the device trace showed `click_abort reason=eventBus_null` for exactly that reason.
-    // SlockSharedStoreRegistry is keyed by pager bridge id, so each page gets the live bus it can
+    // RaftSharedStoreRegistry is keyed by pager bridge id, so each page gets the live bus it can
     // actually post on (the same path the rest of ThreadPage already uses).
     val localPager = LocalActivity.current.getPager() as Pager
-    val pageEventBus: build.raft.app.data.SlockEventBus =
+    val pageEventBus: build.raft.app.data.RaftEventBus =
         remember(localPager.pagerId) {
-            SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+            RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
-    // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it.
-    // This page's registry key, mirroring what SlockKuiklyChildPage publishes for it. Verified by
+    // This page's registry key, mirroring what RaftChildPage publishes for it.
+    // This page's registry key, mirroring what RaftChildPage publishes for it. Verified by
     // reading PagerData: the host's pageData becomes `rawPageData["param"]` and `pageData.params`
     // reads that back, so `instanceId` is present on both sides. The trace logs both keys so any
     // future divergence is a line comparison rather than a silent zero origin.
-    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
+    val pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
     val pageKey =
         LocalActivity.current.pageData.params
-            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .trim()
             .ifEmpty { "thread-panel" }
     var openRequestId by remember { mutableStateOf<String?>(null) }
     DisposableEffect(pageEventBus, pageKey) {
         val bus = pageEventBus
         val subscription =
-            bus.observe(SLOCK_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
-                if (!slockShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
+            bus.observe(RAFT_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
+                if (!raftShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
                 openRequestId = null
                 val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
                 when (selectedId) {
@@ -16739,53 +16739,53 @@ private fun ThreadHeaderFocusModeMenu(
             // Leaving the page retires the menu; the shell drops a cancel for anything it is not
             // currently showing, so this cannot close another page's menu.
             openRequestId?.let { requestId ->
-                bus.post(SLOCK_SHELL_OVERLAY_REQUEST_EVENT, cancelSlockShellOverlayJson(requestId))
+                bus.post(RAFT_SHELL_OVERLAY_REQUEST_EVENT, cancelRaftShellOverlayJson(requestId))
             }
             subscription.close()
         }
     }
-    SlockBrutalIconButton(
-        iconName = SlockLucideIconName.Ellipsis,
+    RaftBrutalIconButton(
+        iconName = RaftLucideIconName.Ellipsis,
         onClick = {
             // task #180 diagnostics (Argus): unconditional entry log. The previous device run
             // produced ZERO trace lines, which could not distinguish "the click never reached this
             // handler" from "the lines went somewhere else". This line fires before any guard.
-            slockTraceToPlatformLog("SlockShellOverlay", "click_enter")
+            raftTraceToPlatformLog("SlockShellOverlay", "click_enter")
             val bus = pageEventBus
-            val anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)
+            val anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
             if (anchor == null) {
-                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
-                return@SlockBrutalIconButton
+                raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
+                return@RaftBrutalIconButton
             }
             // Already window space: the shell must not convert this again.
             val pageRootAnchor = anchor.rootOffsetOrNull()
             if (pageRootAnchor == null) {
-                slockTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
-                return@SlockBrutalIconButton
+                raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
+                return@RaftBrutalIconButton
             }
             // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
             // space, so add this page's measured window origin (1520 for the thread column, plus the
             // rail when nested). Without it the menu landed at the page-local 384 -- the centre
             // pane's top-left -- instead of 1904 under the button.
-            val pageOrigin = SlockChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
+            val pageOrigin = RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin
             val windowAnchor = pageRootAnchor + pageOrigin
             val requestId = "thread-panel-${anchor.hashCode()}-${items.size}"
             openRequestId = requestId
             // task #180 diagnostics (Argus): point 1 of 3 -- the page posted a request.
-            slockTraceToPlatformLog(
+            raftTraceToPlatformLog(
                 "SlockShellOverlay",
                 "page_post requestId=$requestId pageKey=$pageKey originKey=$pageOriginKey " +
                     "pageOrigin=$pageOrigin windowAnchor=$windowAnchor items=${items.size}"
             )
             bus.post(
-                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
-                SlockShellOverlayRequest(
+                RAFT_SHELL_OVERLAY_REQUEST_EVENT,
+                RaftShellOverlayRequest(
                     requestId = requestId,
                     pageKey = pageKey,
                     anchor = windowAnchor,
                     items =
                         items.map {
-                            SlockShellOverlayItem(
+                            RaftShellOverlayItem(
                                 id = it.id,
                                 label = it.label,
                                 enabled = it.enabled
@@ -16796,9 +16796,9 @@ private fun ThreadHeaderFocusModeMenu(
         },
         enabled = true,
         size = 28.dp,
-        shadowOffset = SlockShadow.BrutalSmall,
+        shadowOffset = RaftShadow.BrutalSmall,
         iconSize = 14.dp,
-        modifier = Modifier.slockCaptureLiveRootAnchor(anchorRef),
+        modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
     )
 }
@@ -16809,7 +16809,7 @@ internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
     ThreadHeaderCompactAction(
-        icon = SlockLucideIconName.Users,
+        icon = RaftLucideIconName.Users,
         onClick = onClick,
         label = count.takeIf { it > 0 }?.toString()
     )
@@ -16824,7 +16824,7 @@ internal fun ThreadHeaderActionButton(
     content: @Composable () -> Unit,
 ) {
     // raft-ui `PanelAction`: ghost head action, no edge and no offset shadow.
-    SlockRaftPanelAction(
+    RaftPanelAction(
         onClick = onClick,
         modifier = modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth),
     ) {
@@ -16836,23 +16836,23 @@ internal fun ThreadHeaderActionButton(
 
 @Composable
 private fun ThreadHeaderCompactAction(
-    icon: SlockLucideIconName,
+    icon: RaftLucideIconName,
     onClick: () -> Unit,
     label: String? = null
 ) {
     ThreadHeaderActionButton(
         onClick = onClick,
         minWidth = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth,
-        horizontalPadding = if (label == null) 0.dp else SlockSpacing.Xs,
+        horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Xs,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            SlockLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = slockArgbHex(SlockColor.TextMuted))
+            RaftLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = raftArgbHex(RaftColor.TextMuted))
             label?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(it, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -16868,25 +16868,25 @@ internal fun threadHeaderChannelTitleGapDp(): Float =
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         onClick = onClick,
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 30.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
+        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
     )
 }
 
 @Composable
 private fun ThreadPageTabs(
-    selectedTab: KuiklyThreadTab,
-    tabs: List<KuiklyThreadTab> = KuiklyThreadTab.entries,
-    onSelect: (KuiklyThreadTab) -> Unit
+    selectedTab: RaftThreadTab,
+    tabs: List<RaftThreadTab> = RaftThreadTab.entries,
+    onSelect: (RaftThreadTab) -> Unit
 ) {
-    SlockTopTabBar(
-        items = tabs.map { it.toSlockTabSpec().toTopTabBarItem() },
+    RaftTopTabBar(
+        items = tabs.map { it.toRaftTabSpec().toTopTabBarItem() },
         selectedKey = selectedTab.toString(),
         onSelectedKeyChange = { key ->
             tabs.firstOrNull { it.toString() == key }?.let(onSelect)
@@ -16896,7 +16896,7 @@ private fun ThreadPageTabs(
 }
 
 internal fun threadHeaderScrollToTopEnabled(surfaceKind: String?, selectedTab: String?): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
         selectedTab?.trim()?.lowercase() == "chat"
 
 internal fun threadHeaderScrollToTopTargetIndex(lazyItemCount: Int): Int? =
@@ -16912,7 +16912,7 @@ internal fun consumeThreadHeaderScrollToTopRequest(
         fence.consume(request)
 
 /**
- * task #346: state payload of [ThreadChatTab]. See SlockStructuralHomeShellData for why
+ * task #346: state payload of [ThreadChatTab]. See RaftStructuralHomeShellData for why
  * the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
@@ -16932,7 +16932,7 @@ private data class ThreadChatTabData(
     val linkedTasksProjection: ThreadLinkedTasksProjection, // Task #258: pass-through to ThreadMessagesList's task detail panel.,
     val taskAssigneeOptions: List<MemberProfile>,
     val highlightedMentions: Set<String>,
-    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
     val pendingActionCardIds: Set<String>,
     val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
@@ -16958,26 +16958,26 @@ private data class ThreadChatTabData(
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
     /** A4 destination contract (task #18, spec §9): non-null when hosted as a detail pane. */
-    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
-    val adaptiveStoreScope: SlockShellStoreScope,
-    val adaptiveEventBus: SlockEventBus,
+    val adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: RaftShellStoreScope,
+    val adaptiveEventBus: RaftEventBus,
 )
 
 /** task #346: callback payload of [ThreadChatTab]. See ThreadChatTabData. */
 private class ThreadChatTabCallbacks(
-    val agentStatusResolver: SlockAgentStatusResolver,
-    val memberAvatarResolver: SlockMemberAvatarResolver,
-    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val agentStatusResolver: RaftAgentStatusResolver,
+    val memberAvatarResolver: RaftMemberAvatarResolver,
+    val memberModelLabelResolver: RaftMemberModelLabelResolver,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
-    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
-    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
+    val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
-    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)?,
     val diagnosticsLogger: (String) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
     val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
@@ -17009,10 +17009,10 @@ fun ThreadChatTab(
     // Task #258: pass-through to ThreadMessagesList's task detail panel.
     taskAssigneeOptions: List<MemberProfile> = emptyList(),
     highlightedMentions: Set<String>,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
-    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
+    inlineReplyParticipantsById: Map<String, RaftThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -17032,11 +17032,11 @@ fun ThreadChatTab(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
-    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
-    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
+    onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
+    quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
@@ -17058,9 +17058,9 @@ fun ThreadChatTab(
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
     onViewportFollowsLatestChange: (Boolean) -> Unit = {},
-    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
-    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    adaptiveEventBus: SlockEventBus,
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
+    adaptiveEventBus: RaftEventBus,
 )
  {
     ThreadChatTabContent(
@@ -17222,7 +17222,7 @@ private fun ThreadChatTabContent(
     val closeReq = adaptiveCloseRequest
     val adaptivePager = LocalActivity.current.getPager() as Pager
     val adaptiveSharedStores = remember(adaptivePager) {
-        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+        RaftSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
     }
     val adaptiveReadyPosted = remember(threadInstanceKey) { mutableStateOf(false) }
     fun postDetailReadyTrace(hop: String, extra: JSONObject.() -> Unit = {}) {
@@ -17256,19 +17256,19 @@ private fun ThreadChatTabContent(
         val request = closeReq ?: return@LaunchedEffect
         if (adaptiveReadyPosted.value) return@LaunchedEffect
         postDetailReadyTrace("effect_enter")
-        when (evaluateSlockAdaptiveReadyGate(
+        when (evaluateRaftAdaptiveReadyGate(
             adaptiveReadyPosted.value,
             timelineSlice.status,
             timelineSlice.messages.size,
         )) {
-            SlockAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
-            SlockAdaptiveReadyGate.StatusBlocked -> {
+            RaftAdaptiveReadyGate.AlreadyPosted -> return@LaunchedEffect
+            RaftAdaptiveReadyGate.StatusBlocked -> {
                 postDetailReadyTrace("status_gate")
                 return@LaunchedEffect
             }
             // Non-empty resolved payload: the list owns anchor restore + READY.
-            SlockAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect
-            SlockAdaptiveReadyGate.ReadyImmediately -> Unit
+            RaftAdaptiveReadyGate.RestoreThenReady -> return@LaunchedEffect
+            RaftAdaptiveReadyGate.ReadyImmediately -> Unit
         }
         adaptiveSharedStores
             .adaptiveWorkspaceStore(adaptiveStoreScope)
@@ -17285,12 +17285,12 @@ private fun ThreadChatTabContent(
         val eventBus = adaptiveEventBus ?: return@LaunchedEffect
         postDetailReadyTrace("ready_post")
         eventBus.post(
-            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventName = RAFT_ADAPTIVE_DETAIL_READY_EVENT,
             eventData =
                 JSONObject()
-                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
-                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+                    .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(RAFT_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
             crossProcess = true,
             source = "adaptive_detail_ready",
         )
@@ -17622,7 +17622,7 @@ private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     )
     val priorityCandidates = orderedCandidates.threadMarkdownPriorityPreparseCandidates()
     if (priorityCandidates.none { candidate ->
-            candidate.body.preparedSlockMarkdownFullRendererContentOrNull() != null
+            candidate.body.preparedRaftMarkdownFullRendererContentOrNull() != null
         }
     ) {
         return emptyThreadMarkdownPreparsePlan()
@@ -17686,7 +17686,7 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
     return ordered.distinctBy { candidate -> candidate.id }
 }
 
-private fun KuiklyThreadMessageItem.threadMarkdownPreparseBody(
+private fun RaftThreadMessageItem.threadMarkdownPreparseBody(
     expandedLongMessageIds: Set<String>,
     longMessageCollapseEnabled: Boolean
 ): String =
@@ -17837,7 +17837,7 @@ private fun emptyThreadMarkdownVisiblePreparsePlan(): ThreadMarkdownVisiblePrepa
 private const val ThreadOriginListItemIndex = 0
 
 /**
- * task #346: state payload of [ThreadMessagesList]. See SlockStructuralHomeShellData for why
+ * task #346: state payload of [ThreadMessagesList]. See RaftStructuralHomeShellData for why
  * the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
@@ -17857,7 +17857,7 @@ private data class ThreadMessagesListData(
     val linkedTasksProjection: ThreadLinkedTasksProjection, // Task #258: server-scoped identity directory for the inline task detail // panel's assignee row (same pool the thread Tasks tab filters use).,
     val taskAssigneeOptions: List<MemberProfile>,
     val highlightedMentions: Set<String>,
-    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
     val pendingActionCardIds: Set<String>,
     val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
@@ -17883,28 +17883,28 @@ private data class ThreadMessagesListData(
     val translationStore: SharedMessageTranslationStore?,
     val visibleReadTailIndex: Int?,
     /** A4 destination contract: non-null marks this list as a detail-pane child. */
-    val adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest?,
-    val adaptiveStoreScope: SlockShellStoreScope,
-    val adaptiveEventBus: SlockEventBus?,
+    val adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest?,
+    val adaptiveStoreScope: RaftShellStoreScope,
+    val adaptiveEventBus: RaftEventBus?,
     /** Shared READY-posted flag owned by ThreadChatTabContent (A4 detail contract). */
     val adaptiveReadyPosted: MutableState<Boolean>?,
 )
 
 /** task #346: callback payload of [ThreadMessagesList]. See ThreadMessagesListData. */
 private class ThreadMessagesListCallbacks(
-    val agentStatusResolver: SlockAgentStatusResolver,
-    val memberAvatarResolver: SlockMemberAvatarResolver,
-    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val agentStatusResolver: RaftAgentStatusResolver,
+    val memberAvatarResolver: RaftMemberAvatarResolver,
+    val memberModelLabelResolver: RaftMemberModelLabelResolver,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     val onJumpToLatest: suspend () -> Boolean,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
-    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
-    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
+    val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
-    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
+    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)?,
     val diagnosticsLogger: (String) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
     val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
@@ -17937,10 +17937,10 @@ fun ThreadMessagesList(
     // panel's assignee row (same pool the thread Tasks tab filters use).
     taskAssigneeOptions: List<MemberProfile> = emptyList(),
     highlightedMentions: Set<String>,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
-    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
+    inlineReplyParticipantsById: Map<String, RaftThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -17960,11 +17960,11 @@ fun ThreadMessagesList(
     onLoadNewer: suspend () -> ThreadNewerPageLoadOutcome,
     onJumpToLatest: suspend () -> Boolean,
     onOpenMember: (MemberDetailIdentity) -> Unit,
-    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
-    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
+    onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
+    quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
@@ -17986,9 +17986,9 @@ fun ThreadMessagesList(
     visibleReadTailIndex: Int? = null,
     onVisibleReadTailChange: (Int?) -> Unit = {},
     onViewportFollowsLatestChange: (Boolean) -> Unit = {},
-    adaptiveCloseRequest: SlockAdaptiveDetailCloseRequest? = null,
-    adaptiveStoreScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
-    adaptiveEventBus: SlockEventBus? = null,
+    adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest? = null,
+    adaptiveStoreScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
+    adaptiveEventBus: RaftEventBus? = null,
     adaptiveReadyPosted: MutableState<Boolean>? = null
 )
  {
@@ -18151,7 +18151,7 @@ private fun ThreadMessagesListContent(
     val closeReq = adaptiveCloseRequest
     val adaptivePager = LocalActivity.current.getPager() as Pager
     val adaptiveSharedStores = remember(adaptivePager) {
-        SlockSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
+        RaftSharedStoreRegistry.get(Utils.bridgeModule(adaptivePager.pagerId))
     }
     var localAdaptiveReadyPosted by remember(threadInstanceKey) { mutableStateOf(false) }
     val adaptiveReadyPosted = data.adaptiveReadyPosted
@@ -18228,7 +18228,7 @@ private fun ThreadMessagesListContent(
         return
     }
     val imeProgrammaticViewportPolicy =
-        slockPlatformThreadImeProgrammaticViewportPolicy()
+        raftPlatformThreadImeProgrammaticViewportPolicy()
     val translationState =
         translationStore?.state?.collectAsState()?.value ?: SharedMessageTranslationState()
     if (translationStore != null) {
@@ -18469,11 +18469,11 @@ private fun ThreadMessagesListContent(
         val posted = adaptiveReadyPosted?.value ?: localAdaptiveReadyPosted
         if (posted) return@LaunchedEffect
         if (
-            evaluateSlockAdaptiveReadyGate(
+            evaluateRaftAdaptiveReadyGate(
                 posted,
                 renderPayload.status,
                 renderPayload.messages.size,
-            ) != SlockAdaptiveReadyGate.RestoreThenReady
+            ) != RaftAdaptiveReadyGate.RestoreThenReady
         ) {
             return@LaunchedEffect
         }
@@ -18689,12 +18689,12 @@ private fun ThreadMessagesListContent(
         val eventBus = adaptiveEventBus ?: return@LaunchedEffect
         postDetailReadyTrace("ready_post")
         eventBus.post(
-            eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+            eventName = RAFT_ADAPTIVE_DETAIL_READY_EVENT,
             eventData =
                 JSONObject()
-                    .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
-                    .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
-                    .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
+                    .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, request.shellInstanceId)
+                    .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, request.identityKey)
+                    .put(RAFT_ADAPTIVE_DETAIL_GENERATION, request.generation.toDouble()),
             crossProcess = true,
             source = "adaptive_detail_ready",
         )
@@ -18739,7 +18739,7 @@ private fun ThreadMessagesListContent(
             0
         }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
@@ -18752,7 +18752,7 @@ private fun ThreadMessagesListContent(
         }
     }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
 
     var expandedLongMessageIds by remember(threadInstanceKey) {
         mutableStateOf<Set<String>>(emptySet())
@@ -19000,7 +19000,7 @@ private fun ThreadMessagesListContent(
         }
         val startedAt = TimeSource.Monotonic.markNow()
         val result =
-            prepareSlockMarkdownFullRendererBodies(
+            prepareRaftMarkdownFullRendererBodies(
                 bodies = initialMarkdownPreparsePlan.priorityCandidates.map { candidate -> candidate.body },
                 maxBodies = initialMarkdownPreparsePlan.priorityCandidates.size
             )
@@ -19050,7 +19050,7 @@ private fun ThreadMessagesListContent(
                 }
                 val startedAt = TimeSource.Monotonic.markNow()
                 val result =
-                    prepareSlockMarkdownFullRendererBodies(
+                    prepareRaftMarkdownFullRendererBodies(
                         bodies = visiblePreparsePlan.candidates.map { candidate -> candidate.body },
                         maxBodies = visiblePreparsePlan.candidates.size
                     )
@@ -19188,7 +19188,7 @@ private fun ThreadMessagesListContent(
                 is LazyViewportCommandTarget.Top -> {
                     if (!commandIsLiveOrTerminallyInvalidate()) return@LaunchedEffect
                     if (target.animated) {
-                        slockExpressiveTopSettleAnchor(
+                        raftExpressiveTopSettleAnchor(
                             firstVisibleItemIndex = listState.firstVisibleItemIndex,
                             visibleItemCount = listState.layoutInfo.visibleItemsInfo.size
                         )?.let { anchor ->
@@ -21214,7 +21214,7 @@ private fun ThreadMessagesListContent(
                 val captureShareBounds =
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
-                val liveTodayEpochDay = LocalSlockTimeContextProvider.current?.todayEpochDay
+                val liveTodayEpochDay = LocalRaftTimeContextProvider.current?.todayEpochDay
                 val dateDividerLabel =
                     remember(
                         previousMessage?.timestampLabel,
@@ -21574,7 +21574,7 @@ private fun ThreadMessagesListContent(
             )
         ) {
             ThreadBackToBottomButton(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SlockSpacing.Md),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = RaftAppSpacing.Md),
                 onClick = onClick@{
                     if (backToBottomInteractionGuardActive) return@onClick
                     // Keep both the visual button and its native dispatch
@@ -21821,7 +21821,7 @@ private fun ThreadMessagesListContent(
                 // menu when the linked task summary (title/description) isn't loaded.
                 val linkedTask = message.taskId?.let { linkedTasksProjection.taskById(it) }
                 if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
-                    SlockTaskStatusMenuOverlay(
+                    RaftTaskStatusMenuOverlay(
                         anchor = resolvedTaskStatusAnchor,
                         items = ThreadTaskStatusMenuItems,
                         selectedId = selectedStatus.key,
@@ -21882,15 +21882,15 @@ private fun ThreadInlineSearchBar(
     modifier: Modifier = Modifier
 ) {
     val normalizedCurrent = if (matchCount > 0) currentIndex.coerceIn(0, matchCount - 1) + 1 else 0
-    Column(modifier = modifier.fillMaxWidth().background(SlockColor.Canvas)) {
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
+    Column(modifier = modifier.fillMaxWidth().background(RaftColor.Canvas)) {
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                    .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             SharedHomeSearchInput(
                 query = query,
@@ -21908,20 +21908,20 @@ private fun ThreadInlineSearchBar(
                     Modifier
                         .height(ThreadHeaderActionSize)
                         .widthIn(min = 40.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .padding(horizontal = SlockSpacing.Xs),
+                        .background(RaftColor.SurfaceWhite)
+                        .padding(horizontal = RaftAppSpacing.Xs),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "$normalizedCurrent/$matchCount",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            ThreadHeaderIconButton(icon = SlockLucideIconName.ChevronUp, onClick = onPrevious)
-            ThreadHeaderIconButton(icon = SlockLucideIconName.ChevronDown, onClick = onNext)
+            ThreadHeaderIconButton(icon = RaftLucideIconName.ChevronUp, onClick = onPrevious)
+            ThreadHeaderIconButton(icon = RaftLucideIconName.ChevronDown, onClick = onNext)
         }
     }
 }
@@ -21940,18 +21940,18 @@ private const val ThreadInlineSearchBarZIndex = 2f
 internal data class ThreadInlineActionSpec(
     val label: StringDesc,
     val event: String? = null,
-    val leadingIcon: SlockLucideIconName? = null
+    val leadingIcon: RaftLucideIconName? = null
 )
 
 internal data class ThreadHistoryStatusSpec(
     val label: StringDesc,
-    val leadingIcon: SlockLucideIconName? = null,
+    val leadingIcon: RaftLucideIconName? = null,
     val secondaryLabel: String? = null
 )
 
 private fun ThreadTimelineSlice.threadSelectedShareMessages(
     selectedIds: Set<String>
-): List<KuiklyThreadMessageItem> {
+): List<RaftThreadMessageItem> {
     if (selectedIds.isEmpty()) return emptyList()
     return (listOfNotNull(originMessage) + messages)
         .filter { message -> message.id in selectedIds && !message.isSystemMessage() }
@@ -21974,13 +21974,13 @@ internal const val ThreadForwardTargetChangedMessage =
     "The destination list changed before sending. Nothing was forwarded — please reselect the destination."
 
 internal data class ThreadForwardMessageSelection(
-    val forwardableMessages: List<KuiklyThreadMessageItem>,
+    val forwardableMessages: List<RaftThreadMessageItem>,
     val skippedCount: Int,
     val nestedForwardCount: Int,
     val taskLinkedCount: Int
 )
 
-internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
+internal fun List<RaftThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
     val forwardableMessages = filter { message -> message.isForwardableOrdinaryChatMessage() }
     return ThreadForwardMessageSelection(
         forwardableMessages = forwardableMessages,
@@ -21990,11 +21990,11 @@ internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): Thre
     )
 }
 
-private fun KuiklyThreadMessageItem.isTaskLinkedChatMessage(): Boolean =
+private fun RaftThreadMessageItem.isTaskLinkedChatMessage(): Boolean =
     messageType.equals("Chat", ignoreCase = true) &&
         (taskId != null || taskNumber != null || taskStatus != null)
 
-private fun KuiklyThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
+private fun RaftThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
     messageType.equals("Chat", ignoreCase = true) &&
         deliveryState == ThreadMessageDeliverySent &&
         forwardBundle == null &&
@@ -22056,12 +22056,12 @@ private fun ThreadTimelineSlice.threadSelectableShareMessageIds(): Set<String> =
 private fun ThreadTimelineSlice.threadSelectedShareMarkdown(selectedIds: Set<String>): String =
     threadSelectedShareMessages(selectedIds).threadShareMarkdown()
 
-private fun List<KuiklyThreadMessageItem>.threadShareMarkdown(): String =
+private fun List<RaftThreadMessageItem>.threadShareMarkdown(): String =
     joinToString("\n\n") { message ->
         "**${message.authorName.ifBlank { "Unknown" }}**: ${message.body.trim()}"
     }
 
-internal fun threadOlderMessagesStatusSpec(payload: KuiklyThreadScreenPayload): ThreadHistoryStatusSpec =
+internal fun threadOlderMessagesStatusSpec(payload: RaftThreadScreenPayload): ThreadHistoryStatusSpec =
     threadOlderMessagesStatusSpec(payload.toThreadTimelineSlice())
 
 internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): ThreadHistoryStatusSpec =
@@ -22106,11 +22106,11 @@ internal fun isRealtimeTransportConnectedEvent(
     eventData: kotlinx.serialization.json.JsonObject,
     currentServerId: String?,
 ): Boolean {
-    if (eventData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionPresenceTransportConnected) {
+    if (eventData.optString(RaftRealtimeNotifyContract.KeyAction) != RaftRealtimeNotifyContract.ActionPresenceTransportConnected) {
         return false
     }
     val serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-    return eventData.optString(SlockRealtimeNotifyContract.KeyServerId).trim() == serverId
+    return eventData.optString(RaftRealtimeNotifyContract.KeyServerId).trim() == serverId
 }
 
 /** Retry spacing for a visible page stuck on a failed load: 10 s, 20 s, 40 s, then every 60 s. */
@@ -22125,7 +22125,7 @@ internal enum class OfflineStandInRecoveryAction { Refresh, Defer, None }
  * re-entry shows that, not the stand-in), or the error page. A load still running is remembered, since it
  * may yet fail; a permission answer is final and is not retried.
  */
-internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): OfflineStandInRecoveryAction {
+internal fun offlineStandInRecoveryAction(payload: RaftThreadScreenPayload): OfflineStandInRecoveryAction {
     if (payload.status == "no_permission") return OfflineStandInRecoveryAction.None
     if (payload.backgroundRefreshing || payload.status == "loading") return OfflineStandInRecoveryAction.Defer
     val failed = payload.durableLastKnown || payload.mainLoadFailed
@@ -22140,12 +22140,12 @@ internal fun offlineStandInRecoveryAction(payload: KuiklyThreadScreenPayload): O
 internal class OfflineStandInRecoveryGate {
     private var pending = false
 
-    fun onNetworkRecovered(payload: KuiklyThreadScreenPayload): Boolean = decide(payload)
+    fun onNetworkRecovered(payload: RaftThreadScreenPayload): Boolean = decide(payload)
 
     /** Called whenever the stand-in / refresh state changes; acts only on a remembered recovery. */
-    fun onPayloadSettled(payload: KuiklyThreadScreenPayload): Boolean = pending && decide(payload)
+    fun onPayloadSettled(payload: RaftThreadScreenPayload): Boolean = pending && decide(payload)
 
-    private fun decide(payload: KuiklyThreadScreenPayload): Boolean =
+    private fun decide(payload: RaftThreadScreenPayload): Boolean =
         when (offlineStandInRecoveryAction(payload)) {
             OfflineStandInRecoveryAction.Refresh -> { pending = false; true }
             OfflineStandInRecoveryAction.Defer -> { pending = true; false }
@@ -22168,7 +22168,7 @@ internal fun threadOfflineLastKnownChrome(
     return ThreadOfflineLastKnownChrome(insetActive = standIn, tipVisible = standIn && !backgroundRefreshing)
 }
 
-internal fun threadOfflineLastKnownChrome(payload: KuiklyThreadScreenPayload): ThreadOfflineLastKnownChrome =
+internal fun threadOfflineLastKnownChrome(payload: RaftThreadScreenPayload): ThreadOfflineLastKnownChrome =
     threadOfflineLastKnownChrome(
         durableLastKnown = payload.durableLastKnown,
         status = payload.status,
@@ -22186,14 +22186,14 @@ private fun ThreadOfflineLastKnownTip(modifier: Modifier = Modifier) {
             modifier
                 .fillMaxWidth()
                 .height(ThreadOfflineLastKnownTipHeight)
-                .background(SlockColor.FillMuted)
-                .padding(horizontal = SlockSpacing.Md, vertical = 4.dp),
+                .background(RaftColor.FillMuted)
+                .padding(horizontal = RaftAppSpacing.Md, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = stringResource(MR.strings.thread_offline_last_known_tip),
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
@@ -22228,7 +22228,7 @@ internal fun threadMessagesBeyondBoundsItemCount(
     viewportHeightDp: Float = 0f,
     representativeRowStepDp: Float = ThreadMessagesRepresentativeRowStepDp
 ): Int =
-    slockViewportBeyondBoundsItemCount(
+    raftViewportBeyondBoundsItemCount(
         itemCount = itemCount,
         viewportHeightDp = viewportHeightDp,
         representativeRowStepDp = representativeRowStepDp,
@@ -22364,18 +22364,18 @@ internal fun threadInitialBottomAnchorStage(
         else -> ThreadInitialBottomAnchorStage.Anchor
     }
 
-internal fun KuiklyThreadMessageItem.threadMessageRenderIdentity(): String =
+internal fun RaftThreadMessageItem.threadMessageRenderIdentity(): String =
     randomId?.trim()?.takeIf { it.isNotBlank() }?.let { "random:$it" }
         ?: id
 
-internal fun List<KuiklyThreadMessageItem>.threadDuplicateRandomIds(): Set<String> =
+internal fun List<RaftThreadMessageItem>.threadDuplicateRandomIds(): Set<String> =
     mapNotNull { message -> message.randomId?.trim()?.takeIf { it.isNotBlank() } }
         .groupingBy { it }
         .eachCount()
         .filterValues { count -> count > 1 }
         .keys
 
-internal fun KuiklyThreadMessageItem.messageListItemKey(
+internal fun RaftThreadMessageItem.messageListItemKey(
     duplicateRandomIds: Set<String> = emptySet()
 ): String {
     val cleanRandomId = randomId?.trim()?.takeIf { it.isNotBlank() }
@@ -22397,7 +22397,7 @@ internal data class ThreadMessageMarkdownRenderSignature(
         "$renderIdentity:$bodyLength:${bodyHash.toString(16)}"
 }
 
-internal fun KuiklyThreadMessageItem.threadMarkdownRenderSignature(): ThreadMessageMarkdownRenderSignature =
+internal fun RaftThreadMessageItem.threadMarkdownRenderSignature(): ThreadMessageMarkdownRenderSignature =
     ThreadMessageMarkdownRenderSignature(
         renderIdentity = threadMessageRenderIdentity(),
         bodyLength = body.length,
@@ -22409,13 +22409,13 @@ internal data class ThreadMessageActionCardSignature(
     val metadata: Map<String, String>
 )
 
-internal fun KuiklyThreadMessageItem.threadActionCardSignature(): ThreadMessageActionCardSignature =
+internal fun RaftThreadMessageItem.threadActionCardSignature(): ThreadMessageActionCardSignature =
     ThreadMessageActionCardSignature(
         messageId = id,
         metadata = metadata
     )
 
-internal fun KuiklyThreadMessageItem.threadActionCard(): ThreadActionCard? =
+internal fun RaftThreadMessageItem.threadActionCard(): ThreadActionCard? =
     actionCardFromMessageMetadata(metadata)
 
 internal data class ThreadCompactAuthorSignature(
@@ -22424,17 +22424,17 @@ internal data class ThreadCompactAuthorSignature(
     val timestampLabel: String
 )
 
-internal fun KuiklyThreadMessageItem.threadCompactAuthorSignature(): ThreadCompactAuthorSignature =
+internal fun RaftThreadMessageItem.threadCompactAuthorSignature(): ThreadCompactAuthorSignature =
     ThreadCompactAuthorSignature(
         isSystemMessage = isSystemMessage(),
         authorIdentityKey = authorIdentityKey(),
         timestampLabel = timestampLabel
     )
 
-internal fun KuiklyThreadScreenPayload.threadActionMessage(
+internal fun RaftThreadScreenPayload.threadActionMessage(
     messageId: String,
     linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection()
-): KuiklyThreadMessageItem? =
+): RaftThreadMessageItem? =
     toThreadTimelineSlice().threadActionMessage(messageId, linkedTasksProjection)
 
 internal fun formatThreadMessageQuote(text: String): String =
@@ -22465,23 +22465,23 @@ internal fun appendThreadQuoteToComposer(existing: String, quote: String): Strin
     }
 }
 
-private fun KuiklyThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
+private fun RaftThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
     messages.isNotEmpty()
 
-private fun KuiklyThreadScreenPayload.hasThreadOriginItem(): Boolean =
+private fun RaftThreadScreenPayload.hasThreadOriginItem(): Boolean =
     originStatus != "none"
 
-private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
+private fun RaftThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
     if (hasThreadOriginItem()) 1 else 0
 
-private fun KuiklyThreadScreenPayload.firstMessageListItemIndex(): Int {
+private fun RaftThreadScreenPayload.firstMessageListItemIndex(): Int {
     var index = 0
     if (hasThreadOriginItem()) index += 1
     if (hasThreadHistoryBoundaryItem()) index += 1
     return index
 }
 
-private fun KuiklyThreadScreenPayload.threadMessageListItemIndex(messageId: String): Int {
+private fun RaftThreadScreenPayload.threadMessageListItemIndex(messageId: String): Int {
     val messageIndex = messages.indexOfFirst { it.id == messageId }
     if (messageIndex < 0) return -1
     return firstMessageListItemIndex() + messageIndex
@@ -22642,12 +22642,12 @@ internal fun shouldYieldBottomAnchorToFocusedAnchor(
         ) &&
         yieldElapsedMs < FocusedAnchorBottomYieldCapMs
 
-internal fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
+internal fun RaftThreadScreenPayload.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1
     return firstMessageListItemIndex() + messages.lastIndex
 }
 
-internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
+internal fun RaftThreadScreenPayload.latestMessageLayoutKey(): String {
     val latest = messages.lastOrNull()
         ?: return "empty:$originStatus:$canLoadMoreBefore:$canLoadMoreAfter"
     return buildString {
@@ -23117,7 +23117,7 @@ internal fun threadMessagesListAlpha(
     revealLatestLocalSendBeforeInitialAnchor: Boolean
 ): Float = 1f
 
-internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: String?): Boolean {
+internal fun RaftThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: String?): Boolean {
     val messageId = anchorKey?.substringBefore(':')?.takeIf { it.isNotBlank() } ?: return false
     return messages.any { message ->
         message.id == messageId &&
@@ -23126,7 +23126,7 @@ internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: Stri
     }
 }
 
-internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
+internal fun RaftThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
     val latest = messages.lastOrNull() ?: return null
     if (!latest.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         latest.pendingSendContext == null
@@ -23144,14 +23144,14 @@ internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String?
     }
 }
 
-internal fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
+internal fun RaftThreadMessageItem.threadReactionLayoutSignature(): String =
     reactions
         .filter { reaction -> reaction.count > 0 }
         .joinToString(separator = "|") { reaction ->
             "${reaction.emoji}:${reaction.count}:${reaction.selected}"
         }
 
-internal fun KuiklyThreadScreenPayload.visibleReadMarkerKey(): String? {
+internal fun RaftThreadScreenPayload.visibleReadMarkerKey(): String? {
     return toThreadTimelineSlice().visibleReadMarkerKey(sourceThreadId)
 }
 
@@ -23164,7 +23164,7 @@ internal fun shouldMarkThreadVisibleRead(
     routeActive && observedHostForeground && currentHostVisibility && markerKey != null
 
 internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
-    pageName == THREAD_PAGE || pageName == SLOCK_APP_SHELL_PAGE
+    pageName == THREAD_PAGE || pageName == RAFT_APP_SHELL_PAGE
 
 internal data class ThreadVisibleResumePlan(
     val refreshVisibleConversation: Boolean,
@@ -23207,22 +23207,22 @@ internal class ThreadVisibleResumeGate {
     }
 }
 
-internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
-    SlockTimeContext(
+internal fun RaftThreadScreenPayload.toRaftTimeContext(): RaftTimeContext =
+    RaftTimeContext(
         localOffsetMinutes = localOffsetMinutes,
         todayEpochDay = todayEpochDay,
         nowEpochMillis = nowEpochMillis,
         timeFormat = timeFormat
     )
 
-internal fun KuiklyThreadScreenPayload.toSlockTimeCapabilities(): SlockTimeCapabilities =
-    SlockTimeCapabilities(
+internal fun RaftThreadScreenPayload.toRaftTimeCapabilities(): RaftTimeCapabilities =
+    RaftTimeCapabilities(
         localOffsetMinutes = localOffsetMinutes,
         timeFormat = timeFormat
     )
 
-internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): String =
-    formatSlockTimestampLabel(value, toSlockTimeContext())
+internal fun RaftThreadScreenPayload.formatTimestampLabel(value: String): String =
+    formatRaftTimestampLabel(value, toRaftTimeContext())
 
 private data class ThreadVisibleMessageAnchor(
     val messageId: String,
@@ -23598,19 +23598,19 @@ private fun ThreadBackToBottomButton(
     // path, so it cannot reliably prevent the native host from also starting
     // a gesture on the message row underneath. Put the capture marker on the
     // interactive button's own ancestor path; Compose still delivers the
-    // gesture to SlockAnchorButton, while Android's native dispatch stays
+    // gesture to RaftAnchorButton, while Android's native dispatch stays
     // captured for the complete DOWN..UP sequence.
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = stringResource(MR.strings.thread_action_back_to_bottom),
         onClick = onClick,
-        modifier = modifier.slockNativeDispatchCapture(),
-        backgroundColor = SlockColor.SurfaceWhite,
+        modifier = modifier.raftNativeDispatchCapture(),
+        backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = ThreadFloatingPillButtonMinHeight,
         shadowOffset = 4.dp,
-        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
         trailingContent = {
-            SlockLucideIcon(
+            RaftLucideIcon(
                 "chevron-down",
                 modifier = Modifier.size(14.dp),
                 color = "#FF000000"
@@ -23625,16 +23625,16 @@ private fun ThreadUnreadJumpButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = stringResource(MR.strings.thread_action_unread_count, unreadCount),
         onClick = onClick,
-        modifier = modifier.slockNativeDispatchCapture(),
+        modifier = modifier.raftNativeDispatchCapture(),
         // artin visual ruling (task #232): neutral white pill, bottom placement.
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = ThreadFloatingPillButtonMinHeight,
         shadowOffset = 4.dp,
-        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
     )
 }
 
@@ -23712,12 +23712,12 @@ private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
 private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
 private const val ThreadShareCaptureGeometryTolerancePx = 2f
-private val ThreadSystemMessageTimeColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val ThreadSystemMessageBodyColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.5f)
+private val ThreadSystemMessageTimeColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
+private val ThreadSystemMessageBodyColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
 private fun ThreadSystemMessageRow(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     timestampValue: String
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
@@ -23733,16 +23733,16 @@ private fun ThreadSystemMessageRow(
     Row(
         modifier =
             Modifier.fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .clickable { expanded = !expanded }
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.CenterHorizontally),
+                .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.Top
     ) {
-        SlockRelativeTimestampText(
+        RaftRelativeTimestampText(
             value = timestampValue,
-            displayGroup = SlockTimestampDisplayGroup.Conversation,
-            style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = SlockMonoFamily),
+            displayGroup = RaftTimestampDisplayGroup.Conversation,
+            style = RaftType.Caption.copy(color = ThreadSystemMessageTimeColor, fontFamily = RaftMonoFamily),
             color = ThreadSystemMessageTimeColor,
             textAlign = TextAlign.End,
             maxLines = 1,
@@ -23756,7 +23756,7 @@ private fun ThreadSystemMessageRow(
         )
         Text(
             text = systemBody,
-            style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
+            style = RaftType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
             textAlign = TextAlign.Center,
             maxLines = if (expanded) Int.MAX_VALUE else 1,
@@ -23788,8 +23788,8 @@ private fun ThreadNewerMessagesBoundaryRow(
         if (newerMessagesStatus == "loading") {
             Text(
                 text = spec.label.localized(),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
     }
@@ -23798,19 +23798,19 @@ private fun ThreadNewerMessagesBoundaryRow(
 @Composable
 private fun ThreadInlineActionRow(
     label: String,
-    leadingIcon: SlockLucideIconName? = null,
+    leadingIcon: RaftLucideIconName? = null,
     onClick: () -> Unit
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 36.dp,
         leadingIcon = leadingIcon,
         shadowOffset = 2.dp,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
+        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
     )
 }
 
@@ -23819,7 +23819,7 @@ private fun ThreadHistoryStatusRow(
     spec: ThreadHistoryStatusSpec
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
@@ -23827,7 +23827,7 @@ private fun ThreadHistoryStatusRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             spec.leadingIcon?.let { iconName ->
-                SlockLucideIcon(
+                RaftLucideIcon(
                     iconName,
                     modifier = Modifier.size(14.dp),
                     color = "#FF6B7280"
@@ -23836,16 +23836,16 @@ private fun ThreadHistoryStatusRow(
             }
             Text(
                 text = spec.label.localized(),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
         if (!spec.secondaryLabel.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
             Text(
                 text = spec.secondaryLabel,
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
     }
@@ -23854,19 +23854,19 @@ private fun ThreadHistoryStatusRow(
 @Composable
 private fun ThreadDateDivider(label: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.TextMutedGray.copy(alpha = 0.35f)))
+        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
         Text(
             text = label,
             style = threadDateDividerTextStyle(),
-            color = SlockColor.TextMutedGray,
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Box(Modifier.weight(1f).height(SlockStroke.Thin).background(SlockColor.TextMutedGray.copy(alpha = 0.35f)))
+        Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.TextMutedGray.copy(alpha = 0.35f)))
     }
 }
 
@@ -23883,13 +23883,13 @@ private fun ThreadLongMessageToggle(
         Text(
             text = stringResource(if (expanded) MR.strings.thread_show_less else MR.strings.thread_show_more),
             style =
-                SlockType.Caption
-                    .copy(fontSize = 11.sp, lineHeight = 15.sp, color = SlockColor.TextBlack)
-                    .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack
+                RaftType.Caption
+                    .copy(fontSize = 11.sp, lineHeight = 15.sp, color = RaftColor.TextBlack)
+                    .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack
         )
-        SlockLucideIcon(
-            if (expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
+        RaftLucideIcon(
+            if (expanded) RaftLucideIconName.ChevronUp else RaftLucideIconName.ChevronDown,
             modifier = Modifier.size(12.dp),
             color = "#FF000000"
         )
@@ -23897,12 +23897,12 @@ private fun ThreadLongMessageToggle(
 }
 
 internal fun threadDateDividerTextStyle(): TextStyle =
-    SlockType.Caption.copy(
-        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+    RaftType.Caption.copy(
+        fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
         fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
         lineHeight = 14.sp,
-        color = SlockColor.TextMutedGray,
+        color = RaftColor.TextMutedGray,
         letterSpacing = 0.sp
     )
 
@@ -23931,7 +23931,7 @@ private fun ThreadMessageGeometryTintBox(tint: Color?, content: @Composable () -
 
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
-    data class Loaded(val item: KuiklyThreadMessageItem) : ThreadQuotedPermalinkUiState
+    data class Loaded(val item: RaftThreadMessageItem) : ThreadQuotedPermalinkUiState
     data object Unavailable : ThreadQuotedPermalinkUiState
 }
 
@@ -23945,7 +23945,7 @@ private fun ThreadQuotedPermalinkCard(
         modifier =
             modifier
                 // raft-ui quoted preview: inset layer, hairline, control radius.
-                .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
+                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
                 .clickable(enabled = state is ThreadQuotedPermalinkUiState.Loaded, onClick = onOpen)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -23953,11 +23953,11 @@ private fun ThreadQuotedPermalinkCard(
     ) {
         when (state) {
             ThreadQuotedPermalinkUiState.Loading -> {
-                SlockChipLoadingIndicator(size = 14.dp)
+                RaftChipLoadingIndicator(size = 14.dp)
                 Text(
                     text = stringResource(MR.strings.thread_quoted_permalink_loading),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             }
             is ThreadQuotedPermalinkUiState.Loaded -> {
@@ -23968,22 +23968,22 @@ private fun ThreadQuotedPermalinkCard(
                     ) {
                         Text(
                             text = state.item.authorName,
-                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp),
-                            color = SlockColor.TextBlack,
+                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp),
+                            color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = state.item.timestampLabel,
-                            style = SlockType.Caption,
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption,
+                            color = RaftColor.TextMutedGray
                         )
                     }
                     Text(
                         text = state.item.body.takeIf { it.isNotBlank() }?.lineSequence()
                             ?.firstOrNull { it.isNotBlank() }
                             ?: stringResource(MR.strings.thread_quoted_permalink_no_content),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -23992,8 +23992,8 @@ private fun ThreadQuotedPermalinkCard(
             ThreadQuotedPermalinkUiState.Unavailable -> {
                 Text(
                     text = stringResource(MR.strings.thread_quoted_permalink_unavailable),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             }
         }
@@ -24001,12 +24001,12 @@ private fun ThreadQuotedPermalinkCard(
 }
 
 /**
- * task #346: state payload of [ThreadMessageCard]. See SlockStructuralHomeShellData for why
+ * task #346: state payload of [ThreadMessageCard]. See RaftStructuralHomeShellData for why
  * the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
 private data class ThreadMessageCardData(
-    val message: KuiklyThreadMessageItem,
+    val message: RaftThreadMessageItem,
     val messageBodyTextStyle: TextStyle,
     val replyMetadata: ThreadReplyMetadata,
     val hasReplyDraft: Boolean,
@@ -24036,7 +24036,7 @@ private data class ThreadMessageCardData(
     val focused: Boolean,
     /** web MessageItem `data-popup-open`: this row's context menu is open. */
     val popupOpen: Boolean = false,
-    val inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem>,
+    val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
     val shareSelectionActive: Boolean,
     val selectedForShare: Boolean,
     val translation: ThreadMessageTranslationUi?,
@@ -24049,18 +24049,18 @@ private data class ThreadMessageCardData(
 /** task #346: callback payload of [ThreadMessageCard]. See ThreadMessageCardData. */
 private class ThreadMessageCardCallbacks(
     val diagnosticsLogger: (String) -> Unit,
-    val agentStatusResolver: SlockAgentStatusResolver,
+    val agentStatusResolver: RaftAgentStatusResolver,
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
-    val onShowActions: (SlockPopoverAnchor) -> Unit,
+    val onShowActions: (RaftPopoverAnchor) -> Unit,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
-    val onExternalAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenThread: (String) -> Unit,
     val onOpenTask: (String) -> Unit,
-    val onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
+    val onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     val onToggleReaction: (String) -> Unit,
-    val onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)?,
-    val onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit,
+    val onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)?,
+    val onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit,
     val onOpenAttachment: (String) -> Unit,
     val onDownloadAttachment: (String) -> Unit,
     val onRetryLocalSend: () -> Unit,
@@ -24068,23 +24068,23 @@ private class ThreadMessageCardCallbacks(
     val onCommitActionCard: (String) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
-    val onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
+    val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     val isMessageListScrolling: () -> Boolean,
-    val memberAvatarResolver: SlockMemberAvatarResolver,
-    val memberModelLabelResolver: SlockMemberModelLabelResolver,
+    val memberAvatarResolver: RaftMemberAvatarResolver,
+    val memberModelLabelResolver: RaftMemberModelLabelResolver,
     val onToggleShareSelection: () -> Unit,
     val onToggleTranslationOriginal: () -> Unit,
     val onRetryTranslation: () -> Unit,
     val onOpenForwardBundle: (String) -> Unit,
     val onToggleLongMessage: () -> Unit,
     val onLongPressInputReady: ((String) -> Unit)?,
-    val quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)?,
-    val onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
+    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)?,
+    val onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
 )
 
 internal @Composable
 fun ThreadMessageCard(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     messageBodyTextStyle: TextStyle,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     hasReplyDraft: Boolean = false,
@@ -24092,7 +24092,7 @@ fun ThreadMessageCard(
     messageIndex: Int = -1,
     diagnosticsLogger: (String) -> Unit = {},
     highlightedMentions: Set<String> = emptySet(),
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     alignOwnMessageRight: Boolean = false,
     messageAlignmentModeEnabled: Boolean = alignOwnMessageRight,
     compactConsecutiveMessages: Boolean = false,
@@ -24110,15 +24110,15 @@ fun ThreadMessageCard(
     activeMarkdownTagKey: String? = null,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
-    onShowActions: (SlockPopoverAnchor) -> Unit,
+    onShowActions: (RaftPopoverAnchor) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
-    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
+    onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
-    onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
+    onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     onToggleReaction: (String) -> Unit,
-    onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
-    onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
+    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    onOpenCommentHost: (RaftThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {},
     onRetryLocalSend: () -> Unit = {},
@@ -24130,14 +24130,14 @@ fun ThreadMessageCard(
     currentServerSlug: String? = null,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit = {},
+    onMentionAuthor: (RaftThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
     popupOpen: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
-    inlineReplyParticipantsById: Map<String, KuiklyThreadMemberItem> = emptyMap(),
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
+    inlineReplyParticipantsById: Map<String, RaftThreadMemberItem> = emptyMap(),
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
     onToggleShareSelection: () -> Unit = {},
@@ -24150,9 +24150,9 @@ fun ThreadMessageCard(
     onToggleLongMessage: () -> Unit = {},
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
-    quotedPermalinkLoader: (suspend (SlockMessagePermalinkTarget) -> KuiklyThreadMessageItem?)? = null,
-    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
-    outerPadding: androidx.compose.ui.unit.Dp = SlockSpacing.Sm
+    quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? = null,
+    onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
+    outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
 )
  {
     ThreadMessageCardContent(
@@ -24320,7 +24320,7 @@ private fun ThreadMessageCardContent(
     // humans, agents without a model, and while the roster is still loading.
     val authorModelLabel =
         if (message.isThreadAgentAuthor()) {
-            rememberSlockMemberModelLabel(memberModelLabelResolver, message.authorId)
+            rememberRaftMemberModelLabel(memberModelLabelResolver, message.authorId)
         } else {
             null
         }
@@ -24338,13 +24338,13 @@ private fun ThreadMessageCardContent(
         if (message.showsAgentStatusIndicator()) {
             resolveThreadAgentStatusIndicatorState(
                 message = message,
-                canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, message.authorId)
+                canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, message.authorId)
             )
         } else {
             null
         }
     val quotedPermalinkState = remember(message.id, message.body) { mutableStateOf<ThreadQuotedPermalinkUiState?>(null) }
-    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<SlockMessagePermalinkTarget?>(null) }
+    var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<RaftMessagePermalinkTarget?>(null) }
     LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader) {
         quotedPermalinkState.value = null
         quotedPermalinkTarget = null
@@ -24372,11 +24372,11 @@ private fun ThreadMessageCardContent(
     }
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(
-            rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
+            rememberRaftMemberAvatarWireValue(memberAvatarResolver, message.authorId)
         )
     val avatarDiagnostics =
         remember(message.id, message.authorId, diagnosticsLogger) {
-            slockAvatarRowDiagnostics(
+            raftAvatarRowDiagnostics(
                 messageId = message.id,
                 authorId = message.authorId,
                 logger = diagnosticsLogger
@@ -24386,7 +24386,7 @@ private fun ThreadMessageCardContent(
         avatarDiagnostics.logger(
             "thread_avatar_row messageHash=${avatarDiagnostics.messageHash} " +
                 "authorHash=${avatarDiagnostics.authorHash} " +
-                "source=${avatarWireValue.slockAvatarDiagnosticsSource()} authority=member_profile"
+                "source=${avatarWireValue.raftAvatarDiagnosticsSource()} authority=member_profile"
         )
     }
     val authorGestureIdentity =
@@ -24510,7 +24510,7 @@ private fun ThreadMessageCardContent(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.Canvas)
+                .background(RaftColor.Canvas)
                 .then(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
@@ -24544,17 +24544,17 @@ private fun ThreadMessageCardContent(
                     .background(
                         // raft-ui MessageItem: a checked multi-select row washes info-soft.
                         if (shareSelectionActive && selectedForShare) {
-                            SlockColor.InfoSoft
+                            RaftColor.InfoSoft
                         } else if (popupOpen) {
                             // raft-ui MessageItem `data-popup-open:bg-fill-pressed`: the row
                             // under an open context menu stays pressed.
-                            SlockColor.FillPressed
+                            RaftColor.FillPressed
                         } else {
                             threadMessageFocusHighlightColor(focusAlpha)
                         }
                     )
-                    .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -24583,7 +24583,7 @@ private fun ThreadMessageCardContent(
                         avatarDiagnostics = avatarDiagnostics,
                         external = message.externalAuthor != null,
                         cacheSubject =
-                            slockMemberAvatarCacheSubject(
+                            raftMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
                                 message.authorId
                             ),
@@ -24609,7 +24609,7 @@ private fun ThreadMessageCardContent(
                         modifier =
                             Modifier
                                 .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
                         if (showAuthorChrome) {
@@ -24634,8 +24634,8 @@ private fun ThreadMessageCardContent(
                                     Text(
                                         text = localizedAuthorName,
                                         // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
-                                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp),
-                                        color = SlockColor.TextBlack,
+                                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp),
+                                        color = RaftColor.TextBlack,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier =
@@ -24650,9 +24650,9 @@ private fun ThreadMessageCardContent(
                                         Text(
                                             text = modelLabel,
                                             style =
-                                                SlockType.Caption.copy(
+                                                RaftType.Caption.copy(
                                                     fontWeight = FontWeight.Medium,
-                                                    color = SlockColor.ForegroundHint,
+                                                    color = RaftColor.ForegroundHint,
                                                 ),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
@@ -24664,7 +24664,7 @@ private fun ThreadMessageCardContent(
                                     message.authorDescription?.let { description ->
                                         val subtitleAnchor =
                                             remember(message.id) {
-                                                SlockLiveRootAnchorRef(
+                                                RaftLiveRootAnchorRef(
                                                     identity = "thread_author_subtitle:${message.id}"
                                                 )
                                             }
@@ -24675,7 +24675,7 @@ private fun ThreadMessageCardContent(
                                                     tapMovementGate.rejectChildAction("author_subtitle")
                                                     diagnosticsLogger("thread_author_subtitle_tap messageId=${message.id}")
                                                     subtitleAnchor
-                                                        .resolve(SlockPopoverLocalPoint.BottomStart)
+                                                        .resolve(RaftPopoverLocalPoint.BottomStart)
                                                         ?.let { anchor ->
                                                             onShowDescription(description, anchor)
                                                         }
@@ -24718,7 +24718,7 @@ private fun ThreadMessageCardContent(
                             // unless it is the generated placeholder itself.
                             val forwardNoteBody = threadForwardNoteBody(message.body, forwardBundle.displayCount())
                             if (forwardNoteBody != null) {
-                                SlockMarkdownBody(
+                                RaftMarkdownBody(
                                     body = forwardNoteBody,
                                     textStyle = messageBodyTextStyle,
                                     onOpenUrl = onOpenMarkdownUrl,
@@ -24748,7 +24748,7 @@ private fun ThreadMessageCardContent(
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .background(geometryTints?.capTint ?: Color.Transparent),
-                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                                 horizontalAlignment = contentAlignment
                             ) {
                                 // task #800: the sending spinner shares the End
@@ -24762,7 +24762,7 @@ private fun ThreadMessageCardContent(
                                         Text(
                                             text = longMessagePlan.collapsedDisplayText,
                                             style = messageBodyTextStyle,
-                                            color = SlockColor.TextBlack,
+                                            color = RaftColor.TextBlack,
                                             maxLines = ThreadLongMessagePreviewLineLimit,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier
@@ -24787,7 +24787,7 @@ private fun ThreadMessageCardContent(
                                             )
                                         }
                                         key(markdownRenderSignature) {
-                                            SlockMarkdownBody(
+                                            RaftMarkdownBody(
                                                 body = bodyForRender,
                                                 fillWidth = !alignOwnMessageRight,
                                                 textStyle = messageBodyTextStyle,
@@ -24812,7 +24812,7 @@ private fun ThreadMessageCardContent(
                                         Text(
                                             text = bodyForRender,
                                             style = messageBodyTextStyle,
-                                            color = SlockColor.TextBlack,
+                                            color = RaftColor.TextBlack,
                                             modifier = Modifier
                                         )
                                     }
@@ -24820,7 +24820,7 @@ private fun ThreadMessageCardContent(
                                 if (alignOwnMessageRight) {
                                     Row(
                                         verticalAlignment = Alignment.Top,
-                                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                                        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                                     ) {
                                         if (richContentEnabled && message.isSendingLocalSend()) {
                                             ThreadMessageGeometryTintBox(geometryTints?.statusTint) {
@@ -24950,7 +24950,7 @@ private fun ThreadMessageCardContent(
                         avatarDiagnostics = avatarDiagnostics,
                         external = message.externalAuthor != null,
                         cacheSubject =
-                            slockMemberAvatarCacheSubject(
+                            raftMemberAvatarCacheSubject(
                                 message.authorKind.projectedMemberKindOrNull(),
                                 message.authorId
                             ),
@@ -24979,7 +24979,7 @@ private fun ThreadMessageCardContent(
 
 @Composable
 internal fun ThreadNewMessageMenu(
-    anchor: SlockPopoverAnchor,
+    anchor: RaftPopoverAnchor,
     availability: ThreadNewMessageMenuActionAvailability,
     onDismiss: () -> Unit,
     onReact: (String) -> Unit,
@@ -24995,21 +24995,21 @@ internal fun ThreadNewMessageMenu(
     val contentSize =
         with(density) {
             Size(
-                width = (ThreadNewMessageMenuWidth + SlockShadow.BrutalSmall).toPx(),
+                width = (ThreadNewMessageMenuWidth + RaftShadow.BrutalSmall).toPx(),
                 height =
                     (
                         ThreadNewMessageMenuReactionRowHeight +
-                            SlockStroke.Thin +
+                            RaftAppStroke.Thin +
                             ThreadNewMessageMenuToolRowHeight +
                             ThreadNewMessageMenuMoreOverlayHeight +
                             ThreadNewMessageMenuVerticalPadding * 2 +
-                            SlockShadow.BrutalSmall
+                            RaftShadow.BrutalSmall
                     ).toPx()
             )
         }
     val anchorGapPx = with(density) { ThreadNewMessageMenuAnchorGap.toPx() }
     val horizontalNudgePx = with(density) { ThreadNewMessageMenuHorizontalNudge.toPx() }
-    SlockModalAnchoredPopover(
+    RaftModalAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
@@ -25017,7 +25017,7 @@ internal fun ThreadNewMessageMenu(
         horizontalOffset = -horizontalNudgePx,
         verticalOffset = anchorGapPx,
         horizontalAutoFlip = true,
-        verticalPlacement = SlockFloatingVerticalPlacement.Auto
+        verticalPlacement = RaftFloatingVerticalPlacement.Auto
     ) {
         ThreadNewMessageMenuChrome(
             availability = availability,
@@ -25052,7 +25052,7 @@ internal fun ThreadNewMessageMenuChrome(
             modifier =
                 Modifier
                     .width(ThreadNewMessageMenuWidth)
-                    .slockRaftOverlaySurface()
+                    .raftLookOverlaySurface()
                     .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
             ThreadMessageReactionRow(
@@ -25069,8 +25069,8 @@ internal fun ThreadNewMessageMenuChrome(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(SlockStroke.Thin)
-                        .background(SlockColor.BorderHairline)
+                        .height(RaftAppStroke.Thin)
+                        .background(RaftColor.BorderHairline)
             )
             ThreadNewMessageMenuToolRow(
                 onCopy = onCopy,
@@ -25130,12 +25130,12 @@ private fun ThreadNewMessageMenuToolRow(
                 }
             val icon =
                 when (tool) {
-                    ThreadNewMessageMenuTool.Copy -> SlockLucideIconName.Copy
-                    ThreadNewMessageMenuTool.Reply -> SlockLucideIconName.MessageSquare
-                    ThreadNewMessageMenuTool.Forward -> SlockLucideIconName.Redo2
-                    ThreadNewMessageMenuTool.Save -> SlockLucideIconName.Bookmark
-                    ThreadNewMessageMenuTool.Translate -> SlockLucideIconName.Languages
-                    ThreadNewMessageMenuTool.Select -> SlockLucideIconName.CircleCheck
+                    ThreadNewMessageMenuTool.Copy -> RaftLucideIconName.Copy
+                    ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.MessageSquare
+                    ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Redo2
+                    ThreadNewMessageMenuTool.Save -> RaftLucideIconName.Bookmark
+                    ThreadNewMessageMenuTool.Translate -> RaftLucideIconName.Languages
+                    ThreadNewMessageMenuTool.Select -> RaftLucideIconName.CircleCheck
                 }
             ThreadNewMessageMenuToolButton(
                 label = label,
@@ -25163,10 +25163,10 @@ private fun ThreadNewMessageMenuMoreOverlay(
                 .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(
-            name = SlockLucideIconName.ChevronDown,
+        RaftLucideIcon(
+            name = RaftLucideIconName.ChevronDown,
             modifier = Modifier.size(14.dp),
-            color = SlockColor.TextMutedGrayArgb
+            color = RaftColor.TextMutedGrayArgb
         )
     }
 }
@@ -25174,7 +25174,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
 @Composable
 private fun ThreadNewMessageMenuToolButton(
     label: String,
-    icon: SlockLucideIconName,
+    icon: RaftLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -25185,7 +25185,7 @@ private fun ThreadNewMessageMenuToolButton(
         modifier =
             modifier
                 .height(ThreadNewMessageMenuToolRowHeight)
-                .background(if (pressed && enabled) SlockColor.FillPressed else Color.Transparent, RoundedCornerShape(SlockRadius.Control))
+                .background(if (pressed && enabled) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
                 .clickable(
                     enabled = enabled,
                     interactionSource = interactionSource,
@@ -25197,23 +25197,23 @@ private fun ThreadNewMessageMenuToolButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        SlockLucideIcon(
+        RaftLucideIcon(
             name = icon,
             modifier = Modifier.size(ThreadNewMessageMenuToolIconSize),
-            color = if (enabled) SlockColor.TextBlackArgb else SlockColor.TextMutedGrayArgb
+            color = if (enabled) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = label,
             style =
-                SlockType.Caption.copy(
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                RaftType.Caption.copy(
+                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
                     fontSize = 10.sp,
                     lineHeight = 12.sp,
                     letterSpacing = 0.sp,
                     fontWeight = FontWeight.Normal
                 ),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+            color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -25226,9 +25226,9 @@ internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
     val normalizedAlpha = focusAlpha.coerceIn(0f, 1f)
     return if (normalizedAlpha > 0f) {
         // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-        SlockColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
+        RaftColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
     } else {
-        SlockColor.Canvas
+        RaftColor.Canvas
     }
 }
 
@@ -25244,8 +25244,8 @@ internal fun shouldShowThreadMessageSavedBadge(
         isSaved
 
 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-internal val ThreadMessageSavedBadgeColor = SlockColor.AccentOrange.copy(alpha = 0.15f)
-internal const val ThreadMessageSavedBadgeIconColorArgb = SlockColor.AccentOrangeArgb
+internal val ThreadMessageSavedBadgeColor = RaftColor.AccentOrange.copy(alpha = 0.15f)
+internal const val ThreadMessageSavedBadgeIconColorArgb = RaftColor.AccentOrangeArgb
 
 @Composable
 private fun ThreadMessageSelectionToggle(
@@ -25267,15 +25267,15 @@ private fun ThreadMessageSelectionToggle(
                     .size(22.dp)
                     // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
                     // foreground and an inverse check.
-                    .background(if (checked) SlockColor.TextBlack else SlockColor.Card, RoundedCornerShape(SlockRadius.Sticker))
-                    .border(SlockStroke.Control, if (checked) SlockColor.TextBlack else SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sticker)),
+                    .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
+                    .border(RaftAppStroke.Control, if (checked) RaftColor.TextBlack else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
-                SlockLucideIcon(
-                    SlockLucideIconName.Check,
+                RaftLucideIcon(
+                    RaftLucideIconName.Check,
                     modifier = Modifier.size(14.dp),
-                    color = slockArgbHex(SlockColor.ForegroundInverse)
+                    color = raftArgbHex(RaftColor.ForegroundInverse)
                 )
             }
         }
@@ -25284,7 +25284,7 @@ private fun ThreadMessageSelectionToggle(
 
 @Composable
 private fun ThreadMessageLocalSendStatus(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     alignEnd: Boolean,
     retryEnabled: Boolean = true,
     onRetry: () -> Unit,
@@ -25313,19 +25313,19 @@ private fun ThreadMessageLocalSendStatus(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(
-                if (isFailed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.LoaderCircle,
+            RaftLucideIcon(
+                if (isFailed) RaftLucideIconName.TriangleAlert else RaftLucideIconName.LoaderCircle,
                 modifier = Modifier.size(13.dp),
-                color = if (isFailed) "#FFF97264" else SlockColor.TextMutedGrayArgb,
+                color = if (isFailed) "#FFF97264" else RaftColor.TextMutedGrayArgb,
                 spinning = !isFailed
             )
             Text(
                 text = label,
                 style =
-                    SlockType.Caption.copy(
-                        color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray
+                    RaftType.Caption.copy(
+                        color = if (isFailed) RaftColor.AccentRed else RaftColor.TextMutedGray
                     ),
-                color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                color = if (isFailed) RaftColor.AccentRed else RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
@@ -25341,15 +25341,15 @@ private fun ThreadMessageLocalSendStatus(
                         if (detailsExpanded) MR.strings.thread_send_failure_hide_details
                         else MR.strings.thread_send_failure_details
                     ),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextMutedGray,
                     modifier = Modifier.clickable { detailsExpanded = !detailsExpanded }.padding(vertical = 2.dp)
                 )
                 if (detailsExpanded) {
                     Text(
                         text = stringResource(MR.strings.thread_send_failure_copy_details),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.TextMutedGray,
                         modifier = Modifier.clickable(onClick = onCopyDetails).padding(vertical = 2.dp)
                     )
                 }
@@ -25358,11 +25358,11 @@ private fun ThreadMessageLocalSendStatus(
         if (detailsExpanded && detail != null) {
             Text(
                 text = detail,
-                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.TextMutedGray,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
+                    .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
                     .padding(8.dp)
             )
         }
@@ -25379,15 +25379,15 @@ private fun ThreadMessageLocalSendStatus(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.RefreshCw,
+                    RaftLucideIcon(
+                        RaftLucideIconName.RefreshCw,
                         modifier = Modifier.size(12.dp),
                         color = "#FFF97264"
                     )
                     Text(
                         text = stringResource(MR.strings.thread_send_failure_retry),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.AccentRed
                     )
                 }
             }
@@ -25404,10 +25404,10 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
                 .background(Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.LoaderCircle,
+        RaftLucideIcon(
+            RaftLucideIconName.LoaderCircle,
             modifier = Modifier.size(14.dp),
-            color = SlockColor.TextMutedGrayArgb,
+            color = RaftColor.TextMutedGrayArgb,
             spinning = true
         )
     }
@@ -25467,19 +25467,19 @@ private fun ThreadActionCardView(
     Column(
         modifier =
             modifier
-                .slockRaftCardSurface()
-                .padding(SlockSpacing.Sm),
+                .raftCardSurface()
+                .padding(RaftAppSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Text(
                 text = renderCopy.title,
-                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -25496,8 +25496,8 @@ private fun ThreadActionCardView(
         } else if (details.isNotBlank()) {
             Text(
                 text = details,
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
         card.actionCardDraftHint()?.let { hint ->
@@ -25508,21 +25508,21 @@ private fun ThreadActionCardView(
             if (committed.isNotBlank()) {
                 Text(
                     text = committed,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
         } else if (commitEnabled) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = if (pending) renderCopy.pendingLabel else renderCopy.verb,
                 onClick = onCommit,
                 enabled = !pending && card.isSupportedCommitAction(),
-                backgroundColor = SlockColor.AccentPink,
-                disabledBackgroundColor = SlockColor.SurfaceCream,
+                backgroundColor = RaftColor.AccentPink,
+                disabledBackgroundColor = RaftColor.SurfaceCream,
                 minWidth = 0.dp,
                 minHeight = 34.dp,
                 shadowOffset = 2.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
             )
         }
     }
@@ -25583,8 +25583,8 @@ private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
         ThreadActionCardMetaLine(label = stringResource(MR.strings.thread_action_card_label_agent), value = "@${agent.removePrefix("@")}")
         Text(
             text = stringResource(MR.strings.thread_action_card_label_scopes),
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         val scopes = card.scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
         scopes.forEach { scope ->
@@ -25605,26 +25605,26 @@ private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
 private fun ThreadActionCardHintBox(text: String, italic: Boolean) {
     val style =
         if (italic) {
-            SlockType.Caption.copy(
+            RaftType.Caption.copy(
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
-                color = SlockColor.TextMutedGray,
+                color = RaftColor.TextMutedGray,
                 fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
             )
         } else {
-            SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
+            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray)
         }
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Text(
             text = text,
             style = style,
-            color = SlockColor.TextMutedGray
+            color = RaftColor.TextMutedGray
         )
     }
 }
@@ -25637,14 +25637,14 @@ private fun ThreadActionCardMetaLine(label: String, value: String, labelWidth: D
     ) {
         Text(
             text = "$label:",
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             modifier = Modifier.width(labelWidth)
         )
         Text(
             text = value,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             modifier = Modifier.weight(1f)
         )
     }
@@ -25658,25 +25658,25 @@ private fun ThreadIntegrationScopeCard(scope: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
+                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
             text = normalized,
             style =
-                SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
-                    color = SlockColor.TextMutedGray,
-                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold)
+                    color = RaftColor.TextMutedGray,
+                    fontFamily = raftMonoFamilyForWeight(FontWeight.Bold)
                 ),
-            color = SlockColor.TextMutedGray
+            color = RaftColor.TextMutedGray
         )
         Text(
             text = description,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
     }
 }
@@ -25687,17 +25687,17 @@ private fun ThreadActionCardDoneBadge() {
         modifier =
             Modifier
                 // raft-ui success badge: sticker radius, sticker-ink edge.
-                .background(SlockColor.AccentLime, RoundedCornerShape(SlockRadius.Sticker))
-                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker))
+                .background(RaftColor.AccentLime, RoundedCornerShape(RaftAppRadius.Sticker))
+                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
                 .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FF000000")
+        RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FF000000")
         Text(
             text = stringResource(MR.strings.common_done),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1
         )
     }
@@ -26101,10 +26101,10 @@ private fun threadCreateAgentMachinesErrorCopy(code: String): String =
 
 @Composable
 private fun ThreadReactionChip(
-    reaction: KuiklyThreadReactionItem,
+    reaction: RaftThreadReactionItem,
     interactionIdentity: Any = "reaction:${reaction.emoji}",
     onClick: (() -> Unit)? = null,
-    onLongPress: ((SlockPopoverAnchor) -> Unit)? = null
+    onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
@@ -26112,7 +26112,7 @@ private fun ThreadReactionChip(
     val chipModifier =
         Modifier
             .hoverable(hoverInteractionSource)
-            .background(background, RoundedCornerShape(SlockRadius.Sm))
+            .background(background, RoundedCornerShape(RaftAppRadius.Sm))
             .padding(horizontal = 6.dp, vertical = 3.dp)
     val chipContent: @Composable () -> Unit = {
         Row(
@@ -26123,8 +26123,8 @@ private fun ThreadReactionChip(
             if (reaction.count > 0) {
                 Text(
                     text = reaction.count.toString(),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -26137,18 +26137,18 @@ private fun ThreadReactionChip(
         // press cannot fire a toggle. The anchor is reported in root pixels
         // (same contract as the message long-press menu).
         val rootAnchor =
-            remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
+            remember(interactionIdentity) { RaftLiveRootAnchorRef(identity = interactionIdentity) }
         val gestureOwner =
-            rememberSlockGestureOwner(
+            rememberRaftGestureOwner(
                 surface = "thread-reaction-chip",
                 semanticIdentity = interactionIdentity,
                 callbacks = ThreadReactionChipGestureCallbacks(onClick, onLongPress, rootAnchor)
             )
         Box(
             modifier = Modifier
-                .slockCaptureLiveRootAnchor(rootAnchor)
-                .slockGesturePointerInput(gestureOwner, onClick != null) { owner ->
-                    var gesture: SlockGestureSession<ThreadReactionChipGestureCallbacks>? = null
+                .raftCaptureLiveRootAnchor(rootAnchor)
+                .raftGesturePointerInput(gestureOwner, onClick != null) { owner ->
+                    var gesture: RaftGestureSession<ThreadReactionChipGestureCallbacks>? = null
                     detectTapGestures(
                         onPress = {
                             gesture = owner.beginGesture()
@@ -26160,7 +26160,7 @@ private fun ThreadReactionChip(
                         onLongPress = { localOffset ->
                             (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
                                 callbacks.rootAnchor
-                                    .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                    .resolve(RaftPopoverLocalPoint.Exact(localOffset))
                                     ?.let { anchor -> callbacks.onLongPress?.invoke(anchor) }
                             }
                         }
@@ -26192,19 +26192,19 @@ private fun ThreadReactionChip(
 
 private data class ThreadReactionChipGestureCallbacks(
     val onClick: (() -> Unit)?,
-    val onLongPress: ((SlockPopoverAnchor) -> Unit)?,
-    val rootAnchor: SlockLiveRootAnchorRef
+    val onLongPress: ((RaftPopoverAnchor) -> Unit)?,
+    val rootAnchor: RaftLiveRootAnchorRef
 )
 
 internal fun threadNeutralMessageSurfaceColor(emphasized: Boolean): Color =
-    SlockColor.TextBlack.copy(alpha = if (emphasized) 0.08f else 0.03f)
+    RaftColor.TextBlack.copy(alpha = if (emphasized) 0.08f else 0.03f)
 
 internal fun threadReactionChipBackground(
     selected: Boolean,
     emphasized: Boolean = false
 ): Color =
     if (selected) {
-        SlockColor.AccentPink.copy(alpha = 0.2f)
+        RaftColor.AccentPink.copy(alpha = 0.2f)
     } else {
         threadNeutralMessageSurfaceColor(emphasized)
     }
@@ -26217,7 +26217,7 @@ internal data class ThreadReactionDetailsRequest(
     val emoji: String,
     val names: List<String>,
     val count: Int,
-    val anchor: SlockPopoverAnchor
+    val anchor: RaftPopoverAnchor
 )
 
 // Label formatting for the reactor tooltip: first N names + "+K" for the
@@ -26243,7 +26243,7 @@ internal const val ThreadReactionDetailsMaxNames = 4
 @Composable
 private fun ThreadReactionAddChip(
     messageId: String,
-    onClick: (SlockPopoverAnchor) -> Unit
+    onClick: (RaftPopoverAnchor) -> Unit
 ) {
     val addReactionDescription = stringResource(MR.strings.common_add)
     Button(
@@ -26278,16 +26278,16 @@ private fun ThreadReactionDetailsTooltip(
                 height = ThreadReactionDetailsHeight.toPx()
             )
         }
-    SlockAnchoredPopover(
+    RaftAnchoredPopover(
         anchor = details.anchor,
         contentSize = estimatedSize,
         onDismiss = onDismiss,
-        verticalPlacement = SlockFloatingVerticalPlacement.Auto
+        verticalPlacement = RaftFloatingVerticalPlacement.Auto
     ) {
         Row(
             modifier = Modifier
-                .slockRaftOverlaySurface()
-                .slockFloatingContentClickTarget()
+                .raftLookOverlaySurface()
+                .raftFloatingContentClickTarget()
                 .height(ThreadReactionDetailsHeight)
                 .padding(horizontal = ThreadReactionDetailsHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
@@ -26299,8 +26299,8 @@ private fun ThreadReactionDetailsTooltip(
             )
             Text(
                 text = label,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -26317,7 +26317,7 @@ private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
 internal data class ThreadAuthorDescriptionPopoverRequest(
     val description: String,
-    val anchor: SlockPopoverAnchor
+    val anchor: RaftPopoverAnchor
 )
 
 internal const val ThreadAuthorDescriptionPopoverMaxWidthDp = 280f
@@ -26343,8 +26343,8 @@ internal fun threadAuthorDescriptionPopoverDimensions(
             height = 36.dp
         )
     }
-    val shadowOffset = SlockShadow.BrutalSmall
-    val strokeExtra = SlockStroke.Default * 2
+    val shadowOffset = RaftShadow.BrutalSmall
+    val strokeExtra = RaftAppStroke.Default * 2
     val horizontalPadding = (ThreadAuthorDescriptionPopoverHorizontalPaddingDp * 2).dp
     val verticalPadding = (ThreadAuthorDescriptionPopoverVerticalPaddingDp * 2).dp
     val availableTextWidth = (maxWidth - horizontalPadding - strokeExtra).value.coerceAtLeast(60f)
@@ -26378,22 +26378,22 @@ private fun ThreadAuthorDescriptionPopover(
                 height = dimensions.height.toPx()
             )
         }
-    SlockAnchoredPopover(
+    RaftAnchoredPopover(
         anchor = request.anchor,
         contentSize = estimatedSize,
         onDismiss = onDismiss,
         horizontalAutoFlip = true,
-        verticalPlacement = SlockFloatingVerticalPlacement.Auto,
-        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
-        outsidePointerMode = SlockFloatingOverlayOutsidePointerMode.Dismiss
+        verticalPlacement = RaftFloatingVerticalPlacement.Auto,
+        dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis,
+        outsidePointerMode = RaftFloatingOverlayOutsidePointerMode.Dismiss
     ) {
         Box {
             Box(
                 modifier =
                     Modifier
                         .widthIn(min = ThreadAuthorDescriptionPopoverMinWidthDp.dp, max = ThreadAuthorDescriptionPopoverMaxWidthDp.dp)
-                        .slockRaftOverlaySurface()
-                        .slockFloatingContentClickTarget()
+                        .raftLookOverlaySurface()
+                        .raftFloatingContentClickTarget()
                         .padding(
                             horizontal = ThreadAuthorDescriptionPopoverHorizontalPaddingDp.dp,
                             vertical = ThreadAuthorDescriptionPopoverVerticalPaddingDp.dp
@@ -26402,13 +26402,13 @@ private fun ThreadAuthorDescriptionPopover(
                 Text(
                     text = request.description,
                     style =
-                        SlockType.Caption.copy(
-                            fontFamily = SlockMonoFamily,
+                        RaftType.Caption.copy(
+                            fontFamily = RaftMonoFamily,
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
-                            color = SlockColor.TextBlack
+                            color = RaftColor.TextBlack
                         ),
-                    color = SlockColor.TextBlack
+                    color = RaftColor.TextBlack
                 )
             }
         }
@@ -26425,12 +26425,12 @@ private fun ThreadReactionAddChipChrome() {
             .height(20.dp)
             .background(
                 threadReactionAddChipBackground(emphasized = isHovered),
-                RoundedCornerShape(SlockRadius.Sm),
+                RoundedCornerShape(RaftAppRadius.Sm),
             )
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(SlockLucideIconName.Plus, modifier = Modifier.size(13.dp), color = SlockColor.TextBlackArgb)
+        RaftLucideIcon(RaftLucideIconName.Plus, modifier = Modifier.size(13.dp), color = RaftColor.TextBlackArgb)
     }
 }
 
@@ -26499,7 +26499,7 @@ internal fun threadMessageBodyTapEligible(
     showReplyAction && !shareSelectionActive && !hasLocalSendState
 
 internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread
 
 @Composable
 private fun BoxScope.ThreadMessagePressRipple(
@@ -26588,7 +26588,7 @@ internal fun Modifier.threadMessageLongPressActions(
     diagnosticsLogger: (String) -> Unit = {},
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
-    onShowActions: (SlockPopoverAnchor) -> Unit,
+    onShowActions: (RaftPopoverAnchor) -> Unit,
     onInputReady: ((String) -> Unit)? = null
 ): Modifier {
     SideEffect {
@@ -26605,7 +26605,7 @@ internal fun Modifier.threadMessageLongPressActions(
     }
     gestureOwner.tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
-        .slockCaptureLiveRootAnchor(gestureOwner.rootAnchor)
+        .raftCaptureLiveRootAnchor(gestureOwner.rootAnchor)
         .threadMessagePointerInput(
             role = "tap_movement",
             messageId = messageId,
@@ -26718,7 +26718,7 @@ internal fun Modifier.threadMessageLongPressActions(
                             "scrollInProgress=${dispatchDecision.scrollInProgress}"
                     )
                     val anchor =
-                        gestureOwner.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                        gestureOwner.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(localOffset))
                     if (anchor == null) {
                         callbacks.diagnosticsLogger(
                             "thread_message_long_press_anchor_unavailable messageId=$messageId " +
@@ -26766,7 +26766,7 @@ internal data class ThreadMessageLongPressCallbacks(
     val diagnosticsLogger: (String) -> Unit = {},
     val onTap: (() -> Unit)? = null,
     val onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
-    val onShowActions: (SlockPopoverAnchor) -> Unit = {},
+    val onShowActions: (RaftPopoverAnchor) -> Unit = {},
     val onInputReady: ((String) -> Unit)? = null
 )
 
@@ -26775,7 +26775,7 @@ internal class ThreadMessageLongPressGestureOwner(
     val tapDispatchScope: CoroutineScope
 ) {
     val rootAnchor =
-        SlockLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(key.messageId))
+        RaftLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(key.messageId))
     val tapMovementGate = ThreadMessageTapMovementGate()
 
     var pressed by mutableStateOf(false)
@@ -27067,7 +27067,7 @@ internal class ThreadMessageTapMovementGate {
         )
 }
 
-internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
+internal fun RaftThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     if (threadAuthorBadgeLabel() != null) return null
     // Avatar slot styling consumes the already-normalized Thread projection. It must not infer a
     // human author from unknown presentation data or from the legacy agent-id heuristic.
@@ -27093,43 +27093,43 @@ private fun ThreadMessageAuthorBadge(label: String) {
             Modifier
                 .heightIn(min = 18.dp)
                 // raft muted badge: fill-muted on the chip radius, no ink edge.
-                .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
-                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+                .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
+                .padding(horizontal = RaftAppSpacing.Xs, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
             style =
-                SlockType.Caption
-                    .withSlockFontWeight(FontWeight.Bold)
-                    .copy(fontSize = 10.sp, color = SlockColor.TextMuted),
-            color = SlockColor.TextMuted,
+                RaftType.Caption
+                    .withRaftFontWeight(FontWeight.Bold)
+                    .copy(fontSize = 10.sp, color = RaftColor.TextMuted),
+            color = RaftColor.TextMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
 }
 
-internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
+internal fun RaftThreadMessageItem.threadAuthorBadgeLabel(): String? =
     when {
         isDeletedThreadAuthor() -> "DELETED"
         isRemovedThreadHuman() -> "REMOVED"
         else -> null
     }
 
-internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
+internal fun RaftThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
     threadAuthorBadgeLabel() == null
 
-internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(shareSelectionActive: Boolean): Boolean =
+internal fun RaftThreadMessageItem.canOpenThreadAuthorProfile(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive && canOpenThreadAuthorProfile()
 
 internal fun resolveThreadAgentStatusIndicatorState(
-    message: KuiklyThreadMessageItem,
-    canonicalState: SlockAgentStatusIndicatorState?
-): SlockAgentStatusIndicatorState? =
+    message: RaftThreadMessageItem,
+    canonicalState: RaftAgentStatusIndicatorState?
+): RaftAgentStatusIndicatorState? =
     canonicalState.takeIf { message.showsAgentStatusIndicator() }
 
-internal fun KuiklyThreadMessageItem.threadMentionHandle(
+internal fun RaftThreadMessageItem.threadMentionHandle(
     serverMembersState: SharedServerMembersState = SharedServerMembersState(),
     serverId: ServerId? = null
 ): String? {
@@ -27140,7 +27140,7 @@ internal fun KuiklyThreadMessageItem.threadMentionHandle(
     )
 }
 
-internal fun KuiklyThreadMessageItem.threadMentionHandle(
+internal fun RaftThreadMessageItem.threadMentionHandle(
     serverMembersEntry: SharedServerMembersEntry,
     serverId: ServerId? = null
 ): String? {
@@ -27155,7 +27155,7 @@ internal fun KuiklyThreadMessageItem.threadMentionHandle(
     return threadMentionHandleFromCanonicalStore(rosterHandle)
 }
 
-internal fun KuiklyThreadMessageItem.threadMentionHandle(canonicalMemberHandle: String?): String? =
+internal fun RaftThreadMessageItem.threadMentionHandle(canonicalMemberHandle: String?): String? =
     if (threadAuthorBadgeLabel() != null) {
         null
     } else {
@@ -27164,7 +27164,7 @@ internal fun KuiklyThreadMessageItem.threadMentionHandle(canonicalMemberHandle: 
         )
     }
 
-private fun KuiklyThreadMessageItem.threadMentionHandleFromCanonicalStore(canonicalHandle: String?): String? {
+private fun RaftThreadMessageItem.threadMentionHandleFromCanonicalStore(canonicalHandle: String?): String? {
     canonicalHandle?.let { return it }
     val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
     val explicitAuthorHandle = authorHandle.threadMentionExplicitAuthorHandle(authorName, cleanAuthorId)
@@ -27215,26 +27215,26 @@ private fun String.threadMentionExplicitAuthorHandle(authorName: String, authorI
     return handle.canonicalServerMembersMentionHandle(authorId)
 }
 
-private fun KuiklyThreadMessageItem.isDeletedThreadAuthor(): Boolean =
+private fun RaftThreadMessageItem.isDeletedThreadAuthor(): Boolean =
     !authorDeletedAt.isNullOrBlank() || senderMembershipStatus.equals("deleted", ignoreCase = true)
 
-private fun KuiklyThreadMessageItem.isRemovedThreadHuman(): Boolean =
+private fun RaftThreadMessageItem.isRemovedThreadHuman(): Boolean =
     !isThreadAgentAuthor() && senderMembershipStatus.equals("removed", ignoreCase = true)
 
-private fun KuiklyThreadMessageItem.isThreadAgentAuthor(): Boolean =
+private fun RaftThreadMessageItem.isThreadAgentAuthor(): Boolean =
     authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
 
 internal fun shouldSuppressCompactThreadAuthor(
-    previous: KuiklyThreadMessageItem?,
-    next: KuiklyThreadMessageItem,
+    previous: RaftThreadMessageItem?,
+    next: RaftThreadMessageItem,
     localOffsetMinutes: Int
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
 
 internal fun threadDateDividerLabel(
-    previous: KuiklyThreadMessageItem?,
-    next: KuiklyThreadMessageItem,
-    timeContext: SlockTimeContext
+    previous: RaftThreadMessageItem?,
+    next: RaftThreadMessageItem,
+    timeContext: RaftTimeContext
 ): String? {
     val localOffsetMinutes = timeContext.localOffsetMinutes
     val nextEpochDay = next.threadMessageLocalEpochDayOrNull(localOffsetMinutes) ?: return null
@@ -27246,8 +27246,8 @@ internal fun threadDateDividerLabel(
     return threadDateDividerLabel(nextEpochDay, todayEpochDay)
 }
 
-private fun KuiklyThreadMessageItem.isCompactContinuationBefore(
-    next: KuiklyThreadMessageItem,
+private fun RaftThreadMessageItem.isCompactContinuationBefore(
+    next: RaftThreadMessageItem,
     localOffsetMinutes: Int
 ): Boolean {
     if (isSystemMessage() || next.isSystemMessage()) return false
@@ -27265,13 +27265,13 @@ private fun KuiklyThreadMessageItem.isCompactContinuationBefore(
         threadLocalEpochDay(nextEpochMillis, localOffsetMinutes)
 }
 
-private fun KuiklyThreadMessageItem.parseThreadMessageEpochMillisOrNull(localOffsetMinutes: Int): Long? =
-    parseSlockTimestampEpochMillisOrNull(timestampLabel, localOffsetMinutes)
+private fun RaftThreadMessageItem.parseThreadMessageEpochMillisOrNull(localOffsetMinutes: Int): Long? =
+    parseRaftTimestampEpochMillisOrNull(timestampLabel, localOffsetMinutes)
 
-private fun KuiklyThreadMessageItem.threadMessageLocalEpochDayOrNull(localOffsetMinutes: Int): Long? =
+private fun RaftThreadMessageItem.threadMessageLocalEpochDayOrNull(localOffsetMinutes: Int): Long? =
     parseThreadMessageEpochMillisOrNull(localOffsetMinutes)?.let { threadLocalEpochDay(it, localOffsetMinutes) }
 
-private fun KuiklyThreadMessageItem.authorIdentityKey(): String =
+private fun RaftThreadMessageItem.authorIdentityKey(): String =
     authorId.takeIf { it.isNotBlank() }
         ?: authorHandle.takeIf { it.isNotBlank() }
         ?: authorName.takeIf { it.isNotBlank() }
@@ -27404,8 +27404,8 @@ internal val LocalThreadInlineReplyTimestampReporter =
 @Composable
 private fun ThreadInlineRepliesSurface(
     presentation: ThreadInlineReplyPresentation,
-    participantsById: Map<String, KuiklyThreadMemberItem>,
-    memberAvatarResolver: SlockMemberAvatarResolver,
+    participantsById: Map<String, RaftThreadMemberItem>,
+    memberAvatarResolver: RaftMemberAvatarResolver,
     onOpenThread: () -> Unit,
 ) {
     val replyRowHeight = threadInlineReplyRowHeightDp(LocalDensity.current.fontScale).dp
@@ -27448,10 +27448,10 @@ private fun ThreadInlineRepliesSurface(
                 },
                 modifier = Modifier.weight(1f),
                 style =
-                    SlockType.Caption
-                        .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = SlockColor.TextBlack.copy(alpha = 0.58f))
-                        .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack.copy(alpha = 0.58f),
+                    RaftType.Caption
+                        .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = RaftColor.TextBlack.copy(alpha = 0.58f))
+                        .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextBlack.copy(alpha = 0.58f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -27472,12 +27472,12 @@ private fun ThreadInlineRepliesSurface(
 @Composable
 private fun ThreadInlineReplyRow(
     reply: build.raft.app.network.sync.ReplyPreview,
-    participant: KuiklyThreadMemberItem?,
-    memberAvatarResolver: SlockMemberAvatarResolver,
+    participant: RaftThreadMemberItem?,
+    memberAvatarResolver: RaftMemberAvatarResolver,
     rowHeight: Dp,
 ) {
     val timestampPositionReporter = LocalThreadInlineReplyTimestampReporter.current
-    val resolvedAvatar = rememberSlockMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+    val resolvedAvatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
     val displayName =
         reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
             ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
@@ -27492,13 +27492,13 @@ private fun ThreadInlineReplyRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = avatarWireValue,
             label = displayName.take(1).uppercase(),
             avatarSize = 20.dp,
-            borderWidth = SlockStroke.Thin,
+            borderWidth = RaftAppStroke.Thin,
             cacheSubject =
-                slockMemberAvatarCacheSubject(
+                raftMemberAvatarCacheSubject(
                     participant?.kind?.parsedMemberKindOrNull(),
                     reply.senderId
                 ),
@@ -27506,30 +27506,30 @@ private fun ThreadInlineReplyRow(
         Text(
             text = displayName,
             style =
-                SlockType.Caption
+                RaftType.Caption
                     .copy(
                         fontSize = 12.5.sp,
                         lineHeight = ThreadInlineReplyContentLineHeightSp.sp,
-                        color = SlockColor.TextBlack.copy(alpha = 0.72f),
+                        color = RaftColor.TextBlack.copy(alpha = 0.72f),
                     )
-                    .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack.copy(alpha = 0.72f),
+                    .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack.copy(alpha = 0.72f),
             maxLines = 1,
         )
         Text(
             text = threadInlineReplyPreviewText(reply.content),
             modifier = Modifier.weight(1f),
             style =
-                SlockType.Caption.copy(
+                RaftType.Caption.copy(
                     fontSize = 12.5.sp,
                     lineHeight = ThreadInlineReplyContentLineHeightSp.sp,
                 ),
-            color = SlockColor.TextBlack.copy(alpha = 0.62f),
+            color = RaftColor.TextBlack.copy(alpha = 0.62f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         if (reply.createdAt.isNotBlank()) {
-            SlockRelativeTimestampText(
+            RaftRelativeTimestampText(
                 value = reply.createdAt,
                 modifier =
                     if (timestampPositionReporter == null) {
@@ -27543,9 +27543,9 @@ private fun ThreadInlineReplyRow(
                             )
                         }
                     },
-                displayGroup = SlockTimestampDisplayGroup.Conversation,
+                displayGroup = RaftTimestampDisplayGroup.Conversation,
                 style = ThreadInlineReplyTimestampStyle,
-                color = SlockColor.TextBlack.copy(alpha = 0.42f),
+                color = RaftColor.TextBlack.copy(alpha = 0.42f),
                 maxLines = 1,
                 toggleEnabled = false,
             )
@@ -27577,26 +27577,26 @@ private const val ThreadInlineReplyRowMinHeightDp = 20f
 private const val ThreadInlineReplyRowVerticalAllowanceDp = 4f
 
 internal val ThreadInlineReplyTimestampStyle =
-    SlockType.Caption.copy(
-        fontFamily = SlockMonoFamily,
+    RaftType.Caption.copy(
+        fontFamily = RaftMonoFamily,
         fontSize = 11.5.sp,
         lineHeight = 15.sp,
     )
 
 @Composable
 internal fun ThreadMessageFooterMeta(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     taskOpenEnabled: Boolean,
     taskStatusActionsEnabled: Boolean,
     resolvedTaskAssigneeName: String? = null,
     alignEnd: Boolean,
     onOpenTask: (String) -> Unit,
-    onShowActions: (SlockPopoverAnchor) -> Unit,
-    onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
+    onShowActions: (RaftPopoverAnchor) -> Unit,
+    onOpenTaskStatusMenu: (RaftPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
-    onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
+    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null
 ) {
     val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
     val hasTask = message.hasThreadTaskFooterMeta()
@@ -27619,7 +27619,7 @@ internal fun ThreadMessageFooterMeta(
         if (hasTask) {
             val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
-            val taskChipClick: ((SlockPopoverAnchor) -> Unit)? =
+            val taskChipClick: ((RaftPopoverAnchor) -> Unit)? =
                 when {
                     taskStatusActionsEnabled -> onOpenTaskStatusMenu
                     taskOpenEnabled -> { _ -> message.taskId?.let(onOpenTask) }
@@ -27634,12 +27634,12 @@ internal fun ThreadMessageFooterMeta(
                 )
             // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
             // soft fill with a status-strong glyph and a 12/16 label.
-            SlockAnchoredMetaChip(
+            RaftAnchoredMetaChip(
                 label = label,
                 iconName = selectedStatus.icon,
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.status.threadTaskChipSoftFill(),
-                iconColorArgb = slockArgbHex(selectedStatus.status.threadTaskChipStrong()),
+                iconColorArgb = raftArgbHex(selectedStatus.status.threadTaskChipStrong()),
                 borderWidth = 0.dp,
                 minHeight = 22.dp,
                 horizontalPadding = 7.dp,
@@ -27652,9 +27652,9 @@ internal fun ThreadMessageFooterMeta(
             )
         }
         if (showSavedBadge) {
-            SlockAnchoredMetaChip(
+            RaftAnchoredMetaChip(
                 label = stringResource(MR.strings.thread_label_saved),
-                iconName = SlockLucideIconName.Bookmark,
+                iconName = RaftLucideIconName.Bookmark,
                 iconSize = 11.dp,
                 iconColorArgb = ThreadMessageSavedBadgeIconColorArgb,
                 iconFillArgb = ThreadMessageSavedBadgeIconColorArgb,
@@ -27688,20 +27688,20 @@ internal fun ThreadMessageFooterMeta(
 
 private fun TaskStatus.threadTaskChipSoftFill(): Color =
     when (this) {
-        TaskStatus.Todo -> SlockThemeState.colors.taskStatusTodoSoft
-        TaskStatus.InProgress -> SlockThemeState.colors.taskStatusInProgressSoft
-        TaskStatus.InReview -> SlockThemeState.colors.taskStatusInReviewSoft
-        TaskStatus.Done -> SlockThemeState.colors.taskStatusDoneSoft
-        TaskStatus.Closed -> SlockThemeState.colors.taskStatusClosedSoft
+        TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoSoft
+        TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressSoft
+        TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewSoft
+        TaskStatus.Done -> RaftAppThemeState.colors.taskStatusDoneSoft
+        TaskStatus.Closed -> RaftAppThemeState.colors.taskStatusClosedSoft
     }
 
 private fun TaskStatus.threadTaskChipStrong(): Color =
     when (this) {
-        TaskStatus.Todo -> SlockThemeState.colors.taskStatusTodoStrong
-        TaskStatus.InProgress -> SlockThemeState.colors.taskStatusInProgressStrong
-        TaskStatus.InReview -> SlockThemeState.colors.taskStatusInReviewStrong
-        TaskStatus.Done -> SlockThemeState.colors.taskStatusDoneStrong
-        TaskStatus.Closed -> SlockThemeState.colors.taskStatusClosedStrong
+        TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoStrong
+        TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressStrong
+        TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewStrong
+        TaskStatus.Done -> RaftAppThemeState.colors.taskStatusDoneStrong
+        TaskStatus.Closed -> RaftAppThemeState.colors.taskStatusClosedStrong
     }
 
 internal data class ThreadReactionPendingKey(
@@ -27713,11 +27713,11 @@ internal fun threadReactionPendingKey(messageId: String, emoji: String): ThreadR
     ThreadReactionPendingKey(messageId = messageId, emoji = emoji)
 
 internal data class ThreadReactionPendingVisual(
-    val reaction: KuiklyThreadReactionItem,
+    val reaction: RaftThreadReactionItem,
     val originalIndex: Int
 )
 
-internal fun List<KuiklyThreadReactionItem>.toPendingReactionVisual(
+internal fun List<RaftThreadReactionItem>.toPendingReactionVisual(
     emoji: String,
     selected: Boolean
 ): ThreadReactionPendingVisual {
@@ -27725,7 +27725,7 @@ internal fun List<KuiklyThreadReactionItem>.toPendingReactionVisual(
     val original = getOrNull(originalIndex)
     val optimistic =
         if (original == null) {
-            KuiklyThreadReactionItem(
+            RaftThreadReactionItem(
                 emoji = emoji,
                 count = if (selected) 1 else 0,
                 selected = selected
@@ -27749,9 +27749,9 @@ internal fun List<KuiklyThreadReactionItem>.toPendingReactionVisual(
 
 internal fun threadVisibleReactionsWithPending(
     messageId: String,
-    reactions: List<KuiklyThreadReactionItem>,
+    reactions: List<RaftThreadReactionItem>,
     pendingVisuals: Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>
-): List<KuiklyThreadReactionItem> {
+): List<RaftThreadReactionItem> {
     val visible = reactions.filter { reaction -> reaction.count > 0 }.toMutableList()
     pendingVisuals
         .filterKeys { key -> key.messageId == messageId }
@@ -27773,7 +27773,7 @@ internal fun threadVisibleReactionsWithPending(
 internal val LocalThreadPendingReactionVisuals =
     compositionLocalOf<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>> { emptyMap() }
 
-internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
+internal fun RaftThreadMessageItem.hasThreadFooterMeta(
     showSavedBadge: Boolean = false,
     hasPendingReaction: Boolean = false
 ): Boolean =
@@ -27796,14 +27796,14 @@ internal fun threadMessageTrailingSectionOrder(
         if (hasInlineReplies) add(ThreadMessageTrailingSection.InlineReplies)
     }
 
-private fun KuiklyThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
+private fun RaftThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
     !taskId.isNullOrBlank() ||
         taskNumber != null ||
         !taskStatus.isNullOrBlank() ||
         !taskAssigneeName.isNullOrBlank()
 
 internal fun threadMessageTaskMetaLabel(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     resolvedTaskAssigneeName: String? = null
 ): String? {
     val number = message.taskNumber?.let { "#$it" }
@@ -27853,7 +27853,7 @@ internal fun Set<SharedThreadComposerDraftRecord>.toReplyComposerDraftParentMess
 internal fun Set<String>.hasReplyComposerDraft(parentMessageId: String): Boolean =
     parentMessageId in this
 
-internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
+internal fun RaftThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
     val replyCount = originMessage?.replyCount ?: return null
     return buildString {
         append(replyCount.coerceAtLeast(0))
@@ -27861,13 +27861,13 @@ internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String?
     }
 }
 
-private val ThreadTaskStatusMenuItems: List<SlockBaseMenuItem> =
+private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem> =
     SharedTaskStatusChipMetas.map { option ->
-        SlockBaseMenuItem(id = option.key, label = option.label)
+        RaftBaseMenuItem(id = option.key, label = option.label)
     }
 
 internal fun threadTaskStatusChipClickIdentity(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     selectedStatus: SharedTaskStatusChipMeta,
     taskStatusActionsEnabled: Boolean,
     taskOpenEnabled: Boolean
@@ -27880,15 +27880,15 @@ internal fun threadMessageMenuOwnerIdentity(messageId: String): String = "thread
 internal fun String?.threadTaskStatusOption(): SharedTaskStatusChipMeta =
     sharedTaskStatusChipMetaOrDefault()
 
-internal fun KuiklyThreadMessageItem.isSystemMessage(): Boolean =
+internal fun RaftThreadMessageItem.isSystemMessage(): Boolean =
     messageType.equals("System", ignoreCase = true) || messageType.equals("system", ignoreCase = true)
 
 internal data class ThreadReactionToggleTarget(
-    val message: KuiklyThreadMessageItem,
+    val message: RaftThreadMessageItem,
     val nextSelected: Boolean
 )
 
-internal fun KuiklyThreadScreenPayload.threadReactionToggleTarget(
+internal fun RaftThreadScreenPayload.threadReactionToggleTarget(
     messageId: String,
     emoji: String
 ): ThreadReactionToggleTarget? {
@@ -27910,15 +27910,15 @@ internal fun KuiklyThreadScreenPayload.threadReactionToggleTarget(
     )
 }
 
-internal fun KuiklyThreadMessageItem.systemContentSummary(): String =
+internal fun RaftThreadMessageItem.systemContentSummary(): String =
     body.sanitizeThreadSystemText()
 
-internal fun KuiklyThreadMessageItem.expandedSystemContent(): String =
+internal fun RaftThreadMessageItem.expandedSystemContent(): String =
     listOf(systemContentSummary(), expandedSystemDetails())
         .filter { it.isNotBlank() }
         .joinToString("\n")
 
-internal fun KuiklyThreadMessageItem.expandedSystemDetails(): String =
+internal fun RaftThreadMessageItem.expandedSystemDetails(): String =
     buildList {
         systemEventType?.takeIf { it.isNotBlank() }?.let { add("Type: ${it.sanitizeThreadSystemText()}") }
         metadata.entries.sortedBy { it.key }.forEach { (key, value) ->
@@ -27966,7 +27966,7 @@ private fun String.decodeBasicHtmlEntities(): String =
 
 internal data class ThreadMessageMenuAction(
     val label: StringDesc,
-    val icon: SlockLucideIconName,
+    val icon: RaftLucideIconName,
     val group: String,
     val enabled: Boolean = true,
     val onClick: () -> Unit
@@ -27995,7 +27995,7 @@ internal fun threadMessageMenuWidthDp(showReactionActions: Boolean): Float {
         reactionCount * ThreadMessageMenuReactionButtonSize.value +
             (reactionCount - 1).coerceAtLeast(0) * ThreadMessageMenuReactionGap.value +
             ThreadMessageMenuReactionPaddingHorizontal.value * 2
-    return maxOf(ThreadMessageMenuMinWidth.value, reactionRowWidth + SlockRaftMetrics.PopupPadding.value * 2)
+    return maxOf(ThreadMessageMenuMinWidth.value, reactionRowWidth + RaftMetrics.PopupPadding.value * 2)
 }
 
 internal fun threadMessageMenuContentHeightDp(
@@ -28007,14 +28007,14 @@ internal fun threadMessageMenuContentHeightDp(
     // later makes an edge-adjacent menu visibly jump between placements. This
     // surface has fixed row/header/divider metrics, so compute the final height
     // up front and keep the first rendered position authoritative.
-    // raft-ui menu (SlockBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
+    // raft-ui menu (RaftBrutalDropdownMenuSurface's raft path): `p-1.5` popup inset on
     // both edges, a hairline separator with a 6dp inset either side between groups and
     // under the reaction header; the seam ring is drawn over the content and the float
     // shadow takes no layout space.
     val effectiveRowCount = actionGroups.size.coerceAtLeast(1)
     val groupDividerCount =
         actionGroups.zipWithNext().count { (previous, next) -> previous != next }
-    val separatorHeight = SlockStroke.Thin.value + SlockRaftMetrics.MenuSeparatorInset.value * 2
+    val separatorHeight = RaftAppStroke.Thin.value + RaftMetrics.MenuSeparatorInset.value * 2
     val reactionHeaderHeight =
         if (showReactionActions) {
             ThreadMessageMenuReactionRowHeight.value + separatorHeight
@@ -28024,11 +28024,11 @@ internal fun threadMessageMenuContentHeightDp(
     return effectiveRowCount * ThreadMessageMenuRowHeight.value +
         groupDividerCount * separatorHeight +
         reactionHeaderHeight +
-        SlockRaftMetrics.PopupPadding.value * 2
+        RaftMetrics.PopupPadding.value * 2
 }
 
 internal fun shouldShowThreadFollowAction(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     replyMetadata: ThreadReplyMetadata
 ): Boolean =
     !message.hasLocalSendState() &&
@@ -28051,7 +28051,7 @@ internal data class ThreadPanelFollowAction(
     val action: String,
 )
 
-internal fun threadPanelFollowAction(message: KuiklyThreadMessageItem?): ThreadPanelFollowAction? {
+internal fun threadPanelFollowAction(message: RaftThreadMessageItem?): ThreadPanelFollowAction? {
     val threadChannelId = message?.threadChannelId?.takeIf { it.isNotBlank() } ?: return null
     return ThreadPanelFollowAction(
         followed = message.isThreadFollowed,
@@ -28065,11 +28065,11 @@ internal fun threadPanelFollowAction(message: KuiklyThreadMessageItem?): ThreadP
 internal const val FOLLOW_THREAD_ACTION = "followMessageThread"
 internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 
-internal fun threadFollowMenuIcon(isFollowed: Boolean): SlockLucideIconName =
-    if (isFollowed) SlockLucideIconName.MessageCircleOff else SlockLucideIconName.MessageCirclePlus
+internal fun threadFollowMenuIcon(isFollowed: Boolean): RaftLucideIconName =
+    if (isFollowed) RaftLucideIconName.MessageCircleOff else RaftLucideIconName.MessageCirclePlus
 
 internal fun threadMessageMenuActions(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     showReplyAction: Boolean,
     showSaveAction: Boolean,
@@ -28100,19 +28100,19 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = MR.strings.thread_action_copy_link.desc(),
-                    icon = SlockLucideIconName.Link,
+                    icon = RaftLucideIconName.Link,
                     group = "copy",
                     onClick = onCopyLink
                 )
             )
         }
-        add(ThreadMessageMenuAction(MR.strings.thread_action_copy_markdown.desc(), SlockLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction(MR.strings.thread_action_select_text.desc(), SlockLucideIconName.FileText, "copy", onClick = onSelectText))
+        add(ThreadMessageMenuAction(MR.strings.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
+        add(ThreadMessageMenuAction(MR.strings.thread_action_select_text.desc(), RaftLucideIconName.FileText, "copy", onClick = onSelectText))
         if (showTranslateAction) {
             add(
                 ThreadMessageMenuAction(
                     label = MR.strings.thread_action_translate.desc(),
-                    icon = SlockLucideIconName.Languages,
+                    icon = RaftLucideIconName.Languages,
                     group = "copy",
                     onClick = onTranslate
                 )
@@ -28122,14 +28122,14 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = MR.strings.thread_action_select_message.desc(),
-                    icon = SlockLucideIconName.CircleCheck,
+                    icon = RaftLucideIconName.CircleCheck,
                     group = "copy",
                     onClick = onShareMessages
                 )
             )
         }
         if (showReplyAction) {
-            add(ThreadMessageMenuAction(MR.strings.thread_action_open_thread.desc(), SlockLucideIconName.MessageSquare, "message", onClick = onReply))
+            add(ThreadMessageMenuAction(MR.strings.thread_action_open_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
         }
         if (showSaveAction) {
             add(
@@ -28140,7 +28140,7 @@ internal fun threadMessageMenuActions(
                         } else {
                             MR.strings.thread_action_save_message.desc()
                         },
-                    icon = SlockLucideIconName.Bookmark,
+                    icon = RaftLucideIconName.Bookmark,
                     group = "message",
                     onClick = onSave
                 )
@@ -28172,7 +28172,7 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = MR.strings.common_delete.desc(),
-                    icon = SlockLucideIconName.Trash,
+                    icon = RaftLucideIconName.Trash,
                     group = "destructive",
                     onClick = onDelete
                 )
@@ -28182,7 +28182,7 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = MR.strings.common_cancel.desc(),
-                    icon = SlockLucideIconName.X,
+                    icon = RaftLucideIconName.X,
                     group = "destructive",
                     onClick = onCancel
                 )
@@ -28198,7 +28198,7 @@ internal fun threadMessageMenuActions(
                         } else {
                             MR.strings.thread_action_mark_done.desc()
                         },
-                    icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
+                    icon = if (isDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig,
                     group = "task",
                     onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
                 )
@@ -28208,7 +28208,7 @@ internal fun threadMessageMenuActions(
             add(
                 ThreadMessageMenuAction(
                     label = MR.strings.thread_action_convert_to_task.desc(),
-                    icon = SlockLucideIconName.ClipboardCheck,
+                    icon = RaftLucideIconName.ClipboardCheck,
                     group = "task",
                     onClick = onConvertToTask
                 )
@@ -28218,9 +28218,9 @@ internal fun threadMessageMenuActions(
 
 @Composable
 private fun ThreadMessageActionMenu(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
-    anchor: SlockPopoverAnchor,
+    anchor: RaftPopoverAnchor,
     showReplyAction: Boolean,
     showSaveAction: Boolean,
     showFollowAction: Boolean,
@@ -28332,11 +28332,11 @@ private fun ThreadMessageActionMenu(
     // risk one clipped in-page menu (review: CC-Cata, 沈括).
     val adaptiveDetailPage =
         LocalActivity.current.pageData.params
-            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .isNotBlank()
     val pageOriginState =
-        SlockChildPageOriginRegistry
-            .stateFor(slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
+        RaftChildPageOriginRegistry
+            .stateFor(raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params))
     val clippingChildPage =
         threadMenuUsesShellHost(
             adaptiveDetailPage = adaptiveDetailPage,
@@ -28344,7 +28344,7 @@ private fun ThreadMessageActionMenu(
             windowOriginX = pageOriginState.windowOrigin.x
         )
     if (!clippingChildPage) {
-        SlockModalAnchoredPopover(
+        RaftModalAnchoredPopover(
             anchor = anchor,
             contentSize = contentSize,
             onDismiss = onDismiss,
@@ -28352,8 +28352,8 @@ private fun ThreadMessageActionMenu(
             horizontalOffset = 0f,
             verticalOffset = 0f,
             verticalOffsetAbove = 0f,
-            verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
+            verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
+            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
         ) {
             LaunchedEffect(message.id, anchor) {
                 diagnosticsLogger(
@@ -28375,24 +28375,24 @@ private fun ThreadMessageActionMenu(
     // composable with the app-shell host instead; the shell owns a window-sized surface while the
     // action callbacks and reaction bitmap remain in this page's process-local state.
     val localPager = LocalActivity.current.getPager() as Pager
-    val pageEventBus: build.raft.app.data.SlockEventBus =
+    val pageEventBus: build.raft.app.data.RaftEventBus =
         remember(localPager.pagerId) {
-            SlockSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+            RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
         }
-    val pageOriginKey = slockChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
+    val pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
     val pageKey =
         LocalActivity.current.pageData.params
-            .optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY)
+            .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
             .trim()
             .ifEmpty { "thread-panel" }
     val pageRootAnchor = anchor.rootOffsetOrNull()
     val pageWindowAnchor =
-        pageRootAnchor?.plus(SlockChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin)
+        pageRootAnchor?.plus(RaftChildPageOriginRegistry.stateFor(pageOriginKey).windowOrigin)
     val requestId =
         "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
     val shellItems =
         actions.mapIndexed { index, action ->
-            SlockShellOverlayItem(
+            RaftShellOverlayItem(
                 id = index.toString(),
                 label = action.label.localized(),
                 iconName = action.icon.name,
@@ -28401,24 +28401,24 @@ private fun ThreadMessageActionMenu(
         }
     DisposableEffect(pageEventBus, requestId) {
         val subscription =
-            pageEventBus.observe(SLOCK_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
-                if (slockShouldApplyShellOverlayResult(requestId, eventData)) {
+            pageEventBus.observe(RAFT_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
+                if (raftShouldApplyShellOverlayResult(requestId, eventData)) {
                     onDismiss()
                 }
             }
         onDispose {
             subscription.close()
-            SlockShellOverlayContentRegistry.remove(requestId)
+            RaftShellOverlayContentRegistry.remove(requestId)
             pageEventBus.post(
-                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
-                cancelSlockShellOverlayJson(requestId)
+                RAFT_SHELL_OVERLAY_REQUEST_EVENT,
+                cancelRaftShellOverlayJson(requestId)
             )
         }
     }
     if (pageWindowAnchor == null) {
         // Keep an in-page fallback for fixtures that intentionally omit layout coordinates. A real
         // child page always has a root anchor before its long-press action menu is shown.
-        SlockModalAnchoredPopover(
+        RaftModalAnchoredPopover(
             anchor = anchor,
             contentSize = contentSize,
             onDismiss = onDismiss,
@@ -28426,8 +28426,8 @@ private fun ThreadMessageActionMenu(
             horizontalOffset = 0f,
             verticalOffset = 0f,
             verticalOffsetAbove = 0f,
-            verticalPlacement = SlockFloatingVerticalPlacement.ContextMenu,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.ContextMenu
+            verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
+            horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
         ) {
             ThreadMessageMenuChrome(
                 actions = actions,
@@ -28439,8 +28439,8 @@ private fun ThreadMessageActionMenu(
         }
     } else {
         LaunchedEffect(requestId, pageWindowAnchor, showReactionActions, shellItems) {
-            SlockShellOverlayContentRegistry.register(
-                SlockShellOverlayContentEntry(
+            RaftShellOverlayContentRegistry.register(
+                RaftShellOverlayContentEntry(
                     requestId = requestId,
                     contentSize = contentSize,
                     viewportGap = viewportGapPx,
@@ -28475,8 +28475,8 @@ private fun ThreadMessageActionMenu(
                 )
             )
             pageEventBus.post(
-                SLOCK_SHELL_OVERLAY_REQUEST_EVENT,
-                SlockShellOverlayRequest(
+                RAFT_SHELL_OVERLAY_REQUEST_EVENT,
+                RaftShellOverlayRequest(
                     requestId = requestId,
                     pageKey = pageKey,
                     anchor = pageWindowAnchor,
@@ -28493,13 +28493,13 @@ private fun ThreadMessageActionMenu(
 
 @Composable
 private fun ThreadMessageTextSelectionDialog(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     messageBodyTextStyle: TextStyle,
     onDismiss: () -> Unit
 ) {
     val originalText = message.body
-    val topSafeArea = slockTopSafeAreaPadding()
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val topSafeArea = raftTopSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     Modal(onWillDismiss = { onDismiss() }) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Keep the modal dismissal boundary behind the native selectable
@@ -28509,11 +28509,11 @@ private fun ThreadMessageTextSelectionDialog(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .slockNativeDispatchCapture()
+                        .background(RaftColor.SurfaceWhite)
+                        .raftNativeDispatchCapture()
             )
             Column(
-                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+                modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
             ) {
                 Row(
                     modifier = Modifier
@@ -28523,8 +28523,8 @@ private fun ThreadMessageTextSelectionDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End
                 ) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.X,
+                    RaftBrutalIconButton(
+                        iconName = RaftLucideIconName.X,
                         onClick = onDismiss,
                         size = 36.dp,
                         shadowOffset = 2.dp
@@ -28535,7 +28535,7 @@ private fun ThreadMessageTextSelectionDialog(
                         .fillMaxWidth()
                         .weight(1f)
                         .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
-                        .slockRaftCardSurface()
+                        .raftCardSurface()
                 ) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
@@ -28566,12 +28566,12 @@ internal fun ThreadMessageMenuChrome(
     modifier: Modifier = Modifier
 ) {
     // task #11 (artin: 统一两套菜单): the action rows render through the shared
-    // SlockBrutalDropdownMenu surface — press wash, row metrics and icon specs
+    // RaftBrutalDropdownMenu surface — press wash, row metrics and icon specs
     // come from the one component instead of a hand-rolled Button stack. The
     // reaction bar rides in the surface's header slot; group boundaries map to
     // dividerBeforeIds.
     val menuItems = actions.mapIndexed { index, action ->
-        SlockBrutalDropdownMenuItem(
+        RaftBrutalDropdownMenuItem(
             id = index.toString(),
             label = action.label.localized(),
             icon = action.icon,
@@ -28582,7 +28582,7 @@ internal fun ThreadMessageMenuChrome(
         val previousGroup = actions.getOrNull(index - 1)?.group
         if (index > 0 && previousGroup != action.group) index.toString() else null
     }.toSet()
-    SlockBrutalDropdownMenuSurface(
+    RaftBrutalDropdownMenuSurface(
         items = menuItems,
         onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
         modifier = modifier,
@@ -28777,11 +28777,11 @@ private fun ThreadTextReactionGlyph(
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Text(
             text = emoji,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(
                 fontSize = if (emoji.length > 1) 10.sp else 13.sp,
                 lineHeight = 12.sp
             ),
-            color = SlockColor.TextBlack,
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Visible
         )
@@ -28808,15 +28808,15 @@ private fun ThreadOriginCard(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onOpenMember: (MemberDetailIdentity) -> Unit,
-    onExternalAuthor: (KuiklyThreadMessageItem) -> Unit = {},
-    onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
-    onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
-    onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
-    onShowAuthorDescription: ((String, SlockPopoverAnchor) -> Unit)? = null,
-    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    memberModelLabelResolver: SlockMemberModelLabelResolver = EmptySlockMemberModelLabelResolver,
+    onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
+    onShowActions: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
+    onOpenTaskStatusMenu: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
+    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
+    onMentionAuthor: (RaftThreadMessageItem) -> Unit,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     shareSelectionActive: Boolean = false,
@@ -28829,28 +28829,28 @@ private fun ThreadOriginCard(
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     Column(
         modifier = modifier.fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
+            .background(RaftColor.SurfaceWhite)
     ) {
         when (timelineSlice.originStatus) {
             "loading" -> {
                 Text(
                     text = stringResource(MR.strings.thread_state_refreshing_original),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
                 )
             }
             "missing" -> {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
                     Text(
                         text = renderConfig.originPreview?.ifBlank {
                             stringResource(MR.strings.thread_state_original_unavailable)
                         } ?: stringResource(MR.strings.thread_state_original_unavailable),
                         style = messageBodyTextStyle,
-                        color = SlockColor.TextBlack
+                        color = RaftColor.TextBlack
                     )
                     renderConfig.originErrorCode?.takeIf { it.isNotBlank() }?.let {
                         Text(
@@ -28858,8 +28858,8 @@ private fun ThreadOriginCard(
                                 MR.strings.thread_error_refresh_original,
                                 userFacingErrorLabels.forErrorCode(it) ?: stringResource(MR.strings.common_error)
                             ),
-                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray
                         )
                     }
                 }
@@ -28933,14 +28933,14 @@ private fun ThreadOriginCard(
                 } ?: renderConfig.originPreview?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
+                        style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
                     )
                 }
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
     }
 }
 
@@ -28951,7 +28951,7 @@ private fun ThreadOriginCard(
 private fun ThreadMessageAuthorSubtitle(
     description: String,
     modifier: Modifier = Modifier,
-    rootAnchor: SlockLiveRootAnchorRef? = null,
+    rootAnchor: RaftLiveRootAnchorRef? = null,
     onClick: (() -> Unit)? = null
 ) {
     val clickableModifier =
@@ -28962,7 +28962,7 @@ private fun ThreadMessageAuthorSubtitle(
         }
     val anchoredModifier =
         if (rootAnchor != null) {
-            clickableModifier.slockCaptureLiveRootAnchor(rootAnchor)
+            clickableModifier.raftCaptureLiveRootAnchor(rootAnchor)
         } else {
             clickableModifier
         }
@@ -28971,11 +28971,11 @@ private fun ThreadMessageAuthorSubtitle(
     Text(
         text = description,
         style =
-            SlockType.Caption.copy(
+            RaftType.Caption.copy(
                 fontWeight = FontWeight.Medium,
-                color = SlockColor.ForegroundHint
+                color = RaftColor.ForegroundHint
             ),
-        color = SlockColor.ForegroundHint,
+        color = RaftColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = anchoredModifier
@@ -28985,17 +28985,17 @@ private fun ThreadMessageAuthorSubtitle(
 @Composable
 private fun ThreadMessageTimestampLabel(
     timestampLabel: String,
-    onToggle: (SlockTimestampDisplayMode) -> Unit = {}
+    onToggle: (RaftTimestampDisplayMode) -> Unit = {}
 ) {
-    SlockRelativeTimestampText(
+    RaftRelativeTimestampText(
         value = timestampLabel,
-        displayGroup = SlockTimestampDisplayGroup.Conversation,
+        displayGroup = RaftTimestampDisplayGroup.Conversation,
         style =
-            SlockType.Caption.copy(
-                fontFamily = SlockMonoFamily,
-                color = SlockColor.ForegroundHint
+            RaftType.Caption.copy(
+                fontFamily = RaftMonoFamily,
+                color = RaftColor.ForegroundHint
             ),
-        color = SlockColor.ForegroundHint,
+        color = RaftColor.ForegroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.End,
@@ -29022,9 +29022,9 @@ private fun ThreadMessageAvatarSlot(
     timestampTextAlign: TextAlign,
     avatarLabel: String,
     avatarWireValue: String?,
-    avatarDiagnostics: SlockAvatarRowDiagnostics? = null,
-    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
-    status: SlockAgentStatusIndicatorState?,
+    avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
+    cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
+    status: RaftAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     external: Boolean = false,
@@ -29059,13 +29059,13 @@ private fun ThreadMessageAvatarSlot(
                 Text(
                     text = timestampLabel,
                     style =
-                        SlockType.Caption.copy(
-                            fontFamily = SlockMonoFamily,
+                        RaftType.Caption.copy(
+                            fontFamily = RaftMonoFamily,
                             fontSize = 11.sp,
                             lineHeight = 14.sp,
-                            color = SlockColor.TextBlack.copy(alpha = 0.38f)
+                            color = RaftColor.TextBlack.copy(alpha = 0.38f)
                         ),
-                    color = SlockColor.TextBlack.copy(alpha = 0.38f),
+                    color = RaftColor.TextBlack.copy(alpha = 0.38f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = timestampTextAlign,
@@ -29083,9 +29083,9 @@ private fun ThreadMessageAvatar(
     interactionIdentity: String,
     avatarLabel: String,
     avatarWireValue: String?,
-    avatarDiagnostics: SlockAvatarRowDiagnostics? = null,
-    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null,
-    status: SlockAgentStatusIndicatorState?,
+    avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
+    cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
+    status: RaftAgentStatusIndicatorState?,
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     external: Boolean = false,
@@ -29093,7 +29093,7 @@ private fun ThreadMessageAvatar(
     onLongPress: () -> Unit = {}
 ) {
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "thread-message-avatar",
             semanticIdentity = interactionIdentity,
             callbacks = ThreadMessageAvatarGestureCallbacks(onClick, onLongPress)
@@ -29106,8 +29106,8 @@ private fun ThreadMessageAvatar(
         modifier =
             Modifier
                 .size(36.dp)
-                .slockGesturePointerInput(gestureOwner) { owner ->
-                    var gesture: SlockGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
+                .raftGesturePointerInput(gestureOwner) { owner ->
+                    var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(
                         onPress = {
                             gesture = owner.beginGesture()
@@ -29123,7 +29123,7 @@ private fun ThreadMessageAvatar(
                 },
         contentAlignment = Alignment.Center
     ) {
-        SlockAvatarWithStatus(
+        RaftAvatarWithStatus(
             statusColor = if (muted) null else status?.color,
             avatarSize = 36.dp,
             // #90 React parity: bump chat thread avatar overlay status dot
@@ -29135,13 +29135,13 @@ private fun ThreadMessageAvatar(
                 if (external && avatarSource == null) {
                     ThreadExternalAuthorAvatarFallback(muted = muted)
                 } else {
-                SlockAvatar(
+                RaftAppAvatar(
                     avatarWireValue = avatarSource,
                     label = avatarLabel,
                     diagnostics = avatarDiagnostics,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 36.dp,
-                    borderWidth = SlockStroke.Default,
+                    borderWidth = RaftAppStroke.Default,
                     cacheSubject = cacheSubject
                 )
                 }
@@ -29150,7 +29150,7 @@ private fun ThreadMessageAvatar(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .background(SlockColor.EmptyStateGray.copy(alpha = 0.38f))
+                                .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f))
                     )
                 }
             }
@@ -29165,12 +29165,12 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.AccentCyan)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(RaftColor.AccentCyan)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                 .alpha(if (muted) 0.62f else 1f),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(SlockLucideIconName.Link, modifier = Modifier.size(20.dp), color = SlockColor.TextBlackArgb)
+        RaftLucideIcon(RaftLucideIconName.Link, modifier = Modifier.size(20.dp), color = RaftColor.TextBlackArgb)
     }
 }
 
@@ -29183,9 +29183,9 @@ private data class ThreadMessageAvatarGestureCallbacks(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    status: SlockAgentStatusIndicatorState?,
+    status: RaftAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
-    cacheSubject: build.raft.app.data.SlockAvatarCacheSubject? = null
+    cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null
 ) {
     val avatarSource =
         remember(avatarWireValue) {
@@ -29195,7 +29195,7 @@ private fun ThreadMessageStaticAvatar(
         modifier = Modifier.size(36.dp),
         contentAlignment = Alignment.Center
     ) {
-        SlockAvatarWithStatus(
+        RaftAvatarWithStatus(
             statusColor = status?.color,
             avatarSize = 36.dp,
             // #90 React parity: bump chat thread avatar overlay status dot
@@ -29203,18 +29203,18 @@ private fun ThreadMessageStaticAvatar(
             statusSize = 11.dp,
             statusPulsing = status?.pulsing == true && statusPulsing
         ) {
-            SlockAvatar(
+            RaftAppAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 36.dp,
-                borderWidth = SlockStroke.Default,
+                borderWidth = RaftAppStroke.Default,
                 cacheSubject = cacheSubject
             )
         }
     }
 }
 
-private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
+private fun RaftThreadMessageItem.showsAgentStatusIndicator(): Boolean =
     isThreadAgentAuthor() && threadAuthorBadgeLabel() == null
 
 @Composable
@@ -29389,13 +29389,13 @@ private class ThreadPixelAvatarRandom(seed: Int) {
     }
 }
 
-private fun KuiklyThreadMessageCommentRef.hasThreadCommentHostSource(): Boolean {
+private fun RaftThreadMessageCommentRef.hasThreadCommentHostSource(): Boolean {
     val source = hostSource ?: return false
     if (hostMessageId.isNullOrBlank() || source.channelId.isBlank()) return false
     return when (source.type) {
-        KuiklyThreadSurfaceKind.Channel -> source.routeKind == KuiklyThreadSurfaceKind.Channel || source.routeKind == KuiklyThreadSurfaceKind.DirectMessage
-        KuiklyThreadSurfaceKind.ReplyThread ->
-            (source.routeKind == KuiklyThreadSurfaceKind.Channel || source.routeKind == KuiklyThreadSurfaceKind.DirectMessage) &&
+        RaftThreadSurfaceKind.Channel -> source.routeKind == RaftThreadSurfaceKind.Channel || source.routeKind == RaftThreadSurfaceKind.DirectMessage
+        RaftThreadSurfaceKind.ReplyThread ->
+            (source.routeKind == RaftThreadSurfaceKind.Channel || source.routeKind == RaftThreadSurfaceKind.DirectMessage) &&
                 (!source.parentMessageId.isNullOrBlank() || !source.rootThreadChannelId.isNullOrBlank())
         else -> false
     }
@@ -29407,25 +29407,25 @@ private fun ThreadInlineMetaTag(label: String) {
         modifier =
             Modifier
                 // raft muted chip: fill-muted on the chip radius, no ink edge.
-                .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Chip))
+                .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
                 .padding(horizontal = ThreadInlineMetaTagHorizontalPadding, vertical = 2.dp)
     ) {
         Text(
             text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
 }
 
-// Keep Anchor/Quote tag text aligned with SlockBrutalTextField's default horizontalPadding.
+// Keep Anchor/Quote tag text aligned with RaftBrutalTextField's default horizontalPadding.
 private val ThreadInlineMetaTagHorizontalPadding: Dp = 10.dp
 
 @Composable
 private fun ThreadMessageCommentRefChip(
-    ref: KuiklyThreadMessageCommentRef,
+    ref: RaftThreadMessageCommentRef,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     onOpen: () -> Unit
@@ -29444,28 +29444,28 @@ private fun ThreadMessageCommentRefChip(
             modifier
                 .then(if (enabled) Modifier.clickable(onClick = onOpen) else Modifier)
                 // raft reference chip: fill-muted on the chip radius with a hairline.
-                .slockRaftControlSurface(
-                    fill = SlockColor.FillMuted.copy(alpha = if (enabled) 1f else 0.7f),
-                    border = SlockColor.BorderHairline,
-                    radius = SlockRadius.Chip,
-                    borderWidth = SlockStroke.Thin
+                .raftControlSurface(
+                    fill = RaftColor.FillMuted.copy(alpha = if (enabled) 1f else 0.7f),
+                    border = RaftColor.BorderHairline,
+                    radius = RaftAppRadius.Chip,
+                    borderWidth = RaftAppStroke.Thin
                 )
-                .padding(horizontal = SlockSpacing.Xs, vertical = 4.dp),
+                .padding(horizontal = RaftAppSpacing.Xs, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.MessageSquare,
+        RaftLucideIcon(
+            RaftLucideIconName.MessageSquare,
             modifier = Modifier.size(12.dp),
             color = if (enabled) "#FF111827" else "#FF6B7280"
         )
         Text(
             text = label,
             style =
-                SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+                RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(
+                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
                 ),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+            color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -29475,49 +29475,49 @@ private fun ThreadMessageCommentRefChip(
 
 private val SharedThreadAttachmentImageSize = 92.dp
 
-internal fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
-    slockFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType)
+internal fun RaftThreadAttachmentItem.isImageAttachment(): Boolean =
+    raftFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType)
 
-private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
+private fun RaftThreadAttachmentItem.isPdfAttachment(): Boolean =
     mimeType.substringBefore(';').trim().equals("application/pdf", ignoreCase = true)
 
-private fun KuiklyThreadAttachmentItem.normalizedMimeType(): String =
+private fun RaftThreadAttachmentItem.normalizedMimeType(): String =
     mimeType.substringBefore(';').trim().lowercase()
 
-internal fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
-    slockFilePreviewIsMarkdownAttachment(fileName = name, mimeType = mimeType)
+internal fun RaftThreadAttachmentItem.isMarkdownAttachment(): Boolean =
+    raftFilePreviewIsMarkdownAttachment(fileName = name, mimeType = mimeType)
 
-internal fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
-    !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
+internal fun RaftThreadAttachmentItem.isTextLikeAttachment(): Boolean =
+    !isMarkdownAttachment() && raftFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
-internal fun KuiklyThreadAttachmentItem.isPreviewableAudioAttachment(): Boolean =
-    slockFilePreviewIsAudioAttachment(fileName = name, mimeType = mimeType)
+internal fun RaftThreadAttachmentItem.isPreviewableAudioAttachment(): Boolean =
+    raftFilePreviewIsAudioAttachment(fileName = name, mimeType = mimeType)
 
-internal fun KuiklyThreadAttachmentItem.isPreviewableVideoAttachment(): Boolean =
-    slockFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
+internal fun RaftThreadAttachmentItem.isPreviewableVideoAttachment(): Boolean =
+    raftFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
 
-private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
+private fun RaftThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
     isPdfAttachment() ||
         isMarkdownAttachment() ||
         isTextLikeAttachment()
 
-internal fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
+internal fun RaftThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
 
-private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
+private fun RaftThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
     isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment() || isPreviewableAudioAttachment()
 
-internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
+internal fun RaftThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
 
-private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
+private fun RaftThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
     listOf("attempt-$generation", "thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
         .joinToString(":")
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
         .take(160)
         .ifBlank { "thread-attachment-download" }
 
-internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreviewLabel: String): String =
+internal fun RaftThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreviewLabel: String): String =
     listOf(
         htmlPreviewLabel.takeIf { isHtmlAttachment() },
         displaySizeLabel()
@@ -29526,7 +29526,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreview
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
-internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
+internal fun RaftThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
     when {
         isPreviewableAudioAttachment() -> MR.strings.file_preview_audio.desc()
         isPreviewableVideoAttachment() -> MR.strings.file_preview_video.desc()
@@ -29536,7 +29536,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDes
     }
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
-internal fun KuiklyThreadAttachmentItem.displaySizeLabel(): String =
+internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
     sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
 /** Group identity for the initial Thread image editor's N/N event stream. */
@@ -29553,10 +29553,10 @@ internal fun threadComposerImageAnnotationPayload(
     actionId: String,
     files: List<PlatformFile>,
     originalImage: Boolean,
-): SlockFilePreviewPayload? {
+): RaftFilePreviewPayload? {
     val firstFile = files.firstOrNull() ?: return null
     val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
-    return SlockFilePreviewPayload(
+    return RaftFilePreviewPayload(
         kind = "image",
         title = "Image preview",
         subtitle = firstFile.fileName,
@@ -29590,7 +29590,7 @@ internal fun threadComposerImageAnnotationPayload(
     )
 }
 
-private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
+private fun RaftThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     kind: String,
     title: String,
     content: String = "",
@@ -29598,8 +29598,8 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     message: String = "",
     error: String? = null,
     externalUrl: String? = null
-): SlockFilePreviewPayload =
-    SlockFilePreviewPayload(
+): RaftFilePreviewPayload =
+    RaftFilePreviewPayload(
         kind = kind,
         requestedKind = kind,
         title = title,
@@ -29678,8 +29678,8 @@ internal fun SharedThreadComposerAttachment.toRestoredThreadComposerPlatformFile
     )
 }
 
-internal fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
-    SlockFilePreviewGalleryImage(
+internal fun PlatformFile.toComposerImageGalleryImage(): RaftFilePreviewGalleryImage =
+    RaftFilePreviewGalleryImage(
         attachmentId = id,
         name = fileName,
         mimeType = mimeType.orEmpty(),
@@ -29702,14 +29702,14 @@ internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
                     .substringBefore('#')
                     .substringAfterLast('.', missingDelimiterValue = "")
                     .lowercase()
-            extension in SlockFilePreviewVideoExtensions
+            extension in RaftFilePreviewVideoExtensions
         }
     return !normalizedMime.startsWith("video/") && !hasVideoExtension
 }
 
 @Composable
 private fun ThreadMessageAttachments(
-    attachments: List<KuiklyThreadAttachmentItem>,
+    attachments: List<RaftThreadAttachmentItem>,
     alignEnd: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onOpenAttachment: (String) -> Unit,
@@ -29722,7 +29722,7 @@ private fun ThreadMessageAttachments(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
         if (imageAttachments.isNotEmpty()) {
@@ -29730,7 +29730,7 @@ private fun ThreadMessageAttachments(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement =
                     Arrangement.spacedBy(
-                        SlockSpacing.Sm,
+                        RaftAppSpacing.Sm,
                         if (alignEnd) Alignment.End else Alignment.Start
                     ),
                 verticalAlignment = Alignment.CenterVertically
@@ -29756,7 +29756,7 @@ private fun ThreadMessageAttachments(
 
 @Composable
 private fun ThreadImageAttachmentTile(
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     onOpen: () -> Unit
 ) {
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
@@ -29779,12 +29779,12 @@ private fun ThreadImageAttachmentTile(
             .clickable(onClick = onOpen),
         contentAlignment = Alignment.Center
     ) {
-        SlockAspectFitImagePreviewSurface(
+        RaftAspectFitImagePreviewSurface(
             source = thumbnailUrl,
             fallbackSource = fallbackUrl,
             contentDescription = attachment.name,
             modifier = Modifier.fillMaxSize(),
-            contentScale = SlockImageThumbnailContentScale,
+            contentScale = RaftImageThumbnailContentScale,
             onImageStateChange = { state ->
                 if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
                     fallbackHost?.requestFallback?.invoke(attachment.id)
@@ -29796,7 +29796,7 @@ private fun ThreadImageAttachmentTile(
 
 @Composable
 private fun ThreadAttachmentChip(
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     openState: ThreadAttachmentOpenUiState?,
     onOpen: () -> Unit,
     onDownload: () -> Unit = {}
@@ -29820,12 +29820,12 @@ private fun ThreadAttachmentChip(
     val statusLabel = openState.localizedThreadAttachmentStatusLabel()
     val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
     val affordanceIcon =
-        if (attachment.threadAttachmentUsesPreviewAffordance()) SlockLucideIconName.Eye else SlockLucideIconName.Download
+        if (attachment.threadAttachmentUsesPreviewAffordance()) RaftLucideIconName.Eye else RaftLucideIconName.Download
     Column(
-        modifier = Modifier.width(SlockAttachmentPreviewCardWidth),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        modifier = Modifier.width(RaftAttachmentPreviewCardWidth),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
-        SlockAttachmentPreviewCard(
+        RaftAttachmentPreviewCard(
             title = attachment.name,
             meta = meta,
             summary = summaryLabel,
@@ -29848,29 +29848,29 @@ internal fun ThreadAttachmentCommentsSheet(
     onQuote: (ThreadAttachmentCommentItem) -> Unit
 ) {
     // Read before entering Modal: its content is rehosted in a native window where the
-    // page host's safe-area locals are gone (same caveat as SlockUnifiedDialog).
-    val bottomInset = slockBottomSafeAreaPadding()
+    // page host's safe-area locals are gone (same caveat as RaftUnifiedDialog).
+    val bottomInset = raftBottomSafeAreaPadding()
     // Not Kuikly's ModalBottomSheet: its Dialog hard-codes dismissOnClickOutside, which on
     // iOS turns the whole window into one accessibility leaf and hides the comment editor
-    // (see slockModalDialogProperties). Modal + SlockModalDismissBarrier is the established
+    // (see raftModalDialogPropertiesWithoutScrim). Modal + RaftModalDismissBarrier is the established
     // bottom-sheet pattern for content with text fields (see PrivateDeploymentSheet).
     Modal(onWillDismiss = { onDismiss() }) {
         Box(modifier = Modifier.fillMaxSize()) {
-            SlockModalDismissBarrier(overlayAlpha = 0.60f, onDismiss = onDismiss)
+            RaftModalDismissBarrier(overlayAlpha = 0.60f, onDismiss = onDismiss)
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + SlockSpacing.Sm)
-                        .slockDialogContentPointerBarrier()
+                        .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + RaftAppSpacing.Sm)
+                        .raftDialogContentPointerBarrier()
             ) {
                 // raft-ui dialog surface: dialog radius, popover layer, seam ring, float shadow.
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .slockRaftOverlaySurface(SlockRadius.Dialog)
+                            .raftLookOverlaySurface(RaftAppRadius.Dialog)
                             .padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -29882,18 +29882,18 @@ internal fun ThreadAttachmentCommentsSheet(
                         Text(
                             text = stringResource(MR.strings.thread_comments_title),
                             style =
-                                SlockType.PageTitle.copy(
+                                RaftType.PageTitle.copy(
                                     fontSize = 18.sp,
                                     lineHeight = 22.sp,
-                                    color = SlockColor.TextBlack
+                                    color = RaftColor.TextBlack
                                 ),
-                            color = SlockColor.TextBlack,
+                            color = RaftColor.TextBlack,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        SlockBrutalIconButton(
-                            iconName = SlockLucideIconName.X,
+                        RaftBrutalIconButton(
+                            iconName = RaftLucideIconName.X,
                             onClick = onDismiss,
                             size = 34.dp,
                             shadowOffset = 3.dp
@@ -29951,7 +29951,7 @@ internal fun ThreadAttachmentCommentsContent(
         ThreadAttachmentCommentsHeader(state.attachment)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ThreadAttachmentCommentsFilterChip(
@@ -29982,7 +29982,7 @@ internal fun ThreadAttachmentCommentsContent(
                     onClick = onRetry
                 )
             else ->
-                SlockModalListShell(height = commentsListHeight) {
+                RaftModalListShell(height = commentsListHeight) {
                     if (comments.isEmpty()) {
                         item {
                             ThreadModalEmptyState(
@@ -30017,8 +30017,8 @@ internal fun ThreadAttachmentCommentsContent(
                         labels = userFacingErrorLabels,
                         genericMessage = stringResource(MR.strings.common_error)
                     ),
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                color = RaftColor.AccentRed,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -30035,20 +30035,20 @@ internal fun ThreadAttachmentCommentsContent(
 }
 
 @Composable
-private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentItem) {
+private fun ThreadAttachmentCommentsHeader(attachment: RaftThreadAttachmentItem) {
     Row(
         modifier = Modifier.fillMaxWidth()
-            .slockRaftCardSurface(fill = SlockColor.FillMuted, radius = SlockRadius.Control)
-            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+            .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
+            .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.FileText, modifier = Modifier.size(15.dp), color = SlockColor.TextBlackArgb)
+        RaftLucideIcon(RaftLucideIconName.FileText, modifier = Modifier.size(15.dp), color = RaftColor.TextBlackArgb)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = attachment.name,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -30056,8 +30056,8 @@ private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentIte
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -30072,14 +30072,14 @@ private fun ThreadAttachmentCommentsFilterChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    SlockToolbarChip(
+    RaftToolbarChip(
         label = label,
         onClick = onClick,
         active = selected,
         uppercase = false,
-        activeBackgroundColor = SlockColor.BrandYellow,
-        inactiveBackgroundColor = SlockColor.SurfaceWhite,
-        borderColor = SlockColor.BorderBlack
+        activeBackgroundColor = RaftColor.BrandYellow,
+        inactiveBackgroundColor = RaftColor.SurfaceWhite,
+        borderColor = RaftColor.BorderBlack
     )
 }
 
@@ -30093,7 +30093,7 @@ private fun ThreadAttachmentCommentRow(
 ) {
     val resolved = comment.isThreadAttachmentCommentResolved()
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(
@@ -30103,8 +30103,8 @@ private fun ThreadAttachmentCommentRow(
         ) {
             Text(
                 text = comment.senderName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -30112,8 +30112,8 @@ private fun ThreadAttachmentCommentRow(
             comment.createdAt.takeIf { it.isNotBlank() }?.let { createdAt ->
                 Text(
                     text = createdAt,
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -30124,19 +30124,19 @@ private fun ThreadAttachmentCommentRow(
         }
         Text(
             text = comment.content,
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             ThreadAttachmentCommentTinyButton(
                 label = stringResource(MR.strings.thread_action_quote),
-                icon = SlockLucideIconName.MessageSquarePlus,
+                icon = RaftLucideIconName.MessageSquarePlus,
                 enabled = canComment && comment.content.isNotBlank(),
                 onClick = onQuote
             )
@@ -30147,7 +30147,7 @@ private fun ThreadAttachmentCommentRow(
                         resolving -> stringResource(MR.strings.thread_comments_resolving)
                         else -> stringResource(MR.strings.thread_comments_resolve)
                     },
-                icon = if (resolved) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Check,
+                icon = if (resolved) RaftLucideIconName.CircleCheckBig else RaftLucideIconName.Check,
                 enabled = canComment && !resolved && !resolving,
                 onClick = onResolve
             )
@@ -30158,20 +30158,20 @@ private fun ThreadAttachmentCommentRow(
 @Composable
 private fun ThreadAttachmentCommentTinyButton(
     label: String,
-    icon: SlockLucideIconName,
+    icon: RaftLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         leadingIcon = icon,
         onClick = onClick,
         enabled = enabled,
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 28.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
     )
 }
 
@@ -30188,7 +30188,7 @@ private fun ThreadAttachmentCommentComposer(
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             state.pendingAnchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
@@ -30201,11 +30201,11 @@ private fun ThreadAttachmentCommentComposer(
         if (!canComment) {
             Text(
                 text = threadAttachmentCommentBlockedCopy(reason),
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.thread_comments_label),
             value = state.draft,
             placeholder = stringResource(MR.strings.thread_comments_placeholder),
@@ -30215,16 +30215,16 @@ private fun ThreadAttachmentCommentComposer(
             onValueChange = onDraftChange,
             password = false
         )
-        SlockModalFullWidthActionButton(
+        RaftModalFullWidthActionButton(
             label =
                 if (state.sending) {
                     stringResource(MR.strings.thread_comments_sending)
                 } else {
                     stringResource(MR.strings.thread_comments_send)
                 },
-            icon = if (state.sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
+            icon = if (state.sending) RaftLucideIconName.RefreshCw else RaftLucideIconName.Send,
             enabled = enabled && state.draft.text.isNotBlank(),
-            color = SlockColor.AccentCyan,
+            color = RaftColor.AccentCyan,
             iconSpinning = state.sending,
             onClick = onSend
         )
@@ -30237,7 +30237,7 @@ internal fun ThreadAttachmentCommentItem.isThreadAttachmentCommentResolved(): Bo
 private fun String?.attachmentCommentsEnabledForThread(): Boolean =
     this?.trim()?.equals("botiverse", ignoreCase = true) == true
 
-private fun KuiklyThreadScreenPayload.findAttachmentCommentTarget(attachmentId: String): ThreadAttachmentCommentTarget? {
+private fun RaftThreadScreenPayload.findAttachmentCommentTarget(attachmentId: String): ThreadAttachmentCommentTarget? {
     val cleanAttachmentId = attachmentId.trim()
     if (cleanAttachmentId.isBlank()) return null
     val allMessages = listOfNotNull(originMessage) + this.messages
@@ -30270,15 +30270,15 @@ private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
 @Composable
 private fun ThreadFilesTab(
     threadInstanceKey: String,
-    basePayload: KuiklyThreadScreenPayload,
+    basePayload: RaftThreadScreenPayload,
     filesStartKey: String?,
     filesViewModel: SharedThreadFilesViewModel?,
     active: Boolean,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onAuthRequired: (String?) -> Unit,
-    onOpenAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
-    onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit,
-    onOpenFileSource: (KuiklyThreadFileItem) -> Unit
+    onOpenAttachment: (RaftThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    onDownloadAttachment: (RaftThreadAttachmentItem) -> Unit,
+    onOpenFileSource: (RaftThreadFileItem) -> Unit
 ) {
     if (filesViewModel == null) {
         ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -30345,7 +30345,7 @@ private fun ThreadTasksTab(
     identityOptions: List<MemberProfile>,
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
-    timeContext: SlockTimeContext? = null,
+    timeContext: RaftTimeContext? = null,
     onOpenTask: (TaskSummary) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -30385,22 +30385,22 @@ private fun String.threadTaskAssigneeKey(): String =
 private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     // task #176: last element of the page, like the composer it replaces, so it
     // keeps clear of the system navigation bar.
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     Column(
         modifier = Modifier.fillMaxWidth()
-            .background(SlockColor.Canvas)
+            .background(RaftColor.Canvas)
             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = label,
             onClick = onJoin,
             modifier = Modifier.fillMaxWidth(),
-            backgroundColor = SlockColor.AccentPink,
+            backgroundColor = RaftColor.AccentPink,
             minWidth = 0.dp,
             minHeight = 40.dp,
-            leadingIcon = SlockLucideIconName.LogIn,
-            textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+            leadingIcon = RaftLucideIconName.LogIn,
+            textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
         )
     }
 }
@@ -30421,33 +30421,33 @@ private fun ThreadForwardAttachmentChips(item: ForwardMessageItem, modifier: Mod
                 Row(
                     modifier =
                         Modifier
-                            .slockRaftControlSurface(
-                                fill = SlockColor.Card,
-                                border = SlockColor.BorderHairline,
-                                radius = SlockRadius.Chip,
-                                borderWidth = SlockStroke.Thin
+                            .raftControlSurface(
+                                fill = RaftColor.Card,
+                                border = RaftColor.BorderHairline,
+                                radius = RaftAppRadius.Chip,
+                                borderWidth = RaftAppStroke.Thin
                             )
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    SlockLucideIcon(
-                        name = SlockLucideIconName.FileText,
-                        color = SlockColor.TextBlackArgb,
+                    RaftLucideIcon(
+                        name = RaftLucideIconName.FileText,
+                        color = RaftColor.TextBlackArgb,
                         modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = attachment.filename,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
                         text = "· ${forwardAttachmentKindLabel(attachment.mimeType)}",
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1
                     )
                 }
@@ -30456,8 +30456,8 @@ private fun ThreadForwardAttachmentChips(item: ForwardMessageItem, modifier: Mod
     } else if (item.attachmentCount > 0) {
         Text(
             text = item.localizedForwardAttachmentLabel(),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            color = RaftColor.TextMutedGray,
             modifier = modifier
         )
     }
@@ -30486,18 +30486,18 @@ internal fun ThreadForwardBundleCard(
     // text). Space Mono stays on the timestamp only. See visual case components.thread.forward-bundle.
     Column(
         modifier = modifier
-            .slockRaftCardSurface()
+            .raftCardSurface()
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Box(modifier = Modifier.width(3.dp).height(16.dp).background(SlockColor.BrandYellow))
+            Box(modifier = Modifier.width(3.dp).height(16.dp).background(RaftColor.BrandYellow))
             Text(
                 text = bundle.localizedForwardTitle(),
-                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -30509,8 +30509,8 @@ internal fun ThreadForwardBundleCard(
                     } else {
                         stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
                     },
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1
             )
         }
@@ -30518,10 +30518,10 @@ internal fun ThreadForwardBundleCard(
         // mobile navigation contract requested for 1.6.0: every bundle has a
         // full-page entry, including a single forwarded message.
         val previewMessages = bundle.inlinePreviewMessages()
-        val liveTimeContext = LocalSlockTimeContextProvider.current?.current
+        val liveTimeContext = LocalRaftTimeContextProvider.current?.current
         previewMessages.forEach { preview ->
             val item = preview.item
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -30533,19 +30533,19 @@ internal fun ThreadForwardBundleCard(
                 ) {
                     Text(
                         text = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
-                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     if (item.timestampLabel.isNotBlank()) {
-                        SlockRelativeTimestampText(
+                        RaftRelativeTimestampText(
                             value = item.timestampLabel,
                             timeContext = liveTimeContext,
-                            displayGroup = SlockTimestampDisplayGroup.Conversation,
-                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
-                            color = SlockColor.TextMutedGray,
+                            displayGroup = RaftTimestampDisplayGroup.Conversation,
+                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
+                            color = RaftColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.End,
@@ -30561,12 +30561,12 @@ internal fun ThreadForwardBundleCard(
                         Text(
                             text = preview.body,
                             style = messageBodyTextStyle,
-                            color = SlockColor.TextBlack,
+                            color = RaftColor.TextBlack,
                             maxLines = ThreadForwardBundlePreviewLineLimit,
                             overflow = TextOverflow.Ellipsis
                         )
                     } else {
-                        SlockMarkdownBody(
+                        RaftMarkdownBody(
                             body = preview.body,
                             textStyle = messageBodyTextStyle,
                             onOpenUrl = onOpenUrl
@@ -30577,7 +30577,7 @@ internal fun ThreadForwardBundleCard(
             }
         }
         if (onOpenAll != null) {
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
             Row(
                 modifier =
                     Modifier
@@ -30594,13 +30594,13 @@ internal fun ThreadForwardBundleCard(
                         } else {
                             stringResource(MR.strings.thread_forward_view_all, bundle.displayCount())
                         },
-                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1
                 )
-                SlockLucideIcon(
-                    name = SlockLucideIconName.ChevronRight,
-                    color = SlockColor.TextBlackArgb,
+                RaftLucideIcon(
+                    name = RaftLucideIconName.ChevronRight,
+                    color = RaftColor.TextBlackArgb,
                     modifier = Modifier.size(14.dp)
                 )
             }
@@ -30904,8 +30904,8 @@ private data class ThreadForwardTargetLoadPage(
     val reset: Boolean = false
 )
 
-internal fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForwardTargetPickerItem<ForwardMessageTarget> =
-    SlockForwardTargetPickerItem(
+internal fun ForwardMessageTarget.toRaftForwardTargetPickerItem(): RaftForwardTargetPickerItem<ForwardMessageTarget> =
+    RaftForwardTargetPickerItem(
         stableKey = threadForwardSelectionKey(),
         title = title,
         subtitle = threadForwardTargetSubtitle(),
@@ -30923,17 +30923,17 @@ internal fun ForwardMessageTarget.toSlockForwardTargetPickerItem(): SlockForward
         payload = this
     )
 
-internal fun ForwardMessageTarget.forwardTargetVisualKind(): SlockForwardTargetVisualKind =
+internal fun ForwardMessageTarget.forwardTargetVisualKind(): RaftForwardTargetVisualKind =
     when {
         kind == ForwardMessageTargetKind.RecentDirectMessage ||
             kind == ForwardMessageTargetKind.HumanDirectMessageCandidate ||
             kind == ForwardMessageTargetKind.AgentDirectMessageCandidate ->
-            SlockForwardTargetVisualKind.DirectMessage
+            RaftForwardTargetVisualKind.DirectMessage
         channelKind == ConversationKind.Joint || channelType?.trim()?.lowercase() == "joint" ->
-            SlockForwardTargetVisualKind.JointChannel
+            RaftForwardTargetVisualKind.JointChannel
         channelType?.trim()?.lowercase() == "private" ->
-            SlockForwardTargetVisualKind.PrivateChannel
-        else -> SlockForwardTargetVisualKind.PublicChannel
+            RaftForwardTargetVisualKind.PrivateChannel
+        else -> RaftForwardTargetVisualKind.PublicChannel
     }
 
 private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
@@ -30955,7 +30955,7 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
     }
 
 @Composable
-private fun <T> SlockForwardTargetPickerItem<T>.localizedForwardTargetSubtitle(): String =
+private fun <T> RaftForwardTargetPickerItem<T>.localizedForwardTargetSubtitle(): String =
     when (subtitle) {
         "Join channel before forwarding" -> stringResource(MR.strings.thread_forward_join_channel_first)
         "Start DM before forwarding" -> stringResource(MR.strings.thread_forward_start_dm_first)
@@ -30980,15 +30980,15 @@ internal fun ThreadForwardBundleRoute.toThreadForwardBundlePageData():
     }
 
 internal fun build.raft.app.compat.json.JSONObject
-    .threadForwardBundleTimeCapabilitiesOrNull(): SlockTimeCapabilities? {
+    .threadForwardBundleTimeCapabilitiesOrNull(): RaftTimeCapabilities? {
     val fallbackOffsetMinutes =
         optString(ThreadForwardBundleLocalOffsetMinutesKey)
             .toIntOrNull()
             ?.takeIf { it in -24 * 60..24 * 60 }
             ?: return null
-    return SlockTimeCapabilities(
+    return RaftTimeCapabilities(
         localOffsetMinutes = fallbackOffsetMinutes,
-        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: RaftTimeFormat24Hour
     )
 }
 
@@ -30997,7 +30997,7 @@ internal fun build.raft.app.compat.json.JSONObject
 // standalone-pager architecture as Billing/Administration so the list gets a
 // full-height viewport and a clean lifecycle. Replaces the old in-thread modal.
 internal fun Pager.openThreadForwardBundlePage(route: ThreadForwardBundleRoute) {
-    openSlockPage(
+    openRaftPage(
         pageName = THREAD_FORWARD_BUNDLE_PAGE,
         // Product state crosses this boundary by identity only. Platform hosts
         // inject the legacy offset as a rollback fallback; the live provider
@@ -31019,16 +31019,16 @@ internal class ComposeThreadForwardBundlePage : AuthenticatedProductPager(Authen
 private fun ThreadForwardBundleScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val params = pager.pageData.params
     val visualFixture = remember(params.toString()) { params.optString("visualFixture") == "forward_bundle" }
     val route = remember(params.toString()) { params.toThreadForwardBundleRouteOrNull() }
     val timeCapabilities = remember(params.toString()) { params.threadForwardBundleTimeCapabilitiesOrNull() }
-    val timeContextProvider = rememberLiveSlockTimeContext(capabilities = timeCapabilities)
+    val timeContextProvider = rememberLiveRaftTimeContext(capabilities = timeCapabilities)
     val storeScope = remember(params.toString(), pager.pagerId) {
-        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val messageBodyFontSizeState by sharedStores.messageBodyFontSizeStore.state.collectAsState()
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val routeOwner = remember(params.toString()) { params.authenticatedRouteOwnerOrNull() }
@@ -31074,7 +31074,7 @@ private fun ThreadForwardBundleScreen() {
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
     val resolvedMessageBodyTextStyle =
         remember(selectedMessageBodyFontSize) {
-            slockMessageBodyTextStyle(selectedMessageBodyFontSize)
+            raftMessageBodyTextStyle(selectedMessageBodyFontSize)
         }
     val repository =
         if (routeOwner != null && route != null && routeOwner.serverId == route.serverId.value) {
@@ -31112,14 +31112,14 @@ private fun ThreadForwardBundleScreen() {
         }
     }
     val bundle = if (visualFixture) threadForwardBundleVisualFixtureBundle() else detailState.bundle
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        RaftTopPageHeader(
             title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
-            iconName = SlockLucideIconName.Share2,
-            backgroundColor = SlockColor.Canvas,
+            iconName = RaftLucideIconName.Share2,
+            backgroundColor = RaftColor.Canvas,
             leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.ArrowLeft,
                     onClick = {
                         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
                     },
@@ -31145,10 +31145,10 @@ private fun ThreadForwardBundleScreen() {
                 // as the thread flow, no bespoke dividers. Action callbacks are no-ops
                 // — this is a read-only list; only markdown links stay live.
                 // task #177: standalone page; the last message clears the navigation bar.
-                val bundleBottomSafeArea = slockBottomSafeAreaPadding()
+                val bundleBottomSafeArea = raftBottomSafeAreaPadding()
                 LazyColumn(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(top = SlockSpacing.Sm, bottom = SlockSpacing.Sm + bundleBottomSafeArea),
+                    contentPadding = PaddingValues(top = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Sm + bundleBottomSafeArea),
                 ) {
                     items(messages.size, key = { messages[it].id }) { index ->
                         val item = messages[index]
@@ -31177,7 +31177,7 @@ private fun ThreadForwardBundleScreen() {
                             if (item.attachments.isNotEmpty() || item.attachmentCount > 0) {
                                 ThreadForwardAttachmentChips(
                                     item = item,
-                                    modifier = Modifier.padding(start = 60.dp, end = SlockSpacing.Md, bottom = SlockSpacing.Sm)
+                                    modifier = Modifier.padding(start = 60.dp, end = RaftAppSpacing.Md, bottom = RaftAppSpacing.Sm)
                                 )
                             }
                         }
@@ -31185,7 +31185,7 @@ private fun ThreadForwardBundleScreen() {
                 }
             }
             detailState.status == ThreadForwardBundleDetailStatus.Loading ->
-                SlockCenteredLoading(
+                RaftCenteredLoading(
                     message = stringResource(MR.strings.common_loading),
                     modifier = Modifier.weight(1f).fillMaxWidth()
                 )
@@ -31218,14 +31218,14 @@ private fun ThreadForwardBundleLoadFailure(
     ) {
         Text(
             text = stringResource(MR.strings.thread_forward_bundle_unavailable),
-            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack
+            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack
         )
-        Spacer(Modifier.height(SlockSpacing.Md))
-        SlockBrutalActionButton(
+        Spacer(Modifier.height(RaftAppSpacing.Md))
+        RaftBrutalActionButton(
             label = stringResource(MR.strings.common_retry),
             onClick = onRetry,
-            backgroundColor = SlockColor.SurfaceWhite,
+            backgroundColor = RaftColor.SurfaceWhite,
             minWidth = 0.dp,
             minHeight = 36.dp,
             shadowOffset = 2.dp
@@ -31236,8 +31236,8 @@ private fun ThreadForwardBundleLoadFailure(
 // The bundle page renders read-only standard rows; forwarded items carry only
 // a subset of message fields, so map what exists and let the card's defaults
 // cover the rest.
-private fun ForwardMessageItem.toThreadMessageItemForBundlePage(): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
+private fun ForwardMessageItem.toThreadMessageItemForBundlePage(): RaftThreadMessageItem =
+    RaftThreadMessageItem(
         id = id,
         authorId = authorId,
         authorName = authorName,
@@ -31265,7 +31265,7 @@ internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
                     avatarLabel = "C",
                     timestampLabel = "10:38",
                     // Markdown on purpose: forwarded bodies render through
-                    // SlockMarkdownBody (task #63) — captures must show bold
+                    // RaftMarkdownBody (task #63) — captures must show bold
                     // ink + code chip, not literal ** and backticks.
                     body = "Captured the **Android visual artifact** and queued `React parity`.",
                     attachmentCount = 0
@@ -31320,29 +31320,29 @@ internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
     )
 
 @Composable
-internal fun <T> SlockForwardTargetPicker(
+internal fun <T> RaftForwardTargetPicker(
     messageCount: Int,
     skippedCount: Int,
     nestedForwardCount: Int,
     taskLinkedCount: Int,
-    state: SlockForwardTargetPickerUiState<T>,
-    onIntent: (SlockForwardTargetPickerIntent<T>) -> Unit,
+    state: RaftForwardTargetPickerUiState<T>,
+    onIntent: (RaftForwardTargetPickerIntent<T>) -> Unit,
     topContent: (@Composable () -> Unit)? = null,
     searchInputInteractive: Boolean = state.interactive,
     bottomSafeArea: Dp = 0.dp
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    val loading = state.loadState == SlockForwardPickerLoadState.Loading
+    val loading = state.loadState == RaftForwardPickerLoadState.Loading
     val listState = key(state.sessionKey) { rememberLazyListState() }
-    SlockBackHandler(enabled = state.dismissEnabled, label = "thread_forward_targets") {
-        onIntent(SlockForwardTargetPickerIntent.Dismiss)
+    RaftBackHandler(enabled = state.dismissEnabled, label = "thread_forward_targets") {
+        onIntent(RaftForwardTargetPickerIntent.Dismiss)
     }
     LaunchedEffect(state.sessionKey, state.canLoadMore, state.appending, state.items.size, state.interactive) {
         snapshotFlow {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             state.canLoadMore && state.interactive && !state.appending && lastVisible >= state.items.lastIndex - 2
         }.distinctUntilChanged().collect { shouldLoadMore ->
-            if (shouldLoadMore) onIntent(SlockForwardTargetPickerIntent.LoadMore)
+            if (shouldLoadMore) onIntent(RaftForwardTargetPickerIntent.LoadMore)
         }
     }
     Box(
@@ -31358,20 +31358,20 @@ internal fun <T> SlockForwardTargetPicker(
             modifier =
                 Modifier
                     .matchParentSize()
-                    .background(SlockColor.SurfaceWhite)
-                    .slockNativeDispatchCapture()
+                    .background(RaftColor.SurfaceWhite)
+                    .raftNativeDispatchCapture()
         )
-        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            SlockTopPageHeader(
+        Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+            RaftTopPageHeader(
                 title = stringResource(MR.strings.thread_action_forward),
                 subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),
-                iconName = SlockLucideIconName.Send,
-                backgroundColor = SlockColor.Canvas,
+                iconName = RaftLucideIconName.Send,
+                backgroundColor = RaftColor.Canvas,
                 leadingContent = {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.ArrowLeft,
+                    RaftBrutalIconButton(
+                        iconName = RaftLucideIconName.ArrowLeft,
                         onClick = {
-                            if (state.dismissEnabled) onIntent(SlockForwardTargetPickerIntent.Dismiss)
+                            if (state.dismissEnabled) onIntent(RaftForwardTargetPickerIntent.Dismiss)
                         },
                         size = 30.dp,
                         shadowOffset = 2.dp
@@ -31386,14 +31386,14 @@ internal fun <T> SlockForwardTargetPicker(
                             .fillMaxWidth()
                             .padding(start = 16.dp, top = 12.dp, end = 16.dp)
                             // raft-ui warning Banner chrome: warning-soft fill, hairline, container radius.
-                            .background(SlockColor.WarningSoft, RoundedCornerShape(SlockRadius.Container))
-                            .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Container))
+                            .background(RaftColor.WarningSoft, RoundedCornerShape(RaftAppRadius.Container))
+                            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
                             .padding(10.dp)
                 ) {
                     Text(
                         text = warning,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = SlockColor.TextBlack
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = RaftColor.TextBlack
                     )
                 }
             }
@@ -31401,9 +31401,9 @@ internal fun <T> SlockForwardTargetPicker(
                 query = state.query,
                 loading = loading,
                 interactive = searchInputInteractive,
-                onQueryChange = { onIntent(SlockForwardTargetPickerIntent.QueryChanged(it)) },
+                onQueryChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) },
                 onSubmit = {},
-                onClear = { onIntent(SlockForwardTargetPickerIntent.QueryChanged("")) },
+                onClear = { onIntent(RaftForwardTargetPickerIntent.QueryChanged("")) },
                 placeholder = stringResource(MR.strings.thread_action_search),
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp)
             )
@@ -31414,8 +31414,8 @@ internal fun <T> SlockForwardTargetPicker(
                     } else {
                         stringResource(MR.strings.thread_forward_search_results)
                     },
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp)
             )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -31442,17 +31442,17 @@ internal fun <T> SlockForwardTargetPicker(
                     )
                     if (state.errorCode != null) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                            SlockModalActionButton(
+                            RaftModalActionButton(
                                 label = stringResource(MR.strings.common_retry),
-                                icon = SlockLucideIconName.RefreshCw,
-                                onClick = { onIntent(SlockForwardTargetPickerIntent.Retry) }
+                                icon = RaftLucideIconName.RefreshCw,
+                                onClick = { onIntent(RaftForwardTargetPickerIntent.Retry) }
                             )
                         }
                     }
                 } else {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
+                        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceWhite),
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
                         items(state.items.size, key = { state.items[it].rowKey }) { index ->
@@ -31468,7 +31468,7 @@ internal fun <T> SlockForwardTargetPicker(
                                 onClick = {
                                     if (state.interactive) {
                                         onIntent(
-                                            SlockForwardTargetPickerIntent.TargetSelected(
+                                            RaftForwardTargetPickerIntent.TargetSelected(
                                                 item = rowTarget,
                                                 renderGeneration = rowGeneration
                                             )
@@ -31483,8 +31483,8 @@ internal fun <T> SlockForwardTargetPicker(
                             modifier =
                                 Modifier
                                     .matchParentSize()
-                                    .background(SlockColor.SurfaceWhite.copy(alpha = 0.82f))
-                                    .slockNativeDispatchCapture(),
+                                    .background(RaftColor.SurfaceWhite.copy(alpha = 0.82f))
+                                    .raftNativeDispatchCapture(),
                             contentAlignment = Alignment.TopCenter
                         ) {
                             if (loading) {
@@ -31499,13 +31499,13 @@ internal fun <T> SlockForwardTargetPicker(
                                 ) {
                                     Text(
                                         text = stringResource(MR.strings.thread_forward_targets_unavailable),
-                                        style = SlockType.Body,
-                                        color = SlockColor.TextBlack
+                                        style = RaftType.Body,
+                                        color = RaftColor.TextBlack
                                     )
-                                    SlockModalActionButton(
+                                    RaftModalActionButton(
                                         label = stringResource(MR.strings.common_retry),
-                                        icon = SlockLucideIconName.RefreshCw,
-                                        onClick = { onIntent(SlockForwardTargetPickerIntent.Retry) }
+                                        icon = RaftLucideIconName.RefreshCw,
+                                        onClick = { onIntent(RaftForwardTargetPickerIntent.Retry) }
                                     )
                                 }
                             }
@@ -31518,36 +31518,36 @@ internal fun <T> SlockForwardTargetPicker(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(SlockColor.Canvas)
+                            .background(RaftColor.Canvas)
                             .padding(
                                 start = 12.dp,
                                 top = 12.dp,
                                 end = 12.dp,
-                                bottom = slockForwardPickerActionBottomPadding(bottomSafeArea)
+                                bottom = raftForwardPickerActionBottomPadding(bottomSafeArea)
                             ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = stringResource(MR.strings.thread_forward_destinations_selected, state.selectedItems.size),
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextMutedGray
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(state.selectedItems.size, key = { state.selectedItems[it].rowKey }) { index ->
                             val selected = state.selectedItems[index]
-                            SlockModalActionButton(
+                            RaftModalActionButton(
                                 label = "${selected.title} ×",
                                 onClick = {
-                                    onIntent(SlockForwardTargetPickerIntent.RemoveSelection(selected.stableKey))
+                                    onIntent(RaftForwardTargetPickerIntent.RemoveSelection(selected.stableKey))
                                 },
                                 enabled = state.interactive
                             )
                         }
                     }
-                    SlockModalFullWidthActionButton(
+                    RaftModalFullWidthActionButton(
                         label = stringResource(MR.strings.common_continue),
-                        icon = SlockLucideIconName.ChevronRight,
-                        onClick = { onIntent(SlockForwardTargetPickerIntent.Continue) },
+                        icon = RaftLucideIconName.ChevronRight,
+                        onClick = { onIntent(RaftForwardTargetPickerIntent.Continue) },
                         enabled = state.interactive
                     )
                 }
@@ -31566,7 +31566,7 @@ internal fun ThreadForwardNoteDialog(
     onDismiss: () -> Unit,
     onSend: () -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.thread_forward_add_note),
         uppercaseTitle = false,
         onDismiss = onDismiss,
@@ -31582,21 +31582,21 @@ internal fun ThreadForwardNoteDialog(
             item {
                 Text(
                     text = stringResource(MR.strings.thread_forward_destination),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = RaftColor.TextMutedGray
                 )
             }
             item {
                 Text(
                     text = selectedTargetLabel,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             item {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.thread_state_note),
                     value = note,
                     placeholder =
@@ -31612,23 +31612,23 @@ internal fun ThreadForwardNoteDialog(
                 )
             }
         }
-        SlockDialogFooter {
-            SlockModalActionButton(
+        RaftDialogFooter {
+            RaftModalActionButton(
                 label = stringResource(MR.strings.common_back),
-                icon = SlockLucideIconName.ArrowLeft,
+                icon = RaftLucideIconName.ArrowLeft,
                 onClick = onDismiss,
                 enabled = !sending
             )
-            SlockModalActionButton(
+            RaftModalActionButton(
                 label =
                     if (sending) {
                         stringResource(MR.strings.thread_forward_sending)
                     } else {
                         stringResource(MR.strings.common_send)
                     },
-                icon = if (sending) SlockLucideIconName.Loader else SlockLucideIconName.Send,
+                icon = if (sending) RaftLucideIconName.Loader else RaftLucideIconName.Send,
                 onClick = onSend,
-                color = SlockColor.AccentPink,
+                color = RaftColor.AccentPink,
                 enabled = selectedTargetLabel.isNotBlank() && !sending
             )
         }
@@ -31643,15 +31643,15 @@ private fun ThreadForwardSearchingSkeletonRow() {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
                 .height(60.dp)
-                .slockRaftCardSurface()
+                .raftCardSurface()
                 .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(modifier = Modifier.size(38.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker)))
+            Box(modifier = Modifier.size(38.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker)))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(modifier = Modifier.width(144.dp).height(12.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Xs)))
-                Box(modifier = Modifier.width(92.dp).height(9.dp).background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Xs)))
+                Box(modifier = Modifier.width(144.dp).height(12.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Xs)))
+                Box(modifier = Modifier.width(92.dp).height(9.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Xs)))
             }
         }
     }
@@ -31659,7 +31659,7 @@ private fun ThreadForwardSearchingSkeletonRow() {
 
 @Composable
 private fun <T> ThreadForwardTargetRow(
-    target: SlockForwardTargetPickerItem<T>,
+    target: RaftForwardTargetPickerItem<T>,
     selected: Boolean,
     interactive: Boolean,
     onClick: () -> Unit
@@ -31673,11 +31673,11 @@ private fun <T> ThreadForwardTargetRow(
                 .alpha(if (interactive) 1f else 0.72f)
                 .padding(horizontal = 16.dp, vertical = 6.dp)
                 // raft selection row: primary-soft when selected, ink edge marks the choice.
-                .slockRaftControlSurface(
-                    fill = if (selected) SlockColor.BrandSoft else SlockColor.Card,
-                    border = if (selected) SlockColor.BorderBlack else SlockColor.BorderHairline,
-                    radius = SlockRadius.Container,
-                    borderWidth = if (selected) SlockStroke.Control else SlockStroke.Thin
+                .raftControlSurface(
+                    fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
+                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                    radius = RaftAppRadius.Container,
+                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
@@ -31687,32 +31687,32 @@ private fun <T> ThreadForwardTargetRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when (target.visualKind) {
-                SlockForwardTargetVisualKind.DirectMessage ->
-                    SlockAvatar(
+                RaftForwardTargetVisualKind.DirectMessage ->
+                    RaftAppAvatar(
                         avatarWireValue = target.avatarWireValue,
                         label = target.avatarLabel,
                         avatarSize = 38.dp,
-                        borderWidth = SlockStroke.Default,
+                        borderWidth = RaftAppStroke.Default,
                         cacheSubject =
-                            slockMemberAvatarCacheSubject(
+                            raftMemberAvatarCacheSubject(
                                 target.cacheMemberKind,
                                 target.cacheMemberId
                             ),
                         cacheServerId = target.cacheServerId
                     )
-                SlockForwardTargetVisualKind.PublicChannel,
-                SlockForwardTargetVisualKind.PrivateChannel,
-                SlockForwardTargetVisualKind.JointChannel ->
+                RaftForwardTargetVisualKind.PublicChannel,
+                RaftForwardTargetVisualKind.PrivateChannel,
+                RaftForwardTargetVisualKind.JointChannel ->
                     Box(
                         modifier =
                             Modifier
                                 .size(38.dp)
-                                .background(SlockColor.Brand, RoundedCornerShape(SlockRadius.Sticker))
-                                .border(SlockStroke.Control, SlockColor.StickerInk, RoundedCornerShape(SlockRadius.Sticker)),
+                                .background(RaftColor.Brand, RoundedCornerShape(RaftAppRadius.Sticker))
+                                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
                         contentAlignment = Alignment.Center
                     ) {
-                        SlockLucideIcon(
-                            target.visualKind.iconName() ?: SlockLucideIconName.Hash,
+                        RaftLucideIcon(
+                            target.visualKind.iconName() ?: RaftLucideIconName.Hash,
                             modifier = Modifier.size(18.dp),
                             color = "#FF111111"
                         )
@@ -31721,22 +31721,22 @@ private fun <T> ThreadForwardTargetRow(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     text = target.title,
-                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 21.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (target.subtitle.isNotBlank()) {
                     Text(
                     text = target.localizedForwardTargetSubtitle(),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF111111")
+            RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF111111")
         }
     }
 }
@@ -31754,22 +31754,22 @@ internal fun ThreadShareSelectionToolbar(
     onCopyMarkdown: (() -> Unit)? = null
 ) {
     val hasSelection = selectedCount > 0
-    val bottomSafeArea = slockBottomSafeAreaPadding()
-    var moreMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    val moreAnchor = remember { SlockLiveRootAnchorRef(identity = "thread_share_selection_more") }
+    val bottomSafeArea = raftBottomSafeAreaPadding()
+    var moreMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
     val moreItems =
         listOfNotNull(
-            SlockBrutalDropdownMenuItem(
+            RaftBrutalDropdownMenuItem(
                 id = "generate-image",
                 label = stringResource(MR.strings.thread_share_generate_image),
-                icon = SlockLucideIconName.Image,
+                icon = RaftLucideIconName.Image,
                 enabled = hasSelection
             ),
             onCopyMarkdown?.let {
-                SlockBrutalDropdownMenuItem(
+                RaftBrutalDropdownMenuItem(
                     id = "copy-md",
                     label = stringResource(MR.strings.thread_share_copy_markdown),
-                    icon = SlockLucideIconName.Copy,
+                    icon = RaftLucideIconName.Copy,
                     enabled = hasSelection
                 )
             }
@@ -31778,9 +31778,9 @@ internal fun ThreadShareSelectionToolbar(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.Canvas)
+                .background(RaftColor.Canvas)
     ) {
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
         Row(
             modifier =
                 Modifier
@@ -31791,13 +31791,13 @@ internal fun ThreadShareSelectionToolbar(
         ) {
             Text(
                 text = stringResource(MR.strings.thread_forward_selected, selectedCount),
-                style = SlockType.Caption.copy(
-                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                style = RaftType.Caption.copy(
+                    fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
                     fontWeight = FontWeight.Normal
                 ),
-                color = SlockColor.TextMuted,
+                color = RaftColor.TextMuted,
                 maxLines = 1
             )
             Row(
@@ -31808,50 +31808,50 @@ internal fun ThreadShareSelectionToolbar(
                 if (onSelectAll != null) {
                     ThreadShareSelectionActionButton(
                         label = stringResource(MR.strings.thread_comments_filter_all),
-                        icon = SlockLucideIconName.Check,
+                        icon = RaftLucideIconName.Check,
                         onClick = onSelectAll,
                         enabled = hasSelection && selectedCount < selectableCount
                     )
                 }
                 ThreadShareSelectionActionButton(
                     label = stringResource(MR.strings.common_cancel),
-                    icon = SlockLucideIconName.X,
+                    icon = RaftLucideIconName.X,
                     onClick = onCancel,
                     enabled = true
                 )
                 ThreadShareSelectionActionButton(
                     label = stringResource(MR.strings.thread_action_forward),
-                    icon = SlockLucideIconName.Send,
+                    icon = RaftLucideIconName.Send,
                     onClick = onForward,
                     enabled = hasSelection && forwardEnabled,
-                    backgroundColor = SlockColor.AccentPink,
-                    disabledBackgroundColor = SlockColor.AccentPink
+                    backgroundColor = RaftColor.AccentPink,
+                    disabledBackgroundColor = RaftColor.AccentPink
                 )
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Copy,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.Copy,
                     onClick = onCopyLinks,
                     enabled = hasSelection,
                     size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
+                    shadowOffset = RaftShadow.BrutalSmall,
                     iconSize = 14.dp
                 )
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Ellipsis,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.Ellipsis,
                     onClick = {
-                        moreAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
+                        moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
                     },
                     enabled = hasSelection,
                     size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
+                    shadowOffset = RaftShadow.BrutalSmall,
                     iconSize = 14.dp,
-                    modifier = Modifier.slockCaptureLiveRootAnchor(moreAnchor),
+                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor),
                     contentDescription = stringResource(MR.strings.thread_new_message_menu_more)
                 )
             }
         }
     }
     moreMenuAnchor?.let { anchor ->
-        SlockBrutalDropdownMenu(
+        RaftBrutalDropdownMenu(
             anchor = anchor,
             items = moreItems,
             onSelect = { id ->
@@ -31862,7 +31862,7 @@ internal fun ThreadShareSelectionToolbar(
                 }
             },
             onDismiss = { moreMenuAnchor = null },
-            verticalPlacement = SlockFloatingVerticalPlacement.Above
+            verticalPlacement = RaftFloatingVerticalPlacement.Above
         )
     }
 }
@@ -31870,13 +31870,13 @@ internal fun ThreadShareSelectionToolbar(
 @Composable
 private fun ThreadShareSelectionActionButton(
     label: String,
-    icon: SlockLucideIconName,
+    icon: RaftLucideIconName,
     onClick: () -> Unit,
     enabled: Boolean,
-    backgroundColor: Color = SlockColor.SurfaceWhite,
-    disabledBackgroundColor: Color = SlockColor.SurfaceCream
+    backgroundColor: Color = RaftColor.SurfaceWhite,
+    disabledBackgroundColor: Color = RaftColor.SurfaceCream
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         onClick = onClick,
         enabled = enabled,
@@ -31887,20 +31887,20 @@ private fun ThreadShareSelectionActionButton(
         leadingIcon = icon,
         leadingIconSize = 14.dp,
         contentSpacing = 4.dp,
-        shadowOffset = SlockShadow.BrutalSmall,
-        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp)
+        shadowOffset = RaftShadow.BrutalSmall,
+        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp)
     )
 }
 
 @Composable
 internal fun ThreadSharePreviewModal(
-    messages: List<KuiklyThreadMessageItem>,
+    messages: List<RaftThreadMessageItem>,
     image: ThreadSharePreviewImage?,
     onDismiss: () -> Unit,
     onCopyMarkdown: () -> Unit,
     onDownloadImage: () -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.thread_share_preview_title),
         uppercaseTitle = false,
         onDismiss = onDismiss,
@@ -31923,10 +31923,10 @@ internal fun ThreadSharePreviewModal(
                         Modifier
                             .fillMaxWidth()
                             .height(threadSharePreviewImageHeight(image).dp)
-                            .slockRaftCardSurface()
+                            .raftCardSurface()
                             .padding(8.dp)
                 ) {
-                    SlockCachedImage(
+                    RaftCachedImage(
                         source = image.uri,
                         contentDescription = stringResource(MR.strings.thread_share_image_description),
                         modifier = Modifier.fillMaxSize(),
@@ -31934,16 +31934,16 @@ internal fun ThreadSharePreviewModal(
                     )
                 }
             }
-            SlockDialogFooter {
-                SlockModalActionButton(
+            RaftDialogFooter {
+                RaftModalActionButton(
                     label = stringResource(MR.strings.thread_share_copy_markdown),
-                    icon = SlockLucideIconName.Copy,
+                    icon = RaftLucideIconName.Copy,
                     onClick = onCopyMarkdown,
                     enabled = messages.isNotEmpty()
                 )
-                SlockModalActionButton(
+                RaftModalActionButton(
                     label = stringResource(MR.strings.thread_share_download),
-                    icon = SlockLucideIconName.Download,
+                    icon = RaftLucideIconName.Download,
                     onClick = onDownloadImage,
                     enabled = !image?.path.isNullOrBlank()
                 )
@@ -31966,7 +31966,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.thread_members_remove_confirm_title),
         onDismiss = onDismiss,
         dismissEnabled = !removing,
@@ -31975,8 +31975,8 @@ private fun ThreadRemoveMemberConfirmationDialog(
         titleFontSize = 18,
         titleLineHeight = 22
     ) {
-        SlockRaftUiBanner(
-            status = SlockRaftUiBannerStatus.Destructive,
+        RaftUiBanner(
+            status = RaftUiBannerStatus.Destructive,
             title =
                 stringResource(
                     MR.strings.thread_members_remove_confirm_question,
@@ -31984,25 +31984,25 @@ private fun ThreadRemoveMemberConfirmationDialog(
                     confirmation.channelName
                 ),
             description = stringResource(MR.strings.thread_members_remove_confirm_detail),
-            size = SlockRaftUiBannerSize.Medium,
-            iconName = SlockLucideIconName.TriangleAlert
+            size = RaftUiBannerSize.Medium,
+            iconName = RaftLucideIconName.TriangleAlert
         )
         errorMessage?.let {
             Text(
                 text = it,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                color = RaftColor.AccentRed
             )
         }
-        SlockDialogFooter {
-            SlockBrutalActionButton(
+        RaftDialogFooter {
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
                 enabled = !removing,
-                leadingIcon = SlockLucideIconName.X,
-                backgroundColor = SlockColor.SurfaceWhite
+                leadingIcon = RaftLucideIconName.X,
+                backgroundColor = RaftColor.SurfaceWhite
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     if (removing) {
                         stringResource(MR.strings.thread_members_removing)
@@ -32011,8 +32011,8 @@ private fun ThreadRemoveMemberConfirmationDialog(
                     },
                 onClick = onConfirm,
                 enabled = !removing,
-                leadingIcon = SlockLucideIconName.UserMinus,
-                backgroundColor = SlockColor.AccentRed
+                leadingIcon = RaftLucideIconName.UserMinus,
+                backgroundColor = RaftColor.AccentRed
             )
         }
     }
@@ -32020,12 +32020,12 @@ private fun ThreadRemoveMemberConfirmationDialog(
 
 @Composable
 private fun ThreadMembersPagerRow(
-    member: KuiklyThreadMemberItem,
-    agentStatusResolver: SlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver,
+    member: RaftThreadMemberItem,
+    agentStatusResolver: RaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver,
     removing: Boolean,
-    onOpen: (KuiklyThreadMemberItem) -> Unit,
-    onRemove: (KuiklyThreadMemberItem) -> Unit
+    onOpen: (RaftThreadMemberItem) -> Unit,
+    onRemove: (RaftThreadMemberItem) -> Unit
 ) {
     val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
     val subtitle =
@@ -32039,9 +32039,9 @@ private fun ThreadMembersPagerRow(
                     member.description
                 }
         )
-    val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+    val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
         ?: member.modalAvatarWireValue()
-    SlockModalCompactMemberRow(
+    RaftModalCompactMemberRow(
         title = member.displayName,
         channelPageStyle = true,
         avatarSize = 28.dp,
@@ -32054,12 +32054,12 @@ private fun ThreadMembersPagerRow(
         },
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
-        cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+        cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
         statusColor = status?.color,
         statusPulsing = status?.pulsing == true,
         enabled = !removing,
-        trailingIcon = SlockLucideIconName.UserMinus.takeIf { member.canRemove && !removing },
+        trailingIcon = RaftLucideIconName.UserMinus.takeIf { member.canRemove && !removing },
         trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
         onTrailingClick = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
         onClick = { onOpen(member) }
@@ -32069,11 +32069,11 @@ private fun ThreadMembersPagerRow(
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun ThreadAddMemberModal(
-    members: List<KuiklyThreadMemberItem>,
-    candidates: List<KuiklyThreadMemberItem>,
+    members: List<RaftThreadMemberItem>,
+    candidates: List<RaftThreadMemberItem>,
     canAddMembers: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     addMemberStatus: String,
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
@@ -32081,8 +32081,8 @@ private fun ThreadAddMemberModal(
     inline: Boolean = false,
     localServerId: String? = null,
     onDismiss: () -> Unit,
-    onSubmit: (KuiklyThreadMemberItem) -> Unit,
-    onSubmitBatch: ((List<KuiklyThreadMemberItem>) -> Unit)? = null,
+    onSubmit: (RaftThreadMemberItem) -> Unit,
+    onSubmitBatch: ((List<RaftThreadMemberItem>) -> Unit)? = null,
     canCreateAgents: Boolean = false,
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
 ) {
@@ -32105,7 +32105,7 @@ private fun ThreadAddMemberModal(
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
     var createAgentMenuOpen by remember { mutableStateOf(false) }
-    var createAgentMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var createAgentMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     val addFailedLabel = stringResource(MR.strings.thread_add_member_failed)
     val genericErrorLabel = stringResource(MR.strings.common_error)
     val errorText =
@@ -32123,19 +32123,19 @@ private fun ThreadAddMemberModal(
             if (!errorText.isNullOrBlank()) {
                 Text(
                     text = errorText,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                    color = RaftColor.AccentRed
                 )
             }
             Text(
                 text = stringResource(MR.strings.thread_add_member_search),
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack
             )
-            SlockBrutalSearchField(
+            RaftBrutalSearchField(
                 value = query,
                 placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
-                leadingIcon = SlockLucideIconName.Search,
+                leadingIcon = RaftLucideIconName.Search,
                 enabled = !blocked,
                 onValueChange = {
                     if (!blocked) {
@@ -32149,8 +32149,8 @@ private fun ThreadAddMemberModal(
                 if (inline && selectedCandidates.isNotEmpty()) item(key = "selected-members") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         selectedCandidates.forEach { member ->
-                            SlockToolbarChip(label = member.displayName, uppercase = false, active = true,
-                                trailingIconName = SlockLucideIconName.X, enabled = !adding,
+                            RaftToolbarChip(label = member.displayName, uppercase = false, active = true,
+                                trailingIconName = RaftLucideIconName.X, enabled = !adding,
                                 onClick = { selectedKeys = selectedKeys - member.memberKey })
                         }
                     }
@@ -32174,7 +32174,7 @@ private fun ThreadAddMemberModal(
                     }
                 } else {
                     if (humanCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
+                        item { RaftModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -32187,14 +32187,14 @@ private fun ThreadAddMemberModal(
                                     alreadyJoined = alreadyJoined
                                 )
                             val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                            val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
                                 ?: member.modalAvatarWireValue()
-                            SlockModalCompactMemberRow(
+                            RaftModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+                                cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
                                 cacheServerId = member.sourceServerId,
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
@@ -32203,7 +32203,7 @@ private fun ThreadAddMemberModal(
                                 enabled = interaction.enabled,
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
+                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
                                     if (inline) {
@@ -32218,7 +32218,7 @@ private fun ThreadAddMemberModal(
                         }
                     }
                     if (agentCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
+                        item { RaftModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -32231,14 +32231,14 @@ private fun ThreadAddMemberModal(
                                     alreadyJoined = alreadyJoined
                                 )
                             val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+                            val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
                                 ?: member.modalAvatarWireValue()
-                            SlockModalCompactMemberRow(
+                            RaftModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
-                                cacheSubject = slockMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+                                cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
                                 cacheServerId = member.sourceServerId,
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
@@ -32247,7 +32247,7 @@ private fun ThreadAddMemberModal(
                                 enabled = interaction.enabled,
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) SlockLucideIconName.Check else null,
+                                trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
                                     if (inline) {
@@ -32266,10 +32266,10 @@ private fun ThreadAddMemberModal(
             }
             if (inline) {
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
                         else stringResource(MR.strings.thread_members_create_named_agent, createName),
-                    modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
+                    modifier = Modifier.fillMaxWidth(), leadingIcon = RaftLucideIconName.Plus,
                     enabled = !adding && canCreateAgents,
                     onClick = {},
                     onClick2 = { anchor ->
@@ -32279,16 +32279,16 @@ private fun ThreadAddMemberModal(
                         }
                     },
                 )
-                if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = SlockType.Caption)
-                SlockBrutalActionButton(
+                if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = RaftType.Caption)
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
-                    modifier = Modifier.fillMaxWidth(), leadingIcon = SlockLucideIconName.Plus,
-                    backgroundColor = SlockColor.BrandYellow,
+                    modifier = Modifier.fillMaxWidth(), leadingIcon = RaftLucideIconName.Plus,
+                    backgroundColor = RaftColor.BrandYellow,
                     enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
                     onClick = { onSubmitBatch?.invoke(selectedCandidates) },
                 )
             } else {
-                SlockModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp,
+                RaftModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp,
                     content = candidateRows)
             }
         }
@@ -32298,33 +32298,33 @@ private fun ThreadAddMemberModal(
             content()
         }
     } else {
-        SlockUnifiedDialog(
+        RaftUnifiedDialog(
             title = stringResource(MR.strings.thread_action_add_member), uppercaseTitle = false, onDismiss = onDismiss,
             minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
             titleFontSize = 18, titleLineHeight = 22,
         ) { content() }
     }
     if (createAgentMenuOpen && createAgentMenuAnchor != null) {
-        SlockRaftUiControlledMenu(
+        RaftUiControlledMenu(
             expanded = true,
             anchor = createAgentMenuAnchor!!,
             width = 220.dp,
             items = listOf(
-                SlockRaftUiMenuItem(
+                RaftUiMenuItem(
                     id = MembersCreateAgentMode.Managed.name,
                     label = stringResource(MR.strings.agent_create_action_create),
-                    icon = SlockLucideIconName.Bot
+                    icon = RaftLucideIconName.Bot
                 ),
-                SlockRaftUiMenuItem(
+                RaftUiMenuItem(
                     id = MembersCreateAgentMode.External.name,
                     label = stringResource(MR.strings.agent_create_action_create_external),
-                    icon = SlockLucideIconName.Link2
+                    icon = RaftLucideIconName.Link2
                 )
             ),
             onSelect = { id ->
                 createAgentMenuOpen = false
                 createAgentMenuAnchor = null
-                val mode = MembersCreateAgentMode.entries.firstOrNull { it.name == id } ?: return@SlockRaftUiControlledMenu
+                val mode = MembersCreateAgentMode.entries.firstOrNull { it.name == id } ?: return@RaftUiControlledMenu
                 onCreateAgent(createName, mode)
             },
             onDismiss = {
@@ -32341,7 +32341,7 @@ internal fun threadMemberListHeight(agentCount: Int, humanCount: Int, maxHeight:
     return (sectionCount * 30 + rowCount * 58 + 8).coerceIn(108, maxHeight)
 }
 
-private val KuiklyThreadMemberItem.memberKey: String
+private val RaftThreadMemberItem.memberKey: String
     get() = "${kind.lowercase()}:$id"
 
 internal data class ThreadAddMemberRowInteraction(
@@ -32363,9 +32363,9 @@ internal fun threadAddMemberRowInteraction(
         clickEnabled = !blocked && !alreadyJoined && !adding
     )
 
-private fun KuiklyThreadScreenPayload.withThreadMembersProjection(
+private fun RaftThreadScreenPayload.withThreadMembersProjection(
     projection: ThreadMembersProjection
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     copy(
         membersCount = projection.membersCount,
         members = projection.members,
@@ -32374,7 +32374,7 @@ private fun KuiklyThreadScreenPayload.withThreadMembersProjection(
     )
 
 private fun threadMembersProjection(
-    basePayload: KuiklyThreadScreenPayload,
+    basePayload: RaftThreadScreenPayload,
     channelMembersSlice: SharedServerChannelMembersSlice,
     serverMembersEntry: SharedServerMembersEntry,
     serverId: ServerId?
@@ -32382,7 +32382,7 @@ private fun threadMembersProjection(
     val loadedMembers =
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
-            .map { it.toKuiklyThreadMemberItem(serverId) }
+            .map { it.toRaftThreadMemberItem(serverId) }
     val members =
         if (channelMembersSlice.status == SharedServerMembersLoadStatus.Loaded) {
             loadedMembers
@@ -32396,7 +32396,7 @@ private fun threadMembersProjection(
             basePayload.memberCandidates
         } else {
             threadAddMemberCandidatesExcludingJoined(
-                candidates = serverMembers.map { it.toKuiklyThreadMemberItem(serverId) },
+                candidates = serverMembers.map { it.toRaftThreadMemberItem(serverId) },
                 members = members,
                 localServerId = serverId?.value
             )
@@ -32422,8 +32422,8 @@ private fun threadMembersProjection(
 private val MemberProfile.threadMemberKey: String
     get() = "${kind.name.lowercase()}:${id.value.trim()}"
 
-private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = null): KuiklyThreadMemberItem =
-    KuiklyThreadMemberItem(
+private fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = null): RaftThreadMemberItem =
+    RaftThreadMemberItem(
         id = id.value,
         displayName = displayName,
         handle = handle,
@@ -32456,11 +32456,11 @@ private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): Str
     return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
 
-private fun KuiklyThreadMemberItem.modalAvatarWireValue(): String? =
+private fun RaftThreadMemberItem.modalAvatarWireValue(): String? =
     avatarUrl?.takeIf { it.isNotBlank() }
         ?: "pixel:robot".takeIf { kind.equals("agent", ignoreCase = true) }
 
-private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
+private fun RaftThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
 
 internal fun threadMembersRosterSubtitle(
@@ -32488,7 +32488,7 @@ internal fun normalizedThreadMemberDescription(description: String?): String = d
  * behave exactly as before.
  */
 internal fun threadAddMemberJoinedKeys(
-    members: List<KuiklyThreadMemberItem>,
+    members: List<RaftThreadMemberItem>,
     localServerId: String?
 ): Set<String> {
     val localId = localServerId?.trim().orEmpty()
@@ -32506,18 +32506,18 @@ internal fun threadAddMemberJoinedKeys(
 
 /** Server-directory [candidates] that are not yet members of this server's projection. */
 internal fun threadAddMemberCandidatesExcludingJoined(
-    candidates: List<KuiklyThreadMemberItem>,
-    members: List<KuiklyThreadMemberItem>,
+    candidates: List<RaftThreadMemberItem>,
+    members: List<RaftThreadMemberItem>,
     localServerId: String?
-): List<KuiklyThreadMemberItem> {
+): List<RaftThreadMemberItem> {
     val joinedKeys = threadAddMemberJoinedKeys(members, localServerId)
     return candidates.filterNot { it.memberKey in joinedKeys }
 }
 
 internal fun filterThreadAddMemberCandidates(
     query: String,
-    candidates: List<KuiklyThreadMemberItem>
-): List<KuiklyThreadMemberItem> =
+    candidates: List<RaftThreadMemberItem>
+): List<RaftThreadMemberItem> =
     filterPeopleSuggestions(
         query = query,
         suggestions = candidates,
@@ -32531,12 +32531,12 @@ internal fun filterThreadAddMemberCandidates(
 
 internal fun resolveThreadMemberAgentStatusIndicatorState(
     memberKind: String,
-    canonicalState: SlockAgentStatusIndicatorState?
-): SlockAgentStatusIndicatorState? =
+    canonicalState: RaftAgentStatusIndicatorState?
+): RaftAgentStatusIndicatorState? =
     canonicalState.takeIf { memberKind.equals("agent", ignoreCase = true) }
 
 @Composable
-private fun KuiklyThreadMemberItem.localizedModalRoleLabel(): String =
+private fun RaftThreadMemberItem.localizedModalRoleLabel(): String =
     when {
         roleLabel.equals("Agent", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_agent)
         roleLabel.equals("Member", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_member)
@@ -32545,10 +32545,10 @@ private fun KuiklyThreadMemberItem.localizedModalRoleLabel(): String =
     }
 
 @Composable
-private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
-    agentStatusResolver: SlockAgentStatusResolver
-): SlockAgentStatusIndicatorState? {
-    val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, id)
+private fun RaftThreadMemberItem.modalAgentStatusIndicatorState(
+    agentStatusResolver: RaftAgentStatusResolver
+): RaftAgentStatusIndicatorState? {
+    val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, id)
     return resolveThreadMemberAgentStatusIndicatorState(
         memberKind = kind,
         canonicalState = canonicalState
@@ -32558,13 +32558,13 @@ private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
 private enum class ThreadSettingsDangerAction(
     val id: String,
     val title: String,
-    val icon: SlockLucideIconName,
+    val icon: RaftLucideIconName,
     val buttonLabel: String,
     val color: Color
 ) {
-    Visibility("visibility", "MAKE CHANNEL PRIVATE", SlockLucideIconName.Lock, "Make Private", SlockColor.AccentOrange),
-    Archive("archive", "ARCHIVE CHANNEL", SlockLucideIconName.Archive, "Archive Channel", SlockColor.AccentOrange),
-    Delete("delete", "DELETE CHANNEL", SlockLucideIconName.Trash, "Delete Channel", SlockColor.AccentRed)
+    Visibility("visibility", "MAKE CHANNEL PRIVATE", RaftLucideIconName.Lock, "Make Private", RaftColor.AccentOrange),
+    Archive("archive", "ARCHIVE CHANNEL", RaftLucideIconName.Archive, "Archive Channel", RaftColor.AccentOrange),
+    Delete("delete", "DELETE CHANNEL", RaftLucideIconName.Trash, "Delete Channel", RaftColor.AccentRed)
 }
 
 internal enum class ThreadSettingsDangerConfirmationMode {
@@ -32581,11 +32581,11 @@ internal fun threadSettingsDangerConfirmationMode(actionId: String): ThreadSetti
         else -> ThreadSettingsDangerConfirmationMode.Unsupported
     }
 
-internal fun defaultThreadSettingsChannelActionCapabilities(): List<KuiklyThreadSettingsAction> =
+internal fun defaultThreadSettingsChannelActionCapabilities(): List<RaftThreadSettingsAction> =
     listOf(
-        KuiklyThreadSettingsAction(id = "visibility"),
-        KuiklyThreadSettingsAction(id = "archive"),
-        KuiklyThreadSettingsAction(id = "delete")
+        RaftThreadSettingsAction(id = "visibility"),
+        RaftThreadSettingsAction(id = "archive"),
+        RaftThreadSettingsAction(id = "delete")
     )
 
 private fun defaultThreadSettingsChannelActions(): List<ThreadSettingsActionUi> =
@@ -32594,26 +32594,26 @@ private fun defaultThreadSettingsChannelActions(): List<ThreadSettingsActionUi> 
             id = "visibility",
             title = "Make Private",
             subtitle = "Restrict this channel to selected members",
-            icon = SlockLucideIconName.Lock,
+            icon = RaftLucideIconName.Lock,
             destructive = true
         ),
         ThreadSettingsActionUi(
             id = "archive",
             title = "Archive Channel",
             subtitle = "Freeze writes and hide from sidebars",
-            icon = SlockLucideIconName.Archive,
+            icon = RaftLucideIconName.Archive,
             destructive = true
         ),
         ThreadSettingsActionUi(
             id = "delete",
             title = "Delete Channel",
             subtitle = "Permanently remove this channel",
-            icon = SlockLucideIconName.Trash,
+            icon = RaftLucideIconName.Trash,
             destructive = true
         )
     )
 
-internal fun List<KuiklyThreadSettingsAction>.normalizedThreadSettingsChannelActions(
+internal fun List<RaftThreadSettingsAction>.normalizedThreadSettingsChannelActions(
     useDefaultWhenEmpty: Boolean = true
 ): List<ThreadSettingsActionUi> {
     val defaults = defaultThreadSettingsChannelActions()
@@ -32654,7 +32654,7 @@ private fun ThreadSettingsActionUi.localizedThreadSettingsAction(): ThreadSettin
 
 @Composable
 internal fun ThreadSettingsChannelActionButtons(
-    actions: List<KuiklyThreadSettingsAction>,
+    actions: List<RaftThreadSettingsAction>,
     onOpenAction: (String) -> Unit
 ) {
     val effectiveActions =
@@ -32663,14 +32663,14 @@ internal fun ThreadSettingsChannelActionButtons(
             .map { it.localizedThreadSettingsAction() }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         effectiveActions.forEach { action ->
-            SlockModalFullWidthActionButton(
+            RaftModalFullWidthActionButton(
                 label = action.title,
                 icon = action.icon,
                 color =
                     if (action.id == ThreadSettingsDangerAction.Delete.id) {
-                        SlockColor.AccentRed
+                        RaftColor.AccentRed
                     } else {
-                        SlockColor.AccentOrange
+                        RaftColor.AccentOrange
                     },
                 onClick = { onOpenAction(action.id) }
             )
@@ -32694,7 +32694,7 @@ private fun ThreadSettingsDangerAction.localizedButtonLabel(): String =
         ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete)
     }
 
-private fun KuiklyThreadSettingsAction.canonicalThreadSettingsActionId(): String? =
+private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? =
     when (id) {
         "visibility",
         "make-private",
@@ -32712,7 +32712,7 @@ private fun ThreadDirectMessageSettingsModal(
     onToggleActivityMute: (() -> Unit)?,
     onTogglePin: (() -> Unit)?
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.thread_dm_settings_title),
         onDismiss = onDismiss
     ) {
@@ -32724,7 +32724,7 @@ private fun ThreadDirectMessageSettingsModal(
                 enabled = activityMuteState != null && onToggleActivityMute != null,
                 onClick = { onToggleActivityMute?.invoke() }
             )
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
             ThreadDirectMessagePreferenceRow(
                 title = stringResource(MR.strings.thread_dm_settings_pin_person),
                 detail = stringResource(MR.strings.thread_dm_settings_pin_person_detail),
@@ -32756,12 +32756,12 @@ private fun ThreadDirectMessagePreferenceRow(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = title,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.W600),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.withRaftFontWeight(FontWeight.W600),
+                color = RaftColor.TextBlack
             )
-            Text(text = detail, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+            Text(text = detail, style = RaftType.Caption, color = RaftColor.TextMutedGray)
         }
-        SlockSwitchButton(checked = checked, enabled = enabled)
+        RaftSwitchButton(checked = checked, enabled = enabled)
     }
 }
 
@@ -32769,7 +32769,7 @@ private fun ThreadDirectMessagePreferenceRow(
 internal fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
-    actions: List<KuiklyThreadSettingsAction>,
+    actions: List<RaftThreadSettingsAction>,
     initialDangerActionId: String? = null,
     conversationPinState: ThreadConversationPinUiState? = null,
     activityMuteState: ThreadActivityMuteUiState? = null,
@@ -32818,7 +32818,7 @@ internal fun ThreadSettingsModal(
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
     val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -32829,17 +32829,17 @@ internal fun ThreadSettingsModal(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 item {
-                    SlockBrutalTextField(
+                    RaftBrutalTextField(
                         label = stringResource(MR.strings.thread_settings_name),
                         value = name,
                         placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
                         onValueChange = { name = it },
                         required = true,
-                        textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
                     )
                 }
                 item {
-                    SlockBrutalTextField(
+                    RaftBrutalTextField(
                         label = stringResource(MR.strings.thread_settings_description),
                         value = description,
                         placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
@@ -32854,8 +32854,8 @@ internal fun ThreadSettingsModal(
                     item {
                         Text(
                             text = stringResource(MR.strings.channel_create_error_name_format),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                            color = RaftColor.AccentRed
                         )
                     }
                 }
@@ -32868,25 +32868,25 @@ internal fun ThreadSettingsModal(
                                 } else {
                                     stringResource(MR.strings.thread_settings_update_failed)
                                 },
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                            color = RaftColor.AccentRed
                         )
                     }
                 }
                 item {
-                    SlockDialogFooter {
+                    RaftDialogFooter {
                         // React's Edit Channel form buttons carry no leading icons
                         // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                        SlockModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
-                        SlockModalActionButton(
+                        RaftModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
+                        RaftModalActionButton(
                             label =
                                 if (profileSaving) {
                                     stringResource(MR.strings.thread_settings_saving)
                                 } else {
                                     stringResource(MR.strings.thread_action_save_changes)
                                 },
-                            color = SlockColor.AccentPink,
-                            icon = SlockLucideIconName.Loader.takeIf { profileSaving },
+                            color = RaftColor.AccentPink,
+                            icon = RaftLucideIconName.Loader.takeIf { profileSaving },
                             enabled = profileValid && profileChanged && !profileSaving,
                             onClick = {
                                 onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
@@ -32900,36 +32900,36 @@ internal fun ThreadSettingsModal(
                         dangerActions.isNotEmpty()
                 ) {
                     item {
-                        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderHairline))
+                        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
                     }
                     item {
                         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
-                                SlockModalFullWidthActionButton(
+                                RaftModalFullWidthActionButton(
                                     label =
                                         stringResource(
                                             if (muteState.muted) MR.strings.home_action_unmute else MR.strings.home_action_mute
                                         ),
-                                    icon = if (muteState.muted) SlockLucideIconName.Bell else SlockLucideIconName.BellOff,
-                                    color = if (muteState.muted) SlockColor.AccentOrange else SlockColor.SurfaceWhite,
+                                    icon = if (muteState.muted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff,
+                                    color = if (muteState.muted) RaftColor.AccentOrange else RaftColor.SurfaceWhite,
                                     onClick = { onToggleActivityMute?.invoke() }
                                 )
                             }
                             conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
-                                SlockModalFullWidthActionButton(
+                                RaftModalFullWidthActionButton(
                                     label =
                                         stringResource(
                                             if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
                                         ),
-                                    icon = if (pinState.pinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin,
-                                    color = if (pinState.pinned) SlockColor.AccentPink else SlockColor.SurfaceWhite,
+                                    icon = if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
+                                    color = if (pinState.pinned) RaftColor.AccentPink else RaftColor.SurfaceWhite,
                                     onClick = { onTogglePin?.invoke() }
                                 )
                             }
                             ThreadSettingsChannelActionButtons(
                                 actions =
                                     dangerActions.map { (_, action) ->
-                                        KuiklyThreadSettingsAction(id = action.id)
+                                        RaftThreadSettingsAction(id = action.id)
                                     },
                                 onOpenAction = { actionId ->
                                     dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
@@ -32948,16 +32948,16 @@ internal fun ThreadSettingsModal(
                     when (activeDanger) {
                         ThreadSettingsDangerAction.Visibility -> {
                             // A lazy item stacks its children; the Column keeps the two lines apart.
-                            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
                                 Text(
                                     text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
-                                    style = SlockType.Body,
-                                    color = SlockColor.TextBlack
+                                    style = RaftType.Body,
+                                    color = RaftColor.TextBlack
                                 )
                                 Text(
                                     text = stringResource(MR.strings.thread_settings_visibility_detail),
-                                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                                    color = SlockColor.TextMutedGray
+                                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                                    color = RaftColor.TextMutedGray
                                 )
                             }
                         }
@@ -32966,21 +32966,21 @@ internal fun ThreadSettingsModal(
                     }
                 }
             }
-            SlockDialogFooter {
+            RaftDialogFooter {
                     val isSingleConfirm =
                         threadSettingsDangerConfirmationMode(activeDanger.id) ==
                             ThreadSettingsDangerConfirmationMode.SingleConfirm
-                    SlockModalActionButton(
+                    RaftModalActionButton(
                         label =
                             if (isSingleConfirm) {
                                 stringResource(MR.strings.common_cancel)
                             } else {
                                 stringResource(MR.strings.common_back)
                             },
-                        icon = if (isSingleConfirm) SlockLucideIconName.X else SlockLucideIconName.ArrowLeft,
+                        icon = if (isSingleConfirm) RaftLucideIconName.X else RaftLucideIconName.ArrowLeft,
                         onClick = { dangerAction = null }
                     )
-                    SlockModalActionButton(
+                    RaftModalActionButton(
                         label = activeDanger.localizedButtonLabel(),
                         icon = activeDanger.icon,
                         color = activeDanger.color,
@@ -33007,21 +33007,21 @@ private fun ThreadChannelActionWarning(
             Modifier
                 .fillMaxWidth()
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-                .background(action.color.copy(alpha = 0.22f), RoundedCornerShape(SlockRadius.Container))
-                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Container))
+                .background(action.color.copy(alpha = 0.22f), RoundedCornerShape(RaftAppRadius.Container))
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(
-            name = SlockLucideIconName.TriangleAlert,
+        RaftLucideIcon(
+            name = RaftLucideIconName.TriangleAlert,
             modifier = Modifier.size(26.dp),
             color = "#FF000000"
         )
         Text(
             text = warningText,
-            style = SlockType.Body,
-            color = SlockColor.TextBlack,
+            style = RaftType.Body,
+            color = RaftColor.TextBlack,
             modifier = Modifier.weight(1f)
         )
     }
@@ -33036,13 +33036,13 @@ private fun ThreadModalEmptyState(title: String, detail: String) {
     ) {
         Text(
             text = title,
-            style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.Body.withRaftFontWeight(FontWeight.W600).copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         Text(
             text = detail,
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption,
+            color = RaftColor.TextMutedGray
         )
     }
 }
@@ -33100,14 +33100,14 @@ private fun ThreadStateMessage(title: String, detail: String?) {
         ) {
             Text(
                 text = title,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.withRaftFontWeight(FontWeight.W600).copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack
             )
             detail?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
         }
@@ -33131,11 +33131,11 @@ private fun ThreadForwardSuccessBannerView(
         modifier =
             Modifier
                 .fillMaxSize()
-                .zIndex(SlockFloatingOverlayHostZIndex + 20f)
-                .padding(start = 12.dp, top = slockTopSafeAreaPadding() + 8.dp, end = 12.dp),
+                .zIndex(RaftFloatingOverlayHostZIndex + 20f)
+                .padding(start = 12.dp, top = raftTopSafeAreaPadding() + 8.dp, end = 12.dp),
         contentAlignment = Alignment.TopCenter
     ) {
-        SlockRaftUiSuccessBanner(
+        RaftUiSuccessBanner(
             description = successLabel,
             actionLabel = viewInChatLabel,
             onAction = onViewInChat,
@@ -33161,14 +33161,14 @@ private fun ThreadStateActionMessage(
         ) {
             Text(
                 text = title,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.withRaftFontWeight(FontWeight.W600).copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack
             )
             detail?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     text = it,
-                    style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
             ThreadHeaderAction(label = actionLabel, onClick = onClick)
@@ -33188,7 +33188,7 @@ private fun ThreadStateActionMessage(
 private fun ThreadTaskDetailDialog(
     task: TaskSummary,
     assigneeOptions: List<MemberProfile>,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     onDismiss: () -> Unit,
     onStatusSelect: (String) -> Unit,
     onAssigneeSelect: (MemberProfile?) -> Unit
@@ -33199,19 +33199,19 @@ private fun ThreadTaskDetailDialog(
     val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
     val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
     // Task #258 (artin msg=6f430fed/9c943070/909777d9): status and assignee pills
-    // reuse the task-card SlockAnchoredMetaChip (i18n, vertical centering) and are
+    // reuse the task-card RaftAnchoredMetaChip (i18n, vertical centering) and are
     // tap-to-open-menu controls — the status pill opens the exact same menu as the
-    // thread inline chip (SlockTaskStatusMenuOverlay). Creator shows read-only.
+    // thread inline chip (RaftTaskStatusMenuOverlay). Creator shows read-only.
     // Task #258 successor (artin "修窄一点", Mahua/Nathan ruling msg=a2232561/ed8b7d79):
     // the assignee pill toggles an IN-DIALOG expanding section instead of the
-    // Tasks-page SlockFilterPopover. The popover opens a second Kuikly native Modal
+    // Tasks-page RaftFilterPopover. The popover opens a second Kuikly native Modal
     // window stacked on the dialog window, and its plain-`clickable` rows are
     // swallowed by the outer dismiss barrier (row taps dismissed the whole stack
     // without selecting; the Tasks page main window is unaffected). Keeping the
     // picker inside the dialog's own window avoids nested-Modal dispatch entirely;
     // the status menu stays on the shared overlay because its Button rows win
-    // native dispatch (SlockMenu.kt contract) and already work.
-    var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    // native dispatch (RaftMenu.kt contract) and already work.
+    var statusMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     // Task #258 successor (artin msg=f65282d2): assignee picker is a standalone
     // centered modal, so the flag only tracks open/closed (no popover anchor).
     var assigneeMenuOpen by remember { mutableStateOf<Boolean?>(null) }
@@ -33227,7 +33227,7 @@ private fun ThreadTaskDetailDialog(
         stringResource(MR.strings.tasks_detail_task_identifier, number)
     }
     val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = taskNumberLabel ?: task.channelName.orEmpty(),
         uppercaseTitle = false,
         overline = headerOverline,
@@ -33235,18 +33235,18 @@ private fun ThreadTaskDetailDialog(
         titleLineHeight = 18,
         titleMaxLines = 1,
         onDismiss = onDismiss,
-        contentSpacing = SlockSpacing.Sm
+        contentSpacing = RaftAppSpacing.Sm
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             item {
                 // Task title now lives in the body (header is identifier-only).
                 Text(
                     text = task.tasksMeaningfulDisplayTitle(),
-                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -33258,54 +33258,54 @@ private fun ThreadTaskDetailDialog(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     // Task #258 (artin msg=9c943070/909777d9): reuse the exact task-card
-                    // status/assignee chips (SlockAnchoredMetaChip, i18n labels) with the
+                    // status/assignee chips (RaftAnchoredMetaChip, i18n labels) with the
                     // label outside the pill, each pair as one wrap unit so labels stay
                     // vertically centered with their chip.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = statusLabel,
-                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = RaftColor.TextMutedGray
                         )
-                        SlockAnchoredMetaChip(
+                        RaftAnchoredMetaChip(
                             label = task.status.localizedLabel(),
                             iconName = null,
                             color = task.status.sharedTaskStatusChipMeta().color,
                             onClick = { anchor -> statusMenuAnchor = anchor },
                             anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
                             modifier = Modifier.padding(start = 6.dp),
-                            trailingIconName = SlockLucideIconName.Pencil,
+                            trailingIconName = RaftLucideIconName.Pencil,
                             minHeight = 24.dp,
                             horizontalPadding = 8.dp,
                             labelFontSize = 12.sp,
                             labelLineHeight = 16.sp,
-                            borderWidth = SlockStroke.Default,
-                            anchorPlacement = SlockAnchorPlacement.BottomEnd
+                            borderWidth = RaftAppStroke.Default,
+                            anchorPlacement = RaftAnchorPlacement.BottomEnd
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = assigneeLabel,
-                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = RaftColor.TextMutedGray
                         )
-                        SlockAnchoredMetaChip(
+                        RaftAnchoredMetaChip(
                             label = task.assignee?.displayName?.let { "@$it" }
                                 ?: unassignedLabel,
                             iconName = null,
-                            color = SlockColor.SurfaceWhite,
+                            color = RaftColor.SurfaceWhite,
                             onClick = { _ -> assigneeMenuOpen = true },
                             anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "assignee"),
                             modifier = Modifier
                                 .padding(start = 6.dp)
                                 .widthIn(max = 160.dp),
-                            trailingIconName = SlockLucideIconName.Pencil,
+                            trailingIconName = RaftLucideIconName.Pencil,
                             minHeight = 24.dp,
                             horizontalPadding = 8.dp,
                             labelFontSize = 12.sp,
                             labelLineHeight = 16.sp,
-                            borderWidth = SlockStroke.Default,
-                            anchorPlacement = SlockAnchorPlacement.BottomEnd
+                            borderWidth = RaftAppStroke.Default,
+                            anchorPlacement = RaftAnchorPlacement.BottomEnd
                         )
                     }
                     task.creator?.let { creator ->
@@ -33317,14 +33317,14 @@ private fun ThreadTaskDetailDialog(
                         ) {
                             Text(
                                 text = creatorLabel,
-                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                                color = SlockColor.TextMutedGray
+                                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                                color = RaftColor.TextMutedGray
                             )
                             Text(
                                 text = creator.displayName,
-                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                                    .withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.TextBlack,
+                                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                                    .withRaftFontWeight(FontWeight.Bold),
+                                color = RaftColor.TextBlack,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(start = 6.dp)
@@ -33337,8 +33337,8 @@ private fun ThreadTaskDetailDialog(
                 item {
                     Text(
                         text = description,
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.65f),
                         maxLines = 6,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -33347,7 +33347,7 @@ private fun ThreadTaskDetailDialog(
         }
     }
     statusMenuAnchor?.let { anchor ->
-        SlockTaskStatusMenuOverlay(
+        RaftTaskStatusMenuOverlay(
             anchor = anchor,
             items = ThreadTaskStatusMenuItems,
             selectedId = statusMeta.key,
@@ -33363,7 +33363,7 @@ private fun ThreadTaskDetailDialog(
         // assignee modal reusing the channel add-member interaction code. Row
         // shaping (unassigned sentinel first, then agents/humans sections) stays
         // here; search value resets when the modal closes or a row applies.
-        SlockTaskAssigneeMenuOverlay(
+        RaftTaskAssigneeMenuOverlay(
             open = open,
             onDismiss = { assigneeMenuOpen = null },
             rows = assigneeRows,

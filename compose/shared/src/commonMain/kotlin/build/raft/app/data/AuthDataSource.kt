@@ -27,21 +27,21 @@ private val authJson = Json {
 }
 
 class SharedAuthDataSource(
-    private val api: SlockAuthApi,
-    private val sessionStore: SlockAuthSessionStore,
+    private val api: RaftAuthApi,
+    private val sessionStore: RaftAuthSessionStore,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
 ) {
-    private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
-    private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+    private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
+    private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
     private var avatarCacheEnvironmentId: () -> String = { "" }
 
     /** See [RESTORE_SERVER_LIST_BUDGET_MILLIS]; tests shorten it. */
     internal var restoreServerListBudgetMillis: Long = RESTORE_SERVER_LIST_BUDGET_MILLIS
 
     internal fun withAvatarCacheRuntime(
-        runtime: SlockAvatarCacheRuntime?,
-        nativeCache: SlockAvatarNativeCache,
+        runtime: RaftAvatarCacheRuntime?,
+        nativeCache: RaftAvatarNativeCache,
         environmentId: () -> String
     ): SharedAuthDataSource = apply {
         avatarCacheRuntime = runtime
@@ -49,9 +49,9 @@ class SharedAuthDataSource(
         avatarCacheEnvironmentId = environmentId
     }
 
-    private val serverSelectionMemory = sessionStore as? SlockAuthServerSelectionMemory
+    private val serverSelectionMemory = sessionStore as? RaftAuthServerSelectionMemory
     private val authMiddleware =
-        SlockNetworkAuthMiddleware(
+        RaftNetworkAuthMiddleware(
             sessionStore = sessionStore,
             authApi = api,
             logger = diagnosticsLogger,
@@ -60,12 +60,12 @@ class SharedAuthDataSource(
         )
 
     constructor(
-        transport: SlockAuthTransport,
-        sessionStore: SlockAuthSessionStore,
+        transport: RaftAuthTransport,
+        sessionStore: RaftAuthSessionStore,
         diagnosticsLogger: (String) -> Unit = {},
         criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
     ) : this(
-        api = SlockAuthApiClient(transport, diagnosticsLogger),
+        api = RaftAuthApiClient(transport, diagnosticsLogger),
         sessionStore = sessionStore,
         diagnosticsLogger = diagnosticsLogger,
         criticalDiagnosticsLogger = criticalDiagnosticsLogger
@@ -1505,7 +1505,7 @@ class SharedAuthDataSource(
             var serverRevocation: String = "skipped_no_session"
             if (session != null) {
                 runCatchingPreservingCancellation {
-                    SlockPushRegistrationLifecycle.unbindBeforeLogout()
+                    RaftPushRegistrationLifecycle.unbindBeforeLogout()
                 }.onFailure { throwable ->
                     diagnosticsLogger(
                         "push_registration_unbind_result result=failure stage=logout " +
@@ -1576,14 +1576,14 @@ class SharedAuthDataSource(
             .onFailure { diagnosticsLogger("image_cache_clear result=failure source=$source") }
     }
 
-    private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): SlockAvatarOwnerRetirementCapture? =
+    private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): RaftAvatarOwnerRetirementCapture? =
         avatarCacheRuntime?.captureSessionRetirement(
             environmentId = avatarCacheEnvironmentId(),
             session = session
         )
 
     private suspend fun retireCapturedAvatarOwners(
-        capture: SlockAvatarOwnerRetirementCapture?,
+        capture: RaftAvatarOwnerRetirementCapture?,
         source: String
     ) {
         val runtime = avatarCacheRuntime ?: return
@@ -1597,9 +1597,9 @@ class SharedAuthDataSource(
                     return
                 }
         when (receipt) {
-            SlockAvatarCacheClearReceipt.Success ->
+            RaftAvatarCacheClearReceipt.Success ->
                 diagnosticsLogger("avatar_cache_retire result=success source=$source owners=${captured.owners.size}")
-            is SlockAvatarCacheClearReceipt.Failed ->
+            is RaftAvatarCacheClearReceipt.Failed ->
                 diagnosticsLogger(
                     "avatar_cache_retire result=failure source=$source " +
                         "stages=${receipt.stages.joinToString(",") { it.name.lowercase() }}"
@@ -1693,11 +1693,11 @@ class SharedAuthDataSource(
 }
 
 internal suspend fun selectStoredAuthServer(
-    sessionStore: SlockAuthSessionStore,
+    sessionStore: RaftAuthSessionStore,
     expectedSession: StoredAuthSession,
     expectedSelectedServerId: String? = null,
     serverId: String,
-    serverSelectionMemory: SlockAuthServerSelectionMemory? = null,
+    serverSelectionMemory: RaftAuthServerSelectionMemory? = null,
 ): SharedAuthResult<StoredAuthSession> {
     if (expectedSession.servers.none { it.id == serverId }) {
         return SharedAuthResult.Failure(
@@ -1725,7 +1725,7 @@ private const val AUTH_ME_CONTRACT_MISMATCH = "auth_me_contract_mismatch"
 
 private suspend fun StoredAuthSession.withValidatedServerSelection(
     servers: List<StoredAuthServer>,
-    serverSelectionMemory: SlockAuthServerSelectionMemory?
+    serverSelectionMemory: RaftAuthServerSelectionMemory?
 ): StoredAuthSession {
     val selected =
         selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
@@ -1739,7 +1739,7 @@ private suspend fun StoredAuthSession.withValidatedServerSelection(
     )
 }
 
-private suspend fun StoredAuthSession.rememberSelectedServer(serverSelectionMemory: SlockAuthServerSelectionMemory?) {
+private suspend fun StoredAuthSession.rememberSelectedServer(serverSelectionMemory: RaftAuthServerSelectionMemory?) {
     val selectedId = selectedServerId?.takeIf { it.isNotBlank() } ?: return
     val selectedSlug = servers.firstOrNull { it.id == selectedId }?.slug ?: selectedServerSlug
     serverSelectionMemory?.saveRememberedServerSelection(
@@ -1811,7 +1811,7 @@ private fun String.authBodyDiagnostics(): String {
  * current user is a user object at the response root, and server list is a
  * root JSON array. Legacy token aliases are intentionally rejected by tests.
  */
-interface SlockAuthApi {
+interface RaftAuthApi {
     suspend fun startAppLogin(returnUri: String, codeChallenge: String): AuthApiResult<AuthAppLoginStartResponse> = AuthApiResult.Failure(code = 501)
     suspend fun completeAppLogin(code: String, codeVerifier: String): AuthApiResult<AuthLoginResponse> = AuthApiResult.Failure(code = 501)
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
@@ -1887,10 +1887,10 @@ interface SlockAuthApi {
         AuthApiResult.Failure(501)
 }
 
-class SlockAuthApiClient(
-    private val transport: SlockAuthTransport,
+class RaftAuthApiClient(
+    private val transport: RaftAuthTransport,
     private val diagnosticsLogger: (String) -> Unit = {}
-) : SlockAuthApi {
+) : RaftAuthApi {
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         transport.login(authJson.encodeToString(AuthLoginRequestBody(email = email, password = password)))
             .mapAuthBody("auth_login_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }

@@ -10,7 +10,7 @@ import build.raft.app.compat.pager.Pager
 // translation) changes often on web and keeping a native mirror in visual
 // parity was a constant drift source. It uses the single production Settings
 // WebView page so attach, cover, lifecycle, and Back/history behavior cannot drift.
-internal fun Pager.openSettingsAdministrationPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsAdministrationPage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Administration, storeScope)
 }
 

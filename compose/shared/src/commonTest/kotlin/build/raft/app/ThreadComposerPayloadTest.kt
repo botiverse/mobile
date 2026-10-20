@@ -300,12 +300,12 @@ class ThreadComposerPayloadTest {
 
     @Test
     fun nativeEditingStateReaderReturnsExactBoundedEditingStateAndFailsClosedAfterUnbind() {
-        val reader = SlockTextFieldNativeEditingStateReader()
+        val reader = RaftTextFieldNativeEditingStateReader()
         val bindingOwner = Any()
-        var result: SlockTextFieldNativeEditingStateReadResult? = null
+        var result: RaftTextFieldNativeEditingStateReadResult? = null
         reader.bind(bindingOwner) { callback ->
             callback(
-                SlockTextFieldNativeEditorRead(
+                RaftTextFieldNativeEditorRead(
                     state =
                         TextInputState(
                             text = "please",
@@ -321,7 +321,7 @@ class ThreadComposerPayloadTest {
 
         reader.readCurrentValue { result = it }
 
-        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        val available = result as RaftTextFieldNativeEditingStateReadResult.Available
         assertEquals("please", available.value.text)
         assertEquals(TextRange(6), available.value.selection)
         assertEquals(TextRange(2, 6), available.value.composition)
@@ -329,7 +329,7 @@ class ThreadComposerPayloadTest {
         reader.unbind(bindingOwner)
         result = null
         reader.readCurrentValue { result = it }
-        assertSame(SlockTextFieldNativeEditingStateReadResult.Unavailable, result)
+        assertSame(RaftTextFieldNativeEditingStateReadResult.Unavailable, result)
     }
 
     @Test
@@ -337,7 +337,7 @@ class ThreadComposerPayloadTest {
         // Mid-dictation / mid-CJK composition: the composing characters are part of the text the
         // user sees. The action-boundary read must hand Send that text with the composition
         // finished (Kuikly's finishComposingText barrier), never an open composing region.
-        val reader = SlockTextFieldNativeEditingStateReader()
+        val reader = RaftTextFieldNativeEditingStateReader()
         val bindingOwner = Any()
         val live =
             TextFieldValue(
@@ -347,17 +347,17 @@ class ThreadComposerPayloadTest {
             )
         reader.bind(bindingOwner) { callback ->
             callback(
-                SlockTextFieldNativeEditorRead(
-                    state = live.toSlockTextInputState().raftWithFinishedComposition(),
+                RaftTextFieldNativeEditorRead(
+                    state = live.toRaftTextInputState().raftWithFinishedComposition(),
                     editorNativeRef = -1,
                 )
             )
         }
-        var result: SlockTextFieldNativeEditingStateReadResult? = null
+        var result: RaftTextFieldNativeEditingStateReadResult? = null
 
         reader.readCurrentValue { result = it }
 
-        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        val available = result as RaftTextFieldNativeEditingStateReadResult.Available
         assertEquals("hello nihao", available.value.text)
         assertEquals(TextRange(11), available.value.selection)
         assertEquals(null, available.value.composition)
@@ -375,16 +375,16 @@ class ThreadComposerPayloadTest {
 
     @Test
     fun nativeEditingStateReaderKeepsInFlightReadAcrossSameOwnerRefRefresh() {
-        val reader = SlockTextFieldNativeEditingStateReader()
+        val reader = RaftTextFieldNativeEditingStateReader()
         val bindingOwner = Any()
-        var pendingNativeCallback: ((SlockTextFieldNativeEditorRead) -> Unit)? = null
-        var result: SlockTextFieldNativeEditingStateReadResult? = null
+        var pendingNativeCallback: ((RaftTextFieldNativeEditorRead) -> Unit)? = null
+        var result: RaftTextFieldNativeEditingStateReadResult? = null
         reader.bind(bindingOwner) { callback -> pendingNativeCallback = callback }
         reader.readCurrentValue { result = it }
 
-        reader.bind(bindingOwner) { callback -> callback(SlockTextFieldNativeEditorRead(null)) }
+        reader.bind(bindingOwner) { callback -> callback(RaftTextFieldNativeEditorRead(null)) }
         pendingNativeCallback?.invoke(
-            SlockTextFieldNativeEditorRead(
+            RaftTextFieldNativeEditorRead(
                 state =
                     TextInputState(
                         text = "please",
@@ -397,7 +397,7 @@ class ThreadComposerPayloadTest {
             )
         )
 
-        val available = result as SlockTextFieldNativeEditingStateReadResult.Available
+        val available = result as RaftTextFieldNativeEditingStateReadResult.Available
         assertEquals("please", available.value.text)
     }
 
@@ -672,7 +672,7 @@ class ThreadComposerPayloadTest {
     fun buildsThreadSurfaceComposerPayloadFromTypedProps() {
         val payload =
             buildThreadSurfaceComposerPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 displayName = "Threads",
                 fallbackId = "fallback-1",
                 enabled = false,
@@ -694,7 +694,7 @@ class ThreadComposerPayloadTest {
         assertFalse(payload.enabled)
         assertEquals("sending", payload.composerMode)
         assertEquals("Sending", payload.statusLabel)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel-1", payload.mentionChannelId)
         assertEquals("message-1", payload.parentMessageId)
         assertEquals("thread-1", payload.streamChannelId)
@@ -704,10 +704,10 @@ class ThreadComposerPayloadTest {
     @Test
     fun typedComposerPayloadKeepsSuggestionsAndAttachmentsWithoutBuilderJson() {
         val payload =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 pendingAttachments =
                     listOf(
-                        KuiklyPendingAttachmentItem(
+                        RaftPendingAttachmentItem(
                             id = "a1",
                             fileName = "log.txt",
                             sizeLabel = "1 KB",
@@ -717,14 +717,14 @@ class ThreadComposerPayloadTest {
                     ),
                 memberSuggestions =
                     listOf(
-                        KuiklyComposerMemberItem(
+                        RaftComposerMemberItem(
                             displayName = "Cindy",
                             handle = "cindy"
                         )
                     ),
                 channelSuggestions =
                     listOf(
-                        KuiklyComposerChannelItem(
+                        RaftComposerChannelItem(
                             name = "general",
                             subtitle = "team"
                         )
@@ -738,22 +738,22 @@ class ThreadComposerPayloadTest {
 
     @Test
     fun mentionTriggerMatchesReactWhenAtFollowsText() {
-        val chineseTrigger = detectKuiklyComposerSuggestionTrigger("你好@")
-        assertTrue(chineseTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger)
+        val chineseTrigger = detectRaftComposerSuggestionTrigger("你好@")
+        assertTrue(chineseTrigger is RaftComposerSuggestionTrigger.MemberTrigger)
         assertEquals("", chineseTrigger.query)
         assertEquals(2, chineseTrigger.triggerStart)
 
-        val latinTrigger = detectKuiklyComposerSuggestionTrigger("hello@cind")
-        assertTrue(latinTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger)
+        val latinTrigger = detectRaftComposerSuggestionTrigger("hello@cind")
+        assertTrue(latinTrigger is RaftComposerSuggestionTrigger.MemberTrigger)
         assertEquals("cind", latinTrigger.query)
         assertEquals(5, latinTrigger.triggerStart)
     }
 
     @Test
     fun channelTriggerMatchesReactWhenHashFollowsText() {
-        val trigger = detectKuiklyComposerSuggestionTrigger("发到#product")
+        val trigger = detectRaftComposerSuggestionTrigger("发到#product")
 
-        assertTrue(trigger is KuiklyComposerSuggestionTrigger.ChannelTrigger)
+        assertTrue(trigger is RaftComposerSuggestionTrigger.ChannelTrigger)
         assertEquals("product", trigger.query)
         assertEquals(2, trigger.triggerStart)
     }
@@ -761,16 +761,16 @@ class ThreadComposerPayloadTest {
     @Test
     fun composerCanDisableTypedMemberAndChannelSuggestionTriggers() {
         assertEquals(
-            KuiklyComposerSuggestionTrigger.None,
+            RaftComposerSuggestionTrigger.None,
             threadComposerSuggestionTrigger("feedback @owner", suggestionsEnabled = false)
         )
         assertEquals(
-            KuiklyComposerSuggestionTrigger.None,
+            RaftComposerSuggestionTrigger.None,
             threadComposerSuggestionTrigger("feedback #support", suggestionsEnabled = false)
         )
         assertTrue(
             threadComposerSuggestionTrigger("feedback @owner", suggestionsEnabled = true) is
-                KuiklyComposerSuggestionTrigger.MemberTrigger
+                RaftComposerSuggestionTrigger.MemberTrigger
         )
     }
 
@@ -778,17 +778,17 @@ class ThreadComposerPayloadTest {
     fun sendAttachmentIdsExcludeLocalPickedAttachmentsUntilUploadFinishes() {
         val attachments =
             listOf(
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "picked-123-0",
                     fileName = "local.png",
                     status = "ready"
                 ),
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "remote-attachment-1",
                     fileName = "remote.png",
                     status = "ready"
                 ),
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "remote-attachment-2",
                     fileName = "uploading.png",
                     status = "uploading"
@@ -805,7 +805,7 @@ class ThreadComposerPayloadTest {
     fun readyUploadedAttachmentsDoNotBlockSend() {
         val attachments =
             listOf(
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "remote-attachment-1",
                     fileName = "remote.png",
                     status = "ready"
@@ -820,14 +820,14 @@ class ThreadComposerPayloadTest {
     @Test
     fun composerPreviewOpensEveryReadyRemoteAttachmentAndRejectsUnreadyOrLocalItems() {
         val readyVideo =
-            KuiklyPendingAttachmentItem(
+            RaftPendingAttachmentItem(
                 id = "remote-video-1",
                 fileName = "clip.mp4",
                 mimeType = "video/mp4",
                 status = "ready"
             )
         val readyImageWithoutLocalThumbnail =
-            KuiklyPendingAttachmentItem(
+            RaftPendingAttachmentItem(
                 id = "remote-image-1",
                 fileName = "photo.png",
                 mimeType = "image/png",
@@ -847,7 +847,7 @@ class ThreadComposerPayloadTest {
     fun failedAttachmentMustBeRetriedBeforeComposerSendCanQueue() {
         val attachments =
             listOf(
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = "picked-local-1",
                     fileName = "failed.png",
                     status = "failed",
@@ -864,8 +864,8 @@ class ThreadComposerPayloadTest {
     @Test
     fun composerSurfaceUsesStreamChannelForSendTargetAndParentForMentionScope() {
         val surface =
-            KuiklyThreadComposerPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadComposerPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 streamChannelId = "reply-thread-1",
                 mentionChannelId = "parent-channel-1",
                 parentMessageId = "parent-message-1",
@@ -875,7 +875,7 @@ class ThreadComposerPayloadTest {
                 parentChannelId = "parent-channel-1"
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, surface.kind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, surface.kind)
         assertEquals("route-thread-1", surface.channelId)
         assertEquals("reply-thread-1", surface.sendChannelId)
         assertEquals("parent-channel-1", surface.mentionScopeChannelId)
@@ -886,8 +886,8 @@ class ThreadComposerPayloadTest {
     @Test
     fun pendingReplyComposerSurfaceHasNoSendTargetUntilStreamExists() {
         val surface =
-            KuiklyThreadComposerPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            RaftThreadComposerPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 streamChannelId = null,
                 mentionChannelId = "parent-channel-1",
                 parentMessageId = "parent-message-1"
@@ -904,12 +904,12 @@ class ThreadComposerPayloadTest {
     fun composerDraftKeySeparatesReplyThreadFromParentChannelComposer() {
         val channelSurface =
             ThreadComposerSurface(
-                kind = KuiklyThreadSurfaceKind.Channel,
+                kind = RaftThreadSurfaceKind.Channel,
                 channelId = "parent-channel-1"
             )
         val replySurface =
             ThreadComposerSurface(
-                kind = KuiklyThreadSurfaceKind.ReplyThread,
+                kind = RaftThreadSurfaceKind.ReplyThread,
                 channelId = "parent-channel-1",
                 streamChannelId = "reply-thread-1",
                 parentChannelId = "parent-channel-1",
@@ -937,7 +937,7 @@ class ThreadComposerPayloadTest {
     @Test
     fun pendingMentionActionsExposeActionSupportAndTargetLabel() {
         val action =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "outside",
@@ -960,13 +960,13 @@ class ThreadComposerPayloadTest {
     @Test
     fun pendingMentionActionMatchesCachedMemberSuggestionForAvatar() {
         val action =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "@outside"
             )
         val suggestion =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Outside Agent",
                 handle = "outside",
                 avatarWireValue = "pixel:outside",
@@ -983,21 +983,21 @@ class ThreadComposerPayloadTest {
     @Test
     fun pendingMentionActionUsesServerAvatarForUsersAndAgents() {
         val agentAction =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "@outside",
                 targetAvatarUrl = "https://cdn.slock.ai/avatars/agents/outside.webp"
             )
         val userAction =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-2",
                 targetType = "user",
                 targetHandle = "@outside",
                 targetAvatarUrl = "https://cdn.slock.ai/avatars/agents/outside.webp"
             )
         val blankAgentAction =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-3",
                 targetType = "agent",
                 targetHandle = "@outside",

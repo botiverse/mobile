@@ -106,7 +106,7 @@ Observed on this repo: a frame of **478 ms** sat in the same diagnostic line as 
 `operation=thread_first_frame`. Read together they form a clean causal sentence: *the first-frame path
 took 478 ms.* Neither half supports that sentence on its own:
 
-- the **478 ms** comes from JankStats (`SlockPerformanceDiagnostics.kt:51`,
+- the **478 ms** comes from JankStats (`RaftPerformanceDiagnostics.kt:51`,
   `frameData.frameDurationUiNanos`), and by API definition that is time spent on the **UI thread** of
   the window — so the duration is genuinely about the main thread;
 - **`operation=` is an `AtomicReference`** set by `updateOperation` (`:125`) and merely read at the

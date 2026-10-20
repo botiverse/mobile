@@ -2,39 +2,39 @@ package build.raft.app
 
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.SlockAvatarListRow
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalCard
-import build.raft.app.components.SlockBrutalBadge
-import build.raft.app.components.SlockBrutalBadgeButton
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalTextarea
-import build.raft.app.components.SlockAttentionDot
-import build.raft.app.components.SlockCheckMarker
-import build.raft.app.components.SlockCheckMarkerShape
-import build.raft.app.components.SlockCheckMarkerTone
-import build.raft.app.components.SlockCheckboxLabelRow
-import build.raft.app.components.SlockFormField
-import build.raft.app.components.SlockFormFieldLabelStyle
-import build.raft.app.components.SlockFormFieldSize
-import build.raft.app.components.SlockProgressBar
-import build.raft.app.components.SlockProgressBarTone
-import build.raft.app.components.SlockBrutalTone
-import build.raft.app.components.SlockSectionHeader
-import build.raft.app.components.SlockSectionEyebrow
-import build.raft.app.components.SlockSelectTrigger
-import build.raft.app.components.SlockMenuItemRow
-import build.raft.app.components.slockRaftOverlaySurface
-import build.raft.app.components.SlockSelectionPopover
-import build.raft.app.components.SlockSelectionPopoverOption
-import build.raft.app.components.SlockSkeleton
-import build.raft.app.components.SlockSkeletonRow
-import build.raft.app.components.SlockSkeletonVariant
-import build.raft.app.components.SlockSlugInput
-import build.raft.app.components.SlockSpinner
-import build.raft.app.components.SlockSpinnerSize
-import build.raft.app.components.SlockStatusDot
-import build.raft.app.components.SlockSurfaceListItem
+import build.raft.app.components.RaftAvatarListRow
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalCard
+import build.raft.app.components.RaftBrutalBadge
+import build.raft.app.components.RaftBrutalBadgeButton
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftBrutalTextarea
+import build.raft.app.components.RaftAttentionDot
+import build.raft.app.components.RaftCheckMarker
+import build.raft.app.components.RaftCheckMarkerShape
+import build.raft.app.components.RaftCheckMarkerTone
+import build.raft.app.components.RaftCheckboxLabelRow
+import build.raft.app.components.RaftFormField
+import build.raft.app.components.RaftFormFieldLabelStyle
+import build.raft.app.components.RaftFormFieldSize
+import build.raft.app.components.RaftProgressBar
+import build.raft.app.components.RaftProgressBarTone
+import build.raft.app.components.RaftBrutalTone
+import build.raft.app.components.RaftSectionHeader
+import build.raft.app.components.RaftAppSectionEyebrow
+import build.raft.app.components.RaftAppSelectTrigger
+import build.raft.app.components.RaftMenuItemRow
+import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.components.RaftSelectionPopover
+import build.raft.app.components.RaftSelectionPopoverOption
+import build.raft.app.components.RaftAppSkeleton
+import build.raft.app.components.RaftSkeletonRow
+import build.raft.app.components.RaftAppSkeletonVariant
+import build.raft.app.components.RaftSlugInput
+import build.raft.app.components.RaftAppSpinner
+import build.raft.app.components.RaftAppSpinnerSize
+import build.raft.app.components.RaftAppStatusDot
+import build.raft.app.components.RaftSurfaceListItem
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.alpha
@@ -70,7 +70,7 @@ internal fun UiSegmentedControlVisualContent() {
                 // (matches the React baseline and the sibling button fixture, which
                 // pins its height for the same reason). Fixes visual-drift #1516.
                 .height(96.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         SegmentedControl(
@@ -93,7 +93,7 @@ internal fun UiButtonVisualContent(rowSpacing: Dp = 12.dp) {
             Modifier
                 .width(342.dp)
                 .height(168.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         // Mirrors web VisualTestingCases `ui-button` (raft-ui 0.6.0, slock #10148): two rows
@@ -104,15 +104,15 @@ internal fun UiButtonVisualContent(rowSpacing: Dp = 12.dp) {
         // Raft buttons cast no shadow and reserve none, so the gap is the full 12dp.
         Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
             Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
-                SlockBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                SlockBrutalActionButton(label = "Sync", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                SlockBrutalActionButton(label = "Delete", onClick = {}, backgroundColor = SlockColor.AccentPink, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+                RaftBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+                RaftBrutalActionButton(label = "Sync", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+                RaftBrutalActionButton(label = "Delete", onClick = {}, backgroundColor = RaftColor.AccentPink, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
-                SlockBrutalActionButton(label = "Add", onClick = {}, backgroundColor = SlockColor.AccentCyan, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
-                SlockBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = SlockColor.AccentLime, minHeight = 32.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp))
+                RaftBrutalActionButton(label = "Add", onClick = {}, backgroundColor = RaftColor.AccentCyan, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
+                RaftBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = RaftColor.AccentLime, minHeight = 32.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp))
                 // Disabled is raft's opaque fill-muted / line-muted / disabled-ink chrome.
-                SlockBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = SlockColor.AccentStone, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
+                RaftBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = RaftColor.AccentStone, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
             }
         }
     }
@@ -120,12 +120,12 @@ internal fun UiButtonVisualContent(rowSpacing: Dp = 12.dp) {
 
 @Composable
 internal fun UiButtonThemeVisualContent() {
-    // Phase 1 theme-axis proof: the SAME SlockBrutalActionButton rendered under each
-    // register via SlockThemeProvider. Top row = brutalTheme (default, byte-identical
+    // Phase 1 theme-axis proof: the SAME RaftBrutalActionButton rendered under each
+    // register via RaftThemeProvider. Top row = brutalTheme (default, byte-identical
     // to the shipping look: square, 2dp black hairline, hard 4dp offset shadow, black
     // ink). Bottom row = elegantTheme (8dp rounded, 1dp gray hairline, near-black ink).
     // Neither border/corner/shadow/ink is passed here — they resolve from
-    // LocalSlockTheme, so a visible brutal->elegant delta in this capture IS the
+    // LocalRaftTheme, so a visible brutal->elegant delta in this capture IS the
     // CompositionLocal switch working. (The elegant soft ambient blur is a documented
     // follow-up; this offset-box shadow renders the offset+color but no blur.)
     Box(
@@ -133,20 +133,20 @@ internal fun UiButtonThemeVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(150.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SlockThemeProvider(theme = brutalTheme) {
+            RaftThemeProvider(theme = brutalTheme) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockBrutalActionButton(label = "Brutal", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
-                    SlockBrutalActionButton(label = "Save", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
+                    RaftBrutalActionButton(label = "Brutal", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
+                    RaftBrutalActionButton(label = "Save", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
                 }
             }
-            SlockThemeProvider(theme = elegantTheme) {
+            RaftThemeProvider(theme = elegantTheme) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockBrutalActionButton(label = "Elegant", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
-                    SlockBrutalActionButton(label = "Save", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
+                    RaftBrutalActionButton(label = "Elegant", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
+                    RaftBrutalActionButton(label = "Save", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
                 }
             }
         }
@@ -155,7 +155,7 @@ internal fun UiButtonThemeVisualContent() {
 
 @Composable
 internal fun UiCardVisualContent() {
-    val theme = LocalSlockTheme.current
+    val theme = LocalRaftTheme.current
     // Core-bbox normalization across registers (XiShi contract): the brutal card reserves a
     // 4dp shadow gutter (visible core = outer - 4dp); the raft card (container radius,
     // hairline, no shadow) reserves none, matching web's 310px `rounded-container` card.
@@ -168,29 +168,29 @@ internal fun UiCardVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(190.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(start = 16.dp, top = 16.dp)
     ) {
-        SlockBrutalCard(modifier = Modifier.width(cardWidth)) {
+        RaftBrutalCard(modifier = Modifier.width(cardWidth)) {
             Text(
                 text = "Channel settings",
-                style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
                 color = theme.ink,
                 maxLines = 1
             )
             Text(
                 text = "Control who can post and how the channel appears to members.",
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = theme.inkMuted
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = "Save changes",
                 onClick = {},
                 // React places <Button size="sm"> in a flex-col so it stretches to the card
                 // content width (~280dp); Kuikly Column keeps it content-sized without this,
                 // so fill the card width to match (XiShi actual-capture audit, both registers).
                 //
-                // Shadow-ink contract (brutal): SlockBrutalActionButton uses shadowOffset as BOTH
+                // Shadow-ink contract (brutal): RaftBrutalActionButton uses shadowOffset as BOTH
                 // the offset-box shadow displacement AND its end/bottom layout reserve. React's
                 // size="sm" button shadow is 2px, so shadowOffset = 2.dp gives a matching 2dp
                 // shadow ink (the standalone button fixture already sets 2.dp per size; the card
@@ -210,10 +210,10 @@ internal fun UiCardVisualContent() {
                         }
                     ),
                 shadowOffset = 2.dp,
-                backgroundColor = SlockColor.BrandYellow,
+                backgroundColor = RaftColor.BrandYellow,
                 minHeight = 28.dp,
                 minWidth = 0.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
             )
         }
     }
@@ -231,16 +231,16 @@ internal fun UiFormFieldVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(296.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockFormField(
+            RaftFormField(
                 label = "Email",
                 required = true,
-                labelStyle = SlockFormFieldLabelStyle.Plain
+                labelStyle = RaftFormFieldLabelStyle.Plain
             ) {
-                SlockBrutalInputField(
+                RaftBrutalInputField(
                     value = "cindy@slock.ai",
                     onValueChange = {},
                     placeholder = "",
@@ -248,12 +248,12 @@ internal fun UiFormFieldVisualContent() {
                     fieldMinHeight = 42.dp
                 )
             }
-            SlockFormField(
+            RaftFormField(
                 label = "Description",
                 optional = true,
                 hint = "Shown in channel discovery."
             ) {
-                SlockBrutalInputField(
+                RaftBrutalInputField(
                     value = "Visual parity fixture",
                     onValueChange = {},
                     placeholder = "",
@@ -261,18 +261,18 @@ internal fun UiFormFieldVisualContent() {
                     fieldMinHeight = 42.dp
                 )
             }
-            SlockFormField(
+            RaftFormField(
                 label = "Server Name",
-                size = SlockFormFieldSize.Compact,
+                size = RaftFormFieldSize.Compact,
                 error = "Name is required"
             ) {
-                SlockBrutalInputField(
+                RaftBrutalInputField(
                     value = "",
                     onValueChange = {},
                     placeholder = "",
                     autoFocus = false,
                     fieldMinHeight = 42.dp,
-                    borderColor = SlockColor.AccentRed
+                    borderColor = RaftColor.AccentRed
                 )
             }
         }
@@ -289,10 +289,10 @@ internal fun UiTextareaVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(252.dp)
-                .background(SlockColor.Canvas)
+                .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
-        SlockBrutalTextarea(
+        RaftBrutalTextarea(
             value = "This agreement copy is too long for the configured limit.",
             onValueChange = {},
             error = "Agreement body must be shorter.",
@@ -311,13 +311,13 @@ internal fun UiCheckboxVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(132.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockCheckboxLabelRow(label = "As Task selected", checked = true, size = 14.dp)
-            SlockCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 16.dp)
-            SlockCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 16.dp)
+            RaftCheckboxLabelRow(label = "As Task selected", checked = true, size = 14.dp)
+            RaftCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 16.dp)
+            RaftCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 16.dp)
         }
     }
 }
@@ -329,21 +329,21 @@ internal fun UiCheckMarkerVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(112.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockCheckMarker(checked = true, size = 14.dp)
-                Text("Square checked", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftCheckMarker(checked = true, size = 14.dp)
+                Text("Square checked", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockCheckMarker(checked = false, size = 16.dp)
-                Text("Square unchecked", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftCheckMarker(checked = false, size = 16.dp)
+                Text("Square unchecked", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockCheckMarker(checked = true, shape = SlockCheckMarkerShape.Circle, size = 18.dp, tone = SlockCheckMarkerTone.YellowFill)
-                Text("Circle yellow", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftCheckMarker(checked = true, shape = RaftCheckMarkerShape.Circle, size = 18.dp, tone = RaftCheckMarkerTone.YellowFill)
+                Text("Circle yellow", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
         }
     }
@@ -356,21 +356,21 @@ internal fun UiAttentionDotVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(80.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockAttentionDot()
-                Text("Unread", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftAttentionDot()
+                Text("Unread", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockAttentionDot(size = 4.dp)
-                Text("Compact", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftAttentionDot(size = 4.dp)
+                Text("Compact", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockAttentionDot(color = SlockColor.AccentOrange)
-                Text("Warning", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftAttentionDot(color = RaftColor.AccentOrange)
+                Text("Warning", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
         }
     }
@@ -383,19 +383,19 @@ internal fun UiStatusDotVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(92.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockStatusDot(color = SlockColor.AccentLime)
-                SlockStatusDot(color = SlockColor.AccentOrange, size = 8.dp)
-                SlockStatusDot(color = SlockColor.StatusNeutralGray, size = 11.dp)
-                SlockStatusDot(color = SlockColor.AccentCyan)
+                RaftAppStatusDot(color = RaftColor.AccentLime)
+                RaftAppStatusDot(color = RaftColor.AccentOrange, size = 8.dp)
+                RaftAppStatusDot(color = RaftColor.StatusNeutralGray, size = 11.dp)
+                RaftAppStatusDot(color = RaftColor.AccentCyan)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockStatusDot(color = SlockColor.AccentPink, pulsing = true)
-                Text("Waiting pulse", style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+                RaftAppStatusDot(color = RaftColor.AccentPink, pulsing = true)
+                Text("Waiting pulse", style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
             }
         }
     }
@@ -408,12 +408,12 @@ internal fun UiProgressBarVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(124.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SlockProgressBar(modifier = Modifier.width(310.dp), value = 64, label = "Downloading update", showPercent = true, tone = SlockProgressBarTone.Pink)
-            SlockProgressBar(modifier = Modifier.width(310.dp), value = 28, label = "Verifying package", showPercent = true, tone = SlockProgressBarTone.Cyan)
+            RaftProgressBar(modifier = Modifier.width(310.dp), value = 64, label = "Downloading update", showPercent = true, tone = RaftProgressBarTone.Pink)
+            RaftProgressBar(modifier = Modifier.width(310.dp), value = 28, label = "Verifying package", showPercent = true, tone = RaftProgressBarTone.Cyan)
         }
     }
 }
@@ -425,7 +425,7 @@ internal fun UiSkeletonVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(150.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 // No bottom padding on purpose: react's fixed 150px canvas lets the
                 // 134px content stack overflow into the bottom padding (CSS keeps
                 // padding out of the child's constraint). A symmetric 16.dp here
@@ -437,11 +437,11 @@ internal fun UiSkeletonVisualContent() {
         // Values mirror the react fixture (VisualTestingCases.tsx ui-skeleton case):
         // avatars size-5/size-8 = 20/32px, outer gap-3 = 12px, block h-12 = 48px.
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockSkeletonRow(avatar = true, avatarSize = 20.dp, lineWidths = listOf(128.dp, 80.dp))
-            SlockSkeleton(modifier = Modifier.width(310.dp).height(48.dp), variant = SlockSkeletonVariant.Block)
+            RaftSkeletonRow(avatar = true, avatarSize = 20.dp, lineWidths = listOf(128.dp, 80.dp))
+            RaftAppSkeleton(modifier = Modifier.width(310.dp).height(48.dp), variant = RaftAppSkeletonVariant.Block)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockSkeleton(modifier = Modifier.size(32.dp), variant = SlockSkeletonVariant.Circle)
-                SlockSkeleton(modifier = Modifier.width(160.dp).height(12.dp), variant = SlockSkeletonVariant.Line)
+                RaftAppSkeleton(modifier = Modifier.size(32.dp), variant = RaftAppSkeletonVariant.Circle)
+                RaftAppSkeleton(modifier = Modifier.width(160.dp).height(12.dp), variant = RaftAppSkeletonVariant.Line)
             }
         }
     }
@@ -459,19 +459,19 @@ internal fun UiSpinnerVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(92.dp)
-                .background(SlockColor.Canvas)
+                .background(RaftColor.Canvas)
                 .padding(16.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
-            SlockSpinner(size = SlockSpinnerSize.Xs, stillStep = UiSpinnerVisualStillStep)
-            SlockSpinner(size = SlockSpinnerSize.Sm, stillStep = UiSpinnerVisualStillStep)
-            SlockSpinner(size = SlockSpinnerSize.Md, stillStep = UiSpinnerVisualStillStep)
-            SlockSpinner(size = SlockSpinnerSize.Lg, stillStep = UiSpinnerVisualStillStep)
+            RaftAppSpinner(size = RaftAppSpinnerSize.Xs, stillStep = UiSpinnerVisualStillStep)
+            RaftAppSpinner(size = RaftAppSpinnerSize.Sm, stillStep = UiSpinnerVisualStillStep)
+            RaftAppSpinner(size = RaftAppSpinnerSize.Md, stillStep = UiSpinnerVisualStillStep)
+            RaftAppSpinner(size = RaftAppSpinnerSize.Lg, stillStep = UiSpinnerVisualStillStep)
             Box(
                 modifier = Modifier.background(Color.Black).padding(8.dp).height(24.dp),
                 contentAlignment = Alignment.BottomStart
             ) {
-                SlockSpinner(size = SlockSpinnerSize.Sm, inverse = true, stillStep = UiSpinnerVisualStillStep)
+                RaftAppSpinner(size = RaftAppSpinnerSize.Sm, inverse = true, stillStep = UiSpinnerVisualStillStep)
             }
         }
     }
@@ -489,14 +489,14 @@ internal fun UiSlugInputVisualContent() {
                 // 16dp gap + 32dp padding, so the constraint compressed each input
                 // to ~26dp - react's boxes are 44 css px tall (same clip family as
                 // the form-field fixture fix).
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         // raft-ui InputGroup has no shadow gutter, so react's gap-4 is 16dp.
         // React renders the second row read-only at opacity-60 (not disabled).
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SlockSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
-            SlockSlugInput(
+            RaftSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
+            RaftSlugInput(
                 value = "partner-workspace",
                 onValueChange = {},
                 modifier = Modifier.width(310.dp).alpha(0.6f)
@@ -512,14 +512,14 @@ internal fun UiSectionEyebrowVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(92.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockSectionEyebrow(label = "Recent Activity")
-            SlockSectionEyebrow(label = "Connected Apps", color = SlockColor.TextBlack)
-            Box(modifier = Modifier.background(SlockColor.SurfaceWhite.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                SlockSectionEyebrow(label = "Choose Avatar")
+            RaftAppSectionEyebrow(label = "Recent Activity")
+            RaftAppSectionEyebrow(label = "Connected Apps", color = RaftColor.TextBlack)
+            Box(modifier = Modifier.background(RaftColor.SurfaceWhite.copy(alpha = 0.5f)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                RaftAppSectionEyebrow(label = "Choose Avatar")
             }
         }
     }
@@ -532,20 +532,20 @@ internal fun UiSelectionPopoverVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(252.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        SlockSelectionPopover(
+        RaftSelectionPopover(
             title = "Channels",
             showClear = true,
             search = "des",
             searchPlaceholder = "Search channels",
             options =
                 listOf(
-                    SlockSelectionPopoverOption("design", "design", checked = true, reserveLeadingSlot = true),
-                    SlockSelectionPopoverOption("visual-testing", "visual-testing", reserveLeadingSlot = true),
-                    SlockSelectionPopoverOption("archive", "archived channel", enabled = false, reserveLeadingSlot = true),
-                    SlockSelectionPopoverOption("none", "No channel", italic = true, reserveLeadingSlot = true)
+                    RaftSelectionPopoverOption("design", "design", checked = true, reserveLeadingSlot = true),
+                    RaftSelectionPopoverOption("visual-testing", "visual-testing", reserveLeadingSlot = true),
+                    RaftSelectionPopoverOption("archive", "archived channel", enabled = false, reserveLeadingSlot = true),
+                    RaftSelectionPopoverOption("none", "No channel", italic = true, reserveLeadingSlot = true)
                 )
         )
     }
@@ -563,27 +563,27 @@ internal fun UiMenuItemVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(178.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .slockRaftOverlaySurface()
-                    .padding(SlockStroke.Thin)
+                    .raftLookOverlaySurface()
+                    .padding(RaftAppStroke.Thin)
         ) {
-            SlockMenuItemRow(label = "Open Channel", trailing = "⌘K")
-            SlockMenuItemRow(label = "Mark as Read")
-            SlockMenuItemRow(label = "Archive unavailable", enabled = false)
+            RaftMenuItemRow(label = "Open Channel", trailing = "⌘K")
+            RaftMenuItemRow(label = "Mark as Read")
+            RaftMenuItemRow(label = "Archive unavailable", enabled = false)
             Box(modifier = Modifier.fillMaxWidth()) {
-                SlockMenuItemRow(label = "Delete Message")
+                RaftMenuItemRow(label = "Delete Message")
                 Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(SlockStroke.Thin)
-                            .background(SlockColor.BorderHairline)
+                            .height(RaftAppStroke.Thin)
+                            .background(RaftColor.BorderHairline)
                 )
             }
         }
@@ -597,15 +597,15 @@ internal fun UiSelectVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(194.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         // react spaces the triggers 16px box edge to box edge; the Kuikly trigger
         // reserves its 2dp shadow as bottom layout space, so 14dp spacing puts the
         // second trigger 16dp below the first box like react (task #370).
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            SlockSelectTrigger(label = "Codex")
-            SlockSelectTrigger(label = "Select...", enabled = false)
+            RaftAppSelectTrigger(label = "Codex")
+            RaftAppSelectTrigger(label = "Select...", enabled = false)
         }
     }
 }
@@ -618,7 +618,7 @@ internal fun UiBadgeVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(92.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         // React renders one `flex flex-wrap gap-2` run of six raft-ui <Badge>s
@@ -630,12 +630,12 @@ internal fun UiBadgeVisualContent() {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SlockBrutalBadge("Shared", tone = SlockBrutalTone.White, uppercase = false)
-            SlockBrutalBadge("Installed", tone = SlockBrutalTone.Lime, uppercase = false)
-            SlockBrutalBadge("Update", tone = SlockBrutalTone.Warning, uppercase = false)
-            SlockBrutalBadge("Built In", tone = SlockBrutalTone.Stone, uppercase = false)
-            SlockBrutalBadge("task #273", tone = SlockBrutalTone.Red, uppercase = false)
-            SlockBrutalBadgeButton("Install", tone = SlockBrutalTone.Pink, uppercase = false, onClick = {})
+            RaftBrutalBadge("Shared", tone = RaftBrutalTone.White, uppercase = false)
+            RaftBrutalBadge("Installed", tone = RaftBrutalTone.Lime, uppercase = false)
+            RaftBrutalBadge("Update", tone = RaftBrutalTone.Warning, uppercase = false)
+            RaftBrutalBadge("Built In", tone = RaftBrutalTone.Stone, uppercase = false)
+            RaftBrutalBadge("task #273", tone = RaftBrutalTone.Red, uppercase = false)
+            RaftBrutalBadgeButton("Install", tone = RaftBrutalTone.Pink, uppercase = false, onClick = {})
         }
     }
 }
@@ -647,19 +647,19 @@ internal fun UiSectionHeaderVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(88.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SlockSectionHeader(
+            RaftSectionHeader(
                 label = "Connected Apps",
                 count = 3,
                 modifier = Modifier.fillMaxWidth(),
                 action = {
-                    SlockBrutalActionButton(label = "Add", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
+                    RaftBrutalActionButton(label = "Add", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 }
             )
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
         }
     }
 }
@@ -674,20 +674,20 @@ internal fun UiSurfaceListItemVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(182.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockSurfaceListItem(interactive = false) {
+            RaftSurfaceListItem(interactive = false) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Private app", style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp), color = SlockColor.TextBlack, maxLines = 1)
-                    Text("Available to this server", style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp), color = SlockColor.TextBlack.copy(alpha = 0.5f), maxLines = 1)
+                    Text("Private app", style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp), color = RaftColor.TextBlack, maxLines = 1)
+                    Text("Available to this server", style = RaftType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp), color = RaftColor.TextBlack.copy(alpha = 0.5f), maxLines = 1)
                 }
             }
-            SlockSurfaceListItem(selected = true, interactive = false) {
+            RaftSurfaceListItem(selected = true, interactive = false) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Active integration", style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp), color = SlockColor.TextBlack, maxLines = 1)
-                    Text("Selected list item state", style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp), color = SlockColor.TextBlack.copy(alpha = 0.5f), maxLines = 1)
+                    Text("Active integration", style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp), color = RaftColor.TextBlack, maxLines = 1)
+                    Text("Selected list item state", style = RaftType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp), color = RaftColor.TextBlack.copy(alpha = 0.5f), maxLines = 1)
                 }
             }
         }
@@ -701,27 +701,27 @@ internal fun UiAvatarListRowVisualContent() {
             Modifier
                 .width(342.dp)
                 .height(168.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SlockAvatarListRow(
+            RaftAvatarListRow(
                 avatarWireValue = null,
                 avatarLabel = "Cindy",
                 name = "Cindy",
                 subtitle = "Claude Code",
                 rightContent = {
-                    SlockBrutalBadge("Online", tone = SlockBrutalTone.Lime, uppercase = false)
+                    RaftBrutalBadge("Online", tone = RaftBrutalTone.Lime, uppercase = false)
                 }
             )
-            SlockAvatarListRow(
+            RaftAvatarListRow(
                 avatarWireValue = null,
                 avatarLabel = "Product UX Designer",
                 name = "Product UX Designer",
                 subtitle = "product@slock.ai",
                 selected = true,
                 rightContent = {
-                    SlockBrutalActionButton(label = "Open", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
+                    RaftBrutalActionButton(label = "Open", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 }
             )
         }

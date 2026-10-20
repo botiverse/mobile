@@ -16,7 +16,7 @@ import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.SlockFeatureFlagsApi
+import build.raft.app.data.RaftFeatureFlagsApi
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.Message
@@ -36,7 +36,7 @@ import kotlin.test.assertTrue
 
 class SyncCoreMessageShadowObserverTest {
 
-    private class FakeFlagsApi(private val enabled: Boolean) : SlockFeatureFlagsApi {
+    private class FakeFlagsApi(private val enabled: Boolean) : RaftFeatureFlagsApi {
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
             HomeNetworkResponse(
                 code = 200,

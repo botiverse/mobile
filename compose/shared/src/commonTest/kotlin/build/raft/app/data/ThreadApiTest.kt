@@ -75,7 +75,7 @@ class ThreadApiTest {
     @Test
     fun channelMessagesAcceptsCanonicalUpstreamWrapperOnly() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     channelMessagesBody =
                         """
@@ -94,7 +94,7 @@ class ThreadApiTest {
     @Test
     fun channelMessagesRejectsLegacyNestedDataWrapper() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     channelMessagesBody =
                         """
@@ -110,7 +110,7 @@ class ThreadApiTest {
 
     @Test
     fun attachmentOpenTargetRequiresCanonicalUrlField() = runBlocking {
-        val api = SlockThreadApiClient(FakeThreadNetworkApi(attachmentUrlBody = """{"url":"https://cdn.slock.ai/a.png","expiresAt":null}"""))
+        val api = RaftThreadApiClient(FakeThreadNetworkApi(attachmentUrlBody = """{"url":"https://cdn.slock.ai/a.png","expiresAt":null}"""))
 
         val result = api.attachmentUrl("att-1")
 
@@ -119,7 +119,7 @@ class ThreadApiTest {
 
     @Test
     fun attachmentOpenTargetRejectsDownloadUrlAlias() = runBlocking {
-        val api = SlockThreadApiClient(FakeThreadNetworkApi(attachmentUrlBody = """{"downloadUrl":"https://cdn.slock.ai/a.png"}"""))
+        val api = RaftThreadApiClient(FakeThreadNetworkApi(attachmentUrlBody = """{"downloadUrl":"https://cdn.slock.ai/a.png"}"""))
 
         val result = api.attachmentUrl("att-1")
 
@@ -129,7 +129,7 @@ class ThreadApiTest {
     @Test
     fun attachmentCommentsParseCanonicalPayload() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     attachmentCommentsBody =
                         """
@@ -167,7 +167,7 @@ class ThreadApiTest {
 
     @Test
     fun syncRequiresCanonicalRootArray() = runBlocking {
-        val api = SlockThreadApiClient(FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""))
+        val api = RaftThreadApiClient(FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""))
 
         val result = api.messageSync("channel-1", sinceSeq = 1)
 
@@ -177,7 +177,7 @@ class ThreadApiTest {
     @Test
     fun sendMessageParsesCanonicalRandomIdEcho() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     sendBody = """{"id":"m-send","channelId":"channel-1","senderType":"user","senderId":"u1","content":"sent","randomId":"rid-send-1","seq":1}"""
                 )
@@ -194,7 +194,7 @@ class ThreadApiTest {
     fun messageSyncEmitsOffUiParseDiagnostics() = runBlocking {
         val logs = mutableListOf<String>()
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""),
                 diagnosticsLogger = logs::add
             )
@@ -214,7 +214,7 @@ class ThreadApiTest {
     @Test
     fun channelMessagesPreserveTaskLifecycleSystemRows() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     channelMessagesBody =
                         """
@@ -249,7 +249,7 @@ class ThreadApiTest {
     @Test
     fun syncPreservesTaskLifecycleSystemRows() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     syncBody =
                         """
@@ -280,7 +280,7 @@ class ThreadApiTest {
 
     @Test
     fun syncRejectsNestedWrapper() = runBlocking {
-        val api = SlockThreadApiClient(FakeThreadNetworkApi(syncBody = """{"data":[{"id":"m2","content":"new","seq":2}]}"""))
+        val api = RaftThreadApiClient(FakeThreadNetworkApi(syncBody = """{"data":[{"id":"m2","content":"new","seq":2}]}"""))
 
         val result = api.messageSync("channel-1", sinceSeq = 1)
 
@@ -289,7 +289,7 @@ class ThreadApiTest {
 
     @Test
     fun sendMessageAcceptsRawMessageResponseWithoutPendingActions() = runBlocking {
-        val api = SlockThreadApiClient(FakeThreadNetworkApi(sendBody = """{"id":"m3","channelId":"channel-1","content":"sent","seq":3}"""))
+        val api = RaftThreadApiClient(FakeThreadNetworkApi(sendBody = """{"id":"m3","channelId":"channel-1","content":"sent","seq":3}"""))
 
         val result = api.sendMessage("channel-1", "sent")
 
@@ -301,7 +301,7 @@ class ThreadApiTest {
     @Test
     fun sendMessageAcceptsWrappedMessageResponseWithPendingMentionActions() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     sendBody =
                         """
@@ -360,7 +360,7 @@ class ThreadApiTest {
             FakeThreadNetworkApi(
                 mentionActionBody = """{"results":[{"resolutionId":"res-1","status":"delivered","reason":null}]}"""
             )
-        val api = SlockThreadApiClient(transport)
+        val api = RaftThreadApiClient(transport)
 
         val result = api.executePendingMentionActions("invite", listOf("res-1"))
 
@@ -374,7 +374,7 @@ class ThreadApiTest {
     fun executePendingMentionActionsPreservesHttpFailureForUserFacingClassification() = runBlocking {
         val rawError = """{"error":"must not be shown verbatim","code":"raw_permission_code"}"""
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(
                     mentionActionCode = 403,
                     mentionActionErrorBody = rawError
@@ -393,7 +393,7 @@ class ThreadApiTest {
 
     @Test
     fun executePendingMentionActionsMarksMalformedSuccessAsContractFailure() = runBlocking {
-        val api = SlockThreadApiClient(FakeThreadNetworkApi(mentionActionBody = """{"results":"invalid"}"""))
+        val api = RaftThreadApiClient(FakeThreadNetworkApi(mentionActionBody = """{"results":"invalid"}"""))
 
         val failure =
             assertIs<ThreadApiResult.Failure>(
@@ -407,7 +407,7 @@ class ThreadApiTest {
     @Test
     fun createThreadRequiresCanonicalThreadChannelId() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(createThreadBody = """{"threadChannelId":"thread-1","parentMessageId":"m1","created":true,"replyCount":2}""")
             )
 
@@ -422,7 +422,7 @@ class ThreadApiTest {
     @Test
     fun createThreadRejectsNestedGuessedResponse() = runBlocking {
         val api =
-            SlockThreadApiClient(
+            RaftThreadApiClient(
                 FakeThreadNetworkApi(createThreadBody = """{"data":{"thread":{"threadChannelId":"thread-1"}}}""")
             )
 
@@ -434,7 +434,7 @@ class ThreadApiTest {
     @Test
     fun unsaveMessageCallsCanonicalTransport() = runBlocking {
         val transport = FakeThreadNetworkApi()
-        val api = SlockThreadApiClient(transport)
+        val api = RaftThreadApiClient(transport)
 
         val result = api.unsaveMessage("msg-1")
 
@@ -443,9 +443,9 @@ class ThreadApiTest {
     }
 
     @Test
-    fun networkThreadApiUsesSlockNetworkClientRoutesAndBodies() = runBlocking {
+    fun networkThreadApiUsesRaftNetworkClientRoutesAndBodies() = runBlocking {
         val networkClient = RecordingThreadNetworkClient()
-        val api = SlockThreadApiClient(NetworkSlockThreadApi(networkClient))
+        val api = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
 
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.channelMessages("thread-1", limit = 25, beforeSeq = 99))
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.channelMessages("thread-1", limit = 25, afterSeq = 100))
@@ -587,7 +587,7 @@ class ThreadApiTest {
             HomeNetworkResponse(code = 200, bodyText = contextBody)
     }
 
-    private class RecordingThreadNetworkClient : SlockNetworkClient {
+    private class RecordingThreadNetworkClient : RaftNetworkClient {
         val calls = mutableListOf<String>()
 
         override suspend fun request(

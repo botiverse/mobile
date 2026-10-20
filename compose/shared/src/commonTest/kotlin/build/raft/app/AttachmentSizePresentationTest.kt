@@ -7,7 +7,7 @@ class AttachmentSizePresentationTest {
 
     @Test
     fun uiFormatsRawBytesAtRenderBoundary() {
-        val attachment = KuiklyThreadAttachmentItem(
+        val attachment = RaftThreadAttachmentItem(
             id = "a1",
             name = "file.bin",
             sizeBytes = 1536,
@@ -20,7 +20,7 @@ class AttachmentSizePresentationTest {
 
     @Test
     fun compatibilityLabelRemainsForOldSnapshotsWithoutRawBytes() {
-        val attachment = KuiklyThreadAttachmentItem(
+        val attachment = RaftThreadAttachmentItem(
             id = "a1",
             name = "file.bin",
             sizeLabel = "12 KB",

@@ -41,7 +41,7 @@ internal data class ThreadLinkedTaskReferences(
         get() = messageIds.isEmpty() && taskIds.isEmpty() && taskNumbers.isEmpty()
 }
 
-internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): KuiklyThreadMessageItem {
+internal fun RaftThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): RaftThreadMessageItem {
     linkedTask ?: return this
     return copy(
         taskId = linkedTask.id.value,
@@ -53,9 +53,9 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
     )
 }
 
-internal fun KuiklyThreadMessageItem.withLinkedTaskProjection(
+internal fun RaftThreadMessageItem.withLinkedTaskProjection(
     projection: ThreadLinkedTasksProjection
-): KuiklyThreadMessageItem {
+): RaftThreadMessageItem {
     val linkedTask = projection.lookup.threadLinkedTaskForMessage(this)
     return when {
         linkedTask != null -> withLinkedTask(linkedTask)
@@ -64,7 +64,7 @@ internal fun KuiklyThreadMessageItem.withLinkedTaskProjection(
     }
 }
 
-internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =
+internal fun RaftThreadMessageItem.withoutLinkedTask(): RaftThreadMessageItem =
     if (
         taskId == null &&
         taskNumber == null &&
@@ -85,7 +85,7 @@ internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageIte
         )
     }
 
-internal fun KuiklyThreadScreenPayload.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {
+internal fun RaftThreadScreenPayload.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {
     val messages = buildList {
         originMessage?.let(::add)
         addAll(this@threadLinkedTaskReferences.messages)
@@ -277,7 +277,7 @@ private fun TaskSummary.matchesThreadLinkedTaskReferences(references: ThreadLink
         id.value.trim().takeIf { it.isNotBlank() }?.let { it in references.taskIds } == true ||
         taskNumber?.let { it in references.taskNumbers } == true
 
-internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: KuiklyThreadMessageItem): TaskSummary? =
+internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: RaftThreadMessageItem): TaskSummary? =
     get(message.id) ?: message.taskId?.trim()?.takeIf { it.isNotBlank() }?.let { taskId ->
         get(ThreadTaskIdLookupPrefix + taskId)
     } ?: message.taskNumber?.let { taskNumber ->

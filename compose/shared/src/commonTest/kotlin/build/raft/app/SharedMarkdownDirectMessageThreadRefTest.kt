@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.toHomeDirectMessageRow
@@ -38,14 +38,14 @@ class SharedMarkdownDirectMessageThreadRefTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer")),
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "viewer")),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 homeSnapshotProvider = { dmHomeSnapshot() }
             )
 
         val enriched =
             dataSource.withKnownMarkdownChannelNames(
-                KuiklyThreadScreenPayload(knownMarkdownMentionNames = listOf("message-author"))
+                RaftThreadScreenPayload(knownMarkdownMentionNames = listOf("message-author"))
             )
 
         assertEquals(listOf("message-author"), enriched.knownMarkdownMentionNames)
@@ -67,19 +67,19 @@ class SharedMarkdownDirectMessageThreadRefTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer")),
+                sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "viewer")),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 homeSnapshotProvider = { ambiguousHome }
             )
 
-        val enriched = dataSource.withKnownMarkdownChannelNames(KuiklyThreadScreenPayload())
+        val enriched = dataSource.withKnownMarkdownChannelNames(RaftThreadScreenPayload())
 
         assertEquals(emptyList(), enriched.knownMarkdownDirectMessagePeerNames)
     }
 
     @Test
     fun dmPeerClickRequestsContextInCanonicalDmAndBuildsIdentityOnlyReplyRoute() = runBlocking {
-        val sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "viewer"))
+        val sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "viewer"))
         val repository =
             ReplyThreadAccessConversationRepositoryRecorder(
                 replyResult = DataResult.Content(replyThreadAccessSnapshot()),
@@ -99,7 +99,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
         val result =
             dataSource.markdownThreadRefLaunchPayload(
                 provenance = provenance,
-                currentPayload = KuiklyThreadScreenPayload(status = "content", canSend = false),
+                currentPayload = RaftThreadScreenPayload(status = "content", canSend = false),
                 channelLabel = "artin",
                 threadShortId = ShortId,
                 requiredParentKind = ConversationKind.DirectMessage
@@ -108,9 +108,9 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(1, repository.parentRequests.size)
         assertEquals(MessageId(ShortId), repository.parentRequests.single().first)
         assertEquals(ChannelId(DmChannelId), repository.parentRequests.single().second)
-        val payload = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(result).data
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
+        val payload = assertIs<DataResult.Content<RaftThreadScreenPayload>>(result).data
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
         assertEquals("dm", payload.parentChannelKind)
         assertEquals(DmChannelId, payload.parentChannelId)
         assertEquals(ParentMessageId, payload.parentMessageId)
@@ -128,7 +128,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
         listOf("artin", "Artin Zhang").forEach { alias ->
             val payload =
                 buildMarkdownThreadRefLaunchPayload(
-                    currentPayload = KuiklyThreadScreenPayload(),
+                    currentPayload = RaftThreadScreenPayload(),
                     home = uniqueHome,
                     channelLabel = alias,
                     threadShortId = ShortId,
@@ -152,7 +152,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
             DmChannelId,
             requireNotNull(
                 buildMarkdownThreadRefLaunchPayload(
-                    currentPayload = KuiklyThreadScreenPayload(),
+                    currentPayload = RaftThreadScreenPayload(),
                     home = withSameNameChannel,
                     channelLabel = "artin",
                     threadShortId = ShortId,
@@ -175,7 +175,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(
             null,
             buildMarkdownThreadRefLaunchPayload(
-                currentPayload = KuiklyThreadScreenPayload(),
+                currentPayload = RaftThreadScreenPayload(),
                 home = ambiguousHome,
                 channelLabel = "artin",
                 threadShortId = ShortId,
@@ -187,7 +187,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(
             null,
             buildMarkdownThreadRefLaunchPayload(
-                currentPayload = KuiklyThreadScreenPayload(),
+                currentPayload = RaftThreadScreenPayload(),
                 home = uniqueHome,
                 channelLabel = "unknown",
                 threadShortId = ShortId,
@@ -202,7 +202,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
     fun dmPeerResolverAcceptsTheCompleteTokenWithoutConfusingItsPrefixForAChannel() {
         val payload =
             buildMarkdownThreadRefLaunchPayload(
-                currentPayload = KuiklyThreadScreenPayload(),
+                currentPayload = RaftThreadScreenPayload(),
                 home = dmHomeSnapshot(),
                 channelLabel = "dm:@artin:$ShortId",
                 threadShortId = ShortId,
@@ -211,7 +211,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
             )
 
         assertEquals(DmChannelId, requireNotNull(payload).parentChannelId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
         assertEquals("dm", payload.parentChannelKind)
     }
 
@@ -236,8 +236,8 @@ class SharedMarkdownDirectMessageThreadRefTest {
             unreadTotal = 0
         )
 
-        val currentPayload = KuiklyThreadScreenPayload(
-            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+        val currentPayload = RaftThreadScreenPayload(
+            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
             channelKind = "dm",
             streamChannelId = dmWithFridayChannelId,
             dmPeerName = "Friday"
@@ -255,7 +255,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
         val resolved = requireNotNull(payload)
         assertEquals(dmWithFridayChannelId, resolved.parentChannelId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
         assertEquals("dm", resolved.parentChannelKind)
     }
 
@@ -280,9 +280,9 @@ class SharedMarkdownDirectMessageThreadRefTest {
             unreadTotal = 0
         )
 
-        val currentPayload = KuiklyThreadScreenPayload(
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-            parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+        val currentPayload = RaftThreadScreenPayload(
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+            parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
             parentChannelKind = "dm",
             parentChannelId = dmWithFridayChannelId,
             sourceThreadId = "reply-thread-123"
@@ -300,7 +300,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
         val resolved = requireNotNull(payload)
         assertEquals(dmWithFridayChannelId, resolved.parentChannelId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
     }
 
     @Test
@@ -324,15 +324,15 @@ class SharedMarkdownDirectMessageThreadRefTest {
             unreadTotal = 0
         )
 
-        val messageWithDmTag = KuiklyThreadMessageItem(
+        val messageWithDmTag = RaftThreadMessageItem(
             id = "msg-tag-1",
             authorId = friday.id.value,
             authorName = "Friday",
             authorHandle = "friday",
             body = "Please review dm:@artin:1f1def75"
         )
-        val currentPayload = KuiklyThreadScreenPayload(
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        val currentPayload = RaftThreadScreenPayload(
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             streamChannelId = "general-channel",
             messages = listOf(messageWithDmTag)
         )
@@ -349,17 +349,17 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
         val resolved = requireNotNull(payload)
         assertEquals(dmWithFridayChannelId, resolved.parentChannelId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.parentSurfaceKind)
     }
 
     @Test
     fun withHomeContextProjectionFromPreservesExistingDmPeersWhenPatchIsEmpty() {
-        val basePayload = KuiklyThreadScreenPayload(
+        val basePayload = RaftThreadScreenPayload(
             knownMarkdownDirectMessagePeerNames = listOf("friday", "artin"),
             knownMarkdownChannelNames = listOf("general")
         )
 
-        val emptyPatch = KuiklyThreadScreenPayload(
+        val emptyPatch = RaftThreadScreenPayload(
             knownMarkdownDirectMessagePeerNames = emptyList(),
             knownMarkdownChannelNames = emptyList()
         )
@@ -367,7 +367,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
         assertEquals(listOf("friday", "artin"), projected1.knownMarkdownDirectMessagePeerNames)
         assertEquals(listOf("general"), projected1.knownMarkdownChannelNames)
 
-        val newPatch = KuiklyThreadScreenPayload(
+        val newPatch = RaftThreadScreenPayload(
             knownMarkdownDirectMessagePeerNames = listOf("saturday"),
             knownMarkdownChannelNames = listOf("random")
         )
@@ -378,9 +378,9 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
     @Test
     fun toKnownMarkdownDirectMessagePeerNameSetIncludesDmPeerAndMembers() {
-        val friday = KuiklyThreadMemberItem(id = "peer-friday", displayName = "Friday", handle = "friday")
-        val payload = KuiklyThreadScreenPayload(
-            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+        val friday = RaftThreadMemberItem(id = "peer-friday", displayName = "Friday", handle = "friday")
+        val payload = RaftThreadScreenPayload(
+            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
             channelKind = "dm",
             dmPeerName = "Friday",
             members = listOf(friday),
@@ -396,16 +396,16 @@ class SharedMarkdownDirectMessageThreadRefTest {
     @Test
     fun sameConversationMarkdownThreadRefTargetsRetainRouteIdentity() {
         val current =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 streamChannelId = DmChannelId,
                 sourceThreadId = DmChannelId,
                 dmPeerName = "Artin"
             )
         val targetSameDm =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 streamChannelId = DmChannelId,
                 sourceThreadId = DmChannelId,
@@ -413,8 +413,8 @@ class SharedMarkdownDirectMessageThreadRefTest {
                 focusedMessageId = "1c50c30a"
             )
         val otherDm =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 streamChannelId = "other-dm-channel",
                 sourceThreadId = "other-dm-channel",
@@ -433,7 +433,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
         fun resolve(label: String) =
             buildMarkdownThreadRefLaunchPayload(
-                currentPayload = KuiklyThreadScreenPayload(),
+                currentPayload = RaftThreadScreenPayload(),
                 home = home,
                 channelLabel = label,
                 threadShortId = ShortId,
@@ -497,14 +497,14 @@ class SharedMarkdownDirectMessageThreadRefTest {
 
         fun open(label: String) =
             buildMarkdownChannelLaunchPayload(
-                currentPayload = KuiklyThreadScreenPayload(),
+                currentPayload = RaftThreadScreenPayload(),
                 home = home,
                 channelLabel = label,
                 requiredKind = ConversationKind.DirectMessage,
                 knownMemberProfilesById = profiles
             )
 
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, open("skyzh~human")?.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, open("skyzh~human")?.surfaceKind)
         assertEquals(TwinHumanDmId, open("skyzh~human")?.streamChannelId)
         assertEquals(TwinAgentDmId, open("skyzh~agent")?.streamChannelId)
         assertEquals(TwinAgentDmId, open("skyzh")?.streamChannelId)
@@ -551,8 +551,8 @@ class SharedMarkdownDirectMessageThreadRefTest {
     @Test
     fun routeLocalAliasesKeepBareTwin() {
         val payload =
-            KuiklyThreadScreenPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 channelKind = "dm",
                 dmPeerName = "skyzh",
                 dmPeerIdentity = MemberDetailIdentity(MemberId("skyzh-agent"), MemberKind.Agent),
@@ -641,7 +641,7 @@ class SharedMarkdownDirectMessageThreadRefTest {
                             parentChannelId = ChannelId(DmChannelId),
                             parentMessageId = MessageId(ParentMessageId),
                             streamChannelId = ChannelId(ThreadChannelId),
-                            parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                            parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
                             parentChannelKind = "dm"
                         )
                 ),

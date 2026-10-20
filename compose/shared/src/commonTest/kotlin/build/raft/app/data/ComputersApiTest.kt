@@ -10,7 +10,7 @@ class ComputersApiTest {
     @Test
     fun typedComputersApiAcceptsCanonicalUpstreamShapes() = runPortableCoroutineTest {
         val transport = RecordingComputersApi()
-        val client = SlockComputersApiClient(transport)
+        val client = RaftComputersApiClient(transport)
         val serverId = ServerId("server-1")
 
         val machines = assertIs<DataResult.Content<ComputerListSummary>>(client.machines(serverId)).data
@@ -116,7 +116,7 @@ class ComputersApiTest {
         val transport = RecordingComputersApi(
             renameBody = """{"id":"machine-1","name":"Maria Laptop","description":"Build host","apiKeyPrefix":"sk_machine_abc","hostname":"maria.local","createdAt":"2026-05-01T00:00:00.000Z"}"""
         )
-        val client = SlockComputersApiClient(transport)
+        val client = RaftComputersApiClient(transport)
         val serverId = ServerId("server-1")
 
         val renamed = assertIs<DataResult.Content<ComputerSummary>>(client.renameMachine(serverId, "machine-1", "Maria Laptop")).data
@@ -134,7 +134,7 @@ class ComputersApiTest {
         // produce a specific structured error code so the Settings page can show
         // human-readable copy instead of "http_307".
         val transport = RecordingComputersApi()
-        val client = SlockComputersApiClient(transport)
+        val client = RaftComputersApiClient(transport)
         val serverId = ServerId("server-1")
 
         transport.respond = { code -> HomeNetworkResponse(code = code, bodyText = """{"error":"x"}""") }
@@ -155,7 +155,7 @@ class ComputersApiTest {
     @Test
     fun typedComputersApiAcceptsOnlyTheCanonicalMachineErrorField() = runPortableCoroutineTest {
         val transport = RecordingComputersApi()
-        val client = SlockComputersApiClient(transport)
+        val client = RaftComputersApiClient(transport)
         val serverId = ServerId("server-1")
         val fixtures =
             listOf(
@@ -196,7 +196,7 @@ class ComputersApiTest {
     @Test
     fun typedComputersApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
-            SlockComputersApiClient(
+            RaftComputersApiClient(
                 RecordingComputersApi(
                     machinesBody = """{"items":[{"id":"machine-1","name":"Maria"}]}""",
                     registerBody = """{"computer":{"id":"machine-1","name":"Maria"},"key":"secret"}""",
@@ -223,7 +223,7 @@ class ComputersApiTest {
     fun runtimeFormContractFailsClosedOnUnknownOrMismatchedIdentity() = runPortableCoroutineTest {
         val serverId = ServerId("server-1")
         val unknownProtocol =
-            SlockComputersApiClient(
+            RaftComputersApiClient(
                 RecordingComputersApi(
                     runtimeOptionsBody = canonicalRuntimeOptionsBody.replace("\"protocolVersion\":1", "\"protocolVersion\":2")
                 )
@@ -234,7 +234,7 @@ class ComputersApiTest {
 
         val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
         val mismatchedDefinition =
-            SlockComputersApiClient(
+            RaftComputersApiClient(
                 RecordingComputersApi(
                     runtimeFormDefinitionBody = canonicalRuntimeFormDefinitionBody.replace("builtin-pi.create.v3", "builtin-pi.create.v4")
                 )
@@ -244,13 +244,13 @@ class ComputersApiTest {
             assertIs<DataResult.Error>(mismatchedDefinition.runtimeFormDefinition(serverId, "machine-1", expectedRef)).error.code
         )
 
-        val validClient = SlockComputersApiClient(RecordingComputersApi())
+        val validClient = RaftComputersApiClient(RecordingComputersApi())
         val definition = assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
             validClient.runtimeFormDefinition(serverId, "machine-1", expectedRef)
         ).data
         val sourceRef = requireNotNull(definition.optionSources["provider"])
         val mismatchedSource =
-            SlockComputersApiClient(
+            RaftComputersApiClient(
                 RecordingComputersApi(
                     runtimeFormOptionSourceBodies =
                         mapOf(
@@ -286,7 +286,7 @@ class ComputersApiTest {
         listOf(withV2Marker, withFutureKeys).forEach { body ->
             val catalog =
                 assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
-                    SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
+                    RaftComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
                         .runtimeOptions(serverId, "machine-1")
                 ).data
             assertEquals(listOf("codex", "builtin"), catalog.options.map { it.runtimeId })
@@ -300,13 +300,13 @@ class ComputersApiTest {
         val expectedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
         val definition =
             assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
-                SlockComputersApiClient(RecordingComputersApi()).runtimeFormDefinition(serverId, "machine-1", expectedRef)
+                RaftComputersApiClient(RecordingComputersApi()).runtimeFormDefinition(serverId, "machine-1", expectedRef)
             ).data
         val providerWithFutureKey =
             canonicalProviderSourceBody.replace("\"defaultValue\":\"deepseek\"", "\"defaultValue\":\"deepseek\",\"fetchedAt\":\"2026-10-09T00:00:00Z\"")
         check("fetchedAt" in providerWithFutureKey)
         val source =
-            SlockComputersApiClient(
+            RaftComputersApiClient(
                 RecordingComputersApi(runtimeFormOptionSourceBodies = mapOf("provider" to providerWithFutureKey))
             ).runtimeFormOptionSource(serverId, "machine-1", expectedRef, requireNotNull(definition.optionSources["provider"]))
         assertIs<DataResult.Content<*>>(source)
@@ -349,7 +349,7 @@ class ComputersApiTest {
             check(body != canonicalRuntimeOptionsBody)
             val catalog =
                 assertIs<DataResult.Content<SharedCreateAgentRuntimeCatalog>>(
-                    SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
+                    RaftComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
                         .runtimeOptions(serverId, "machine-1")
                 ).data
             assertEquals(expectedRuntimeIds, catalog.options.map { it.runtimeId })
@@ -360,7 +360,7 @@ class ComputersApiTest {
             canonicalRuntimeOptionsBody.replace("\"context\":\"new_agent\"", "\"context\":\"existing_agent\"")
         ).forEach { body ->
             check(body != canonicalRuntimeOptionsBody)
-            val result = SlockComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
+            val result = RaftComputersApiClient(RecordingComputersApi(runtimeOptionsBody = body))
                 .runtimeOptions(serverId, "machine-1")
             assertEquals("computer_runtime_options_contract_mismatch", assertIs<DataResult.Error>(result).error.code)
         }
@@ -399,12 +399,12 @@ class ComputersApiTest {
                 "\"unknownTopology\":true,\"properties\":{"
             )
         ).forEach { body ->
-            val result = SlockComputersApiClient(RecordingComputersApi(runtimeFormDefinitionBody = body))
+            val result = RaftComputersApiClient(RecordingComputersApi(runtimeFormDefinitionBody = body))
                 .runtimeFormDefinition(serverId, "machine-1", expectedRef)
             assertEquals("runtime_form_definition_contract_mismatch", assertIs<DataResult.Error>(result).error.code)
         }
 
-        val validClient = SlockComputersApiClient(RecordingComputersApi())
+        val validClient = RaftComputersApiClient(RecordingComputersApi())
         val definition = assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
             validClient.runtimeFormDefinition(serverId, "machine-1", expectedRef)
         ).data
@@ -413,7 +413,7 @@ class ComputersApiTest {
             "\"pointer\":\"/providerId\"",
             "\"pointer\":\"/model\""
         )
-        val sourceResult = SlockComputersApiClient(
+        val sourceResult = RaftComputersApiClient(
             RecordingComputersApi(runtimeFormOptionSourceBodies = mapOf("provider" to mismatchedPointer))
         ).runtimeFormOptionSource(serverId, "machine-1", expectedRef, providerRef)
         assertEquals(
@@ -448,7 +448,7 @@ class ComputersApiTest {
                 )
         val definition =
             assertIs<DataResult.Content<SharedAgentCreateFormDefinition>>(
-                SlockComputersApiClient(RecordingComputersApi(runtimeFormDefinitionBody = renamedCopyBody))
+                RaftComputersApiClient(RecordingComputersApi(runtimeFormDefinitionBody = renamedCopyBody))
                     .runtimeFormDefinition(serverId, "machine-1", expectedRef)
             ).data
         assertEquals(
@@ -474,7 +474,7 @@ class ComputersApiTest {
         private val runtimeFormDefinitionBody: String = canonicalRuntimeFormDefinitionBody,
         private val runtimeFormOptionSourceBodies: Map<String, String> =
             mapOf("provider" to canonicalProviderSourceBody, "model" to canonicalModelSourceBody)
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         var respond: ((Int) -> HomeNetworkResponse)? = null
         val calls = mutableListOf<String>()
 

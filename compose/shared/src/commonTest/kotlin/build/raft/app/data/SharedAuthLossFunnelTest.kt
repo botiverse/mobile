@@ -314,7 +314,7 @@ class SharedAuthLossFunnelTest {
     fun clearFailureResolutionAtomicallyClearsCapturedAuthorityBeforeTerminalEffect() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val captured = storedSession()
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(captured)
         val funnel =
             SharedAuthLossFunnel(
@@ -407,7 +407,7 @@ class SharedAuthLossFunnelTest {
     fun restoreThatAlreadyClearedCapturedAuthorityStillPublishesAuthRequired() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val captured = storedSession()
-        val store = InMemorySlockAuthSessionStore(captured)
+        val store = InMemoryRaftAuthSessionStore(captured)
         val funnel =
             SharedAuthLossFunnel(
                 restoreSession = {

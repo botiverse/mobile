@@ -1,0 +1,499 @@
+package build.raft.app
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.node.GlobalPositionAwareModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.requireLayoutCoordinates
+import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+
+internal sealed interface RaftPopoverLocalPoint {
+    fun resolve(size: IntSize): Offset
+
+    data class Exact(val offset: Offset) : RaftPopoverLocalPoint {
+        override fun resolve(size: IntSize): Offset = offset
+    }
+
+    data object BottomStart : RaftPopoverLocalPoint {
+        override fun resolve(size: IntSize): Offset = Offset(x = 0f, y = size.height.toFloat())
+    }
+
+    data object BottomEnd : RaftPopoverLocalPoint {
+        override fun resolve(size: IntSize): Offset =
+            Offset(x = size.width.toFloat(), y = size.height.toFloat())
+    }
+
+    data class BottomAtX(val x: Float) : RaftPopoverLocalPoint {
+        override fun resolve(size: IntSize): Offset = Offset(x = x, y = size.height.toFloat())
+    }
+}
+
+/**
+ * One gesture-bound popover anchor. The root pixels stay opaque to feature producers; only the
+ * shared overlay positioning layer may unwrap them.
+ */
+internal class RaftPopoverAnchor private constructor(
+    private val ownerIdentity: Any,
+    private val rootOffset: Offset
+) {
+    fun belongsTo(expectedIdentity: Any): Boolean = ownerIdentity == expectedIdentity
+
+    /**
+     * The window-space offset this anchor resolves to.
+     *
+     * task #180: a child page sends this to the shell so the shell can draw the menu without
+     * re-deriving the position (re-deriving is what produced four rounds of wrong placements).
+     */
+    internal fun rootOffsetOrNull(): Offset? = rootOffset.takeIf { it.isRaftUsableAnchor() }
+
+    companion object {
+        /**
+         * task #180: an anchor built directly from a WINDOW-space offset.
+         *
+         * Used by the shell overlay host, which receives an already-resolved anchor from a child
+         * page through `RaftShellOverlayContract` and must not re-derive it (the page owns the
+         * conversion; re-deriving is what produced four rounds of wrong positions).
+         */
+        internal fun forRootOffset(rootOffset: Offset): RaftPopoverAnchor =
+            RaftPopoverAnchor(ownerIdentity = "shell-overlay", rootOffset = rootOffset)
+    }
+
+    @Composable
+    internal fun renderInOverlay(
+        contentSize: Size,
+        onDismiss: () -> Unit,
+        modifier: Modifier,
+        viewportGap: Float,
+        horizontalOffset: Float,
+        verticalOffset: Float,
+        verticalOffsetAbove: Float,
+        verticalPlacement: RaftFloatingVerticalPlacement,
+        horizontalPlacement: RaftFloatingHorizontalPlacement = RaftFloatingHorizontalPlacement.Anchor,
+        horizontalAutoFlip: Boolean,
+        dismissActivationDelayMillis: Long,
+        outsidePointerMode: RaftFloatingOverlayOutsidePointerMode,
+        content: @Composable () -> Unit
+    ) {
+        RaftFloatingOverlayHost(
+            onDismiss = onDismiss,
+            modifier = modifier,
+            dismissActivationDelayMillis = dismissActivationDelayMillis,
+            outsidePointerMode = outsidePointerMode
+        ) { overlayLayout ->
+            val popoverOffset =
+                overlayLayout.positionContent(
+                    anchor = rootOffset,
+                    contentSize = contentSize,
+                    viewportGap = viewportGap,
+                    horizontalOffset = horizontalOffset,
+                    verticalOffset = verticalOffset,
+                    verticalOffsetAbove = verticalOffsetAbove,
+                    verticalPlacement = verticalPlacement,
+                    horizontalPlacement = horizontalPlacement,
+                    horizontalAutoFlip = horizontalAutoFlip
+                ) ?: return@RaftFloatingOverlayHost
+            Box(modifier = Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) }) {
+                content()
+            }
+        }
+    }
+
+    internal class LiveRef(
+        private val identity: Any
+    ) {
+        private data class PlacementSnapshot(
+            val size: IntSize,
+            val topLeft: Offset,
+            val topRight: Offset,
+            val bottomLeft: Offset,
+            val bottomRight: Offset
+        )
+
+        private var coordinates: LayoutCoordinates? = null
+        private var captureOwner: Any? = null
+        private var captureLease: Long = 0L
+        private var placementRevisionState by mutableStateOf(0L)
+        private var placementObserverCount: Int = 0
+        private var placementSnapshot: PlacementSnapshot? = null
+        private val reuseInvalidatedLeases = mutableSetOf<Long>()
+
+        internal val placementRevision: Long
+            get() = placementRevisionState
+
+        internal fun captureFromLayoutCoordinates(
+            next: LayoutCoordinates,
+            owner: Any? = null
+        ) {
+            val previousCoordinates = coordinates
+            coordinates
+                ?.takeIf { current -> current !== next }
+                ?.let { previous -> RaftLiveRootAnchorCaptureRegistry.release(previous, this) }
+            RaftLiveRootAnchorCaptureRegistry.claim(next, this)
+            coordinates = next
+            // A helper-level refresh of the same live coordinates must not erase the production
+            // node lease established by onAttach. A different coordinate with no owner remains an
+            // explicitly unowned capture, preserving the legacy helper contract.
+            if (owner != null || previousCoordinates !== next) captureOwner = owner
+            publishPlacementIfObserved(next)
+        }
+
+        fun invalidate() {
+            coordinates?.let { current -> RaftLiveRootAnchorCaptureRegistry.release(current, this) }
+            coordinates = null
+            captureOwner = null
+            captureLease += 1L
+            placementSnapshot = null
+            placementRevisionState += 1L
+        }
+
+        internal fun invalidateCaptureOwner(owner: Any) {
+            if (captureOwner === owner) invalidate()
+        }
+
+        internal fun invalidateReusedCapture(coordinates: LayoutCoordinates) {
+            if (this.coordinates === coordinates) {
+                this.coordinates = null
+                captureOwner = null
+                reuseInvalidatedLeases += captureLease
+                captureLease += 1L
+                placementSnapshot = null
+                placementRevisionState += 1L
+            }
+        }
+
+        internal fun beginObservingPlacement() {
+            placementObserverCount += 1
+            if (placementObserverCount == 1) placementSnapshot = null
+        }
+
+        internal fun endObservingPlacement() {
+            placementObserverCount = (placementObserverCount - 1).coerceAtLeast(0)
+            if (placementObserverCount == 0) placementSnapshot = null
+        }
+
+        private fun publishPlacementIfObserved(next: LayoutCoordinates) {
+            if (placementObserverCount <= 0 || !next.isAttached) return
+            val width = next.size.width.toFloat()
+            val height = next.size.height.toFloat()
+            val nextSnapshot =
+                PlacementSnapshot(
+                    size = next.size,
+                    topLeft = next.localToRoot(Offset.Zero),
+                    topRight = next.localToRoot(Offset(x = width, y = 0f)),
+                    bottomLeft = next.localToRoot(Offset(x = 0f, y = height)),
+                    bottomRight = next.localToRoot(Offset(x = width, y = height))
+                )
+            if (placementSnapshot != nextSnapshot) {
+                placementSnapshot = nextSnapshot
+                placementRevisionState += 1L
+            }
+        }
+
+        internal fun wasCaptureLeaseInvalidatedByReuse(lease: Long): Boolean = lease in reuseInvalidatedLeases
+
+        fun resolver(localPoint: RaftPopoverLocalPoint): RaftPopoverAnchorResolver =
+            RaftPopoverAnchorResolver(
+                identity = identity,
+                anchorRef = this,
+                localPoint = localPoint,
+                captureLease = captureLease
+            )
+
+        fun resolve(localPoint: RaftPopoverLocalPoint): RaftPopoverAnchor? =
+            resolve(localPoint = localPoint, expectedCaptureLease = captureLease)
+
+        internal fun resolve(
+            localPoint: RaftPopoverLocalPoint,
+            expectedCaptureLease: Long,
+            expectedPlacementRevision: Long? = null
+        ): RaftPopoverAnchor? {
+            if (expectedCaptureLease != captureLease) return null
+            if (expectedPlacementRevision != null && expectedPlacementRevision != placementRevisionState) return null
+            val current = coordinates?.takeIf { it.isAttached } ?: return null
+            val rootOffset = current.localToRoot(localPoint.resolve(current.size))
+            return RaftPopoverAnchor(ownerIdentity = identity, rootOffset = rootOffset)
+        }
+    }
+}
+
+/**
+ * task #180: cross-page handoff of a child page's measured window origin.
+ *
+ * A CompositionLocal cannot cross a Kuikly `@Page` boundary, so the host publishes the origin it
+ * MEASURES here under a stable key and the page reads the same state. Device evidence drove this:
+ * with no origin, the thread column's `...` menu resolved a page-local 384 and drew at the top-left
+ * of the centre pane instead of at 1904 under the button.
+ *
+ * Child pages nest for real (AppShell tab page -> detail / thread column), so a page's window origin
+ * is its own position within its parent PLUS the parent's origin, kept as a live reference so an
+ * outer resize still propagates inward.
+ */
+internal class RaftChildPageOriginState(origin: Offset = Offset.Zero) {
+    var origin: Offset by mutableStateOf(origin)
+        internal set
+
+    /**
+     * False until the host has measured this page at least once. Before that, [origin] is the
+     * default zero and cannot be told apart from a page that really sits at the window's left edge.
+     */
+    var measured: Boolean by mutableStateOf(false)
+        private set
+
+    var parentOrigin: RaftChildPageOriginState? = null
+        internal set
+
+    /** Window-space origin: own position within the parent plus every ancestor. */
+    val windowOrigin: Offset
+        get() = origin + (parentOrigin?.windowOrigin ?: Offset.Zero)
+
+    internal fun updateOrigin(next: Offset) {
+        if (next != origin) origin = next
+        if (!measured) measured = true
+    }
+
+    internal fun linkParentOrigin(next: RaftChildPageOriginState?) {
+        if (next !== this && parentOrigin !== next) parentOrigin = next
+    }
+}
+
+internal object RaftChildPageOriginRegistry {
+    private val states = mutableMapOf<String, RaftChildPageOriginState>()
+
+    internal fun stateFor(key: String): RaftChildPageOriginState {
+        val normalized = key.trim()
+        if (normalized.isEmpty()) return RaftChildPageOriginState()
+        return states.getOrPut(normalized) { RaftChildPageOriginState() }
+    }
+
+    internal fun forget(key: String) {
+        states.remove(key.trim())
+    }
+}
+
+internal typealias RaftLiveRootAnchorRef = RaftPopoverAnchor.LiveRef
+
+internal fun refreshRaftLiveRootAnchorCaptureOwner(
+    currentOwner: RaftLiveRootAnchorRef,
+    nextOwner: RaftLiveRootAnchorRef,
+    coordinates: LayoutCoordinates?,
+    captureOwner: Any? = null
+) {
+    if (currentOwner !== nextOwner) {
+        if (captureOwner == null) {
+            currentOwner.invalidate()
+        } else {
+            currentOwner.invalidateCaptureOwner(captureOwner)
+        }
+    }
+    coordinates
+        ?.takeIf { it.isAttached }
+        ?.let { nextOwner.captureFromLayoutCoordinates(it, captureOwner) }
+}
+
+internal fun recaptureRaftLiveRootAnchorAfterAttach(
+    owner: RaftLiveRootAnchorRef,
+    coordinates: LayoutCoordinates,
+    captureOwner: Any? = null
+) {
+    if (coordinates.isAttached) owner.captureFromLayoutCoordinates(coordinates, captureOwner)
+}
+
+/**
+ * Focus dismissal also needs live local-to-root conversion, but it must not reuse or expose the
+ * typed popover-anchor capability. This small focus-only handle keeps that conversion centralized
+ * with the live-coordinate implementation while returning no persistent popup anchor.
+ */
+internal class RaftInputFocusRootAnchor {
+    private var coordinates: LayoutCoordinates? = null
+
+    fun update(next: LayoutCoordinates) {
+        coordinates = next
+    }
+
+    fun resolve(localPosition: Offset): Offset? =
+        coordinates
+            ?.takeIf { it.isAttached }
+            ?.localToRoot(localPosition)
+}
+
+private object RaftLiveRootAnchorCaptureRegistry {
+    private data class Entry(
+        val coordinates: LayoutCoordinates,
+        val owner: RaftLiveRootAnchorRef
+    )
+
+    // Capture and disposal callbacks are confined to the Kuikly composition thread. The registry
+    // is referential on purpose: recycled lazy slots can reuse one LayoutCoordinates instance for
+    // a different semantic owner before the previous composition reaches disposal.
+    private val entries = mutableListOf<Entry>()
+
+    fun claim(coordinates: LayoutCoordinates, owner: RaftLiveRootAnchorRef) {
+        val existingIndex = entries.indexOfFirst { entry -> entry.coordinates === coordinates }
+        if (existingIndex >= 0) {
+            val previous = entries[existingIndex].owner
+            if (previous !== owner) previous.invalidateReusedCapture(coordinates)
+            entries[existingIndex] = Entry(coordinates, owner)
+        } else {
+            entries += Entry(coordinates, owner)
+        }
+    }
+
+    fun release(coordinates: LayoutCoordinates, owner: RaftLiveRootAnchorRef) {
+        entries.removeAll { entry -> entry.coordinates === coordinates && entry.owner === owner }
+    }
+}
+
+internal class RaftPopoverAnchorResolver internal constructor(
+    val identity: Any,
+    private val anchorRef: RaftLiveRootAnchorRef,
+    private val localPoint: RaftPopoverLocalPoint,
+    private val captureLease: Long
+) {
+    internal val placementRevision: Long
+        get() = anchorRef.placementRevision
+
+    fun resolve(): RaftPopoverAnchor? = anchorRef.resolve(localPoint, captureLease)
+
+    internal fun resolveAtPlacementRevision(expectedPlacementRevision: Long): RaftPopoverAnchor? =
+        anchorRef.resolve(
+            localPoint = localPoint,
+            expectedCaptureLease = captureLease,
+            expectedPlacementRevision = expectedPlacementRevision
+        )
+
+    internal fun beginObservingPlacement() = anchorRef.beginObservingPlacement()
+
+    internal fun endObservingPlacement() = anchorRef.endObservingPlacement()
+
+    fun wasInvalidatedByCaptureReuse(): Boolean = anchorRef.wasCaptureLeaseInvalidatedByReuse(captureLease)
+}
+
+/**
+ * Resolves a retained anchor while observing layout publications from its live coordinates.
+ *
+ * Gesture-opened popovers normally resolve once at the gesture. A portal that remains open across
+ * IME or window relayout must call this from composition so the same portal instance re-resolves on
+ * the next frame instead of retaining the root offset from its opening frame.
+ */
+@Composable
+internal fun RaftPopoverAnchorResolver.resolveCurrentPlacement(): RaftPopoverAnchor? {
+    DisposableEffect(this) {
+        beginObservingPlacement()
+        onDispose { endObservingPlacement() }
+    }
+    val observedPlacementRevision = placementRevision
+    return resolveAtPlacementRevision(observedPlacementRevision)
+}
+
+/**
+ * Retains a live layout handle for controls that open a root-anchored popover.
+ *
+ * A root [Offset] captured during layout becomes stale when an ancestor is placed again (for
+ * example while a LazyColumn scrolls or when content is inserted above the control). Kuikly keeps
+ * the same [LayoutCoordinates] backed by its current coordinator, so resolving through it at the
+ * actual gesture observes the latest placement and transforms.
+ *
+ * Keep this reference composition-local. Resolve synchronously from the gesture callback and pass
+ * only the resulting [RaftPopoverAnchor] into modal state. Programmatic opens may retain a typed
+ * [RaftPopoverAnchorResolver], which still defers root conversion until open. Detached coordinates
+ * deliberately fail closed.
+ */
+internal fun Modifier.raftCaptureLiveRootAnchor(
+    anchorRef: RaftLiveRootAnchorRef,
+    enabled: Boolean = true,
+    onCaptured: ((IntSize) -> Unit)? = null
+): Modifier {
+    return if (enabled) {
+        this then RaftLiveRootAnchorCaptureElement(anchorRef, onCaptured)
+    } else {
+        this
+    }
+}
+
+private data class RaftLiveRootAnchorCaptureElement(
+    val anchorRef: RaftLiveRootAnchorRef,
+    val onCaptured: ((IntSize) -> Unit)?
+) : ModifierNodeElement<RaftLiveRootAnchorCaptureNode>() {
+    override fun create(): RaftLiveRootAnchorCaptureNode =
+        RaftLiveRootAnchorCaptureNode(anchorRef, onCaptured)
+
+    override fun update(node: RaftLiveRootAnchorCaptureNode) {
+        node.update(anchorRef, onCaptured)
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "slockCaptureLiveRootAnchor"
+        properties["anchorRef"] = anchorRef
+    }
+}
+
+private class RaftLiveRootAnchorCaptureNode(
+    private var anchorRef: RaftLiveRootAnchorRef,
+    private var onCaptured: ((IntSize) -> Unit)?
+) : Modifier.Node(), GlobalPositionAwareModifierNode {
+    @OptIn(ExperimentalComposeUiApi::class)
+    override fun onAttach() {
+        // Lazy reuse detaches and later reattaches the same Modifier.Node. Kuikly does not mark
+        // an existing GlobalPositionAware node as inserted/updated during that reactivation, so
+        // another positioned callback is not guaranteed when the slot keeps its placement. Wait
+        // until modifier updates for this apply pass have settled, then restore the current owner
+        // from the node's live coordinator before its reattached pointer detector can resolve it.
+        sideEffect {
+            if (isAttached) {
+                val coordinates = requireLayoutCoordinates()
+                recaptureRaftLiveRootAnchorAfterAttach(anchorRef, coordinates, this)
+                onCaptured?.invoke(coordinates.size)
+            }
+        }
+    }
+
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        capture(coordinates)
+    }
+
+    fun update(
+        nextAnchorRef: RaftLiveRootAnchorRef,
+        nextOnCaptured: ((IntSize) -> Unit)?
+    ) {
+        val currentAnchorRef = anchorRef
+        val ownerChanged = currentAnchorRef !== nextAnchorRef
+        anchorRef = nextAnchorRef
+        onCaptured = nextOnCaptured
+
+        // Kuikly may update a reused lazy-row Modifier.Node without scheduling another global
+        // positioning callback when the recycled slot stays at the same coordinates. Capture the
+        // node's already-attached coordinator during the update so the new semantic row cannot
+        // admit a gesture while its live anchor is still empty.
+        if (ownerChanged && isAttached) {
+            val coordinates = requireLayoutCoordinates()
+            refreshRaftLiveRootAnchorCaptureOwner(currentAnchorRef, nextAnchorRef, coordinates, this)
+            onCaptured?.invoke(coordinates.size)
+        } else if (ownerChanged) {
+            currentAnchorRef.invalidateCaptureOwner(this)
+        }
+    }
+
+    override fun onDetach() {
+        // IME/lazy relayout may attach a replacement node for the same semantic message before
+        // this node's delayed detach. Only the node holding the current capture lease may revoke
+        // it; an older node must not clear the replacement's live coordinates.
+        anchorRef.invalidateCaptureOwner(this)
+    }
+
+    private fun capture(coordinates: LayoutCoordinates) {
+        anchorRef.captureFromLayoutCoordinates(coordinates, this)
+        onCaptured?.invoke(coordinates.size)
+    }
+}

@@ -12,8 +12,8 @@ import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
-import build.raft.app.data.SlockComputersApi
-import build.raft.app.data.SlockComputersApiClient
+import build.raft.app.data.RaftComputersApi
+import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,8 +61,8 @@ class MembersAgentRuntimeUsageTest {
     @Test
     fun runtimeUsageStatusDotMatchesWebHealthSemantics() {
         assertNull(membersRuntimeUsageStatusColor(offered = false, attention = false))
-        assertEquals(SlockColor.AccentLime, membersRuntimeUsageStatusColor(offered = true, attention = false))
-        assertEquals(SlockColor.AccentOrange, membersRuntimeUsageStatusColor(offered = true, attention = true))
+        assertEquals(RaftColor.AccentLime, membersRuntimeUsageStatusColor(offered = true, attention = false))
+        assertEquals(RaftColor.AccentOrange, membersRuntimeUsageStatusColor(offered = true, attention = true))
     }
 
     @Test
@@ -134,7 +134,7 @@ class MembersAgentRuntimeUsageTest {
             signedIn
         }
         val usage = SharedRuntimeAccountUsageStore(
-            client = SlockComputersApiClient(UsageOkApi()),
+            client = RaftComputersApiClient(UsageOkApi()),
             currentIdentity = { signedIn },
             clock = { 0L }
         )
@@ -197,7 +197,7 @@ class MembersAgentRuntimeUsageTest {
         assertEquals("user-2", tracker.owner.value?.accountId)
     }
 
-    private class UsageOkApi : SlockComputersApi {
+    private class UsageOkApi : RaftComputersApi {
         override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
             HomeNetworkResponse(
                 code = 200,
@@ -239,7 +239,7 @@ class MembersAgentRuntimeUsageTest {
         // Never called in these pure tests; the access object only needs a store instance.
         val store = SharedRuntimeAccountUsageStore(
             currentIdentity = { null },
-            client = SlockComputersApiClient(object : SlockComputersApi {
+            client = RaftComputersApiClient(object : RaftComputersApi {
                 override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
                 override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
                 override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")

@@ -94,8 +94,8 @@ object SharedBinaryDownloader {
             recordDiagnostics("operation=networkkmm_init status=warning message=${warning.toSafeDiagnosticsToken()}")
         }
         NetworkClient(
-            slockNetworkClientConfig(
-                defaultPolicy = slockNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS),
+            raftNetworkClientConfig(
+                defaultPolicy = raftNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS),
                 diagnosticsLogger = { message ->
                     recordDiagnostics("operation=engine_diagnostics $message")
                 }
@@ -249,7 +249,7 @@ object SharedBinaryDownloader {
                             method = VBTransportMethod.GET,
                             url = url,
                             body = NetworkBody.Empty,
-                            policy = slockNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
+                            policy = raftNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
                         ).apply {
                             setHeader("Accept", "*/*")
                         },
@@ -335,7 +335,7 @@ internal fun sharedBinaryConditionalRequest(
         method = VBTransportMethod.GET,
         url = url,
         body = NetworkBody.Empty,
-        policy = slockNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
+        policy = raftNetworkRequestPolicy(SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS)
     ).apply {
         setHeader("Accept", "*/*")
         validators?.eTag?.let { setHeader("If-None-Match", it) }

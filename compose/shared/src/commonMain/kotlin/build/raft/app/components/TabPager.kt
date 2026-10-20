@@ -97,7 +97,7 @@ fun TabPager(
     // own failure: task #233 round-1 showed one throwing sync call kills the
     // effect scope and freezes ALL subsequent selection updates (page moved,
     // highlight never followed). scrollToPage is the fork-proven path
-    // (SlockPagerScrollProbePage); a cancellation mid-animation must not be
+    // (RaftPagerScrollProbePage); a cancellation mid-animation must not be
     // treated as failure, so CancellationException rethrows.
     LaunchedEffect(pagerState, selectedIndex) {
         onDebugEvent?.invoke("sel-effect sel=$selectedIndex cur=${pagerState.currentPage}")

@@ -23,9 +23,9 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockOwnerScopedBoundedCache
-import build.raft.app.data.SlockOwnerScopedCacheOwner
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftOwnerScopedBoundedCache
+import build.raft.app.data.RaftOwnerScopedCacheOwner
 import build.raft.app.data.map
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
@@ -140,7 +140,7 @@ internal class ChannelSettingsSnapshotCache(
     maxEntries: Int = 64,
 ) {
     private val cache =
-        SlockOwnerScopedBoundedCache<ChannelSettingsSnapshotCacheResource, ChannelSettingsSnapshot>(
+        RaftOwnerScopedBoundedCache<ChannelSettingsSnapshotCacheResource, ChannelSettingsSnapshot>(
             maxEntries = maxEntries,
             acceptsResource = { owner, resource -> owner.serverId == resource.serverId },
             acceptsValue = { owner, resource, snapshot ->
@@ -149,7 +149,7 @@ internal class ChannelSettingsSnapshotCache(
         )
 
     fun get(owner: AuthenticatedRouteOwner, route: ChannelSettingsRoute): ChannelSettingsSnapshot? {
-        val cacheOwner = SlockOwnerScopedCacheOwner.from(owner) ?: return null
+        val cacheOwner = RaftOwnerScopedCacheOwner.from(owner) ?: return null
         val resource = cacheResource(cacheOwner, route) ?: return null
         return cache.get(cacheOwner, resource)
     }
@@ -159,19 +159,19 @@ internal class ChannelSettingsSnapshotCache(
         route: ChannelSettingsRoute,
         snapshot: ChannelSettingsSnapshot,
     ): Boolean {
-        val cacheOwner = SlockOwnerScopedCacheOwner.from(owner) ?: return false
+        val cacheOwner = RaftOwnerScopedCacheOwner.from(owner) ?: return false
         val resource = cacheResource(cacheOwner, route) ?: return false
         return cache.put(cacheOwner, resource, snapshot)
     }
 
     fun remove(owner: AuthenticatedRouteOwner, route: ChannelSettingsRoute) {
-        val cacheOwner = SlockOwnerScopedCacheOwner.from(owner) ?: return
+        val cacheOwner = RaftOwnerScopedCacheOwner.from(owner) ?: return
         val resource = cacheResource(cacheOwner, route) ?: return
         cache.remove(cacheOwner, resource)
     }
 
     private fun cacheResource(
-        owner: SlockOwnerScopedCacheOwner,
+        owner: RaftOwnerScopedCacheOwner,
         route: ChannelSettingsRoute,
     ): ChannelSettingsSnapshotCacheResource? {
         val routeServerId = route.serverId.value.trim()
@@ -184,7 +184,7 @@ internal class ChannelSettingsSnapshotCache(
     }
 
     private fun ChannelSettingsSnapshot.matchesCacheIdentity(
-        owner: SlockOwnerScopedCacheOwner,
+        owner: RaftOwnerScopedCacheOwner,
         resource: ChannelSettingsSnapshotCacheResource,
     ): Boolean =
         owner.serverId == resource.serverId &&
@@ -238,7 +238,7 @@ internal interface ChannelSettingsDataSource {
 
 internal class RealChannelSettingsDataSource(
     private val route: ChannelSettingsRoute,
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     owner: build.raft.app.data.AuthenticatedRouteOwner,
     gateway: AuthenticatedRouteAuthorityGateway,
     private val logger: (String) -> Unit = {},
@@ -329,14 +329,14 @@ internal class RealChannelSettingsDataSource(
             channelRepository(networkClient).deleteChannel(route.channelId).map { Unit }
         }
 
-    private fun channelRepository(networkClient: build.raft.app.data.SlockNetworkClient): RealChannelRepository =
+    private fun channelRepository(networkClient: build.raft.app.data.RaftNetworkClient): RealChannelRepository =
         RealChannelRepository(
             sessionStore = authStore,
             networkClient = networkClient,
             warningLogger = { logger("channel $it") },
         )
 
-    private fun memberRepository(networkClient: build.raft.app.data.SlockNetworkClient): RealMemberRepository =
+    private fun memberRepository(networkClient: build.raft.app.data.RaftNetworkClient): RealMemberRepository =
         RealMemberRepository(
             sessionStore = authStore,
             networkClient = networkClient,
@@ -344,7 +344,7 @@ internal class RealChannelSettingsDataSource(
             logger = { logger("members $it") },
         )
 
-    private fun settingsRepository(networkClient: build.raft.app.data.SlockNetworkClient): RealSettingsRepository =
+    private fun settingsRepository(networkClient: build.raft.app.data.RaftNetworkClient): RealSettingsRepository =
         RealSettingsRepository(
             sessionStore = authStore,
             networkClient = networkClient,

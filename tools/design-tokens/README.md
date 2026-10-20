@@ -42,5 +42,5 @@ Matches the Web build: every `@theme` block (Tailwind, then raft-ui `styles.css`
 All mobile colour constants that have a Web token now read from the generated file. The earlier
 drift (brutal text/border pure black instead of `#141110`; elegant cool zinc neutrals instead of
 raft-ui's warm hue-106 neutrals) was aligned in the follow-up to task #165 at artin's request.
-Remaining `Color(0x…)` literals in `SlockColor` (`AppBgLightBlue`, `EmptyStateGray`) have no Web
+Remaining `Color(0x…)` literals in `RaftColor` (`AppBgLightBlue`, `EmptyStateGray`) have no Web
 token.

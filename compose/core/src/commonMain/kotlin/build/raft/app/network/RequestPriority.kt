@@ -11,41 +11,41 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
-enum class SlockRequestPriority {
+enum class RaftRequestPriority {
     Foreground,
     Visible,
     Background
 }
 
 // Keep user-visible requests high while still bounding background/bulk work.
-const val SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS = 64
-const val SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS = 32
-const val SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS = 16
-const val SLOCK_SHARED_REQUEST_PRIORITY_GATE_ENABLED = false
+const val RAFT_DEFAULT_MAX_FOREGROUND_REQUESTS = 64
+const val RAFT_DEFAULT_MAX_VISIBLE_REQUESTS = 32
+const val RAFT_DEFAULT_MAX_BACKGROUND_REQUESTS = 16
+const val RAFT_SHARED_REQUEST_PRIORITY_GATE_ENABLED = false
 
-class SlockRequestTimeoutException(message: String) : Exception(message)
+class RaftRequestTimeoutException(message: String) : Exception(message)
 
-class SlockRequestPriorityElement(
-    val priority: SlockRequestPriority,
+class RaftRequestPriorityElement(
+    val priority: RaftRequestPriority,
     val requestKey: String? = null,
     val reason: String? = null
 ) : AbstractCoroutineContextElement(Key) {
-    companion object Key : CoroutineContext.Key<SlockRequestPriorityElement>
+    companion object Key : CoroutineContext.Key<RaftRequestPriorityElement>
 }
 
-suspend fun <T> withSlockRequestPriority(
-    priority: SlockRequestPriority,
+suspend fun <T> withRaftRequestPriority(
+    priority: RaftRequestPriority,
     key: String? = null,
     reason: String? = null,
     block: suspend () -> T
-): T = withContext(SlockRequestPriorityElement(priority, key, reason)) { block() }
+): T = withContext(RaftRequestPriorityElement(priority, key, reason)) { block() }
 
-class SlockRequestScheduler(
-    private val maxForegroundRequests: Int = SLOCK_DEFAULT_MAX_FOREGROUND_REQUESTS,
-    private val maxVisibleRequests: Int = SLOCK_DEFAULT_MAX_VISIBLE_REQUESTS,
-    private val maxBackgroundRequests: Int = SLOCK_DEFAULT_MAX_BACKGROUND_REQUESTS,
+class RaftRequestScheduler(
+    private val maxForegroundRequests: Int = RAFT_DEFAULT_MAX_FOREGROUND_REQUESTS,
+    private val maxVisibleRequests: Int = RAFT_DEFAULT_MAX_VISIBLE_REQUESTS,
+    private val maxBackgroundRequests: Int = RAFT_DEFAULT_MAX_BACKGROUND_REQUESTS,
     private val requestTimeoutMillis: Long = 30_000,
-    private val priorityGateEnabled: Boolean = SLOCK_SHARED_REQUEST_PRIORITY_GATE_ENABLED,
+    private val priorityGateEnabled: Boolean = RAFT_SHARED_REQUEST_PRIORITY_GATE_ENABLED,
     private val logger: (String) -> Unit = {}
 ) {
     private val mutex = Mutex()
@@ -56,7 +56,7 @@ class SlockRequestScheduler(
     private var foregroundOrVisibleActive = 0
 
     suspend fun <T> run(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String? = null,
         reason: String? = null,
         /**
@@ -75,16 +75,16 @@ class SlockRequestScheduler(
             runDirect(priority, key, reason, timeoutMillis, block)
         } else {
             when (priority) {
-                SlockRequestPriority.Foreground ->
+                RaftRequestPriority.Foreground ->
                     runForegroundOrVisible(priority, key, reason, foregroundSemaphore, timeoutMillis, block)
-                SlockRequestPriority.Visible ->
+                RaftRequestPriority.Visible ->
                     runForegroundOrVisible(priority, key, reason, visibleSemaphore, timeoutMillis, block)
-                SlockRequestPriority.Background -> runBackground(priority, key, reason, timeoutMillis, block)
+                RaftRequestPriority.Background -> runBackground(priority, key, reason, timeoutMillis, block)
             }
         }
 
     private suspend fun <T> runDirect(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?,
         timeoutMillis: Long?,
@@ -106,7 +106,7 @@ class SlockRequestScheduler(
     }
 
     private suspend fun <T> runForegroundOrVisible(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?,
         semaphore: Semaphore,
@@ -152,7 +152,7 @@ class SlockRequestScheduler(
     }
 
     private suspend fun <T> runBackground(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?,
         timeoutMillis: Long?,
@@ -189,7 +189,7 @@ class SlockRequestScheduler(
     }
 
     private suspend fun <T> runWithTimeout(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?,
         timeoutMillis: Long?,
@@ -199,7 +199,7 @@ class SlockRequestScheduler(
         return try {
             withTimeout(effectiveTimeoutMillis) { block() }
         } catch (timeout: TimeoutCancellationException) {
-            throw SlockRequestTimeoutException(
+            throw RaftRequestTimeoutException(
                 "Raft request timed out after ${effectiveTimeoutMillis}ms " +
                     "priority=$priority key=${key.orEmpty()} reason=${reason.orEmpty()}"
             )
@@ -207,7 +207,7 @@ class SlockRequestScheduler(
     }
 
     private suspend fun waitForForegroundOrVisibleIdle(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?
     ) {
@@ -225,7 +225,7 @@ class SlockRequestScheduler(
         mutex.withLock { foregroundOrVisibleWaiting > 0 || foregroundOrVisibleActive > 0 }
 
     private fun logStart(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?,
         queuedMs: Long
@@ -237,7 +237,7 @@ class SlockRequestScheduler(
     }
 
     private fun logFinish(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?,
         queuedMs: Long,
@@ -250,7 +250,7 @@ class SlockRequestScheduler(
     }
 
     private fun logPause(
-        priority: SlockRequestPriority,
+        priority: RaftRequestPriority,
         key: String?,
         reason: String?
     ) {
@@ -260,10 +260,10 @@ class SlockRequestScheduler(
         )
     }
 
-    private fun SlockRequestPriority.laneName(): String =
+    private fun RaftRequestPriority.laneName(): String =
         when (this) {
-            SlockRequestPriority.Foreground -> "foreground"
-            SlockRequestPriority.Visible -> "visible"
-            SlockRequestPriority.Background -> "background"
+            RaftRequestPriority.Foreground -> "foreground"
+            RaftRequestPriority.Visible -> "visible"
+            RaftRequestPriority.Background -> "background"
         }
 }

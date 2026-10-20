@@ -123,7 +123,7 @@ class ThreadAttachmentUploadOrchestratorTest {
             oldOrchestrator.dispose()
             store.dispatch(
                 SharedThreadComposerDraftIntent.Start(
-                    composer = KuiklyThreadComposerPayload(instanceId = "remounted", seedText = "new draft"),
+                    composer = RaftThreadComposerPayload(instanceId = "remounted", seedText = "new draft"),
                     draftKey = draftB
                 )
             )
@@ -399,9 +399,9 @@ class ThreadAttachmentUploadOrchestratorTest {
             status = "ready"
         )
 
-    private fun List<SharedThreadComposerAttachment>.toPendingItems(): List<KuiklyPendingAttachmentItem> =
+    private fun List<SharedThreadComposerAttachment>.toPendingItems(): List<RaftPendingAttachmentItem> =
         map { attachment ->
-            KuiklyPendingAttachmentItem(
+            RaftPendingAttachmentItem(
                 id = attachment.id,
                 fileName = attachment.fileName,
                 status = attachment.status,

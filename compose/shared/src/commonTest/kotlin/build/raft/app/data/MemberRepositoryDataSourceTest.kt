@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockFilePreviewPayload
+import build.raft.app.RaftFilePreviewPayload
 import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.withAgentWorkspaceLoadError
 import build.raft.app.model.ChannelId
@@ -399,7 +399,7 @@ class MemberRepositoryDataSourceTest {
                 )
             ).error
         val payload =
-            SlockFilePreviewPayload().withAgentWorkspaceLoadError(
+            RaftFilePreviewPayload().withAgentWorkspaceLoadError(
                 error,
                 englishErrorPresentationStringsForTest()
             )
@@ -566,7 +566,7 @@ class MemberRepositoryDataSourceTest {
             method == expectedMethod && path == expectedPath
     }
 
-    private class FakeMemberNetworkClient : SlockNetworkClient {
+    private class FakeMemberNetworkClient : RaftNetworkClient {
         companion object {
             val expectedDetailRequestStarts =
                 setOf(
@@ -747,8 +747,8 @@ class MemberRepositoryDataSourceTest {
             HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private fun sampleStore(session: StoredAuthSession = sampleSession()): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(session)
+    private fun sampleStore(session: StoredAuthSession = sampleSession()): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(session)
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(

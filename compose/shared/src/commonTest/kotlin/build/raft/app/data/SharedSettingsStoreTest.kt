@@ -38,7 +38,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
+                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
                 scope = scope
             )
 
@@ -79,7 +79,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -105,7 +105,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -131,7 +131,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         platformCapabilities =
                             FakeSettingsCapabilities(
@@ -177,7 +177,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = nativeRepository,
                         platformCapabilities = nativeCapabilities
                     ),
@@ -211,7 +211,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = failedRepository,
                         platformCapabilities = failedCapabilities
                     ),
@@ -245,7 +245,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(session)),
+                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(session)),
                 scope = scope
             )
 
@@ -270,7 +270,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -333,7 +333,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         platformCapabilities = capabilities
                     ),
@@ -378,7 +378,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -413,7 +413,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         localeRepository = localeRepository,
                         chatLayoutPreferenceRepository = chatLayoutRepository
@@ -476,7 +476,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -505,7 +505,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -563,7 +563,7 @@ class SharedSettingsStoreTest {
         )
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 settingsRepository = repository,
                 serverMembersStore = membersStore
             )
@@ -590,7 +590,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -624,7 +624,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -661,7 +661,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -694,7 +694,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -716,7 +716,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
+                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
                 scope = scope
             )
 
@@ -739,7 +739,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         notificationPreferenceRepository = FakeNotificationPreferenceRepository(enabled = true),
                         localeRepository = FakeLocaleRepository(current = AppLocale.SimplifiedChinese),
@@ -763,7 +763,7 @@ class SharedSettingsStoreTest {
         val localeRepository = FakeLocaleRepository(current = AppLocale.English)
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                 localeRepository = localeRepository
             )
@@ -831,7 +831,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                         notificationPreferenceRepository = notificationRepository,
                         localeRepository = localeRepository,
@@ -933,7 +933,7 @@ class SharedSettingsStoreTest {
             FakeChatLayoutPreferenceRepository(conversationForwardGestureEnabled = true)
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 chatLayoutPreferenceRepository = chatLayoutRepository
             )
 
@@ -971,7 +971,7 @@ class SharedSettingsStoreTest {
             }
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 chatLayoutPreferenceRepository = chatLayoutRepository,
                 platformCapabilities = platformCapabilities
             )
@@ -1031,7 +1031,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         linkOpenPreferenceRepository = linkOpenPreferenceRepository
                     ),
                 scope = scope
@@ -1057,7 +1057,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
                         localeRepository = FakeLocaleRepository(),
@@ -1084,7 +1084,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
                         localeRepository = FakeLocaleRepository(),
@@ -1238,11 +1238,11 @@ class SharedSettingsStoreTest {
         val block = BlockingCall()
         val processSessionStore = EventingSessionStore(sampleSession())
         val sessionStore =
-            SlockShellAuthSessionStore(
+            RaftShellAuthSessionStore(
                 delegate = processSessionStore,
                 selectedServerStore =
                     SelectedServerStore(
-                        SlockShellStoreScope.create(
+                        RaftShellStoreScope.create(
                             shellInstanceId = "settings-owner-test",
                             initialServerId = "server-1"
                         )
@@ -1308,7 +1308,7 @@ class SharedSettingsStoreTest {
             )
         val mutationBlock = BlockingCall()
         val ownerReadBlock = BlockingCall()
-        val sessionStore = BlockingSessionStore(InMemorySlockAuthSessionStore(sampleSession()))
+        val sessionStore = BlockingSessionStore(InMemoryRaftAuthSessionStore(sampleSession()))
         val repository =
             FakeSettingsRepository(mobileResult = DataResult.Content(initial)).also {
                 it.setServerNotificationModeBlock = mutationBlock
@@ -1392,7 +1392,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
                         localeRepository = FakeLocaleRepository(),
@@ -1429,7 +1429,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                         notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
                         localeRepository = FakeLocaleRepository(),
@@ -1511,7 +1511,7 @@ class SharedSettingsStoreTest {
             )
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                 notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
                 localeRepository = FakeLocaleRepository(),
@@ -1538,7 +1538,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1576,7 +1576,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1605,7 +1605,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "member")),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "member")),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1631,7 +1631,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
                         computersSource = computersSource
                     ),
@@ -1679,7 +1679,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1739,7 +1739,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1779,7 +1779,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1817,7 +1817,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1857,7 +1857,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1898,7 +1898,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1943,7 +1943,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -1981,7 +1981,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2022,7 +2022,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2062,7 +2062,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2090,7 +2090,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = FakeSettingsRepository(),
                         computersSource = computersSource
                     ),
@@ -2132,7 +2132,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2184,7 +2184,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2234,7 +2234,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2283,7 +2283,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2312,7 +2312,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         settingsRepository = repository
                     ),
                 scope = scope
@@ -2346,7 +2346,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2374,7 +2374,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities,
                     ),
                 scope = scope,
@@ -2426,7 +2426,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities,
                     ),
                 scope = scope,
@@ -2487,7 +2487,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2514,14 +2514,14 @@ class SharedSettingsStoreTest {
     fun developerEnvironmentLoadsAndSwitchesThroughSharedApiEnvironmentStore() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val store =
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = sessionStore,
                         platformCapabilities = capabilities,
-                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
                     ),
                 scope = scope
             )
@@ -2550,9 +2550,9 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities,
-                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
                     ),
                 scope = scope
             )
@@ -2576,7 +2576,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2603,8 +2603,8 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2640,8 +2640,8 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2669,7 +2669,7 @@ class SharedSettingsStoreTest {
 
     @Test
     fun sharedApiEnvironmentStorePersistsCustomUrlsAndRewritesProductionDefaults() {
-        val persistence = InMemorySlockKeyValueStore()
+        val persistence = InMemoryRaftKeyValueStore()
         val store = SharedApiEnvironmentStore(persistence)
 
         val saved =
@@ -2703,7 +2703,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2754,7 +2754,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2780,7 +2780,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -2802,7 +2802,7 @@ class SharedSettingsStoreTest {
             SharedSettingsStore(
                 dataSource =
                     SharedSettingsDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
                 scope = scope
@@ -4275,8 +4275,8 @@ class SharedSettingsStoreTest {
     }
 
     private class BlockingSessionStore(
-        private val delegate: SlockAuthSessionStore
-    ) : SlockAuthSessionStore {
+        private val delegate: RaftAuthSessionStore
+    ) : RaftAuthSessionStore {
         var readBlock: BlockingCall? = null
 
         override suspend fun readSession(): StoredAuthSession? {
@@ -4298,8 +4298,8 @@ class SharedSettingsStoreTest {
 
     private class EventingSessionStore(
         initialSession: StoredAuthSession
-    ) : SlockAuthSessionStore, SlockAuthSessionEventSource {
-        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+    ) : RaftAuthSessionStore, RaftAuthSessionEventSource {
+        private val delegate = InMemoryRaftAuthSessionStore(initialSession)
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
         private var generation = 0L
 
@@ -4330,7 +4330,7 @@ class SharedSettingsStoreTest {
 
     private fun settingsStore(
         repository: FakeSettingsRepository,
-        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        sessionStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         scope: CoroutineScope
     ): SharedSettingsStore =
         SharedSettingsStore(
@@ -4369,7 +4369,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
+                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
                 scope = scope
             )
 
@@ -4397,7 +4397,7 @@ class SharedSettingsStoreTest {
         val log = mutableListOf<MviTransition<SharedSettingsIntent>>()
         val store =
             SharedSettingsStore(
-                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
+                dataSource = SharedSettingsDataSource(InMemoryRaftAuthSessionStore(sampleSession())),
                 scope = scope
             )
         val contract = SharedSettingsStoreContract(store, scope, transitionLogger = { log.add(it) })
@@ -4418,7 +4418,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(accountResult = DataResult.Content(accountSnapshot()))
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 settingsRepository = repository
             )
         val store = SharedSettingsStore(dataSource, scope)
@@ -4453,7 +4453,7 @@ class SharedSettingsStoreTest {
     @Test
     fun failurePreservesOldContent() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val store =
             SharedSettingsStore(
                 dataSource = SharedSettingsDataSource(sessionStore),

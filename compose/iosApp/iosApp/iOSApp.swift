@@ -5,13 +5,13 @@ import SDWebImageSVGCoder
 import UIKit
 import UserNotifications
 
-private enum SlockIosPushEnvironment: String {
+private enum RaftIosPushEnvironment: String {
     case sandbox
     case production
 }
 
 // Internal (not private) so RaftIosSceneDelegate can forward notification taps.
-enum SlockIosPushHost {
+enum RaftIosPushHost {
     private static let remoteNotificationsStateName = Notification.Name("slockIosRemoteNotificationsState")
     private static let systemNotificationOpenName = Notification.Name("slockSystemNotificationOpen")
     private static let systemNotificationOpenReadyName = Notification.Name("slockSystemNotificationOpenReady")
@@ -34,7 +34,7 @@ enum SlockIosPushHost {
                 queue: nil
             ) { notification in
                 guard let enabled = notification.userInfo?["enabled"] as? Bool else {
-                    SlockIosDiagnosticsRecord(
+                    RaftIosDiagnosticsRecord(
                         "warn",
                         "SlockIosPush",
                         "remote_notifications_state_rejected reason=missing_enabled"
@@ -64,9 +64,9 @@ enum SlockIosPushHost {
             }
         }
         let candidate = UUID().uuidString.lowercased()
-        installationId = SlockIosPushRegistrationBridge.shared.install(candidateInstallationId: candidate)
-        SlockIosPushRegistrationBridge.shared.retryPendingRegistration()
-        SlockIosDiagnosticsRecord(
+        installationId = RaftIosPushRegistrationBridge.shared.install(candidateInstallationId: candidate)
+        RaftIosPushRegistrationBridge.shared.retryPendingRegistration()
+        RaftIosDiagnosticsRecord(
             "info",
             "SlockIosPush",
             "push_registration_host_installed installationIdPresent=\(installationId?.isEmpty == false)"
@@ -80,7 +80,7 @@ enum SlockIosPushHost {
             let generation = remoteNotificationsGeneration
             if !enabled {
                 UIApplication.shared.unregisterForRemoteNotifications()
-                SlockIosDiagnosticsRecord(
+                RaftIosDiagnosticsRecord(
                     "info",
                     "SlockIosPush",
                     "remote_notifications_state_applied enabled=false"
@@ -95,7 +95,7 @@ enum SlockIosPushHost {
         let notificationCenter = UNUserNotificationCenter.current()
         notificationCenter.getNotificationSettings { settings in
             let status = settings.authorizationStatus
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "info",
                 "SlockIosPush",
                 "notification_permission_status status=\(authorizationStatusName(status)) trigger=authenticated_session"
@@ -106,13 +106,13 @@ enum SlockIosPushHost {
             }
             notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
                 if let error {
-                    SlockIosDiagnosticsRecord(
+                    RaftIosDiagnosticsRecord(
                         "warn",
                         "SlockIosPush",
                         "notification_permission_request_failed errorType=\(String(describing: type(of: error)))"
                     )
                 } else {
-                    SlockIosDiagnosticsRecord(
+                    RaftIosDiagnosticsRecord(
                         "info",
                         "SlockIosPush",
                         "notification_permission_request_finished granted=\(granted)"
@@ -126,7 +126,7 @@ enum SlockIosPushHost {
     private static func registerForRemoteNotificationsIfCurrent(generation: UInt64) {
         runOnMain {
             guard desiredRemoteNotificationsEnabled, remoteNotificationsGeneration == generation else {
-                SlockIosDiagnosticsRecord(
+                RaftIosDiagnosticsRecord(
                     "info",
                     "SlockIosPush",
                     "remote_notifications_registration_skipped reason=stale_desired_state"
@@ -137,7 +137,7 @@ enum SlockIosPushHost {
             // alert permission. Keeping the token current means a user who later
             // enables notifications in Settings does not need another login.
             UIApplication.shared.registerForRemoteNotifications()
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "info",
                 "SlockIosPush",
                 "remote_notifications_state_applied enabled=true"
@@ -172,32 +172,32 @@ enum SlockIosPushHost {
 
     static func didRegister(deviceToken: Data) {
         guard installationId?.isEmpty == false else {
-            SlockIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_installation_id")
+            RaftIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_installation_id")
             return
         }
         guard let environment = signedPushEnvironment() else {
-            SlockIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_or_invalid_aps_environment")
+            RaftIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_or_invalid_aps_environment")
             return
         }
         guard let topic = Bundle.main.bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines), !topic.isEmpty else {
-            SlockIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_topic")
+            RaftIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_topic")
             return
         }
         let appVersion =
             (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !appVersion.isEmpty else {
-            SlockIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_app_version")
+            RaftIosDiagnosticsRecord("warn", "SlockIosPush", "push_token_rejected reason=missing_app_version")
             return
         }
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        SlockIosPushRegistrationBridge.shared.updateRegistration(
+        RaftIosPushRegistrationBridge.shared.updateRegistration(
             deviceToken: token,
             topic: topic,
             env: environment.rawValue,
             appVersion: appVersion
         )
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "info",
             "SlockIosPush",
             "push_token_received env=\(environment.rawValue) topicPresent=true tokenBytes=\(deviceToken.count)"
@@ -205,7 +205,7 @@ enum SlockIosPushHost {
     }
 
     static func didFailToRegister(error: Error) {
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "warn",
             "SlockIosPush",
             "push_token_registration_failed errorType=\(String(describing: type(of: error)))"
@@ -224,7 +224,7 @@ enum SlockIosPushHost {
                 categoryIdentifier: categoryIdentifier,
                 shellInstanceId: shellInstanceId
             ) else {
-                SlockIosDiagnosticsRecord(
+                RaftIosDiagnosticsRecord(
                     "warn",
                     "SlockIosPush",
                     "system_notification_open_rejected reason=invalid_identity source=\(source)"
@@ -233,7 +233,7 @@ enum SlockIosPushHost {
             }
             let key = systemNotificationOpenKey(payload)
             guard !pendingSystemNotificationOpenKeys.contains(key) else {
-                SlockIosDiagnosticsRecord(
+                RaftIosDiagnosticsRecord(
                     "info",
                     "SlockIosPush",
                     "system_notification_open_skipped reason=duplicate source=\(source)"
@@ -250,7 +250,7 @@ enum SlockIosPushHost {
                 let removed = pendingSystemNotificationOpens.removeFirst()
                 pendingSystemNotificationOpenKeys.remove(systemNotificationOpenKey(removed))
             }
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "info",
                 "SlockIosPush",
                 "system_notification_open_queued source=\(source)"
@@ -262,7 +262,7 @@ enum SlockIosPushHost {
         func stringValue(_ key: String) -> String? {
             userInfo[key] as? String
         }
-        return SlockVisibleConversationRegistryKt.slockSystemNotificationTargetsVisibleConversation(
+        return RaftVisibleConversationRegistryKt.raftSystemNotificationTargetsVisibleConversation(
             serverId: stringValue("serverId"),
             kind: stringValue("kind"),
             channelId: stringValue("channelId"),
@@ -352,14 +352,14 @@ enum SlockIosPushHost {
             object: nil,
             userInfo: payload
         )
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "info",
             "SlockIosPush",
             "system_notification_open_dispatched source=\(source)"
         )
     }
 
-    private static func signedPushEnvironment() -> SlockIosPushEnvironment? {
+    private static func signedPushEnvironment() -> RaftIosPushEnvironment? {
         // `SlockAPNSEnvironment` and the app's `aps-environment` entitlement are
         // expanded from the same APS_ENVIRONMENT build setting. This keeps the
         // runtime decision tied to signing configuration instead of DEBUG/Release
@@ -385,7 +385,7 @@ private extension String {
 }
 
 // Internal (not private) so RaftIosSceneDelegate can forward shortcut items.
-enum SlockIosDesktopShortcutHost {
+enum RaftIosDesktopShortcutHost {
     private static let desktopShortcutOpenName = Notification.Name("slockDesktopShortcutOpen")
     private static let desktopShortcutOpenReadyName = Notification.Name("slockDesktopShortcutOpenReady")
     private static let desktopShortcutOpenNotReadyName = Notification.Name("slockDesktopShortcutOpenNotReady")
@@ -472,7 +472,7 @@ enum SlockIosDesktopShortcutHost {
             object: nil,
             userInfo: payload
         )
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "info",
             "SlockIosShortcut",
             "desktop_shortcut_open_dispatched source=\(source)"
@@ -480,12 +480,12 @@ enum SlockIosDesktopShortcutHost {
     }
 }
 
-final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    private let networkRequestLifetimeAdapter = SlockIosNetworkRequestLifetimeAdapter(
+final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    private let networkRequestLifetimeAdapter = RaftIosNetworkRequestLifetimeAdapter(
         notificationCenter: .default,
         applicationState: { UIApplication.shared.applicationState },
         visibilitySink: { foreground in
-            _ = SlockNetworkRequestLifetimeKt.updateSlockProcessNetworkVisibility(foreground: foreground)
+            _ = RaftNetworkRequestLifetimeKt.updateRaftProcessNetworkVisibility(foreground: foreground)
         }
     )
 
@@ -494,21 +494,21 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         networkRequestLifetimeAdapter.install()
-        SlockIosNetworkPathMonitor.shared.start()
+        RaftIosNetworkPathMonitor.shared.start()
         UNUserNotificationCenter.current().delegate = self
-        SlockIosDesktopShortcutHost.install()
+        RaftIosDesktopShortcutHost.install()
         if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
-            SlockIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "cold_launch")
+            RaftIosDesktopShortcutHost.acceptShortcutItem(shortcutItem, source: "cold_launch")
         }
         if let userInfo = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
-            SlockIosPushHost.acceptSystemNotificationOpen(
+            RaftIosPushHost.acceptSystemNotificationOpen(
                 userInfo: userInfo,
                 source: "cold_launch"
             )
         }
         if let url = launchOptions?[.url] as? URL {
             DispatchQueue.main.async {
-                _ = SlockIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "cold_launch")
+                _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(url, source: "cold_launch")
             }
         }
         return true
@@ -535,11 +535,11 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
                   shellInstanceId != RaftIosShellWindowContract.legacyShellInstanceId else {
                 continue
             }
-            SlockShellStoreLaunchKt.releaseSlockShellStoreScope(
+            RaftShellStoreLaunchKt.releaseRaftShellStoreScope(
                 shellInstanceId: shellInstanceId,
                 serverId: context?.serverId
             )
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "info",
                 "RaftIosShellWindow",
                 "discarded_session_released shell=\(shellInstanceId)"
@@ -551,14 +551,14 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
-        SlockIosPushHost.didRegister(deviceToken: deviceToken)
+        RaftIosPushHost.didRegister(deviceToken: deviceToken)
     }
 
     func application(
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        SlockIosPushHost.didFailToRegister(error: error)
+        RaftIosPushHost.didFailToRegister(error: error)
     }
 
     func userNotificationCenter(
@@ -566,13 +566,13 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        if SlockIosPushHost.targetsVisibleConversation(userInfo: notification.request.content.userInfo) {
+        if RaftIosPushHost.targetsVisibleConversation(userInfo: notification.request.content.userInfo) {
             // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
-            SlockIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
+            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
             completionHandler([.badge])
             return
         }
-        SlockIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
+        RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
         completionHandler([.banner, .list, .sound, .badge])
     }
 
@@ -592,14 +592,14 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
             if matches.count == 1 {
                 shellInstanceId = matches[0].shellInstanceId
             } else {
-                SlockIosDiagnosticsRecord(
+                RaftIosDiagnosticsRecord(
                     "info",
                     "SlockIosPush",
                     "system_notification_open_broadcast reason=no_unique_shell matches=\(matches.count)"
                 )
             }
         }
-        SlockIosPushHost.acceptSystemNotificationOpen(
+        RaftIosPushHost.acceptSystemNotificationOpen(
             userInfo: content.userInfo,
             categoryIdentifier: content.categoryIdentifier,
             shellInstanceId: shellInstanceId,
@@ -609,7 +609,7 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
     }
 }
 
-private enum SlockIosSharedLogBridge {
+private enum RaftIosSharedLogBridge {
     private static var observer: NSObjectProtocol?
 
     static func install() {
@@ -627,12 +627,12 @@ private enum SlockIosSharedLogBridge {
             let message = userInfo["message"] as? String ?? ""
             let timestampMillis = (userInfo["timestampMillis"] as? NSNumber)?.int64Value ?? 0
             let forceCritical = (userInfo["critical"] as? NSNumber)?.boolValue ?? false
-            SlockIosDiagnosticsRecordWithContext(level, tag, message, timestampMillis, true, forceCritical)
+            RaftIosDiagnosticsRecordWithContext(level, tag, message, timestampMillis, true, forceCritical)
         }
     }
 }
 
-private func slockCurlCaBundlePath() -> String {
+private func raftCurlCaBundlePath() -> String {
     var bundles = [Bundle.main] + Bundle.allBundles + Bundle.allFrameworks
     let nested = Bundle.main.urls(forResourcesWithExtension: "bundle", subdirectory: nil) ?? []
     bundles.append(contentsOf: nested.compactMap { Bundle(url: $0) })
@@ -661,55 +661,55 @@ final class RaftIosUnhandledExceptionRecorder: NSObject, RaftIosUnhandledExcepti
     func recordUnhandledException(reason: String, stack: String) {
         // TODO(cmp-switch): report the visible page name; the hook is process-wide and the
         // CMP runtime does not track the current page for it yet.
-        SlockIosDiagnosticsRecordUnhandledException("unknown", 0, reason, stack)
+        RaftIosDiagnosticsRecordUnhandledException("unknown", 0, reason, stack)
     }
 }
 
 @main
 struct iOSApp: App {
-    @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
+    @UIApplicationDelegateAdaptor(RaftIosAppDelegate.self) private var appDelegate
 
     init() {
         // Capture failures in the startup work below, including the first
         // Kotlin call, storage setup and network transport initialization.
-        SlockIosInstallHandsReporting()
+        RaftIosInstallHandsReporting()
         // task #423: point the kmmresource loader at the "shared" pod bundle so
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
-        SlockIosResourceBundleKt.slockConfigureIosResourceBundle()
+        RaftIosResourceBundleKt.raftConfigureIosResourceBundle()
         // CMP page routing: debug builds also admit the debug-only :ui-cmp pages.
-        SlockPageControllerFactory.configure()
+        RaftPageControllerFactory.configure()
         // task #436: register the SVG coder with SDWebImage, which the durable avatar store
-        // (SlockIosAvatarCacheProvider) decodes committed avatar bytes with; SVG avatars are
+        // (RaftIosAvatarCacheProvider) decodes committed avatar bytes with; SVG avatars are
         // otherwise rejected (UIImage has no native SVG support).
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
-        SlockIosAvatarCacheHost.shared.install()
-        SlockIosAppScopeMMKV.install()
+        RaftIosAvatarCacheHost.shared.install()
+        RaftIosAppScopeMMKV.install()
         // Task #521: publish the stored font face before the first composition (same as
-        // SlockApplication on Android). Without it the first frames use the default face and
+        // RaftApplication on Android). Without it the first frames use the default face and
         // only switch when a settings snapshot loads, or never on a slow cold start.
-        _ = KeyValueStoreKt.slockRestoreStoredFontPreferenceOnColdStart()
-        SlockIosDiagnosticsRecord(
+        _ = KeyValueStoreKt.raftRestoreStoredFontPreferenceOnColdStart()
+        RaftIosDiagnosticsRecord(
             "info",
             "font_preference",
-            KeyValueStoreKt.slockReadStoredFontPreferenceForDiagnostics()
+            KeyValueStoreKt.raftReadStoredFontPreferenceForDiagnostics()
         )
-        SlockIosInstallThreadComposerTemporaryFileRetirement()
-        let curlCaPath = slockCurlCaBundlePath()
-        let curlBootstrap = SlockIosNetworkTransportBootstrapKt
-            .installIosSlockNetworkTransportAtStartup(caBundlePath: curlCaPath)
-        SlockIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
-        SlockIosPushHost.install()
-        SlockIosSharedLogBridge.install()
+        RaftIosInstallThreadComposerTemporaryFileRetirement()
+        let curlCaPath = raftCurlCaBundlePath()
+        let curlBootstrap = RaftIosNetworkTransportBootstrapKt
+            .installIosRaftNetworkTransportAtStartup(caBundlePath: curlCaPath)
+        RaftIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
+        RaftIosPushHost.install()
+        RaftIosSharedLogBridge.install()
         // Every page renders through Compose Multiplatform: install the :shared page registry
         // (RaftPageRegistry) and the host hooks its image loader reads (managed avatar bytes),
         // after the network transport (NetworkKMM image downloads), before the first page.
         // Kotlin unhandled exceptions are recorded into diagnostics before termination.
         RaftIosHostHooks.shared.install(
-            managedImages: SlockIosAvatarCacheHost.shared,
+            managedImages: RaftIosAvatarCacheHost.shared,
             unhandledExceptions: RaftIosUnhandledExceptionRecorder()
         )
-        SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
+        RaftIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 
     var body: some Scene {

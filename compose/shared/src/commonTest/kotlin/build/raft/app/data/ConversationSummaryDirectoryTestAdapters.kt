@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.memberDetailIdentity
 import build.raft.app.parsedMemberKindOrNull
-import build.raft.app.toKuiklySurfaceKind
+import build.raft.app.toRaftSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -44,7 +44,7 @@ internal fun ConversationSummary.toSharedConversationDirectoryProjection(
         canonicalChannelId = canonicalChannelId,
         aliases = aliases(canonicalChannelId).filter { it.isNotBlank() }.toSet() + canonicalChannelId,
         conversationKind = kind,
-        surfaceKind = kind.toKuiklySurfaceKind(),
+        surfaceKind = kind.toRaftSurfaceKind(),
         channelKind = toDirectoryChannelType(),
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() },

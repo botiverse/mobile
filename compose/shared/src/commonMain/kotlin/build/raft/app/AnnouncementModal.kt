@@ -5,12 +5,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.AnnouncementItem
-import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.RaftSharedStoreRegistry
 import androidx.compose.foundation.layout.height
 import coil3.compose.AsyncImagePainter
-import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -49,7 +49,7 @@ internal fun SharedAnnouncementModal(
     val page = pages[pageIndex.coerceIn(0, pages.lastIndex)]
     val hasMultiplePages = pages.size > 1
 
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         // Web AnnouncementModal: the header always shows the announcement title;
         // each page's own title sits at the top of the body.
         title = announcement.title,
@@ -59,8 +59,8 @@ internal fun SharedAnnouncementModal(
         announcement.label?.let { label ->
             Text(
                 text = label,
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextMutedGray
             )
         }
         LazyColumn(
@@ -70,22 +70,22 @@ internal fun SharedAnnouncementModal(
             page.title?.takeIf { it.isNotBlank() }?.let { pageTitle ->
                 item {
                     Text(
-                        text = pageTitle.slockDisplayUppercase(),
-                        style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 22.sp),
-                        color = SlockColor.TextBlack
+                        text = pageTitle.raftDisplayUppercase(),
+                        style = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 22.sp),
+                        color = RaftColor.TextBlack
                     )
                 }
             }
             item {
                 announcement.image?.let { image ->
-                    val apiBase = SlockSharedStoreRegistry.currentOrNull()
+                    val apiBase = RaftSharedStoreRegistry.currentOrNull()
                         ?.apiEnvironmentStore?.current()?.apiBaseUrl?.trimEnd('/')
                     val source = apiBase?.let { "$it/announcements/images/${image.assetId}" }
                     if (source != null) {
                         var failed by remember(source) { mutableStateOf(false) }
                         Box(modifier = Modifier.fillMaxWidth().height(if (failed) 32.dp else 200.dp)) {
-                            if (failed) Text(image.alt, style = SlockType.Caption, color = SlockColor.TextMutedGray)
-                            SlockCachedImage(
+                            if (failed) Text(image.alt, style = RaftType.Caption, color = RaftColor.TextMutedGray)
+                            RaftCachedImage(
                                 source = source,
                                 contentDescription = image.alt,
                                 modifier = Modifier.fillMaxWidth().height(if (failed) 0.dp else 200.dp),
@@ -97,7 +97,7 @@ internal fun SharedAnnouncementModal(
                 }
             }
             item {
-                SlockMarkdownBody(
+                RaftMarkdownBody(
                     body = page.body,
                     onOpenUrl = onOpenUrl
                 )
@@ -112,30 +112,30 @@ internal fun SharedAnnouncementModal(
         ) {
             Text(
                 text = if (hasMultiplePages) "${pageIndex + 1} / ${pages.size}" else "",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextMutedGray
             )
             Row(
-                horizontalArrangement = Arrangement.spacedBy(SlockDialogFooterGap),
+                horizontalArrangement = Arrangement.spacedBy(RaftDialogFooterGap),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (hasMultiplePages && pageIndex > 0) {
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_back),
                         onClick = { pageIndex -= 1 },
-                        leadingIcon = SlockLucideIconName.ChevronLeft,
-                        backgroundColor = SlockColor.SurfaceWhite
+                        leadingIcon = RaftLucideIconName.ChevronLeft,
+                        backgroundColor = RaftColor.SurfaceWhite
                     )
                 }
                 val isLastPage = pageIndex >= pages.lastIndex
                 if (isLastPage && announcement.cta != null) {
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.announcement_action_got_it),
                         onClick = onDismiss,
-                        backgroundColor = SlockColor.SurfaceWhite,
+                        backgroundColor = RaftColor.SurfaceWhite,
                     )
                 }
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = announcement.cta?.takeIf { isLastPage }?.label
                         ?: stringResource(if (isLastPage) MR.strings.announcement_action_got_it else MR.strings.pagination_next),
                     onClick = {
@@ -145,8 +145,8 @@ internal fun SharedAnnouncementModal(
                             onDismiss()
                         }
                     },
-                    leadingIcon = if (isLastPage) null else SlockLucideIconName.ChevronRight,
-                    backgroundColor = SlockColor.BrandYellow
+                    leadingIcon = if (isLastPage) null else RaftLucideIconName.ChevronRight,
+                    backgroundColor = RaftColor.BrandYellow
                 )
             }
         }

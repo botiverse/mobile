@@ -22,7 +22,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun staleEqualNewAndNullAuthRevisionsRemainDurableAcrossRestart() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val registry = registry(store, process = "process-1")
         registry.initialize()
 
@@ -53,7 +53,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun sameRevisionRegistrationIsIdempotentButReleasedKeyGetsNewLeaseAndImmediateGrants() = runBlocking {
-        val registry = registry(InMemorySlockKeyValueStore(), process = "process-register")
+        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-register")
         registry.initialize()
         registry.advanceAuth(revision(7, principal = "p1", servers = listOf("a", "b")))
 
@@ -77,7 +77,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun reconnectReplacesOneLeaseWideFamilyAndAllItsSlotsWithoutTouchingSiblingLease() = runBlocking {
-        val registry = registry(InMemorySlockKeyValueStore(), process = "process-reconnect")
+        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-reconnect")
         registry.initialize()
         registry.advanceAuth(revision(3, principal = "p1", servers = listOf("a", "b")))
         val leaseOne = registry.register("shell-1")
@@ -109,7 +109,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun terminalMembershipRevokesEveryScopeAndReconnectCannotReviveUntilExplicitReadd() = runBlocking {
-        val registry = registry(InMemorySlockKeyValueStore(), process = "process-terminal")
+        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-terminal")
         registry.initialize()
         registry.advanceAuth(revision(1, principal = "p1", servers = listOf("a", "b")))
         val leaseOne = registry.register("shell-1")
@@ -147,7 +147,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun resolverUsesFreshFamilyWitnessToLookupExistingCrossServerGrantWithoutMinting() = runBlocking {
-        val registry = registry(InMemorySlockKeyValueStore(), process = "process-resolve")
+        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-resolve")
         registry.initialize()
         registry.advanceAuth(revision(11, principal = "p1", servers = listOf("selected-a", "event-b")))
         val lease = registry.register("shell")
@@ -166,7 +166,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun releaseAndAuthAdvanceShareOneLinearizationDomainInBothOrders() = runBlocking {
-        val releaseFirst = registry(InMemorySlockKeyValueStore(), process = "release-first")
+        val releaseFirst = registry(InMemoryRaftKeyValueStore(), process = "release-first")
         releaseFirst.initialize()
         releaseFirst.advanceAuth(revision(1, principal = "p1", servers = listOf("a")))
         val releasedLease = releaseFirst.register("released")
@@ -175,7 +175,7 @@ class RealtimeAuthorityRegistryV12Test {
         assertFalse(releasedLease.id in releaseFirst.snapshot.value.activeLeases)
         assertTrue(releaseFirst.snapshot.value.grantsFor(releasedLease.id).isEmpty())
 
-        val authFirst = registry(InMemorySlockKeyValueStore(), process = "auth-first")
+        val authFirst = registry(InMemoryRaftKeyValueStore(), process = "auth-first")
         authFirst.initialize()
         authFirst.advanceAuth(revision(1, principal = "p1", servers = listOf("a")))
         val burnedLease = authFirst.register("burned")
@@ -192,7 +192,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun durableRevisionIsRereadAndEqualGenerationPayloadConflictFailsClosed() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val diagnostics = mutableListOf<String>()
         val first = registry(store, process = "process-first")
         first.initialize()
@@ -227,7 +227,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun providerStyleReconcileAllocatesFromDurableTruthAndCanForceSamePayloadSuccessor() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val registry = registry(store, process = "process-provider")
         registry.initialize()
 
@@ -248,7 +248,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun grantsCarryTheSessionEnvironmentAndDeriveTheDurablePartitionFromIt() = runBlocking {
-        val registry = registry(InMemorySlockKeyValueStore(), process = "process-env")
+        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-env")
         registry.initialize()
         assertTrue(
             registry.advanceAuth(
@@ -280,7 +280,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun samePrincipalInAnotherEnvironmentIsADifferentSessionIdentity() = runBlocking {
-        val registry = registry(InMemorySlockKeyValueStore(), process = "process-env-switch")
+        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-env-switch")
         registry.initialize()
         val staging = RealtimeAuthoritySession("p1", listOf("a"), environmentId = "https://api.staging.test")
         val production = RealtimeAuthoritySession("p1", listOf("a"), environmentId = "https://api.production.test")
@@ -293,7 +293,7 @@ class RealtimeAuthorityRegistryV12Test {
 
     @Test
     fun environmentIdRoundTripsThroughTheDurableStoreAndNormalizesLikeOtherSegments() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val registry = registry(store, process = "process-env-durable")
         registry.initialize()
         assertTrue(
@@ -328,7 +328,7 @@ class RealtimeAuthorityRegistryV12Test {
      */
     @Test
     fun preEnvironmentDurableRevisionKeepsItsGenerationButMintsNoGrants() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         store.putString(
             "realtimeAuthority:authRevision:v1",
             """{"generation":7,"session":{"principalId":"p1","serverIds":["a","b"]}}""",
@@ -354,13 +354,13 @@ class RealtimeAuthorityRegistryV12Test {
     fun processInstanceIdMustBeFreshConstructionInputAndNeverBlank() {
         assertFailsWith<IllegalArgumentException> {
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "   ",
             )
         }
     }
 
-    private fun registry(store: SlockKeyValueStore, process: String): RealtimeAuthorityRegistry =
+    private fun registry(store: RaftKeyValueStore, process: String): RealtimeAuthorityRegistry =
         RealtimeAuthorityRegistry(
             authRevisionStore = KeyValueRealtimeAuthRevisionStore(store),
             processInstanceId = process,

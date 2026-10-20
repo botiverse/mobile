@@ -3,9 +3,9 @@ package build.raft.app.data
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockHttpExecutorResponse
-import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftHttpExecutorResponse
+import build.raft.app.network.RaftRequestPriority
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -38,7 +38,7 @@ class RuntimeFormRequestLanguageTest {
     @Test
     fun everyV2FormRequestSendsAcceptLanguageOnTheWire() = runBlocking {
         val executor = RecordingExecutor()
-        val client = SharedSlockNetworkClient(
+        val client = SharedRaftNetworkClient(
             sessionStore = authenticatedSessionStore(),
             baseUrlProvider = { SharedApiEnvironmentStore.Production.apiBaseUrl },
             executor = executor,
@@ -46,12 +46,12 @@ class RuntimeFormRequestLanguageTest {
         val bound = client.boundTo(expectedBinding(SharedApiEnvironmentStore.Production.apiBaseUrl))
         val server = ServerId("server-1")
 
-        for (network in listOf<SlockNetworkClient>(client, bound)) {
+        for (network in listOf<RaftNetworkClient>(client, bound)) {
             executor.calls.clear()
-            val computers = SlockComputersNetworkApi(network) { "zh-CN" }
+            val computers = RaftComputersNetworkApi(network) { "zh-CN" }
             computers.runtimeFormV2(server, "machine-1", "codex")
             computers.runtimeFormV2OptionSource(server, "machine-1", "codex", "model", refresh = true, formRevision = "rev-1")
-            SlockAgentsNetworkApi(network) { "zh-CN" }.agentRuntimeFormV2(MemberId("agent-1"))
+            RaftAgentsNetworkApi(network) { "zh-CN" }.agentRuntimeFormV2(MemberId("agent-1"))
 
             assertEquals(3, executor.calls.size)
             executor.calls.forEach { (url, headers) ->
@@ -70,13 +70,13 @@ class RuntimeFormRequestLanguageTest {
     @Test
     fun unknownLanguageSendsNoHeaderAndExtraHeadersNeverReplaceAuth() = runBlocking {
         val executor = RecordingExecutor()
-        val client = SharedSlockNetworkClient(
+        val client = SharedRaftNetworkClient(
             sessionStore = authenticatedSessionStore(),
             baseUrlProvider = { SharedApiEnvironmentStore.Production.apiBaseUrl },
             executor = executor,
         )
 
-        SlockComputersNetworkApi(client) { null }.runtimeFormV2(ServerId("server-1"), "machine-1", "codex")
+        RaftComputersNetworkApi(client) { null }.runtimeFormV2(ServerId("server-1"), "machine-1", "codex")
         assertNull(executor.calls.single().second["Accept-Language"])
 
         executor.calls.clear()
@@ -90,33 +90,33 @@ class RuntimeFormRequestLanguageTest {
         assertEquals("en", sent["Accept-Language"])
     }
 
-    private class RecordingExecutor : SlockHttpExecutor {
+    private class RecordingExecutor : RaftHttpExecutor {
         val calls = mutableListOf<Pair<String, Map<String, String>>>()
 
         override suspend fun execute(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             method: String,
             headers: Map<String, String>,
             bodyText: String?,
             jsonBody: Boolean
-        ): SlockHttpExecutorResponse {
+        ): RaftHttpExecutorResponse {
             calls += url to headers
-            return SlockHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
+            return RaftHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
         }
 
         override suspend fun executeMultipart(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?
-        ): SlockHttpExecutorResponse = SlockHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+        ): RaftHttpExecutorResponse = RaftHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
     }
 
-    private fun authenticatedSessionStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun authenticatedSessionStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
                 accessToken = "access-token",
@@ -126,8 +126,8 @@ class RuntimeFormRequestLanguageTest {
             )
         )
 
-    private fun expectedBinding(environmentId: String): SlockExpectedAuthBinding =
-        SlockExpectedAuthBinding(
+    private fun expectedBinding(environmentId: String): RaftExpectedAuthBinding =
+        RaftExpectedAuthBinding(
             accountId = "user-1",
             accessToken = "access-token",
             refreshToken = "refresh-token",

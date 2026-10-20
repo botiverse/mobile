@@ -21,7 +21,7 @@ internal class RecordingNetworkClient(
     private val channelType: String = "channel",
     /** Body for `channels/{id}/threads`; `null` makes that endpoint fail (500). */
     private val threadSummariesBody: String? = "{}",
-) : SlockNetworkClient {
+) : RaftNetworkClient {
     val paths = mutableListOf<String>()
 
     /** When set, the messages page answer waits for this gate (in-flight dedupe tests). */

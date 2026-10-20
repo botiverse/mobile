@@ -2,12 +2,12 @@ package build.raft.app
 
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalListRow
-import build.raft.app.components.SlockBrutalPanelShell
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftBrutalListRow
+import build.raft.app.components.RaftBrutalPanelShell
 import build.raft.app.data.KeyValueRouterPreferenceRepository
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,11 +91,11 @@ private val DeveloperRouteGroups =
             routes =
                 listOf(
                     DeveloperRouteItem("Router", ROUTER_PAGE, "Developer route launcher"),
-                    DeveloperRouteItem("App Shell", SLOCK_APP_SHELL_PAGE, "Raft shell with real navigation chrome"),
-                    DeveloperRouteItem("Home", SLOCK_HOME_PAGE, "Main workspace/channel shell"),
+                    DeveloperRouteItem("App Shell", RAFT_APP_SHELL_PAGE, "Raft shell with real navigation chrome"),
+                    DeveloperRouteItem("Home", RAFT_HOME_PAGE, "Main workspace/channel shell"),
                     DeveloperRouteItem("Thread", THREAD_PAGE, "Conversation route"),
                     DeveloperRouteItem("Members", MEMBERS_PAGE, "Server members route"),
-                    DeveloperRouteItem("File Preview", SLOCK_FILE_PREVIEW_PAGE, "Standalone workspace/thread file preview")
+                    DeveloperRouteItem("File Preview", RAFT_FILE_PREVIEW_PAGE, "Standalone workspace/thread file preview")
                 )
         ),
         DeveloperRouteGroup(
@@ -139,12 +139,12 @@ private val DeveloperRouteGroups =
             title = "Component Visuals",
             routes =
                 listOf(
-                    DeveloperRouteItem("Lucide Icon Gallery", SLOCK_LUCIDE_ICON_GALLERY_PAGE, "Icon asset parity page"),
-                    DeveloperRouteItem("Typography Probe", SLOCK_TYPOGRAPHY_PROBE_PAGE, "React/KMP text-weight proof page"),
+                    DeveloperRouteItem("Lucide Icon Gallery", RAFT_LUCIDE_ICON_GALLERY_PAGE, "Icon asset parity page"),
+                    DeveloperRouteItem("Typography Probe", RAFT_TYPOGRAPHY_PROBE_PAGE, "React/KMP text-weight proof page"),
                     DeveloperRouteItem("Settings TabBar Smoke", SETTINGS_TAB_BAR_SMOKE_PAGE, "Settings tab fixture"),
                     DeveloperRouteItem("Bottom TabBar Smoke", BOTTOM_TAB_BAR_SMOKE_PAGE, "Bottom tab fixture"),
                     DeveloperRouteItem("Members Smoke", MEMBERS_SMOKE_PAGE, "Members smoke fixture"),
-                    DeveloperRouteItem("Child Page Host Smoke", SLOCK_CHILD_PAGE_HOST_SMOKE_PAGE, "Nested Kuikly child-page host proof")
+                    DeveloperRouteItem("Child Page Host Smoke", RAFT_CHILD_PAGE_HOST_SMOKE_PAGE, "Nested Kuikly child-page host proof")
                 )
         )
     )
@@ -153,7 +153,7 @@ private val DeveloperRouteGroups =
 internal fun ComposeRouteImpl() {
     val localPager = LocalActivity.current.getPager() as Pager
     val routePreferenceRepository = remember(localPager) {
-        KeyValueRouterPreferenceRepository(slockSharedPreferenceStore())
+        KeyValueRouterPreferenceRepository(raftSharedPreferenceStore())
     }
     // Caller-local TextFieldValue owns the editor; the durable preference store
     // keeps a String projection (task #130 Phase D).
@@ -172,7 +172,7 @@ internal fun ComposeRouteImpl() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceCream)
+                .background(RaftColor.SurfaceCream)
                 .padding(start = 16.dp, top = (statusBarHeight + 14).dp, end = 16.dp, bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -207,7 +207,7 @@ internal fun ComposeRouteImpl() {
             }
             items(group.routes.size, key = { "${group.title}-${group.routes[it].pageName}-${group.routes[it].title}" }) { index ->
                 val route = group.routes[index]
-                SlockBrutalListRow(
+                RaftBrutalListRow(
                     title = route.title,
                     subtitle = route.subtitle,
                     onClick = {
@@ -229,15 +229,15 @@ private fun DeveloperRouterHeader(routeCount: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(
             text = ComposeRoutePager.TITLE,
-            style = SlockType.PageTitle.copy(fontSize = 23.sp, lineHeight = 28.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 23.sp, lineHeight = 28.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = "$routeCount routes · Raft shared/KMP page launcher",
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -252,7 +252,7 @@ private fun DeveloperRouterJumpCard(
     onSuggestionSelected: (DeveloperRouteItem) -> Unit,
     onOpen: () -> Unit
 ) {
-    SlockBrutalPanelShell(modifier = Modifier.fillMaxWidth()) {
+    RaftBrutalPanelShell(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier =
                 Modifier
@@ -262,15 +262,15 @@ private fun DeveloperRouterJumpCard(
         ) {
             Text(
                 text = ComposeRoutePager.AAR_MODE_TIP,
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalInputField(
+                RaftBrutalInputField(
                     value = value,
                     onValueChange = onValueChange,
                     placeholder = ComposeRoutePager.PLACEHOLDER,
@@ -278,10 +278,10 @@ private fun DeveloperRouterJumpCard(
                     showClearWhenNotEmpty = true,
                     modifier = Modifier.weight(1f)
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = ComposeRoutePager.JUMP_TEXT,
                     onClick = onOpen,
-                    backgroundColor = SlockColor.BrandYellow,
+                    backgroundColor = RaftColor.BrandYellow,
                     minWidth = 72.dp,
                     minHeight = 42.dp
                 )
@@ -305,7 +305,7 @@ private fun DeveloperRouterSuggestionList(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         suggestions.forEachIndexed { index, route ->
@@ -314,22 +314,22 @@ private fun DeveloperRouterSuggestionList(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceWhite)
+                        .background(RaftColor.SurfaceWhite)
                         .clickable(onClick = { onSuggestionSelected(route) })
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = route.pageName,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = route.title,
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -339,8 +339,8 @@ private fun DeveloperRouterSuggestionList(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(SlockStroke.Thin)
-                            .background(SlockColor.BorderBlack)
+                            .height(RaftAppStroke.Thin)
+                            .background(RaftColor.BorderBlack)
                 )
             }
         }
@@ -356,15 +356,15 @@ private fun DeveloperRouteGroupHeader(title: String, count: Int) {
     ) {
         Text(
             text = title,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.SectionLabel.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = "$count",
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             maxLines = 1
         )
     }

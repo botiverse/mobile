@@ -6,15 +6,15 @@ import build.raft.app.data.AccountSettingsSnapshot
 import build.raft.app.data.AddComputerDialogState
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsStore
-import build.raft.app.data.SlockNetworkClient
-import build.raft.app.data.SlockAvatarCacheSubject
+import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.RaftAvatarCacheSubject
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ServerId
 import build.raft.app.model.MemberKind
@@ -31,8 +31,8 @@ class SettingsHonestStateTest {
         val session = authSessionFixture(userId = "owner", selectedServerId = "server-2")
         val fallbackState: ScreenLoadState<AccountSettingsSnapshot> = ScreenLoadState.Loading
         val expected =
-            SlockMemberAvatarCacheIdentity(
-                subject = SlockAvatarCacheSubject.Member(MemberKind.Human, "owner"),
+            RaftMemberAvatarCacheIdentity(
+                subject = RaftAvatarCacheSubject.Member(MemberKind.Human, "owner"),
                 serverId = "server-2"
             )
         assertNull(fallbackState.settingsAccountAvatarCacheIdentity(session))
@@ -90,7 +90,7 @@ class SettingsHonestStateTest {
 
         cases.forEach { case ->
             val session = authSessionFixture()
-            val sessionStore = InMemorySlockAuthSessionStore(session)
+            val sessionStore = InMemoryRaftAuthSessionStore(session)
             val repository =
                 RealSettingsRepository(
                     sessionStore = sessionStore,
@@ -167,7 +167,7 @@ private data class AccountErrorCase(
 
 private class AccountUpdateErrorNetworkClient(
     private val errorBody: String
-) : SlockNetworkClient {
+) : RaftNetworkClient {
     override suspend fun request(
         priority: DataRequestPriority,
         path: String,

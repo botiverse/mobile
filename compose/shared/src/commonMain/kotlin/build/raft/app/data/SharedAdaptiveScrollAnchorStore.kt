@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockAdaptiveDetailIdentity
+import build.raft.app.RaftAdaptiveDetailIdentity
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 
@@ -42,13 +42,13 @@ internal class SharedAdaptiveScrollAnchorStore {
     private val lock = SynchronizedObject()
     private val anchors = mutableMapOf<String, SharedAdaptiveScrollAnchor>()
 
-    private fun key(shellInstanceId: String, identity: SlockAdaptiveDetailIdentity): String =
+    private fun key(shellInstanceId: String, identity: RaftAdaptiveDetailIdentity): String =
         "${shellInstanceId.trim()}\u001f${identity.key}"
 
     /** Stage or replace the anchor for one pending adoption under the same request. */
     fun stage(
         shellInstanceId: String,
-        identity: SlockAdaptiveDetailIdentity,
+        identity: RaftAdaptiveDetailIdentity,
         anchor: SharedAdaptiveScrollAnchor,
     ) = synchronized(lock) {
         anchors[key(shellInstanceId, identity)] = anchor
@@ -60,14 +60,14 @@ internal class SharedAdaptiveScrollAnchorStore {
      */
     fun peek(
         shellInstanceId: String,
-        identity: SlockAdaptiveDetailIdentity,
+        identity: RaftAdaptiveDetailIdentity,
     ): SharedAdaptiveScrollAnchor? =
         synchronized(lock) { anchors[key(shellInstanceId, identity)] }
 
     /** Consume exactly the record staged under [requestId]; stale/other requests leave it alone. */
     fun consume(
         shellInstanceId: String,
-        identity: SlockAdaptiveDetailIdentity,
+        identity: RaftAdaptiveDetailIdentity,
         requestId: String,
     ): SharedAdaptiveScrollAnchor? =
         synchronized(lock) {
@@ -81,7 +81,7 @@ internal class SharedAdaptiveScrollAnchorStore {
     /** Drop the staged anchor for a cancelled/rejected adoption under the same request. */
     fun discard(
         shellInstanceId: String,
-        identity: SlockAdaptiveDetailIdentity,
+        identity: RaftAdaptiveDetailIdentity,
         requestId: String,
     ) {
         synchronized(lock) {

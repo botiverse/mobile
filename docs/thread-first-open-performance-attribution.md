@@ -85,7 +85,7 @@ Choreographer#doFrame
         slock_kuikly_container_dispatchDraw
 ```
 
-`slock_kuikly_container_*` comes from `SlockKuiklyTraceFrameLayout`, which wraps
+`slock_kuikly_container_*` comes from `RaftTraceFrameLayout`, which wraps
 the Kuikly container's Android `onMeasure`, `onLayout`, and `dispatchDraw`.
 Inside that container the renderer uses RecyclerView/View traversal and Kuikly
 Compose node work. The capture therefore says:
@@ -154,7 +154,7 @@ The current lightweight loading shell is inside `ThreadPageContent`:
 
 ```kotlin
 if (payload.status == "loading" && payload.originStatus == "none") {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadStateMessage("Loading thread...", null)
     }
     return

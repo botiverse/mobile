@@ -3,7 +3,7 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -178,7 +178,7 @@ internal class SyncCoreMessageShadowFoldLane(
         /** Build the production lane over the real SQLite one-txn persistence for [sqlDatabase]. */
         fun create(
             featureFlags: SharedServerFeatureFlags,
-            sqlDatabase: SlockSqlDatabase,
+            sqlDatabase: RaftSqlDatabase,
             now: () -> Long,
             scope: CoroutineScope,
             logger: (String) -> Unit,

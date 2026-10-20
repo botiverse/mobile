@@ -27,7 +27,7 @@ private val filesMessagesApiJson = Json {
  *
  * Field names are exact camelCase, no snake_case or speculative aliases.
  */
-internal interface SlockFilesMessagesApi {
+internal interface RaftFilesMessagesApi {
     suspend fun channelFiles(channelId: ChannelId, limit: Int = 50, cursor: String? = null): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: AttachmentId, disposition: String? = null): HomeNetworkResponse
     suspend fun attachmentPreview(attachmentId: AttachmentId): HomeNetworkResponse
@@ -38,8 +38,8 @@ internal interface SlockFilesMessagesApi {
     suspend fun removeReaction(messageId: MessageId, emoji: String): HomeNetworkResponse
 }
 
-internal class SlockFilesMessagesApiClient(
-    private val transport: SlockFilesMessagesApi
+internal class RaftFilesMessagesApiClient(
+    private val transport: RaftFilesMessagesApi
 ) {
     suspend fun channelFiles(channelId: ChannelId, limit: Int = 50, cursor: String? = null): DataResult<FilesPage> =
         transport.channelFiles(channelId, limit, cursor).mapFilesBody(

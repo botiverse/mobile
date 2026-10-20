@@ -2,7 +2,7 @@ package build.raft.app.data.runtimeform.v2
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SlockComputersApi
+import build.raft.app.data.RaftComputersApi
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -11,7 +11,7 @@ import kotlin.test.assertIs
 
 /** The "re-probe" action next to a v2 select (also the `option_source.status` retry) re-requests exactly one option source. */
 class RuntimeFormV2SourceReloadTest {
-    private class ScriptedSourceApi(private val responses: MutableList<HomeNetworkResponse>) : SlockComputersApi {
+    private class ScriptedSourceApi(private val responses: MutableList<HomeNetworkResponse>) : RaftComputersApi {
         val requests = mutableListOf<List<String>>()
 
         override suspend fun runtimeFormV2OptionSource(

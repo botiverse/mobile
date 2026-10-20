@@ -88,9 +88,9 @@ class SettingsHomeSearchEntityRankingTest {
         val public = resultsFor("general").first { it.key == "conversation:channel-prefix" }
         val private = resultsFor("private-room").single()
 
-        assertEquals(SlockLucideIconName.GitBranch, joint.homeSearchEntityLeadingIconName())
-        assertEquals(SlockLucideIconName.Hash, public.homeSearchEntityLeadingIconName())
-        assertEquals(SlockLucideIconName.Lock, private.homeSearchEntityLeadingIconName())
+        assertEquals(RaftLucideIconName.GitBranch, joint.homeSearchEntityLeadingIconName())
+        assertEquals(RaftLucideIconName.Hash, public.homeSearchEntityLeadingIconName())
+        assertEquals(RaftLucideIconName.Lock, private.homeSearchEntityLeadingIconName())
 
         val frequent =
             homeSearchFrequentEntityResults(
@@ -111,7 +111,7 @@ class SettingsHomeSearchEntityRankingTest {
             )
 
         assertEquals(
-            listOf(SlockLucideIconName.GitBranch, SlockLucideIconName.Lock),
+            listOf(RaftLucideIconName.GitBranch, RaftLucideIconName.Lock),
             frequent.map { it.homeSearchEntityLeadingIconName() },
         )
     }
@@ -268,7 +268,7 @@ class SettingsHomeSearchEntityRankingTest {
 
     @Test
     fun searchHomeVisualTypographyStressChangesRealTextMetricsWithoutChangingDefault() {
-        val base = SlockType.Body
+        val base = RaftType.Body
 
         assertEquals(base, base.withHomeSearchVisualTextScale(1f))
 

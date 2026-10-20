@@ -2,16 +2,16 @@ package build.raft.app
 
 import build.raft.app.data.AGENT_CREATE_FORM_REFRESH_FAILED
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.SharedThreadNetworkApi
-import build.raft.app.data.SlockAgentsApi
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockComputersApi
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockIntegrationsActionsPushApi
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftAgentsApi
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftComputersApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftIntegrationsActionsPushApi
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
@@ -126,13 +126,13 @@ class SharedThreadAgentCreateActionCardTest {
     ): SharedThreadDataSource =
         testSharedThreadDataSource(
             networkApi = UnusedThreadNetworkApi(),
-            sessionStore = InMemorySlockAuthSessionStore(),
+            sessionStore = InMemoryRaftAuthSessionStore(),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionsApi),
+            actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionsApi),
             createAgentCoordinator =
                 SharedCreateAgentCoordinator(
-                    agentsApiClient = SlockAgentsApiClient(agentsApi),
-                    computersApiClient = SlockComputersApiClient(computersApi)
+                    agentsApiClient = RaftAgentsApiClient(agentsApi),
+                    computersApiClient = RaftComputersApiClient(computersApi)
                 )
         )
 }
@@ -140,7 +140,7 @@ class SharedThreadAgentCreateActionCardTest {
 private class RecordingCreateAgentApi(
     private val response: HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = """{"id":"agent-created","name":"Noel","status":"active"}""")
-) : SlockAgentsApi {
+) : RaftAgentsApi {
     val createBodies = mutableListOf<String>()
 
     override suspend fun createAgent(body: String): HomeNetworkResponse = response.also { createBodies += body }
@@ -166,7 +166,7 @@ private class RecordingCreateAgentApi(
     override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
 }
 
-private class UnusedComputersApi : SlockComputersApi {
+private class UnusedComputersApi : RaftComputersApi {
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
     override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
@@ -177,7 +177,7 @@ private class UnusedComputersApi : SlockComputersApi {
     override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
 }
 
-private class RecordingActionCardApi : SlockIntegrationsActionsPushApi {
+private class RecordingActionCardApi : RaftIntegrationsActionsPushApi {
     val markBodies = mutableListOf<String>()
 
     override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse {

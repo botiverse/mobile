@@ -2,7 +2,7 @@
 
 This document describes how the app-shell bottom tab bar is rendered across
 Android and iOS, the shared contract that keeps them in sync, and the hit-testing/tap-through design. It is the reference for
-anyone touching `SlockAppBottomTabBarHost` or the per-platform native tab bar
+anyone touching `RaftAppBottomTabBarHost` or the per-platform native tab bar
 views.
 
 HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed from `main`
@@ -15,7 +15,7 @@ them.
 There is exactly **one** app shell (`compose_slock_app_shell`, a long-lived
 Kuikly root). Home / Tasks / Members / Settings are retained tabs *inside* that
 shell — switching tabs does not launch a new native page. The bottom tab bar
-is a single shared Composable host (`SlockAppBottomTabBarHost`) that, depending
+is a single shared Composable host (`RaftAppBottomTabBarHost`) that, depending
 on the platform, either draws the bar itself in Compose or delegates to a
 **native tab bar view** and only feeds it data.
 
@@ -31,8 +31,8 @@ concepts and must not be conflated:
 
 ## Renderer selection
 
-`SlockTabBar.kt` reads the page-data param `slockNativeTabBarRenderer` (legacy
-alias `nativeTabBarRenderer`) and maps it to `SlockAppTabBarRenderer`. An
+`RaftTabBar.kt` reads the page-data param `slockNativeTabBarRenderer` (legacy
+alias `nativeTabBarRenderer`) and maps it to `RaftAppTabBarRenderer`. An
 explicit page-data value always wins. When the value is absent, the platform
 capability supplies the default: iOS returns `iosLiquidGlass`, while Android
 returns no default and keep the shared fallback unless their host
@@ -43,7 +43,7 @@ explicitly opts into a native renderer.
 | `ohosHdsImmersive` / `hdsImmersive` | `OhosHdsImmersive`  | legacy OHOS `HdsTabs` (no host on `main`) |
 | `iosLiquidGlass` / `iosNativeFloating` | `IosLiquidGlass` | iOS native `UITabBar` (Liquid Glass)   |
 | `androidFloating` / `androidNativeFloating` | `AndroidFloating` | shared Kuikly floating dock |
-| anything else / absent              | `SharedCompose`     | shared Compose `SlockBottomTabBar`     |
+| anything else / absent              | `SharedCompose`     | shared Compose `RaftBottomTabBar`     |
 
 Each host decides its own param:
 
@@ -61,7 +61,7 @@ paths can assume their platform capability is present.
 ## Shared → native contract
 
 Both native renderers share **one** view name and **one** prop/event
-contract, defined in `SlockTabBar.kt` (`SlockNativeFloatingTabBar` /
+contract, defined in `RaftTabBar.kt` (`RaftNativeFloatingTabBar` /
 `SlockNativeFloatingTabBarAttr`):
 
 - View name: `SlockNativeFloatingTabBarView`.
@@ -83,12 +83,12 @@ untouched.
 
 ## Host geometry & content inset
 
-`SlockAppBottomTabBarHost` places the bar as a bottom-aligned overlay
-(`zIndex = SlockAppBottomTabBarHostZIndex = 1000`, shared with the floating
+`RaftAppBottomTabBarHost` places the bar as a bottom-aligned overlay
+(`zIndex = RaftAppBottomTabBarHostZIndex = 1000`, shared with the floating
 overlay host so menus and the bar agree on stacking).
 
 - Native floating hosts (iOS) are overlays: content keeps filling the
-  screen behind them; `slockAppBottomTabBarContentInset` only reserves
+  screen behind them; `raftAppBottomTabBarContentInset` only reserves
   `bottomSafeArea + Lg` so the last scroll rows clear the dock.
 - The native floating host box is `92dp + bottomSafeArea`.
 - `SharedCompose` uses a solid `58dp + safe area` bar and insets content by the
@@ -114,7 +114,7 @@ Different platforms need different tap containment:
 
 ## Validation
 
-Shared logic is covered by `SlockAppShellTest` (host heights, content insets,
+Shared logic is covered by `RaftAppShellTest` (host heights, content insets,
 z-index, dock-blocker rect). Native rendering (HDS material, UITabBar Liquid
 Glass, and real-device tap-through) **cannot** be asserted by unit tests or the
 KMP CI — it requires an iOS simulator/device run.

@@ -1,16 +1,16 @@
 package build.raft.app
 
 import build.raft.app.base.Utils
-import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockChipLoadingIndicator
-import build.raft.app.components.SlockCheckbox
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.slockRaftCardSurface
-import build.raft.app.components.slockRaftControlSurface
-import build.raft.app.components.slockRaftOverlaySurface
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftChipLoadingIndicator
+import build.raft.app.components.RaftAppCheckbox
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.model.ConversationSummary
@@ -167,7 +167,7 @@ private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
 private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E)
 private const val ThreadComposerSuggestionInteractionOracleMarker = "ATTACH_IMAGE_RECEIVED"
 internal val ThreadComposerSuggestionOutsidePointerMode =
-    SlockFloatingOverlayOutsidePointerMode.PassThrough
+    RaftFloatingOverlayOutsidePointerMode.PassThrough
 private const val ThreadComposerVisualPreviewUri =
     "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20128%20128%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%2288%22%20cy%3D%2240%22%20r%3D%2220%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M16%20104L48%2068l22%2024%2018-16%2024%2028H16z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
@@ -299,21 +299,21 @@ internal fun hideThreadComposerSuggestionsForEditingContinuation(
 internal data class ThreadComposerSuggestionPresentation(
     val owner: ThreadComposerSuggestionPortalOwner,
     val generation: Long,
-    val anchorResolver: SlockPopoverAnchorResolver,
+    val anchorResolver: RaftPopoverAnchorResolver,
     val selectionContext: ThreadComposerSuggestionSelectionContext,
     val contentSize: Size,
     val panelState: ThreadComposerSuggestionPanelState,
     val surface: ThreadComposerSurface,
-    val memberSuggestions: List<KuiklyComposerMemberItem>,
+    val memberSuggestions: List<RaftComposerMemberItem>,
     val memberSelectedIndex: Int,
     val memberErrorCode: String?,
-    val channelSuggestions: List<KuiklyComposerChannelItem>,
+    val channelSuggestions: List<RaftComposerChannelItem>,
     val channelSelectedIndex: Int,
     val channelErrorCode: String?,
-    val agentStatusResolver: SlockAgentStatusResolver,
+    val agentStatusResolver: RaftAgentStatusResolver,
     val onDismiss: () -> Unit,
-    val onMemberClick: (ThreadComposerSuggestionSelectionContext, KuiklyComposerMemberItem) -> Unit,
-    val onChannelClick: (ThreadComposerSuggestionSelectionContext, KuiklyComposerChannelItem) -> Unit
+    val onMemberClick: (ThreadComposerSuggestionSelectionContext, RaftComposerMemberItem) -> Unit,
+    val onChannelClick: (ThreadComposerSuggestionSelectionContext, RaftComposerChannelItem) -> Unit
 )
 
 internal val LocalThreadComposerSuggestionPortal =
@@ -328,18 +328,18 @@ internal fun ThreadComposerSuggestionPortalHost(
     val density = LocalDensity.current
     val panelWidth = with(density) { presentation.contentSize.width.toDp() }
     val panelHeight = with(density) { presentation.contentSize.height.toDp() }
-    val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
+    val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
     val popoverGapPx = with(density) { ComposerSuggestionPopoverGap.toPx() }
     val currentOnDismiss by rememberUpdatedState(presentation.onDismiss)
-    SlockAnchoredPopover(
+    RaftAnchoredPopover(
         anchor = anchor,
         contentSize = presentation.contentSize,
         onDismiss = currentOnDismiss,
         viewportGap = viewportGapPx,
         verticalOffset = popoverGapPx,
         verticalOffsetAbove = popoverGapPx,
-        verticalPlacement = SlockFloatingVerticalPlacement.Above,
-        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis,
+        verticalPlacement = RaftFloatingVerticalPlacement.Above,
+        dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis,
         // Suggestions are part of the active composer, not a modal menu. The shared focus host
         // already dismisses them when a real outside target takes focus; a full-screen dismiss
         // barrier would instead consume taps meant for the editor and attachment controls.
@@ -396,7 +396,7 @@ private val threadComposerContentPayloadKeys =
     )
 
 @Serializable
-internal data class KuiklyThreadComposerPayload(
+internal data class RaftThreadComposerPayload(
     val instanceId: String = "",
     val seedText: String = "",
     val seedAsTask: Boolean = false,
@@ -416,18 +416,18 @@ internal data class KuiklyThreadComposerPayload(
     val showAsTaskToggle: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
-    val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
-    val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
+    val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
     val removingMentionActionIds: List<String> = emptyList(),
     val executingMentionActionIds: List<String> = emptyList(),
     val executingMentionActionStates: Map<String, String> = emptyMap(),
-    val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
-    val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
+    val memberSuggestions: List<RaftComposerMemberItem> = emptyList(),
+    val channelSuggestions: List<RaftComposerChannelItem> = emptyList(),
     val suggestionsOpen: Boolean = false,
-    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val surfaceKind: String = RaftThreadSurfaceKind.Channel,
     val mentionChannelId: String? = null,
     val parentMessageId: String? = null,
     val streamChannelId: String? = null,
@@ -441,21 +441,21 @@ internal data class WireThreadComposerLaunchPayload(
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
     val focusRequestNonce: Int = 0,
-    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val surfaceKind: String = RaftThreadSurfaceKind.Channel,
     val mentionChannelId: String? = null,
     val parentMessageId: String? = null,
     val streamChannelId: String? = null
 )
 
 internal data class ThreadComposerSurface(
-    val kind: String = KuiklyThreadSurfaceKind.Channel,
+    val kind: String = RaftThreadSurfaceKind.Channel,
     val channelId: String,
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val mentionChannelId: String? = null,
     val mentionChannelLabel: String? = null,
-    val memberSuggestionHeadersVisible: Boolean = kind != KuiklyThreadSurfaceKind.DirectMessage,
+    val memberSuggestionHeadersVisible: Boolean = kind != RaftThreadSurfaceKind.DirectMessage,
     val showTaskButton: Boolean = true
 ) {
     val sendChannelId: String?
@@ -503,18 +503,18 @@ internal data class ThreadComposerUiState(
     val originalImage: Boolean = false,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
-    val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
-    val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val pendingAttachments: List<RaftPendingAttachmentItem> = emptyList(),
+    val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
     val removingMentionActionIds: List<String> = emptyList(),
     val executingMentionActionIds: List<String> = emptyList(),
     val executingMentionActionStates: Map<String, String> = emptyMap(),
-    val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
+    val memberSuggestions: List<RaftComposerMemberItem> = emptyList(),
     val memberSuggestionsStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
     val memberSuggestionsErrorCode: String? = null,
-    val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
+    val channelSuggestions: List<RaftComposerChannelItem> = emptyList(),
     val channelSuggestionsStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
     val channelSuggestionsErrorCode: String? = null,
     val suggestionsEnabled: Boolean = true,
@@ -826,7 +826,7 @@ internal fun threadComposerEnterDeferredByComposition(
 ): Boolean = fromHardwareEnter && composition != null
 
 internal fun threadComposerEnterAction(
-    trigger: KuiklyComposerSuggestionTrigger,
+    trigger: RaftComposerSuggestionTrigger,
     panelState: ThreadComposerSuggestionPanelState,
     memberCount: Int,
     channelCount: Int,
@@ -835,7 +835,7 @@ internal fun threadComposerEnterAction(
 ): ThreadComposerEnterAction {
     if (isImeComposing) return ThreadComposerEnterAction.Noop
     return when (trigger) {
-        is KuiklyComposerSuggestionTrigger.MemberTrigger ->
+        is RaftComposerSuggestionTrigger.MemberTrigger ->
             when (panelState) {
                 ThreadComposerSuggestionPanelState.MemberItems ->
                     if (memberCount > 0) ThreadComposerEnterAction.AcceptMemberSuggestion else ThreadComposerEnterAction.CommitSuggestionToken
@@ -847,7 +847,7 @@ internal fun threadComposerEnterAction(
                     if (canSend) ThreadComposerEnterAction.Send else ThreadComposerEnterAction.Noop
             }
 
-        is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
+        is RaftComposerSuggestionTrigger.ChannelTrigger ->
             when (panelState) {
                 ThreadComposerSuggestionPanelState.ChannelItems ->
                     if (channelCount > 0) ThreadComposerEnterAction.AcceptChannelSuggestion else ThreadComposerEnterAction.CommitSuggestionToken
@@ -859,7 +859,7 @@ internal fun threadComposerEnterAction(
                     if (canSend) ThreadComposerEnterAction.Send else ThreadComposerEnterAction.Noop
             }
 
-        KuiklyComposerSuggestionTrigger.None ->
+        RaftComposerSuggestionTrigger.None ->
             if (canSend) ThreadComposerEnterAction.Send else ThreadComposerEnterAction.Noop
     }
 }
@@ -896,13 +896,13 @@ internal fun threadComposerImeAction(composerUsesImeAction: Boolean): ImeAction 
 
 internal fun threadComposerSuggestionRefreshRequest(
     focused: Boolean,
-    trigger: KuiklyComposerSuggestionTrigger
+    trigger: RaftComposerSuggestionTrigger
 ): ThreadComposerSuggestionRefreshRequest? {
     if (!focused) return null
     return when (trigger) {
-        is KuiklyComposerSuggestionTrigger.MemberTrigger -> ThreadComposerSuggestionRefreshRequest.Member
-        is KuiklyComposerSuggestionTrigger.ChannelTrigger -> ThreadComposerSuggestionRefreshRequest.Channel
-        KuiklyComposerSuggestionTrigger.None -> null
+        is RaftComposerSuggestionTrigger.MemberTrigger -> ThreadComposerSuggestionRefreshRequest.Member
+        is RaftComposerSuggestionTrigger.ChannelTrigger -> ThreadComposerSuggestionRefreshRequest.Channel
+        RaftComposerSuggestionTrigger.None -> null
     }
 }
 
@@ -921,7 +921,7 @@ internal fun threadComposerEffectiveSuggestionStatus(
 
 internal fun threadComposerSuggestionPanelState(
     focused: Boolean,
-    trigger: KuiklyComposerSuggestionTrigger,
+    trigger: RaftComposerSuggestionTrigger,
     memberCount: Int,
     memberStatus: SharedMembersLoadStatus,
     channelCount: Int,
@@ -929,7 +929,7 @@ internal fun threadComposerSuggestionPanelState(
 ): ThreadComposerSuggestionPanelState {
     if (!focused) return ThreadComposerSuggestionPanelState.Hidden
     return when (trigger) {
-        is KuiklyComposerSuggestionTrigger.MemberTrigger ->
+        is RaftComposerSuggestionTrigger.MemberTrigger ->
             when {
                 memberCount > 0 -> ThreadComposerSuggestionPanelState.MemberItems
                 memberStatus == SharedMembersLoadStatus.Error -> ThreadComposerSuggestionPanelState.MemberError
@@ -938,7 +938,7 @@ internal fun threadComposerSuggestionPanelState(
                 else -> ThreadComposerSuggestionPanelState.MemberEmpty
             }
 
-        is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
+        is RaftComposerSuggestionTrigger.ChannelTrigger ->
             when {
                 channelCount > 0 -> ThreadComposerSuggestionPanelState.ChannelItems
                 channelStatus == SharedMembersLoadStatus.Error -> ThreadComposerSuggestionPanelState.ChannelError
@@ -947,7 +947,7 @@ internal fun threadComposerSuggestionPanelState(
                 else -> ThreadComposerSuggestionPanelState.ChannelEmpty
             }
 
-        KuiklyComposerSuggestionTrigger.None -> ThreadComposerSuggestionPanelState.Hidden
+        RaftComposerSuggestionTrigger.None -> ThreadComposerSuggestionPanelState.Hidden
     }
 }
 
@@ -962,7 +962,7 @@ internal fun <T> threadComposerRenderedSuggestions(
         ?: fallbackSuggestions
 
 internal fun restoreComposerInputAfterExternalMention(
-    focusOwnerRegistry: SlockInputFocusOwnerRegistry?,
+    focusOwnerRegistry: RaftInputFocusOwnerRegistry?,
     requestFocus: () -> Unit,
     showKeyboard: () -> Unit
 ) {
@@ -972,7 +972,7 @@ internal fun restoreComposerInputAfterExternalMention(
 }
 
 @Serializable
-internal data class KuiklyPendingAttachmentItem(
+internal data class RaftPendingAttachmentItem(
     val id: String,
     val fileName: String,
     val sizeLabel: String = "",
@@ -989,7 +989,7 @@ internal data class KuiklyPendingAttachmentItem(
 )
 
 @Serializable
-internal data class KuiklyPendingMentionActionItem(
+internal data class RaftPendingMentionActionItem(
     val resolutionId: String,
     val messageId: String? = null,
     val channelId: String? = null,
@@ -1003,7 +1003,7 @@ internal data class KuiklyPendingMentionActionItem(
 )
 
 @Serializable
-internal data class KuiklyComposerMemberItem(
+internal data class RaftComposerMemberItem(
     val displayName: String,
     val handle: String,
     val inMentionChannel: Boolean = true,
@@ -1019,7 +1019,7 @@ internal data class KuiklyComposerMemberItem(
 )
 
 @Serializable
-internal data class KuiklyComposerChannelItem(
+internal data class RaftComposerChannelItem(
     val name: String,
     val subtitle: String? = null
 )
@@ -1089,7 +1089,7 @@ data class SharedThreadComposerAttachment(
 )
 
 /** Composer UI formatting boundary; raw bytes win over old persisted display labels. */
-internal fun KuiklyPendingAttachmentItem.displaySizeLabel(): String =
+internal fun RaftPendingAttachmentItem.displaySizeLabel(): String =
     sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
 internal fun SharedThreadComposerAttachment.displaySizeLabel(): String =
@@ -1105,10 +1105,10 @@ data class SharedThreadComposerChannelSuggestion(
     val subtitle: String? = null
 )
 
-internal sealed class KuiklyComposerSuggestionTrigger {
-    data class MemberTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
-    data class ChannelTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
-    object None : KuiklyComposerSuggestionTrigger()
+internal sealed class RaftComposerSuggestionTrigger {
+    data class MemberTrigger(val query: String, val triggerStart: Int) : RaftComposerSuggestionTrigger()
+    data class ChannelTrigger(val query: String, val triggerStart: Int) : RaftComposerSuggestionTrigger()
+    object None : RaftComposerSuggestionTrigger()
 }
 
 internal enum class ThreadComposerSuggestionSelectionKind {
@@ -1134,7 +1134,7 @@ internal fun threadComposerSuggestionSelectionContext(
     val safeStart = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
     val safeEnd = maxOf(selectionStart, selectionEnd).coerceIn(safeStart, text.length)
     return when (val trigger = threadComposerSuggestionTrigger(text, safeStart, suggestionsEnabled)) {
-        is KuiklyComposerSuggestionTrigger.MemberTrigger ->
+        is RaftComposerSuggestionTrigger.MemberTrigger ->
             ThreadComposerSuggestionSelectionContext(
                 text = text,
                 selectionStart = safeStart,
@@ -1143,7 +1143,7 @@ internal fun threadComposerSuggestionSelectionContext(
                 triggerStart = trigger.triggerStart,
                 query = trigger.query
             )
-        is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
+        is RaftComposerSuggestionTrigger.ChannelTrigger ->
             ThreadComposerSuggestionSelectionContext(
                 text = text,
                 selectionStart = safeStart,
@@ -1152,7 +1152,7 @@ internal fun threadComposerSuggestionSelectionContext(
                 triggerStart = trigger.triggerStart,
                 query = trigger.query
             )
-        KuiklyComposerSuggestionTrigger.None -> null
+        RaftComposerSuggestionTrigger.None -> null
     }
 }
 
@@ -1176,9 +1176,9 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
 
     private var draft = normalizedDraft(initialText, initialSelectionStart, initialSelectionEnd)
     private var suggestionsEnabled = initialSuggestionsEnabled
-    private var memberSuggestions: List<KuiklyComposerMemberItem> = emptyList()
-    private var channelSuggestions: List<KuiklyComposerChannelItem> = emptyList()
-    private var onCommit: (KuiklyComposerSuggestionEdit) -> Unit = {}
+    private var memberSuggestions: List<RaftComposerMemberItem> = emptyList()
+    private var channelSuggestions: List<RaftComposerChannelItem> = emptyList()
+    private var onCommit: (RaftComposerSuggestionEdit) -> Unit = {}
 
     fun updateDraft(text: String, selectionStart: Int, selectionEnd: Int) {
         draft = normalizedDraft(text, selectionStart, selectionEnd)
@@ -1186,9 +1186,9 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
 
     fun updateComposition(
         suggestionsEnabled: Boolean,
-        memberSuggestions: List<KuiklyComposerMemberItem>,
-        channelSuggestions: List<KuiklyComposerChannelItem>,
-        onCommit: (KuiklyComposerSuggestionEdit) -> Unit
+        memberSuggestions: List<RaftComposerMemberItem>,
+        channelSuggestions: List<RaftComposerChannelItem>,
+        onCommit: (RaftComposerSuggestionEdit) -> Unit
     ) {
         this.suggestionsEnabled = suggestionsEnabled
         this.memberSuggestions = memberSuggestions
@@ -1198,7 +1198,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
 
     fun selectMember(
         expectedContext: ThreadComposerSuggestionSelectionContext,
-        member: KuiklyComposerMemberItem
+        member: RaftComposerMemberItem
     ): Boolean {
         val currentContext = currentContext() ?: return false
         if (currentContext != expectedContext || currentContext.kind != ThreadComposerSuggestionSelectionKind.Member) {
@@ -1206,7 +1206,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
         }
         if (memberSuggestions.none { current -> current.hasSameSuggestionIdentity(member) }) return false
         val edit =
-            applyKuiklyComposerSuggestionEdit(
+            applyRaftComposerSuggestionEdit(
                 text = currentContext.text,
                 selectionStart = currentContext.selectionStart,
                 selectionEnd = currentContext.selectionEnd,
@@ -1219,7 +1219,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
 
     fun selectChannel(
         expectedContext: ThreadComposerSuggestionSelectionContext,
-        channel: KuiklyComposerChannelItem
+        channel: RaftComposerChannelItem
     ): Boolean {
         val currentContext = currentContext() ?: return false
         if (currentContext != expectedContext || currentContext.kind != ThreadComposerSuggestionSelectionKind.Channel) {
@@ -1227,7 +1227,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
         }
         if (channelSuggestions.none { current -> current.name == channel.name }) return false
         val edit =
-            applyKuiklyComposerSuggestionEdit(
+            applyRaftComposerSuggestionEdit(
                 text = currentContext.text,
                 selectionStart = currentContext.selectionStart,
                 selectionEnd = currentContext.selectionEnd,
@@ -1253,7 +1253,7 @@ internal class ThreadComposerSuggestionSelectionDispatcher(
     }
 }
 
-private fun KuiklyComposerMemberItem.hasSameSuggestionIdentity(other: KuiklyComposerMemberItem): Boolean {
+private fun RaftComposerMemberItem.hasSameSuggestionIdentity(other: RaftComposerMemberItem): Boolean {
     val currentMemberId = memberId?.takeIf { it.isNotBlank() }
     val otherMemberId = other.memberId?.takeIf { it.isNotBlank() }
     return if (currentMemberId != null || otherMemberId != null) {
@@ -1331,9 +1331,9 @@ internal fun ThreadComposerScreen() {
             suggestionRepositioned = true
         }
     }
-    SlockInputFocusDismissHost { focusDismissModifier ->
+    RaftInputFocusDismissHost { focusDismissModifier ->
         Box(
-            modifier = focusDismissModifier.fillMaxSize().background(SlockColor.Canvas),
+            modifier = focusDismissModifier.fillMaxSize().background(RaftColor.Canvas),
             contentAlignment = Alignment.TopCenter
         ) {
             if (suggestionUnderlayOracleEnabled) {
@@ -1347,9 +1347,9 @@ internal fun ThreadComposerScreen() {
                             .padding(12.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    SlockMarkdownBody(
+                    RaftMarkdownBody(
                         body = "[UNDERLYING MESSAGE](https://raft.test/composer-suggestion-scroll-oracle)",
-                        textStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
+                        textStyle = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
                         onOpenUrl = { suggestionScrollOracleLeak = true }
                     )
                 }
@@ -1364,7 +1364,7 @@ internal fun ThreadComposerScreen() {
                                     suggestionScrollOracleLeak -> ThreadComposerSuggestionScrollOracleLeak
                                     suggestionInteractionOracleActionReceived ->
                                         ThreadComposerSuggestionInteractionOracleSuccess
-                                    else -> SlockColor.Canvas
+                                    else -> RaftColor.Canvas
                                 }
                             ),
                     contentAlignment = Alignment.Center
@@ -1372,8 +1372,8 @@ internal fun ThreadComposerScreen() {
                     if (suggestionInteractionOracleActionReceived) {
                         Text(
                             text = ThreadComposerSuggestionInteractionOracleMarker,
-                            style = SlockType.Caption,
-                            color = SlockColor.TextBlack
+                            style = RaftType.Caption,
+                            color = RaftColor.TextBlack
                         )
                     }
                 }
@@ -1395,7 +1395,7 @@ internal fun ThreadComposerScreen() {
                                     }
                             )
                 ) {
-                    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderSeam))
+                    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
                     Box(
                         modifier = Modifier
                             .width(ThreadComposerVisualInputWidth)
@@ -1458,7 +1458,7 @@ internal fun parseThreadComposerPayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklyThreadComposerPayload {
+): RaftThreadComposerPayload {
     val primaryPayload = payload.trim()
     if (primaryPayload.isEmpty()) {
         return parseThreadComposerLaunchPayload(
@@ -1493,15 +1493,15 @@ private fun parseThreadComposerPayloadWithTrace(
 }
 
 private data class ThreadComposerPayloadParseTrace(
-    val payload: KuiklyThreadComposerPayload,
+    val payload: RaftThreadComposerPayload,
     val durationMs: Long,
     val responseBytes: Int,
     val result: String,
     val source: String
 )
 
-private fun failedThreadComposerPayload(instanceId: String): KuiklyThreadComposerPayload =
-    KuiklyThreadComposerPayload(
+private fun failedThreadComposerPayload(instanceId: String): RaftThreadComposerPayload =
+    RaftThreadComposerPayload(
         instanceId = instanceId,
         composerMode = "failed",
         statusLabel = "Composer payload parse failed"
@@ -1517,13 +1517,13 @@ private fun parseThreadComposerLaunchPayload(
     source: String,
     instanceId: String,
     rejectAsFailure: Boolean
-): KuiklyThreadComposerPayload {
+): RaftThreadComposerPayload {
     val launchSource = source.trim().takeIf { it.isNotEmpty() } ?: "{}"
     if (launchSource.hasThreadComposerContentKeys()) {
         return if (rejectAsFailure) {
             failedThreadComposerPayload(instanceId)
         } else {
-            KuiklyThreadComposerPayload(instanceId = instanceId)
+            RaftThreadComposerPayload(instanceId = instanceId)
         }
     }
     return runCatching {
@@ -1534,7 +1534,7 @@ private fun parseThreadComposerLaunchPayload(
         if (rejectAsFailure) {
             failedThreadComposerPayload(instanceId)
         } else {
-            KuiklyThreadComposerPayload(instanceId = instanceId)
+            RaftThreadComposerPayload(instanceId = instanceId)
         }
     }
 }
@@ -1542,10 +1542,10 @@ private fun parseThreadComposerLaunchPayload(
 private fun threadComposerVisualFixture(
     fixture: String,
     instanceId: String
-): KuiklyThreadComposerPayload {
+): RaftThreadComposerPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-composer" }
     val base =
-        KuiklyThreadComposerPayload(
+        RaftThreadComposerPayload(
             instanceId = resolvedInstanceId,
             // components.thread.composer.states draft — matches the react
             // render host's rendered draft (latest/react capture, task #370).
@@ -1555,7 +1555,7 @@ private fun threadComposerVisualFixture(
             placeholder = "Message design",
             memberSuggestions =
                 listOf(
-                    KuiklyComposerMemberItem(
+                    RaftComposerMemberItem(
                         displayName = "Cindy",
                         handle = "Cindy",
                         inMentionChannel = true,
@@ -1564,7 +1564,7 @@ private fun threadComposerVisualFixture(
                         avatarWireValue = "pixel:robot",
                         avatarLabel = "C"
                     ),
-                    KuiklyComposerMemberItem(
+                    RaftComposerMemberItem(
                         displayName = "Product UX Designer",
                         handle = "Product-UX-Designer",
                         inMentionChannel = true,
@@ -1573,7 +1573,7 @@ private fun threadComposerVisualFixture(
                         avatarWireValue = "pixel:paint",
                         avatarLabel = "P"
                     ),
-                    KuiklyComposerMemberItem(
+                    RaftComposerMemberItem(
                         displayName = "Android Developer",
                         handle = "Android-Developer-4",
                         inMentionChannel = false,
@@ -1585,9 +1585,9 @@ private fun threadComposerVisualFixture(
                 ),
             channelSuggestions =
                 listOf(
-                    KuiklyComposerChannelItem(name = "design", subtitle = "Product and UI decisions"),
-                    KuiklyComposerChannelItem(name = "product", subtitle = "Release tracking and acceptance"),
-                    KuiklyComposerChannelItem(name = "android-artifacts", subtitle = "Builds and screenshots")
+                    RaftComposerChannelItem(name = "design", subtitle = "Product and UI decisions"),
+                    RaftComposerChannelItem(name = "product", subtitle = "Release tracking and acceptance"),
+                    RaftComposerChannelItem(name = "android-artifacts", subtitle = "Builds and screenshots")
                 )
         )
     return when (fixture) {
@@ -1598,7 +1598,7 @@ private fun threadComposerVisualFixture(
                 seedText = "",
                 pendingMentionActions =
                     listOf(
-                        KuiklyPendingMentionActionItem(
+                        RaftPendingMentionActionItem(
                             resolutionId = "visual-pending-mention-resolution",
                             messageId = "visual-pending-mention-message",
                             channelId = "visual-design",
@@ -1617,7 +1617,7 @@ private fun threadComposerVisualFixture(
         "pending_mention_actions_batch_partial" -> {
             val actions =
                 listOf(
-                    KuiklyPendingMentionActionItem(
+                    RaftPendingMentionActionItem(
                         resolutionId = "visual-pending-mention-alex",
                         messageId = "visual-pending-mention-message",
                         channelId = "visual-design",
@@ -1628,7 +1628,7 @@ private fun threadComposerVisualFixture(
                         reason = "target_not_in_channel",
                         availableActions = listOf("add", "notify")
                     ),
-                    KuiklyPendingMentionActionItem(
+                    RaftPendingMentionActionItem(
                         resolutionId = "visual-pending-mention-bryn",
                         messageId = "visual-pending-mention-message",
                         channelId = "visual-design",
@@ -1639,7 +1639,7 @@ private fun threadComposerVisualFixture(
                         reason = "target_not_in_channel",
                         availableActions = listOf("add", "notify")
                     ),
-                    KuiklyPendingMentionActionItem(
+                    RaftPendingMentionActionItem(
                         resolutionId = "visual-pending-mention-casey",
                         messageId = "visual-pending-mention-message",
                         channelId = "visual-design",
@@ -1679,7 +1679,7 @@ private fun threadComposerVisualFixture(
                 suggestionsOpen = true,
                 memberSuggestions =
                     (1..14).map { index ->
-                        KuiklyComposerMemberItem(
+                        RaftComposerMemberItem(
                             displayName = "Scrollable candidate $index",
                             handle = "scroll-candidate-$index",
                             inMentionChannel = true,
@@ -1696,7 +1696,7 @@ private fun threadComposerVisualFixture(
                 seedText = "Uploading the design crop for review.",
                 pendingAttachments =
                     listOf(
-                        KuiklyPendingAttachmentItem(
+                        RaftPendingAttachmentItem(
                             id = "visual-att-image-preview",
                             fileName = "composer-preview.png",
                             sizeLabel = "128 KB",
@@ -1711,14 +1711,14 @@ private fun threadComposerVisualFixture(
                 seedText = "Attaching build artifacts and logs.",
                 pendingAttachments =
                     listOf(
-                        KuiklyPendingAttachmentItem(
+                        RaftPendingAttachmentItem(
                             id = "visual-att-report",
                             fileName = "release-notes.pdf",
                             sizeLabel = "428 KB",
                             mimeType = "application/pdf",
                             status = "ready"
                         ),
-                        KuiklyPendingAttachmentItem(
+                        RaftPendingAttachmentItem(
                             id = "picked-logs",
                             fileName = "android-smoke-log.zip",
                             sizeLabel = "1.8 MB",
@@ -1726,7 +1726,7 @@ private fun threadComposerVisualFixture(
                             status = "uploading",
                             uploadProgress = 64
                         ),
-                        KuiklyPendingAttachmentItem(
+                        RaftPendingAttachmentItem(
                             id = "picked-trace",
                             fileName = "oversized-trace.jsonl",
                             sizeLabel = "8.4 MB",
@@ -1743,8 +1743,8 @@ private fun threadComposerVisualFixture(
 
 private fun WireThreadComposerLaunchPayload.toThreadComposerContentPayload(
     instanceIdFallback: String
-): KuiklyThreadComposerPayload =
-    KuiklyThreadComposerPayload(
+): RaftThreadComposerPayload =
+    RaftThreadComposerPayload(
         instanceId = instanceId.ifBlank { instanceIdFallback },
         seedText = seedText,
         seedAsTask = seedAsTask,
@@ -1756,14 +1756,14 @@ private fun WireThreadComposerLaunchPayload.toThreadComposerContentPayload(
         streamChannelId = streamChannelId
     )
 
-internal fun KuiklyThreadComposerPayload.isDefaultThreadComposer(): Boolean =
-    this == KuiklyThreadComposerPayload()
+internal fun RaftThreadComposerPayload.isDefaultThreadComposer(): Boolean =
+    this == RaftThreadComposerPayload()
 
-internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
+internal fun RaftThreadComposerPayload.toThreadComposerSurface(
     channelId: String,
     parentChannelId: String? = null,
     mentionChannelLabel: String? = null,
-    memberSuggestionHeadersVisible: Boolean = surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
+    memberSuggestionHeadersVisible: Boolean = surfaceKind != RaftThreadSurfaceKind.DirectMessage
 ): ThreadComposerSurface =
     ThreadComposerSurface(
         kind = surfaceKind,
@@ -1777,7 +1777,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
         showTaskButton = showAsTaskToggle
     )
 
-internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadComposerUiState =
+internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposerUiState =
     ThreadComposerUiState(
         instanceId = instanceId,
         seedText = seedText,
@@ -1818,22 +1818,22 @@ internal fun threadComposerHostKeyboardLiftBottomPadding(
     }
 }
 
-internal fun KuiklyThreadScreenPayload.resolveThreadComposer(displayName: String = title): KuiklyThreadComposerPayload {
+internal fun RaftThreadScreenPayload.resolveThreadComposer(displayName: String = title): RaftThreadComposerPayload {
     val resolvedSurfaceKind =
-        if (composer.surfaceKind == KuiklyThreadSurfaceKind.Channel && surfaceKind != KuiklyThreadSurfaceKind.Channel) {
+        if (composer.surfaceKind == RaftThreadSurfaceKind.Channel && surfaceKind != RaftThreadSurfaceKind.Channel) {
             surfaceKind
         } else {
             composer.surfaceKind
         }
     val sourceStreamCandidate =
         sourceThreadId?.takeUnless {
-            surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
                 parentChannelId != null &&
                 it == parentChannelId
         }
     // Phase 3 #3 #3 (#280): replace composer > screen > origin 3-level ?:` chains with
     // explicit per-source resolution. Composer-scope value wins; if absent, screen-scope
-    // (from the parent KuiklyThreadScreenPayload) wins; if absent, fall back to the
+    // (from the parent RaftThreadScreenPayload) wins; if absent, fall back to the
     // origin hint only when the surface is not ReplyThread (ReplyThread must use the
     // parent channel id, not the source thread id).
     val resolvedStreamChannelId = resolveComposerStreamChannelId(
@@ -1863,7 +1863,7 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(displayName: String
         instanceId = composer.instanceId.ifBlank { instanceId },
         placeholder = resolvedPlaceholder,
         enabled = canSend && composer.enabled,
-        showAsTaskToggle = composer.showAsTaskToggle && resolvedSurfaceKind != KuiklyThreadSurfaceKind.ReplyThread,
+        showAsTaskToggle = composer.showAsTaskToggle && resolvedSurfaceKind != RaftThreadSurfaceKind.ReplyThread,
         surfaceKind = resolvedSurfaceKind,
         mentionChannelId = resolvedMentionChannelId,
         parentMessageId = resolvedParentMessageId,
@@ -1887,7 +1887,7 @@ private fun resolveComposerStreamChannelId(
     surfaceKind: String
 ): String? = when {
     !composerValue.isNullOrBlank() -> composerValue
-    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread -> screenValue?.takeIf { it.isNotBlank() }
+    surfaceKind == RaftThreadSurfaceKind.ReplyThread -> screenValue?.takeIf { it.isNotBlank() }
     !screenValue.isNullOrBlank() -> screenValue
     else -> originCandidate?.takeIf { it.isNotBlank() }
 }
@@ -1919,7 +1919,7 @@ internal enum class ThreadComposerSuggestionDemand {
 
 @Composable
 internal fun ThreadComposerContent(
-    payload: KuiklyThreadComposerPayload,
+    payload: RaftThreadComposerPayload,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onSendRequest: ((ThreadComposerSendRequest) -> ThreadComposerSendAdmission)? = null,
     onKeyboardHeightChange: (Float) -> Unit = {},
@@ -1975,7 +1975,7 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
@@ -1984,7 +1984,7 @@ internal fun ThreadComposerContent(
      * A4 adoption (task #18): lets the host page share the native-editing reader bound to this
      * composer's editor so a migration can read the latest value without a second UIKit walk.
      */
-    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+    externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
     val editorOwner = remember(state.instanceId) {
         ThreadComposerControlledEditorOwner(state.seedText, state.seedAsTask)
@@ -2047,22 +2047,22 @@ internal fun ThreadComposerContentLeaf(
     composerSendKeyEnabled: Boolean = false,
     dismissKeyboardOnBlur: Boolean = false,
     attachmentPreviewEnabled: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     initialMentionActionDetailsVisible: Boolean = false,
-    externalNativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+    externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
     // can come later if this marker shows hot. bodyLength proxy uses seedText length.
-    traceMarkdownSection(SlockComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
+    traceMarkdownSection(RaftComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
     val fieldValue = editorValue
     val text = fieldValue.text
     val asTask = editorAsTask
     val ownedNativeEditingStateReader =
-        remember(state.instanceId, editorSessionId) { SlockTextFieldNativeEditingStateReader() }
+        remember(state.instanceId, editorSessionId) { RaftTextFieldNativeEditingStateReader() }
     val nativeEditingStateReader = externalNativeEditingStateReader ?: ownedNativeEditingStateReader
     val sendSnapshotGate =
         remember(state.instanceId, editorSessionId) { ThreadComposerSendSnapshotGate() }
@@ -2076,7 +2076,7 @@ internal fun ThreadComposerContentLeaf(
     // logical session still fences stale callbacks below, but recreating the FocusRequester makes
     // the host text field lose first-responder status before the restore effect can run.
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
-    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val suggestionPortal = LocalThreadComposerSuggestionPortal.current
@@ -2106,10 +2106,10 @@ internal fun ThreadComposerContentLeaf(
             selectionEnd = fieldValue.selection.end,
         )
     }
-    val suggestionAnchorRef = remember(state.instanceId) { SlockLiveRootAnchorRef(suggestionPortalOwner) }
+    val suggestionAnchorRef = remember(state.instanceId) { RaftLiveRootAnchorRef(suggestionPortalOwner) }
     val suggestionAnchorResolver =
         remember(state.instanceId, suggestionAnchorRef) {
-            suggestionAnchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero))
+            suggestionAnchorRef.resolver(RaftPopoverLocalPoint.Exact(Offset.Zero))
         }
     var composerCardSize by remember(state.instanceId) { mutableStateOf(IntSize.Zero) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
@@ -2156,9 +2156,9 @@ internal fun ThreadComposerContentLeaf(
         }
     val suggestionDemand =
         when (suggestionTrigger) {
-            is KuiklyComposerSuggestionTrigger.MemberTrigger -> ThreadComposerSuggestionDemand.Members
-            is KuiklyComposerSuggestionTrigger.ChannelTrigger -> ThreadComposerSuggestionDemand.Channels
-            KuiklyComposerSuggestionTrigger.None -> ThreadComposerSuggestionDemand.None
+            is RaftComposerSuggestionTrigger.MemberTrigger -> ThreadComposerSuggestionDemand.Members
+            is RaftComposerSuggestionTrigger.ChannelTrigger -> ThreadComposerSuggestionDemand.Channels
+            RaftComposerSuggestionTrigger.None -> ThreadComposerSuggestionDemand.None
         }
     val latestSuggestionDemandChanged by rememberUpdatedState(onSuggestionDemandChanged)
     LaunchedEffect(state.instanceId, suggestionDemand) {
@@ -2168,10 +2168,10 @@ internal fun ThreadComposerContentLeaf(
         onDispose { latestSuggestionDemandChanged(ThreadComposerSuggestionDemand.None) }
     }
     var indexedMemberSuggestions by remember(state.instanceId) {
-        mutableStateOf<ThreadComposerIndexedSuggestions<KuiklyComposerMemberItem>?>(null)
+        mutableStateOf<ThreadComposerIndexedSuggestions<RaftComposerMemberItem>?>(null)
     }
     var indexedChannelSuggestions by remember(state.instanceId) {
-        mutableStateOf<ThreadComposerIndexedSuggestions<KuiklyComposerChannelItem>?>(null)
+        mutableStateOf<ThreadComposerIndexedSuggestions<RaftComposerChannelItem>?>(null)
     }
     LaunchedEffect(state.instanceId, state.memberSuggestions) {
         val source = state.memberSuggestions
@@ -2185,7 +2185,7 @@ internal fun ThreadComposerContentLeaf(
     }
     val memberRankingRequest =
         remember(suggestionTrigger, indexedMemberSuggestions, state.memberSuggestions) {
-            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)
+            (suggestionTrigger as? RaftComposerSuggestionTrigger.MemberTrigger)
                 ?.takeIf { trigger -> trigger.query.isNotBlank() }
                 ?.let { trigger ->
                     indexedMemberSuggestions
@@ -2195,7 +2195,7 @@ internal fun ThreadComposerContentLeaf(
         }
     val channelRankingRequest =
         remember(suggestionTrigger, indexedChannelSuggestions, state.channelSuggestions) {
-            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)
+            (suggestionTrigger as? RaftComposerSuggestionTrigger.ChannelTrigger)
                 ?.takeIf { trigger -> trigger.query.isNotBlank() }
                 ?.let { trigger ->
                     indexedChannelSuggestions
@@ -2204,10 +2204,10 @@ internal fun ThreadComposerContentLeaf(
                 }
         }
     var memberRankingResult by remember(state.instanceId) {
-        mutableStateOf<ThreadComposerSuggestionRankingResult<KuiklyComposerMemberItem>?>(null)
+        mutableStateOf<ThreadComposerSuggestionRankingResult<RaftComposerMemberItem>?>(null)
     }
     var channelRankingResult by remember(state.instanceId) {
-        mutableStateOf<ThreadComposerSuggestionRankingResult<KuiklyComposerChannelItem>?>(null)
+        mutableStateOf<ThreadComposerSuggestionRankingResult<RaftComposerChannelItem>?>(null)
     }
     LaunchedEffect(state.instanceId, memberRankingRequest) {
         if (memberRankingRequest == null) {
@@ -2244,19 +2244,19 @@ internal fun ThreadComposerContentLeaf(
     val channelRankingReady =
         channelRankingRequest != null && channelRankingResult?.request === channelRankingRequest
     val immediateMemberSuggestions =
-        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)
+        (suggestionTrigger as? RaftComposerSuggestionTrigger.MemberTrigger)
             ?.let { trigger -> immediateThreadComposerMemberSuggestions(trigger.query, state.memberSuggestions) }
             .orEmpty()
     val immediateChannelSuggestions =
-        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)
+        (suggestionTrigger as? RaftComposerSuggestionTrigger.ChannelTrigger)
             ?.let { trigger -> immediateThreadComposerSuggestions(trigger.query, state.channelSuggestions) }
             .orEmpty()
     val memberUsesImmediateSuggestions =
-        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)?.query?.isBlank() == true
+        (suggestionTrigger as? RaftComposerSuggestionTrigger.MemberTrigger)?.query?.isBlank() == true
     val channelUsesImmediateSuggestions =
-        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)?.query?.isBlank() == true
+        (suggestionTrigger as? RaftComposerSuggestionTrigger.ChannelTrigger)?.query?.isBlank() == true
     val filteredMemberSuggestions =
-        if (suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger) {
+        if (suggestionTrigger is RaftComposerSuggestionTrigger.MemberTrigger) {
             displayedThreadComposerSuggestions(
                 usesImmediateSuggestions = memberUsesImmediateSuggestions,
                 rankingReady = memberRankingReady,
@@ -2268,7 +2268,7 @@ internal fun ThreadComposerContentLeaf(
             emptyList()
         }
     val filteredChannelSuggestions =
-        if (suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger) {
+        if (suggestionTrigger is RaftComposerSuggestionTrigger.ChannelTrigger) {
             displayedThreadComposerSuggestions(
                 usesImmediateSuggestions = channelUsesImmediateSuggestions,
                 rankingReady = channelRankingReady,
@@ -2281,14 +2281,14 @@ internal fun ThreadComposerContentLeaf(
         }
     val effectiveMemberSuggestionsStatus =
         threadComposerEffectiveSuggestionStatus(
-            triggerActive = suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger,
+            triggerActive = suggestionTrigger is RaftComposerSuggestionTrigger.MemberTrigger,
             rankingReady = memberRankingReady,
             usesImmediateSuggestions = memberUsesImmediateSuggestions,
             sourceStatus = state.memberSuggestionsStatus
         )
     val effectiveChannelSuggestionsStatus =
         threadComposerEffectiveSuggestionStatus(
-            triggerActive = suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger,
+            triggerActive = suggestionTrigger is RaftComposerSuggestionTrigger.ChannelTrigger,
             rankingReady = channelRankingReady,
             usesImmediateSuggestions = channelUsesImmediateSuggestions,
             sourceStatus = state.channelSuggestionsStatus
@@ -2363,7 +2363,7 @@ internal fun ThreadComposerContentLeaf(
     }
 
     fun insertMentionAtCursor(handle: String): Boolean {
-        val edit = applyKuiklyComposerDirectMentionInsert(
+        val edit = applyRaftComposerDirectMentionInsert(
             text = text,
             selectionStart = selectionStart,
             selectionEnd = selectionEnd,
@@ -2409,12 +2409,12 @@ internal fun ThreadComposerContentLeaf(
         onInsertMentionConsumed(request)
     }
 
-    fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
+    fun applyMemberSuggestion(member: RaftComposerMemberItem) {
         val context = suggestionSelectionContext ?: return
         suggestionSelectionDispatcher.selectMember(context, member)
     }
 
-    fun applyChannelSuggestion(channel: KuiklyComposerChannelItem) {
+    fun applyChannelSuggestion(channel: RaftComposerChannelItem) {
         val context = suggestionSelectionContext ?: return
         suggestionSelectionDispatcher.selectChannel(context, channel)
     }
@@ -2422,11 +2422,11 @@ internal fun ThreadComposerContentLeaf(
     fun commitSuggestionToken() {
         val triggerStart =
             when (val trigger = suggestionTrigger) {
-                is KuiklyComposerSuggestionTrigger.MemberTrigger -> trigger.triggerStart
-                is KuiklyComposerSuggestionTrigger.ChannelTrigger -> trigger.triggerStart
-                KuiklyComposerSuggestionTrigger.None -> return
+                is RaftComposerSuggestionTrigger.MemberTrigger -> trigger.triggerStart
+                is RaftComposerSuggestionTrigger.ChannelTrigger -> trigger.triggerStart
+                RaftComposerSuggestionTrigger.None -> return
             }
-        commitKuiklyComposerSuggestionToken(
+        commitRaftComposerSuggestionToken(
             text = text,
             selectionStart = selectionStart,
             selectionEnd = selectionEnd,
@@ -2459,8 +2459,8 @@ internal fun ThreadComposerContentLeaf(
             if (!isEditorSessionActive(sourceSessionId)) return@readCurrentValue
             val nativeValue =
                 when (readResult) {
-                    is SlockTextFieldNativeEditingStateReadResult.Available -> readResult.value
-                    SlockTextFieldNativeEditingStateReadResult.Unavailable -> {
+                    is RaftTextFieldNativeEditingStateReadResult.Available -> readResult.value
+                    RaftTextFieldNativeEditingStateReadResult.Unavailable -> {
                         onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
                         return@readCurrentValue
                     }
@@ -2560,14 +2560,14 @@ internal fun ThreadComposerContentLeaf(
         remember(suggestionPortalOwner) { { currentDismissSuggestions() } }
     val selectMemberSuggestion =
         remember(suggestionPortalOwner, suggestionSelectionDispatcher) {
-            { context: ThreadComposerSuggestionSelectionContext, member: KuiklyComposerMemberItem ->
+            { context: ThreadComposerSuggestionSelectionContext, member: RaftComposerMemberItem ->
                 suggestionSelectionDispatcher.selectMember(context, member)
                 Unit
             }
         }
     val selectChannelSuggestion =
         remember(suggestionPortalOwner, suggestionSelectionDispatcher) {
-            { context: ThreadComposerSuggestionSelectionContext, channel: KuiklyComposerChannelItem ->
+            { context: ThreadComposerSuggestionSelectionContext, channel: RaftComposerChannelItem ->
                 suggestionSelectionDispatcher.selectChannel(context, channel)
                 Unit
             }
@@ -2644,7 +2644,7 @@ internal fun ThreadComposerContentLeaf(
             Modifier
                 .fillMaxWidth()
                 .retainInputFocusForInteractions()
-                .background(SlockColor.Canvas)
+                .background(RaftColor.Canvas)
                 .padding(
                     start = hostPaddingHorizontal,
                     top = hostPaddingTop,
@@ -2662,10 +2662,10 @@ internal fun ThreadComposerContentLeaf(
             state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
                     text = localizedThreadComposerStatusLabel(status),
-                    style = SlockType.Caption.copy(
-                        color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(
+                        color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray
                     ),
-                    color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
+                    color = if (state.composerMode == "failed") RaftColor.AccentRed else RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2724,7 +2724,7 @@ internal fun ThreadComposerContentLeaf(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .slockCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
+                        .raftCaptureLiveRootAnchor(suggestionAnchorRef) { nextSize ->
                             if (composerCardSize != nextSize) composerCardSize = nextSize
                         }
             ) {
@@ -2733,10 +2733,10 @@ internal fun ThreadComposerContentLeaf(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .slockRaftControlSurface(
-                            fill = SlockColor.Card,
-                            border = SlockColor.BorderBlack,
-                            radius = SlockRadius.Container
+                        .raftControlSurface(
+                            fill = RaftColor.Card,
+                            border = RaftColor.BorderBlack,
+                            radius = RaftAppRadius.Container
                         )
                         .clickable(enabled = composerEnabled) { composerFocusRequester.requestFocus() }
                         .padding(8.dp),
@@ -2822,9 +2822,9 @@ internal fun ThreadComposerContentLeaf(
                             imeActionRequested = composerSendKeyEnabled,
                             keyboardOptions = composerKeyboardOptions,
                             keyboardActions = composerKeyboardActions,
-                            // SlockType.Input uses the shared content size, same as message text.
-                            textStyle = SlockType.Input.copy(
-                                color = if (composerEnabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
+                            // RaftType.Input uses the shared content size, same as message text.
+                            textStyle = RaftType.Input.copy(
+                                color = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
                             ),
                             // Kuikly produces keyboardHeightChange from the native input node on
                             // every platform. The height is host/window geometry, not editor
@@ -2840,8 +2840,8 @@ internal fun ThreadComposerContentLeaf(
                                     keyboardInsetDp = nextInset
                                 }
                             },
-                            placeholderColor = SlockColor.ForegroundHint,
-                            cursorBrush = SolidColor(SlockColor.TextBlack),
+                            placeholderColor = RaftColor.ForegroundHint,
+                            cursorBrush = SolidColor(RaftColor.TextBlack),
                             systemNewlineAction = true,
                             nativeEditingStateReader = nativeEditingStateReader,
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
@@ -2857,8 +2857,8 @@ internal fun ThreadComposerContentLeaf(
                     if (state.hookLabels.isNotEmpty()) {
                         Text(
                             text = state.hookLabels.joinToString(" / "),
-                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
+                            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -2879,7 +2879,7 @@ internal fun ThreadComposerContentLeaf(
                                 // found it; the long-press stays so existing muscle memory keeps
                                 // working, and the dedicated button is what makes it discoverable.
                                 ComposerIconButton(
-                                    icon = SlockLucideIconName.ImagePlus,
+                                    icon = RaftLucideIconName.ImagePlus,
                                     enabled = composerEnabled,
                                     contentDescription = stringResource(MR.strings.composer_add_image),
                                     longClickLabel = stringResource(MR.strings.composer_take_photo),
@@ -2891,7 +2891,7 @@ internal fun ThreadComposerContentLeaf(
                                     }
                                 )
                                 ComposerIconButton(
-                                    icon = SlockLucideIconName.Camera,
+                                    icon = RaftLucideIconName.Camera,
                                     enabled = composerEnabled,
                                     contentDescription = stringResource(MR.strings.composer_take_photo),
                                     onClick = {
@@ -2910,7 +2910,7 @@ internal fun ThreadComposerContentLeaf(
                                     }
                                 )
                                 ComposerIconButton(
-                                    icon = SlockLucideIconName.Paperclip,
+                                    icon = RaftLucideIconName.Paperclip,
                                     enabled = composerEnabled,
                                     contentDescription = stringResource(MR.strings.composer_attach_file),
                                     onClick = { onEvent("attachFile", null, null, null) }
@@ -2934,7 +2934,7 @@ internal fun ThreadComposerContentLeaf(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    SlockCheckbox(
+                                    RaftAppCheckbox(
                                         checked = asTask,
                                         onCheckedChange = { checked ->
                                             if (onEditorAsTaskChange(editorSessionId, checked)) {
@@ -2946,12 +2946,12 @@ internal fun ThreadComposerContentLeaf(
                                     )
                                     // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
                                     // foreground, foreground-disabled when the composer is off.
-                                    val labelColor = if (composerEnabled) SlockColor.TextBlack else SlockColor.ForegroundDisabled
+                                    val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
                                     Text(
                                         text = stringResource(MR.strings.thread_composer_as_task),
                                         style =
-                                            SlockType.Caption
-                                                .withSlockFontWeight(FontWeight.SemiBold)
+                                            RaftType.Caption
+                                                .withRaftFontWeight(FontWeight.SemiBold)
                                                 .copy(fontSize = 14.sp, lineHeight = 20.sp, color = labelColor),
                                         color = labelColor
                                     )
@@ -3030,15 +3030,15 @@ internal fun composerSuggestionPanelContentHeight(
 private fun ComposerSuggestionPanelContent(
     panelState: ThreadComposerSuggestionPanelState,
     surface: ThreadComposerSurface,
-    memberSuggestions: List<KuiklyComposerMemberItem>,
+    memberSuggestions: List<RaftComposerMemberItem>,
     memberSelectedIndex: Int,
     memberErrorCode: String?,
-    channelSuggestions: List<KuiklyComposerChannelItem>,
+    channelSuggestions: List<RaftComposerChannelItem>,
     channelSelectedIndex: Int,
     channelErrorCode: String?,
-    agentStatusResolver: SlockAgentStatusResolver,
-    onMemberClick: (KuiklyComposerMemberItem) -> Unit,
-    onChannelClick: (KuiklyComposerChannelItem) -> Unit
+    agentStatusResolver: RaftAgentStatusResolver,
+    onMemberClick: (RaftComposerMemberItem) -> Unit,
+    onChannelClick: (RaftComposerChannelItem) -> Unit
 ) {
     when (panelState) {
         ThreadComposerSuggestionPanelState.MemberItems -> {
@@ -3130,7 +3130,7 @@ private fun ThreadComposerSurface.memberSuggestionTitle(): String? =
         null
     } else {
         when (kind) {
-            KuiklyThreadSurfaceKind.ReplyThread -> stringResource(MR.strings.thread_composer_members_parent_channel)
+            RaftThreadSurfaceKind.ReplyThread -> stringResource(MR.strings.thread_composer_members_parent_channel)
             else -> stringResource(MR.strings.thread_composer_members_this_channel)
         }
     }
@@ -3180,13 +3180,13 @@ internal fun String?.toComposerChannelMentionLabel(): String? {
     return "#${display.removePrefix("#")}"
 }
 
-internal fun List<KuiklyComposerMemberItem>.firstComposerMemberSuggestionCandidate(): KuiklyComposerMemberItem? =
+internal fun List<RaftComposerMemberItem>.firstComposerMemberSuggestionCandidate(): RaftComposerMemberItem? =
     composerMemberSuggestionCandidateAt(0)
 
-internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionCandidateAt(
+internal fun List<RaftComposerMemberItem>.composerMemberSuggestionCandidateAt(
     selectedIndex: Int,
     groupByMentionChannel: Boolean = true
-): KuiklyComposerMemberItem? {
+): RaftComposerMemberItem? {
     if (isEmpty()) return null
     if (!groupByMentionChannel) {
         return getOrNull(threadComposerSuggestionSelectedIndex(selectedIndex, size))
@@ -3198,12 +3198,12 @@ internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionCandidateAt(
 }
 
 internal data class ComposerMemberSuggestionGroups(
-    val inThread: List<KuiklyComposerMemberItem>,
-    val inMentionChannel: List<KuiklyComposerMemberItem>,
-    val notInMentionChannel: List<KuiklyComposerMemberItem>
+    val inThread: List<RaftComposerMemberItem>,
+    val inMentionChannel: List<RaftComposerMemberItem>,
+    val notInMentionChannel: List<RaftComposerMemberItem>
 )
 
-internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionGroups(): ComposerMemberSuggestionGroups {
+internal fun List<RaftComposerMemberItem>.composerMemberSuggestionGroups(): ComposerMemberSuggestionGroups {
     val inThread = filter { it.inThread }
     val inThreadKeys = inThread.mapTo(mutableSetOf()) { it.composerMemberSuggestionKey() }
     val inMentionChannel =
@@ -3221,39 +3221,39 @@ internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionGroups(): Co
     )
 }
 
-private fun KuiklyComposerMemberItem.composerMemberSuggestionKey(): String =
+private fun RaftComposerMemberItem.composerMemberSuggestionKey(): String =
     memberId?.trim()?.takeIf { it.isNotBlank() }
         ?.let { "${kind.name}:$it" }
         ?: handle.trim().lowercase().takeIf { it.isNotBlank() }?.let { "${kind.name}:$it" }
         ?: "${kind.name}:${displayName.trim().lowercase()}"
 
-internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
+internal fun List<RaftPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
     filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
         .map { attachment -> attachment.id }
 
-internal fun List<KuiklyPendingAttachmentItem>.hasBlockingThreadAttachmentUpload(): Boolean =
+internal fun List<RaftPendingAttachmentItem>.hasBlockingThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && !attachment.isReadyThreadAttachmentForSend() }
 
-internal fun List<KuiklyPendingAttachmentItem>.hasUploadingThreadAttachment(): Boolean =
+internal fun List<RaftPendingAttachmentItem>.hasUploadingThreadAttachment(): Boolean =
     any { attachment ->
         attachment.id.isNotBlank() &&
             attachment.status == "uploading"
     }
 
-internal fun List<KuiklyPendingAttachmentItem>.hasFailedThreadAttachmentUpload(): Boolean =
+internal fun List<RaftPendingAttachmentItem>.hasFailedThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && attachment.status == "failed" }
 
-internal fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
+internal fun RaftPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
     id.isNotBlank() && status == "ready" && !id.startsWith("picked-")
 
-internal fun KuiklyPendingAttachmentItem.canOpenComposerAttachmentPreview(composerEnabled: Boolean): Boolean =
+internal fun RaftPendingAttachmentItem.canOpenComposerAttachmentPreview(composerEnabled: Boolean): Boolean =
     composerEnabled &&
         (
             isReadyThreadAttachmentForSend() ||
                 (status == "queued" && source == "external_share" && !previewUri.isNullOrBlank())
         )
 
-internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
+internal fun RaftPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
     availableActions.any { action ->
         when (verb) {
             "notify" -> action == "notify" || action == "notify_only"
@@ -3262,7 +3262,7 @@ internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String):
         }
     }
 
-internal fun KuiklyPendingMentionActionItem.targetLabel(): String {
+internal fun RaftPendingMentionActionItem.targetLabel(): String {
     val handle = targetHandle.ifBlank { targetType }
     return if ((targetType == "user" || targetType == "agent") && handle.isNotBlank() && !handle.startsWith("@")) {
         "@$handle"
@@ -3271,15 +3271,15 @@ internal fun KuiklyPendingMentionActionItem.targetLabel(): String {
     }
 }
 
-private fun KuiklyPendingMentionActionItem.targetInitial(): String =
+private fun RaftPendingMentionActionItem.targetInitial(): String =
     targetLabel().removePrefix("@").trim().take(1).ifBlank { "?" }.uppercase()
 
-internal fun KuiklyPendingMentionActionItem.targetAvatarWireValue(): String? =
+internal fun RaftPendingMentionActionItem.targetAvatarWireValue(): String? =
     targetAvatarUrl?.takeIf { it.isNotBlank() }
 
-internal fun KuiklyPendingMentionActionItem.matchingTargetSuggestion(
-    suggestions: List<KuiklyComposerMemberItem>
-): KuiklyComposerMemberItem? {
+internal fun RaftPendingMentionActionItem.matchingTargetSuggestion(
+    suggestions: List<RaftComposerMemberItem>
+): RaftComposerMemberItem? {
     val target = targetHandle.normalizedPendingMentionTargetHandle() ?: return null
     return suggestions.firstOrNull { suggestion ->
         suggestion.handle.normalizedPendingMentionTargetHandle() == target
@@ -3295,7 +3295,7 @@ private fun String?.normalizedPendingMentionTargetHandle(): String? =
         ?.takeIf { it.isNotBlank() }
         ?.lowercase()
 
-internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(
+internal fun RaftPendingMentionActionItem.pendingMentionActionDescription(
     channelLabel: String,
     localState: String? = null
 ): String {
@@ -3321,7 +3321,7 @@ internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(
 }
 
 @Composable
-private fun KuiklyPendingMentionActionItem.localizedPendingMentionActionDescription(
+private fun RaftPendingMentionActionItem.localizedPendingMentionActionDescription(
     channelLabel: String,
     localState: String?
 ): String {
@@ -3350,10 +3350,10 @@ private fun KuiklyPendingMentionActionItem.localizedPendingMentionActionDescript
 private fun ComposerMemberSuggestionPanel(
     title: String?,
     showMembershipSections: Boolean,
-    members: List<KuiklyComposerMemberItem>,
+    members: List<RaftComposerMemberItem>,
     selectedIndex: Int,
-    agentStatusResolver: SlockAgentStatusResolver,
-    onClick: (KuiklyComposerMemberItem) -> Unit
+    agentStatusResolver: RaftAgentStatusResolver,
+    onClick: (RaftComposerMemberItem) -> Unit
 ) {
     if (!showMembershipSections) {
         val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, members.size)
@@ -3442,14 +3442,14 @@ private data class ComposerMemberSuggestionPanelEntry(
     val key: String,
     val headerText: String? = null,
     val topDivider: Boolean = false,
-    val member: KuiklyComposerMemberItem? = null,
+    val member: RaftComposerMemberItem? = null,
     val selectableIndex: Int = -1,
     val inChannel: Boolean = true
 )
 
 private fun composerMemberSuggestionPanelEntries(
     title: String?,
-    members: List<KuiklyComposerMemberItem>,
+    members: List<RaftComposerMemberItem>,
     inThreadTitle: String = "In this thread",
     inThisChannelTitle: String = "In this channel",
     notInParentChannelTitle: String = "Not in parent channel",
@@ -3459,7 +3459,7 @@ private fun composerMemberSuggestionPanelEntries(
     val groups = members.composerMemberSuggestionGroups()
     val entries = mutableListOf<ComposerMemberSuggestionPanelEntry>()
     var selectableIndex = 0
-    fun addRows(prefix: String, rows: List<KuiklyComposerMemberItem>, inChannel: Boolean) {
+    fun addRows(prefix: String, rows: List<RaftComposerMemberItem>, inChannel: Boolean) {
         rows.forEach { member ->
             entries +=
                 ComposerMemberSuggestionPanelEntry(
@@ -3549,8 +3549,8 @@ private fun ComposerSuggestionStatusRow(message: String) {
     ) {
         Text(
             text = message,
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -3593,10 +3593,10 @@ private fun ComposerSuggestionHeader(
             Text(
                 text = text,
                 style =
-                    SlockType.Caption
-                        .withSlockFontWeight(FontWeight.Bold)
-                        .copy(color = SlockColor.ForegroundHint),
-                color = SlockColor.ForegroundHint
+                    RaftType.Caption
+                        .withRaftFontWeight(FontWeight.Bold)
+                        .copy(color = RaftColor.ForegroundHint),
+                color = RaftColor.ForegroundHint
             )
         }
         if (bottomDivider) {
@@ -3607,10 +3607,10 @@ private fun ComposerSuggestionHeader(
 
 @Composable
 private fun ComposerMemberSuggestionRow(
-    member: KuiklyComposerMemberItem,
+    member: RaftComposerMemberItem,
     inChannel: Boolean,
     selected: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     onClick: () -> Unit
 ) {
     val description =
@@ -3621,24 +3621,24 @@ private fun ComposerMemberSuggestionRow(
     val muted = !inChannel
     val contentColor =
         when {
-            muted -> SlockColor.TextMutedGray
-            else -> SlockColor.TextBlack
+            muted -> RaftColor.TextMutedGray
+            else -> RaftColor.TextBlack
         }
     val handleColor =
         when {
-            muted -> SlockColor.TextMutedGray
-            else -> SlockColor.TextBlack.copy(alpha = 0.4f)
+            muted -> RaftColor.TextMutedGray
+            else -> RaftColor.TextBlack.copy(alpha = 0.4f)
         }
     val secondaryColor =
         when {
-            muted -> SlockColor.TextMutedGray
-            selected -> SlockColor.TextBlack.copy(alpha = 0.7f)
-            else -> SlockColor.TextBlack.copy(alpha = 0.5f)
+            muted -> RaftColor.TextMutedGray
+            selected -> RaftColor.TextBlack.copy(alpha = 0.7f)
+            else -> RaftColor.TextBlack.copy(alpha = 0.5f)
         }
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = muted,
-        selectedColor = SlockColor.BrandSoft,
+        selectedColor = RaftColor.BrandSoft,
         minHeight = ComposerMemberSuggestionRowMinHeight,
         mutedOverlay = true,
         onClick = onClick
@@ -3647,15 +3647,15 @@ private fun ComposerMemberSuggestionRow(
             modifier =
                 Modifier
                     .size(ComposerMemberSuggestionAvatarSize)
-                    .background(if (muted) SlockColor.FillMuted else SlockColor.Card),
+                    .background(if (muted) RaftColor.FillMuted else RaftColor.Card),
             contentAlignment = Alignment.Center
         ) {
-            SlockAvatar(
+            RaftAppAvatar(
                 avatarWireValue = member.avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
                 avatarSize = ComposerMemberSuggestionAvatarSize,
-                borderWidth = SlockStroke.Thin,
-                cacheSubject = slockMemberAvatarCacheSubject(member.kind, member.memberId),
+                borderWidth = RaftAppStroke.Thin,
+                cacheSubject = raftMemberAvatarCacheSubject(member.kind, member.memberId),
                 cacheServerId = member.sourceServerId
             )
         }
@@ -3670,29 +3670,29 @@ private fun ComposerMemberSuggestionRow(
                 horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
             ) {
                 if (muted) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.UserMinus,
+                    RaftLucideIcon(
+                        RaftLucideIconName.UserMinus,
                         modifier = Modifier.size(12.dp),
-                        color = SlockColor.TextMutedGrayArgb
+                        color = RaftColor.TextMutedGrayArgb
                     )
                 }
                 Text(
                     text = member.displayName,
-                    style = SlockType.Button.copy(color = contentColor),
+                    style = RaftType.Button.copy(color = contentColor),
                     color = contentColor,
                     modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (inChannel && member.kind == MemberKind.Agent) {
-                    rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
+                    rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
                         ComposerAgentStatusDot(status)
                     }
                 }
                 if (secondary != null) {
                     Text(
                         text = secondary,
-                        style = SlockType.Caption.copy(color = secondaryColor),
+                        style = RaftType.Caption.copy(color = secondaryColor),
                         color = secondaryColor,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
@@ -3702,7 +3702,7 @@ private fun ComposerMemberSuggestionRow(
             }
             Text(
                 text = "@${member.handle}",
-                style = SlockType.Caption.copy(color = handleColor, fontFamily = SlockMonoFamily),
+                style = RaftType.Caption.copy(color = handleColor, fontFamily = RaftMonoFamily),
                 color = handleColor,
                 modifier = Modifier.widthIn(max = 132.dp).padding(start = 6.dp),
                 maxLines = 1,
@@ -3713,12 +3713,12 @@ private fun ComposerMemberSuggestionRow(
 }
 
 @Composable
-private fun ComposerAgentStatusDot(status: SlockAgentStatusIndicatorState) {
-    SlockStatusIndicator(
+private fun ComposerAgentStatusDot(status: RaftAgentStatusIndicatorState) {
+    RaftStatusIndicator(
         color = status.color,
         size = ComposerAgentActivityDotSize,
-        borderColor = SlockColor.BorderBlack,
-        borderWidth = SlockStroke.Thin,
+        borderColor = RaftColor.BorderBlack,
+        borderWidth = RaftAppStroke.Thin,
         pulsing = status.pulsing
     )
 }
@@ -3732,29 +3732,29 @@ private fun MentionActionNotice(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.AccentOrange.copy(alpha = 0.12f))
+                .background(RaftColor.AccentOrange.copy(alpha = 0.12f))
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top
     ) {
-        SlockLucideIcon(
-            name = SlockLucideIconName.TriangleAlert,
+        RaftLucideIcon(
+            name = RaftLucideIconName.TriangleAlert,
             modifier = Modifier.size(14.dp)
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             title?.takeIf { it.isNotBlank() }?.let { text ->
                 Text(
                     text = text,
-                    style = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             Text(
                 text = detail,
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.72f),
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.TextBlack.copy(alpha = 0.72f),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
@@ -3765,8 +3765,8 @@ private fun MentionActionNotice(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PendingMentionActionBanner(
-    actions: List<KuiklyPendingMentionActionItem>,
-    memberSuggestions: List<KuiklyComposerMemberItem>,
+    actions: List<RaftPendingMentionActionItem>,
+    memberSuggestions: List<RaftComposerMemberItem>,
     channelLabel: String,
     actionStates: Map<String, String>,
     removingIds: Set<String>,
@@ -3785,11 +3785,11 @@ private fun PendingMentionActionBanner(
     val visibleActions =
         actions
             .filterNot { it.resolutionId.trim() in removingIds }
-            .map(KuiklyPendingMentionActionItem::withNormalizedResolutionId)
-            .distinctBy(KuiklyPendingMentionActionItem::resolutionId)
+            .map(RaftPendingMentionActionItem::withNormalizedResolutionId)
+            .distinctBy(RaftPendingMentionActionItem::resolutionId)
     val displayedActions =
         visibleActions.ifEmpty {
-            actions.take(1).map(KuiklyPendingMentionActionItem::withNormalizedResolutionId)
+            actions.take(1).map(RaftPendingMentionActionItem::withNormalizedResolutionId)
         }
     val eligibleActions =
         eligiblePendingMentionActionBatch(
@@ -3815,7 +3815,7 @@ private fun PendingMentionActionBanner(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .slockRaftCardSurface()
+                    .raftCardSurface()
                     .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -3849,7 +3849,7 @@ private fun PendingMentionActionBanner(
             }
         }
     }
-    val mentionSheetBottomSafeArea = slockBottomSafeAreaPadding()
+    val mentionSheetBottomSafeArea = raftBottomSafeAreaPadding()
     val mentionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val mentionSheetScope = rememberCoroutineScope()
     val closeMentionSheet: () -> Unit = {
@@ -3878,7 +3878,7 @@ private fun PendingMentionActionBanner(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 256.dp)
-                        .slockRaftOverlaySurface(SlockRadius.Dialog)
+                        .raftLookOverlaySurface(RaftAppRadius.Dialog)
             ) {
                 PendingMentionActionDetailsSheet(
                     actions = displayedActions,
@@ -3904,15 +3904,15 @@ private fun PendingMentionActionBanner(
     }
 }
 
-private fun KuiklyPendingMentionActionItem.withNormalizedResolutionId(): KuiklyPendingMentionActionItem {
+private fun RaftPendingMentionActionItem.withNormalizedResolutionId(): RaftPendingMentionActionItem {
     val normalized = resolutionId.trim()
     return if (normalized == resolutionId) this else copy(resolutionId = normalized)
 }
 
 @Composable
 private fun PendingMentionActionBatchSummary(
-    actions: List<KuiklyPendingMentionActionItem>,
-    memberSuggestions: List<KuiklyComposerMemberItem>,
+    actions: List<RaftPendingMentionActionItem>,
+    memberSuggestions: List<RaftComposerMemberItem>,
     channelLabel: String,
     addAllVisible: Boolean,
     batchExecuting: Boolean,
@@ -3941,15 +3941,15 @@ private fun PendingMentionActionBatchSummary(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = summary,
-                style = SlockType.Button.copy(fontSize = 12.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(fontSize = 12.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = namesLabel,
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -3971,7 +3971,7 @@ private fun PendingMentionActionBatchSummary(
                 variant = ComposerTextChipVariant.Pink,
                 enabled = !batchExecuting,
                 loading = batchExecuting,
-                leadingIcon = SlockLucideIconName.UserPlus,
+                leadingIcon = RaftLucideIconName.UserPlus,
                 onClick = onAddAll
             )
         }
@@ -3979,7 +3979,7 @@ private fun PendingMentionActionBatchSummary(
             text = stringResource(MR.strings.thread_composer_mention_batch_view),
             variant = ComposerTextChipVariant.White,
             enabled = true,
-            leadingIcon = SlockLucideIconName.Users,
+            leadingIcon = RaftLucideIconName.Users,
             onClick = onView
         )
     }
@@ -3987,8 +3987,8 @@ private fun PendingMentionActionBatchSummary(
 
 @Composable
 private fun PendingMentionActionAvatarStack(
-    actions: List<KuiklyPendingMentionActionItem>,
-    memberSuggestions: List<KuiklyComposerMemberItem>,
+    actions: List<RaftPendingMentionActionItem>,
+    memberSuggestions: List<RaftComposerMemberItem>,
     contentDescription: String
 ) {
     Row(
@@ -3998,11 +3998,11 @@ private fun PendingMentionActionAvatarStack(
     ) {
         actions.take(2).forEach { action ->
             val suggestion = action.matchingTargetSuggestion(memberSuggestions)
-            SlockAvatar(
+            RaftAppAvatar(
                 avatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
                 label = suggestion?.avatarLabel?.takeIf(String::isNotBlank) ?: action.targetInitial(),
                 avatarSize = 24.dp,
-                borderWidth = SlockStroke.Default
+                borderWidth = RaftAppStroke.Default
             )
         }
         val overflowCount = (actions.size - 2).coerceAtLeast(0)
@@ -4011,13 +4011,13 @@ private fun PendingMentionActionAvatarStack(
                 modifier =
                     Modifier
                         .size(24.dp)
-                        .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker)),
+                        .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = stringResource(MR.strings.thread_composer_mention_batch_more, overflowCount),
-                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 11.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 11.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1
                 )
             }
@@ -4027,8 +4027,8 @@ private fun PendingMentionActionAvatarStack(
 
 @Composable
 private fun ColumnScope.PendingMentionActionDetailsSheet(
-    actions: List<KuiklyPendingMentionActionItem>,
-    memberSuggestions: List<KuiklyComposerMemberItem>,
+    actions: List<RaftPendingMentionActionItem>,
+    memberSuggestions: List<RaftComposerMemberItem>,
     channelLabel: String,
     actionStates: Map<String, String>,
     removingIds: Set<String>,
@@ -4048,7 +4048,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.Popover)
+                .background(RaftColor.Popover)
                 .padding(start = 24.dp, top = 32.dp, end = 24.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -4056,13 +4056,13 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         Text(
             text = localizedPendingMentionBatchSummary(actions.size, channelLabel),
             modifier = Modifier.weight(1f),
-            style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            color = RaftColor.TextBlack,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        SlockBrutalIconButton(
-            iconName = SlockLucideIconName.X,
+        RaftBrutalIconButton(
+            iconName = RaftLucideIconName.X,
             onClick = onClose,
             contentDescription = stringResource(MR.strings.common_close),
             size = 30.dp,
@@ -4075,7 +4075,7 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = 420.dp)
-                .background(SlockColor.Popover)
+                .background(RaftColor.Popover)
                 .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
     ) {
         mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
@@ -4105,8 +4105,8 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(SlockStroke.Thin)
-                                .background(SlockColor.BorderHairline)
+                                .height(RaftAppStroke.Thin)
+                                .background(RaftColor.BorderHairline)
                     )
                 }
             }
@@ -4116,12 +4116,12 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.Popover)
+                .background(RaftColor.Popover)
                 .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (eligibleCount >= 2 || batchExecuting) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     if (batchExecuting) {
                         stringResource(MR.strings.thread_composer_mention_batch_adding)
@@ -4133,12 +4133,12 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
                 modifier = Modifier.fillMaxWidth(),
                 minWidth = 0.dp,
                 minHeight = 40.dp,
-                leadingIcon = if (batchExecuting) SlockLucideIconName.LoaderCircle else SlockLucideIconName.UserPlus,
-                backgroundColor = SlockColor.AccentPink,
+                leadingIcon = if (batchExecuting) RaftLucideIconName.LoaderCircle else RaftLucideIconName.UserPlus,
+                backgroundColor = RaftColor.AccentPink,
                 shadowOffset = 2.dp
             )
         }
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = stringResource(MR.strings.common_done),
             onClick = onClose,
             modifier = Modifier.fillMaxWidth(),
@@ -4151,8 +4151,8 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
 
 @Composable
 private fun PendingMentionActionCompactRow(
-    action: KuiklyPendingMentionActionItem,
-    targetSuggestion: KuiklyComposerMemberItem?,
+    action: RaftPendingMentionActionItem,
+    targetSuggestion: RaftComposerMemberItem?,
     channelLabel: String,
     executing: Boolean,
     localState: String?,
@@ -4180,24 +4180,24 @@ private fun PendingMentionActionCompactRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
             label = targetAvatarLabel,
             avatarSize = 28.dp,
-            borderWidth = SlockStroke.Default
+            borderWidth = RaftAppStroke.Default
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
                 text = action.targetLabel(),
-                style = SlockType.Button.copy(fontSize = 12.sp),
-                color = SlockColor.TextBlack.copy(alpha = contentAlpha),
+                style = RaftType.Button.copy(fontSize = 12.sp),
+                color = RaftColor.TextBlack.copy(alpha = contentAlpha),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = stringResource(MR.strings.thread_composer_mention_batch_row_status, channelLabel),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = contentAlpha),
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = contentAlpha),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -4211,7 +4211,7 @@ private fun PendingMentionActionCompactRow(
                     stringResource(MR.strings.thread_composer_mention_added_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
-                    leadingIcon = SlockLucideIconName.Check,
+                    leadingIcon = RaftLucideIconName.Check,
                     onClick = {}
                 )
             } else if (canInvite) {
@@ -4224,7 +4224,7 @@ private fun PendingMentionActionCompactRow(
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
                     loading = executingState == "added",
-                    leadingIcon = SlockLucideIconName.UserPlus,
+                    leadingIcon = RaftLucideIconName.UserPlus,
                     onClick = onInvite
                 )
             }
@@ -4233,7 +4233,7 @@ private fun PendingMentionActionCompactRow(
                     stringResource(MR.strings.thread_composer_mention_notified_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
-                    leadingIcon = SlockLucideIconName.Check,
+                    leadingIcon = RaftLucideIconName.Check,
                     onClick = {}
                 )
             } else if (canNotify) {
@@ -4246,7 +4246,7 @@ private fun PendingMentionActionCompactRow(
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
                     loading = executingState == "notified",
-                    leadingIcon = SlockLucideIconName.BellRing,
+                    leadingIcon = RaftLucideIconName.BellRing,
                     onClick = onNotify
                 )
             }
@@ -4270,8 +4270,8 @@ private fun localizedPendingMentionBatchSummary(count: Int, channelLabel: String
 
 @Composable
 private fun PendingMentionActionRow(
-    action: KuiklyPendingMentionActionItem,
-    targetSuggestion: KuiklyComposerMemberItem?,
+    action: RaftPendingMentionActionItem,
+    targetSuggestion: RaftComposerMemberItem?,
     channelLabel: String,
     executing: Boolean,
     localState: String?,
@@ -4291,8 +4291,8 @@ private fun PendingMentionActionRow(
     val targetAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue
     val canInvite = action.supportsMentionAction("invite") && localState == null
     val canNotify = action.supportsMentionAction("notify") && localState == null
-    val contentColor = if (removing) SlockColor.TextBlack.copy(alpha = 0.45f) else SlockColor.TextBlack
-    val mutedColor = if (removing) SlockColor.TextMutedGray.copy(alpha = 0.45f) else SlockColor.TextMutedGray
+    val contentColor = if (removing) RaftColor.TextBlack.copy(alpha = 0.45f) else RaftColor.TextBlack
+    val mutedColor = if (removing) RaftColor.TextMutedGray.copy(alpha = 0.45f) else RaftColor.TextMutedGray
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -4306,29 +4306,29 @@ private fun PendingMentionActionRow(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.UserPlus,
+                RaftLucideIcon(
+                    RaftLucideIconName.UserPlus,
                     modifier = Modifier.size(16.dp),
-                    color = if (removing) "#777777" else SlockColor.TextMutedGrayArgb
+                    color = if (removing) "#777777" else RaftColor.TextMutedGrayArgb
                 )
             }
-            SlockAvatar(
+            RaftAppAvatar(
                 avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
-                borderWidth = SlockStroke.Default
+                borderWidth = RaftAppStroke.Default
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = targetLabel,
-                    style = SlockType.Button.copy(fontSize = 12.sp),
+                    style = RaftType.Button.copy(fontSize = 12.sp),
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = action.localizedPendingMentionActionDescription(channelLabel, localState),
-                    style = SlockType.Caption.copy(color = mutedColor),
+                    style = RaftType.Caption.copy(color = mutedColor),
                     color = mutedColor,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
@@ -4345,7 +4345,7 @@ private fun PendingMentionActionRow(
                     stringResource(MR.strings.thread_composer_mention_added_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
-                    leadingIcon = SlockLucideIconName.Check,
+                    leadingIcon = RaftLucideIconName.Check,
                     onClick = {}
                 )
             } else if (canInvite) {
@@ -4358,7 +4358,7 @@ private fun PendingMentionActionRow(
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
                     loading = executingState == "added",
-                    leadingIcon = SlockLucideIconName.UserPlus,
+                    leadingIcon = RaftLucideIconName.UserPlus,
                     onClick = onInvite
                 )
             }
@@ -4367,7 +4367,7 @@ private fun PendingMentionActionRow(
                     stringResource(MR.strings.thread_composer_mention_notified_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
-                    leadingIcon = SlockLucideIconName.Check,
+                    leadingIcon = RaftLucideIconName.Check,
                     onClick = {}
                 )
             } else if (canNotify) {
@@ -4380,7 +4380,7 @@ private fun PendingMentionActionRow(
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
                     loading = executingState == "notified",
-                    leadingIcon = SlockLucideIconName.BellRing,
+                    leadingIcon = RaftLucideIconName.BellRing,
                     onClick = onNotify
                 )
             }
@@ -4396,7 +4396,7 @@ private fun PendingMentionActionRow(
 
 @Composable
 private fun ComposerAttachmentTray(
-    attachments: List<KuiklyPendingAttachmentItem>,
+    attachments: List<RaftPendingAttachmentItem>,
     enabled: Boolean,
     previewEnabled: Boolean,
     onEvent: (action: String, attachmentId: String) -> Unit
@@ -4427,7 +4427,7 @@ private fun ComposerAttachmentTray(
 
 @Composable
 private fun ComposerAttachmentPreviewChip(
-    attachment: KuiklyPendingAttachmentItem,
+    attachment: RaftPendingAttachmentItem,
     enabled: Boolean,
     previewEnabled: Boolean,
     onPreview: () -> Unit,
@@ -4468,7 +4468,7 @@ private fun ComposerAttachmentPreviewChip(
 
 @Composable
 private fun ComposerImageAttachmentPreview(
-    attachment: KuiklyPendingAttachmentItem,
+    attachment: RaftPendingAttachmentItem,
     imagePreviewUri: String?,
     previewEnabled: Boolean,
     onPreview: () -> Unit
@@ -4478,28 +4478,28 @@ private fun ComposerImageAttachmentPreview(
             Modifier
                 .fillMaxSize()
                 .clickable(enabled = previewEnabled, onClick = onPreview)
-                .slockThemedCorners(SlockRadius.Control)
-                .background(SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control)),
+                .raftThemedCorners(RaftAppRadius.Control)
+                .background(RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         if (imagePreviewUri != null) {
-            SlockAspectFitImagePreviewSurface(
+            RaftAspectFitImagePreviewSurface(
                 source = imagePreviewUri,
                 contentDescription = attachment.fileName,
                 modifier = Modifier.fillMaxSize(),
                 borderWidth = 0.dp,
-                contentScale = SlockImageThumbnailContentScale
+                contentScale = RaftImageThumbnailContentScale
             )
         } else {
-            SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = slockArgbHex(SlockColor.TextMuted))
+            RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftColor.TextMuted))
         }
     }
 }
 
 @Composable
 private fun ComposerFileAttachmentPreview(
-    attachment: KuiklyPendingAttachmentItem,
+    attachment: RaftPendingAttachmentItem,
     previewEnabled: Boolean,
     onPreview: () -> Unit
 ) {
@@ -4508,17 +4508,17 @@ private fun ComposerFileAttachmentPreview(
             Modifier
                 .fillMaxSize()
                 .clickable(enabled = previewEnabled, onClick = onPreview)
-                .slockThemedCorners(SlockRadius.Control)
-                .background(SlockColor.Card, RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control))
+                .raftThemedCorners(RaftAppRadius.Control)
+                .background(RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control))
                 .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.FileText,
+        RaftLucideIcon(
+            RaftLucideIconName.FileText,
             modifier = Modifier.size(16.dp),
-            color = slockArgbHex(SlockColor.TextMuted)
+            color = raftArgbHex(RaftColor.TextMuted)
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -4526,8 +4526,8 @@ private fun ComposerFileAttachmentPreview(
         ) {
             Text(
                 text = attachment.fileName,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -4536,8 +4536,8 @@ private fun ComposerFileAttachmentPreview(
                     stringResource(MR.strings.thread_composer_attachment_file),
                     attachment.displaySizeLabel(),
                 ).filter { it.isNotBlank() }.joinToString(" · "),
-                style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -4546,26 +4546,26 @@ private fun ComposerFileAttachmentPreview(
 }
 
 @Composable
-private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachmentItem) {
+private fun ComposerAttachmentUploadingOverlay(attachment: RaftPendingAttachmentItem) {
     val progress = attachment.uploadProgress.coerceIn(0, 100)
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .slockThemedCorners(SlockRadius.Control)
-                .background(SlockColor.Card.copy(alpha = 0.86f), RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control)),
+                .raftThemedCorners(RaftAppRadius.Control)
+                .background(RaftColor.Card.copy(alpha = 0.86f), RoundedCornerShape(RaftAppRadius.Control))
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb, spinning = true)
+            RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = RaftColor.TextBlackArgb, spinning = true)
             Text(
                 text = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 1
             )
         }
@@ -4576,16 +4576,16 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .height(4.dp)
-                        .slockSquareCorners()
-                        .background(SlockColor.FillMuted)
+                        .raftSquareCorners()
+                        .background(RaftColor.FillMuted)
             ) {
                 Box(
                     modifier =
                         Modifier
                             .fillMaxWidth(progress.coerceAtLeast(4) / 100f)
                             .height(4.dp)
-                            .slockSquareCorners()
-                            .background(SlockColor.AccentPink)
+                            .raftSquareCorners()
+                            .background(RaftColor.AccentPink)
                 )
             }
         }
@@ -4599,25 +4599,25 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
             Modifier
                 .fillMaxSize()
                 .clickable(onClick = onRetry)
-                .slockThemedCorners(SlockRadius.Control)
+                .raftThemedCorners(RaftAppRadius.Control)
                 // deliberate near-opaque failure scrim over the attachment thumbnail; triaged token-audit #1066
-                .background(SlockColor.AccentOrange.copy(alpha = 0.92f), RoundedCornerShape(SlockRadius.Control))
-                .border(SlockStroke.Thin, SlockColor.BorderHairline, RoundedCornerShape(SlockRadius.Control))
+                .background(RaftColor.AccentOrange.copy(alpha = 0.92f), RoundedCornerShape(RaftAppRadius.Control))
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control))
                 .padding(horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = stringResource(MR.strings.thread_composer_attachment_upload_failed),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = stringResource(MR.strings.thread_composer_attachment_tap_retry),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -4632,21 +4632,21 @@ private fun BoxScope.ComposerAttachmentRemoveButton(onRemove: () -> Unit) {
                 .size(ThreadComposerAttachmentCloseSize)
                 .align(Alignment.TopEnd)
                 .offset(x = 5f, y = -5f)
-                .background(SlockColor.ShadowBlack, RoundedCornerShape(ThreadComposerAttachmentCloseSize / 2))
+                .background(RaftColor.ShadowBlack, RoundedCornerShape(ThreadComposerAttachmentCloseSize / 2))
                 .clickable(onClick = onRemove),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(SlockLucideIconName.X, modifier = Modifier.size(12.dp), color = "#FFFFFFFF")
+        RaftLucideIcon(RaftLucideIconName.X, modifier = Modifier.size(12.dp), color = "#FFFFFFFF")
     }
 }
 
 internal fun composerAttachmentRows(
-    attachments: List<KuiklyPendingAttachmentItem>,
+    attachments: List<RaftPendingAttachmentItem>,
     maxWidthDp: Int = ThreadComposerAttachmentTrayMaxWidthDp
-): List<List<KuiklyPendingAttachmentItem>> {
+): List<List<RaftPendingAttachmentItem>> {
     if (attachments.isEmpty()) return emptyList()
-    val rows = mutableListOf<MutableList<KuiklyPendingAttachmentItem>>()
-    var row = mutableListOf<KuiklyPendingAttachmentItem>()
+    val rows = mutableListOf<MutableList<RaftPendingAttachmentItem>>()
+    var row = mutableListOf<RaftPendingAttachmentItem>()
     var rowWidthDp = 0
     attachments.forEach { attachment ->
         val widthDp = attachment.composerAttachmentPreviewWidthDp()
@@ -4673,14 +4673,14 @@ internal fun composerAttachmentRows(
     return rows
 }
 
-internal fun KuiklyPendingAttachmentItem.composerAttachmentPreviewWidthDp(): Int =
+internal fun RaftPendingAttachmentItem.composerAttachmentPreviewWidthDp(): Int =
     if (isComposerImageAttachment()) {
         ThreadComposerAttachmentImageTileSizeDp
     } else {
         ThreadComposerAttachmentFileTileWidthDp
     }
 
-internal fun KuiklyPendingAttachmentItem.isComposerImageAttachment(): Boolean {
+internal fun RaftPendingAttachmentItem.isComposerImageAttachment(): Boolean {
     val normalizedMime = mimeType?.substringBefore(";")?.trim()?.lowercase().orEmpty()
     return normalizedMime.startsWith("image/") && normalizedMime != "image/svg+xml"
 }
@@ -4700,7 +4700,7 @@ private fun ComposerSuggestionPanel(
                 .fillMaxWidth()
                 .height(panelHeight)
                 // raft-ui `ComposerSuggestionList`: popover layer, seam ring, float shadow.
-                .slockRaftOverlaySurface(),
+                .raftLookOverlaySurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         LazyColumn(
@@ -4730,14 +4730,14 @@ private fun ComposerSuggestionPanel(
 
 @Composable
 private fun ComposerChannelSuggestionRow(
-    channel: KuiklyComposerChannelItem,
+    channel: RaftComposerChannelItem,
     selected: Boolean,
     onClick: () -> Unit
 ) {
     ComposerSuggestionInteractiveRow(
         selected = selected,
         muted = false,
-        selectedColor = SlockColor.BrandSoft,
+        selectedColor = RaftColor.BrandSoft,
         minHeight = ComposerChannelSuggestionRowMinHeight,
         onClick = onClick
     ) {
@@ -4750,13 +4750,13 @@ private fun ComposerChannelSuggestionRow(
                     Modifier
                         .size(ComposerChannelSuggestionIconSize)
                         // raft-ui framed suggestion icon: fill-muted sticker, muted glyph.
-                        .background(SlockColor.FillMuted, RoundedCornerShape(SlockRadius.Sticker)),
+                        .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.Hash,
+                RaftLucideIcon(
+                    RaftLucideIconName.Hash,
                     modifier = Modifier.size(ComposerChannelSuggestionGlyphSize),
-                    color = slockArgbHex(SlockColor.TextMuted)
+                    color = raftArgbHex(RaftColor.TextMuted)
                 )
             }
             Spacer(modifier = Modifier.width(ComposerSuggestionItemGap))
@@ -4767,16 +4767,16 @@ private fun ComposerChannelSuggestionRow(
             ) {
                 Text(
                     text = channel.name,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 channel.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
                     Text(
                         text = subtitle,
-                        style = SlockType.Caption.copy(color = SlockColor.ForegroundHint),
-                        color = SlockColor.ForegroundHint,
+                        style = RaftType.Caption.copy(color = RaftColor.ForegroundHint),
+                        color = RaftColor.ForegroundHint,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -4809,7 +4809,7 @@ private fun ComposerSuggestionInteractiveRow(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = ComposerSuggestionPanelInset)
-                .background(background, RoundedCornerShape(SlockRadius.Control))
+                .background(background, RoundedCornerShape(RaftAppRadius.Control))
     ) {
         Box(
             modifier =
@@ -4835,7 +4835,7 @@ private fun ComposerSuggestionInteractiveRow(
                         Modifier
                             .fillMaxSize()
                             // web `opacity-60` on not-in-channel options.
-                            .background(SlockColor.Popover.copy(alpha = 0.40f))
+                            .background(RaftColor.Popover.copy(alpha = 0.40f))
                 )
             }
         }
@@ -4849,8 +4849,8 @@ private fun ComposerSuggestionDivider() {
             Modifier
                 .padding(horizontal = ComposerSuggestionPanelInset)
                 .fillMaxWidth()
-                .height(SlockStroke.Thin)
-                .background(SlockColor.BorderHairline)
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderHairline)
     )
 }
 
@@ -4868,7 +4868,7 @@ private fun ComposerSuggestionRow(
                 .fillMaxWidth()
                 .heightIn(min = ComposerMemberSuggestionRowMinHeight)
                 .clickable(onClick = onClick)
-                .border(SlockStroke.Thin, SlockColor.BorderHairline)
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4877,16 +4877,16 @@ private fun ComposerSuggestionRow(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = title,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -4898,13 +4898,13 @@ private fun ComposerSuggestionRow(
 
 @Composable
 private fun ComposerIconButton(
-    icon: SlockLucideIconName,
+    icon: RaftLucideIconName,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon.
     backgroundColor: Color = Color.Transparent,
-    disabledBackgroundColor: Color = SlockColor.EmptyStateGray,
+    disabledBackgroundColor: Color = RaftColor.EmptyStateGray,
     disabledAlpha: Float = 1f,
     disabledIconColor: String = "#4D000000",
     iconSpinning: Boolean = false,
@@ -4912,7 +4912,7 @@ private fun ComposerIconButton(
     longClickLabel: String? = null,
     onClick: () -> Unit
 ) {
-    SlockBrutalIconButton(
+    RaftBrutalIconButton(
         iconName = icon,
         onClick = onClick,
         contentDescription = contentDescription,
@@ -4921,8 +4921,8 @@ private fun ComposerIconButton(
         backgroundColor = backgroundColor,
         disabledBackgroundColor = disabledBackgroundColor,
         disabledAlpha = disabledAlpha,
-        disabledBorderColor = SlockColor.BorderBlack,
-        disabledShadowColor = SlockColor.ShadowBlack,
+        disabledBorderColor = RaftColor.BorderBlack,
+        disabledShadowColor = RaftColor.ShadowBlack,
         disabledIconColor = disabledIconColor,
         size = ThreadComposerIconButtonSize,
         shadowOffset = ThreadComposerActionShadowOffset,
@@ -4939,15 +4939,15 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send
+    val icon = if (sending) RaftLucideIconName.RefreshCw else RaftLucideIconName.Send
     val contentDescription = stringResource(MR.strings.common_send)
     if (sending) {
         ComposerIconButton(
             icon = icon,
             enabled = enabled,
             contentDescription = contentDescription,
-            backgroundColor = SlockColor.AccentPink,
-            disabledBackgroundColor = SlockColor.AccentPink,
+            backgroundColor = RaftColor.AccentPink,
+            disabledBackgroundColor = RaftColor.AccentPink,
             disabledAlpha = 1f,
             disabledIconColor = "#FF000000",
             iconSpinning = true,
@@ -4955,12 +4955,12 @@ private fun ComposerSendButton(
         )
         return
     }
-    SlockBrutalIconButton(
+    RaftBrutalIconButton(
         iconName = icon,
         onClick = onClick,
         contentDescription = contentDescription,
         enabled = enabled,
-        backgroundColor = SlockColor.AccentPink,
+        backgroundColor = RaftColor.AccentPink,
         disabledBackgroundColor = ThreadComposerDisabledSendBackground,
         disabledAlpha = 1f,
         disabledBorderColor = ThreadComposerDisabledSendBorder,
@@ -4988,11 +4988,11 @@ private fun ComposerTextChip(
     variant: ComposerTextChipVariant,
     enabled: Boolean = true,
     loading: Boolean = false,
-    leadingIcon: SlockLucideIconName? = null,
+    leadingIcon: RaftLucideIconName? = null,
     onClick: () -> Unit
 ) {
     if (variant == ComposerTextChipVariant.MutedText) {
-        val mutedColor = SlockColor.TextBlack.copy(alpha = if (enabled) 0.45f else 0.3f)
+        val mutedColor = RaftColor.TextBlack.copy(alpha = if (enabled) 0.45f else 0.3f)
         Button(
             onClick = onClick,
             enabled = enabled,
@@ -5002,7 +5002,7 @@ private fun ComposerTextChip(
         ) {
             Text(
                 text = text,
-                style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = mutedColor),
+                style = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = mutedColor),
                 color = mutedColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -5016,7 +5016,7 @@ private fun ComposerTextChip(
             modifier =
                 Modifier
                     // raft-ui disabled control: fill-muted, line-muted edge, control radius.
-                    .slockRaftControlSurface(fill = SlockColor.FillMuted, border = SlockColor.BorderHairline)
+                    .raftControlSurface(fill = RaftColor.FillMuted, border = RaftColor.BorderHairline)
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -5025,16 +5025,16 @@ private fun ComposerTextChip(
             // (task #494 follow-up — the glyph used to live in the string
             // resource itself).
             leadingIcon?.let {
-                SlockLucideIcon(
+                RaftLucideIcon(
                     name = it,
-                    color = SlockColor.TextMutedGrayArgb,
+                    color = RaftColor.TextMutedGrayArgb,
                     modifier = Modifier.size(12.dp)
                 )
             }
             Text(
                 text = text,
-                style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
-                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                style = RaftType.Caption.copy(color = RaftColor.TextBlack.copy(alpha = 0.4f)),
+                color = RaftColor.TextBlack.copy(alpha = 0.4f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -5042,21 +5042,21 @@ private fun ComposerTextChip(
         return
     }
 
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = text,
         onClick = onClick,
         enabled = enabled && !loading,
-        backgroundColor = if (variant == ComposerTextChipVariant.Pink) SlockColor.AccentPink else SlockColor.SurfaceWhite,
+        backgroundColor = if (variant == ComposerTextChipVariant.Pink) RaftColor.AccentPink else RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 26.dp,
         shadowOffset = 2.dp,
         leadingIcon = leadingIcon,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
         trailingContent = if (loading) {
             {
-                SlockChipLoadingIndicator(
+                RaftChipLoadingIndicator(
                     size = 12.dp,
-                    color = SlockColor.TextMutedGrayArgb
+                    color = RaftColor.TextMutedGrayArgb
                 )
             }
         } else {
@@ -5065,18 +5065,18 @@ private fun ComposerTextChip(
     )
 }
 
-internal data class KuiklyComposerSuggestionEdit(
+internal data class RaftComposerSuggestionEdit(
     val text: String,
     val cursor: Int
 )
 
-internal fun applyKuiklyComposerSuggestionEdit(
+internal fun applyRaftComposerSuggestionEdit(
     text: String,
     selectionStart: Int,
     selectionEnd: Int,
     triggerStart: Int,
     replacement: String
-): KuiklyComposerSuggestionEdit? {
+): RaftComposerSuggestionEdit? {
     val safeStart = selectionStart.coerceIn(0, text.length)
     val safeEnd = selectionEnd.coerceIn(safeStart, text.length)
     if (triggerStart < 0 || triggerStart > safeStart) return null
@@ -5087,18 +5087,18 @@ internal fun applyKuiklyComposerSuggestionEdit(
             safeEnd
         }
     val nextText = text.substring(0, triggerStart) + replacement + text.substring(suffixStart)
-    return KuiklyComposerSuggestionEdit(
+    return RaftComposerSuggestionEdit(
         text = nextText,
         cursor = triggerStart + replacement.length
     )
 }
 
-internal fun commitKuiklyComposerSuggestionToken(
+internal fun commitRaftComposerSuggestionToken(
     text: String,
     selectionStart: Int,
     selectionEnd: Int,
     triggerStart: Int
-): KuiklyComposerSuggestionEdit? {
+): RaftComposerSuggestionEdit? {
     val safeStart = selectionStart.coerceIn(0, text.length)
     val safeEnd = selectionEnd.coerceIn(safeStart, text.length)
     if (triggerStart < 0 || triggerStart > safeStart) return null
@@ -5108,18 +5108,18 @@ internal fun commitKuiklyComposerSuggestionToken(
         } else {
             text.substring(0, safeEnd) + " " + text.substring(safeEnd)
         }
-    return KuiklyComposerSuggestionEdit(
+    return RaftComposerSuggestionEdit(
         text = nextText,
         cursor = (safeEnd + 1).coerceIn(0, nextText.length)
     )
 }
 
-internal fun applyKuiklyComposerDirectMentionInsert(
+internal fun applyRaftComposerDirectMentionInsert(
     text: String,
     selectionStart: Int,
     selectionEnd: Int,
     handle: String
-): KuiklyComposerSuggestionEdit? {
+): RaftComposerSuggestionEdit? {
     val token = handle.toThreadMentionToken() ?: return null
     val safeStart = selectionStart.coerceIn(0, text.length)
     val safeEnd = selectionEnd.coerceIn(safeStart, text.length)
@@ -5129,18 +5129,18 @@ internal fun applyKuiklyComposerDirectMentionInsert(
     val trailingSpace = if (suffix.isNotEmpty() && suffix.first().isWhitespace()) "" else " "
     val mention = "$leadingSpace@$token$trailingSpace"
     val nextText = prefix + mention + suffix
-    return KuiklyComposerSuggestionEdit(
+    return RaftComposerSuggestionEdit(
         text = nextText,
         cursor = prefix.length + mention.length
     )
 }
 
-internal fun detectKuiklyComposerSuggestionTrigger(
+internal fun detectRaftComposerSuggestionTrigger(
     text: String,
     cursor: Int = text.length
-): KuiklyComposerSuggestionTrigger {
+): RaftComposerSuggestionTrigger {
     if (text.isBlank()) {
-        return KuiklyComposerSuggestionTrigger.None
+        return RaftComposerSuggestionTrigger.None
     }
     val beforeCursor = text.substring(0, cursor.coerceIn(0, text.length))
     var triggerIndex = -1
@@ -5157,13 +5157,13 @@ internal fun detectKuiklyComposerSuggestionTrigger(
         }
     }
     if (triggerIndex < 0) {
-        return KuiklyComposerSuggestionTrigger.None
+        return RaftComposerSuggestionTrigger.None
     }
     val query = beforeCursor.substring(triggerIndex + 1)
     return when (triggerChar) {
-        '@' -> KuiklyComposerSuggestionTrigger.MemberTrigger(query, triggerIndex)
-        '#' -> KuiklyComposerSuggestionTrigger.ChannelTrigger(query, triggerIndex)
-        else -> KuiklyComposerSuggestionTrigger.None
+        '@' -> RaftComposerSuggestionTrigger.MemberTrigger(query, triggerIndex)
+        '#' -> RaftComposerSuggestionTrigger.ChannelTrigger(query, triggerIndex)
+        else -> RaftComposerSuggestionTrigger.None
     }
 }
 
@@ -5171,9 +5171,9 @@ internal fun threadComposerSuggestionTrigger(
     text: String,
     cursor: Int = text.length,
     suggestionsEnabled: Boolean = true
-): KuiklyComposerSuggestionTrigger =
+): RaftComposerSuggestionTrigger =
     if (suggestionsEnabled) {
-        detectKuiklyComposerSuggestionTrigger(text, cursor)
+        detectRaftComposerSuggestionTrigger(text, cursor)
     } else {
-        KuiklyComposerSuggestionTrigger.None
+        RaftComposerSuggestionTrigger.None
     }

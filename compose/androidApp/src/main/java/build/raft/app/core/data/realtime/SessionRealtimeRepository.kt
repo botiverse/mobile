@@ -1,6 +1,6 @@
 package build.raft.app.core.data.realtime
 
-import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore as AuthSessionStore
 import build.raft.app.data.DataResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RealtimeRepository

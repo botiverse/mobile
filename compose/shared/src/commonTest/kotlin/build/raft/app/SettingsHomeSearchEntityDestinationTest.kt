@@ -153,7 +153,7 @@ class SettingsHomeSearchEntityDestinationTest {
 
         val pageData = homeSearchMemberDetailPageData(identity, timeContext = null)!!
 
-        assertEquals(identity, pageData.toKuiklyMemberDetailPayload().identity)
+        assertEquals(identity, pageData.toRaftMemberDetailPayload().identity)
     }
 
     private fun sender(

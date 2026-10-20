@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class SharedApiEnvironmentStore(
-    private val store: SlockKeyValueStore
+    private val store: RaftKeyValueStore
 ) {
     private val mutableState = MutableStateFlow(currentEnvironment(store.getString(KEY_ENVIRONMENT)))
     val state: StateFlow<SharedSettingsApiEnvironmentOption> = mutableState.asStateFlow()
@@ -107,8 +107,8 @@ class SharedApiEnvironmentStore(
             SharedSettingsApiEnvironmentOption(
                 key = "production",
                 label = "Production",
-                apiBaseUrl = SLOCK_API_BASE_URL,
-                socketBaseUrl = SLOCK_SOCKET_BASE_URL,
+                apiBaseUrl = RAFT_API_BASE_URL,
+                socketBaseUrl = RAFT_SOCKET_BASE_URL,
                 webUrl = "https://app.raft.build"
             )
 

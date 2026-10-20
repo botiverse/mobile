@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,7 +60,7 @@ internal expect fun applyAppLocaleOverride(locale: AppLocale)
  * #85 follow-up: seed the KmmResource `StringDesc.localeType` global
  * from the persisted `AppLocale` as early as possible in the app
  * lifecycle. The right place is the @Page entry
- * [ComposeSlockAppShellPage] -> [SlockAppShellContent], not a
+ * [ComposeRaftAppShellPage] -> [RaftAppShellContent], not a
  * Settings-specific data source. Otherwise the global would only
  * be seeded when the user visits Settings, and shared `StringDesc`
  * lookups would render with the runtime's default `LocaleType.System`
@@ -75,7 +75,7 @@ internal expect fun applyAppLocaleOverride(locale: AppLocale)
 internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
     val persisted =
         remember(pager, refreshTick) {
-            val store = KeyValueLocalePreferenceStore(slockSharedPreferenceStore())
+            val store = KeyValueLocalePreferenceStore(raftSharedPreferenceStore())
             val locale: AppLocale =
                 try {
                     store.readLocaleSync()
@@ -96,7 +96,7 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
 /**
  * Convenience: same as [rememberKmmResourceLocaleSeed] but takes the
  * [Pager] from the current [LocalActivity]. Call this from the
- * top of [SlockAppShellContent] so subsequent `StringDesc` lookups
+ * top of [RaftAppShellContent] so subsequent `StringDesc` lookups
  * in the same composition tree resolve against the user's persisted locale.
  */
 @Composable

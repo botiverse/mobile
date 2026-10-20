@@ -17,14 +17,14 @@ import kotlinx.coroutines.withContext
  * Installs the Android host hooks :shared's CMP runtime reads (once per process, idempotent):
  *
  * - [RaftImageHost.managedImageReader]: managed avatar bytes from the app-scope avatar cache
- *   (`SlockAndroidAvatarCacheProcess.beginRender`), with the decoded-size registration and the
+ *   (`RaftAndroidAvatarCacheProcess.beginRender`), with the decoded-size registration and the
  *   render lease the Kuikly image adapter used (`registerDecoded`, `close`).
  * - [RaftAndroidWebViewHooks.mainDocumentProvider]: release notes main documents from
- *   [SlockReleaseNotesDocumentCache] (the Kuikly sandbox WebView's disk cache), called by the
+ *   [RaftReleaseNotesDocumentCache] (the Kuikly sandbox WebView's disk cache), called by the
  *   WebView off the main thread.
  *
  * The WebView `<input type=file>` hook (`RaftWebViewFileChooserHost`) is implemented by the page
- * host Activity, [SlockCmpActivity].
+ * host Activity, [RaftCmpActivity].
  */
 internal object RaftAndroidHostHooks {
     @Volatile
@@ -41,7 +41,7 @@ internal object RaftAndroidHostHooks {
             val read =
                 raftOpenRenderLease(
                     context = Dispatchers.IO,
-                    open = { SlockAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor) },
+                    open = { RaftAndroidAvatarCacheProcess.currentOrNull()?.beginRender(descriptor) },
                     close = { it.close() },
                 ) ?: return@RaftManagedImageReader null
             RaftManagedImageRead(
@@ -57,7 +57,7 @@ internal object RaftAndroidHostHooks {
                 close = { read.close() },
             )
         }
-        val releaseNotesDocuments = SlockReleaseNotesDocumentCache(appContext)
+        val releaseNotesDocuments = RaftReleaseNotesDocumentCache(appContext)
         RaftAndroidWebViewHooks.mainDocumentProvider = { url ->
             releaseNotesDocuments.loadForWebView(url)?.let { document ->
                 RaftWebViewDocument(bytes = document.bytes, mimeType = document.mimeType, source = document.source)

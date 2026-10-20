@@ -1,22 +1,22 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 class RelationalStoreException(
     val code: Int?,
     private val safeMessage: String?,
     val category: String = classifyRelationalStoreFailure(code, safeMessage)
 ) : RuntimeException(safeMessage ?: "relational store failed")
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 data class PersistenceFailureDiagnostics(
     val errorType: String,
     val category: String,
     val code: Int?
 )
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 fun Throwable.toPersistenceFailureDiagnostics(): PersistenceFailureDiagnostics {
     val chain = causeChain()
     chain.filterIsInstance<RelationalStoreException>().firstOrNull()?.let { relational ->
@@ -35,7 +35,7 @@ fun Throwable.toPersistenceFailureDiagnostics(): PersistenceFailureDiagnostics {
     )
 }
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 fun Throwable.safeDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
 
@@ -57,7 +57,7 @@ private fun Throwable.sqliteCodeOrNull(): Int? {
     }
 }
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 fun classifyRelationalStoreFailure(code: Int?, message: String?): String {
     val lower = message.orEmpty().lowercase()
     return when {

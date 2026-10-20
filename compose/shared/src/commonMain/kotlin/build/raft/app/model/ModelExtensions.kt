@@ -176,8 +176,8 @@ fun List<Message>.sortedByMessageTime(): List<Message> =
 
 private val MessageTimelineComparator =
     Comparator<Message> { left, right ->
-        val leftTime = parseSlockTimestampEpochMillisOrNull(left.timestampLabel)
-        val rightTime = parseSlockTimestampEpochMillisOrNull(right.timestampLabel)
+        val leftTime = parseRaftTimestampEpochMillisOrNull(left.timestampLabel)
+        val rightTime = parseRaftTimestampEpochMillisOrNull(right.timestampLabel)
         if (leftTime != null && rightTime != null) {
             compareValues(leftTime, rightTime).takeIf { it != 0 }?.let { return@Comparator it }
         }
@@ -326,10 +326,10 @@ fun String.appAvatarWireValueOrNull(): String? =
         .takeIf { it.isNotBlank() }
         ?.takeUnless { it.isLegacyGravatarAvatarUrl() }
 
-private val SlockUploadedHumanAvatarPath =
+private val RaftUploadedHumanAvatarPath =
     Regex("^/(?:api/)?avatars/users/[0-9a-f]+\\.webp$", RegexOption.IGNORE_CASE)
 
-internal fun String.slockUploadedHumanAvatarWireValueOrNull(): String? {
+internal fun String.raftUploadedHumanAvatarWireValueOrNull(): String? {
     val normalized = trim().takeIf { it.isNotBlank() } ?: return null
     val path =
         if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
@@ -342,7 +342,7 @@ internal fun String.slockUploadedHumanAvatarWireValueOrNull(): String? {
         }
             .substringBefore('?')
             .substringBefore('#')
-    return normalized.takeIf { SlockUploadedHumanAvatarPath.matches(path) }
+    return normalized.takeIf { RaftUploadedHumanAvatarPath.matches(path) }
 }
 
 private fun explicitAvatarWireValue(
@@ -351,8 +351,8 @@ private fun explicitAvatarWireValue(
     avatarUrl: String?
 ): String? =
     if (kind == MemberKind.Human) {
-        avatarWireValue?.slockUploadedHumanAvatarWireValueOrNull()
-            ?: avatarUrl?.slockUploadedHumanAvatarWireValueOrNull()
+        avatarWireValue?.raftUploadedHumanAvatarWireValueOrNull()
+            ?: avatarUrl?.raftUploadedHumanAvatarWireValueOrNull()
     } else {
         avatarWireValue?.appAvatarWireValueOrNull()
             ?: avatarUrl?.appAvatarWireValueOrNull()

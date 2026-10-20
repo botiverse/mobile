@@ -9,20 +9,20 @@ class ThreadFirstContentStagingTest {
     @Test
     fun earlyLoadingShellCoversLoadingWithoutRenderableContent() {
         assertTrue(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
                 originStatus = "none"
             ).shouldRenderThreadEarlyLoadingShell()
         )
         assertTrue(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
                 originStatus = "loading"
             ).shouldRenderThreadEarlyLoadingShell()
         )
 
         assertFalse(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
@@ -30,9 +30,9 @@ class ThreadFirstContentStagingTest {
             ).shouldRenderThreadEarlyLoadingShell()
         )
         assertFalse(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
@@ -41,13 +41,13 @@ class ThreadFirstContentStagingTest {
         )
 
         assertFalse(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "content",
                 originStatus = "none"
             ).shouldRenderThreadEarlyLoadingShell()
         )
         assertFalse(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "loading",
                 originStatus = "loading",
                 originPreview = "Loading original message..."
@@ -58,10 +58,10 @@ class ThreadFirstContentStagingTest {
     @Test
     fun backgroundRefreshingKeepsRenderableContentVisible() {
         assertFalse(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "content",
                 messages = listOf(
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "message-1",
                         authorId = "user-1",
                         authorName = "User One",
@@ -72,7 +72,7 @@ class ThreadFirstContentStagingTest {
             ).shouldRenderThreadEarlyLoadingShell()
         )
         assertTrue(
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "content",
                 backgroundRefreshing = true
             ).shouldRenderThreadEarlyLoadingShell()

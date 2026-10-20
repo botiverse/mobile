@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.slockLogInfo
-import build.raft.app.slockLogWarn
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -17,7 +17,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-const val SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE = "slockPushRegistration"
+const val RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE = "slockPushRegistration"
 
 private const val INSTALLATION_ID_KEY = "installationId"
 private const val PENDING_REGISTRATION_KEY = "pendingRegistration"
@@ -35,7 +35,7 @@ private val pushDeliveryStatusJson = Json {
 }
 
 @Serializable
-internal data class SlockPushRegistrationPayload(
+internal data class RaftPushRegistrationPayload(
     val installationId: String,
     val provider: String = "apns",
     val platform: String = "ios",
@@ -50,7 +50,7 @@ internal data class SlockPushRegistrationPayload(
  * registration lifecycle (persistence, auth-gated upsert, dedupe, logout
  * unbind); only the token shape and the allowed environments differ.
  */
-internal enum class SlockPushProviderSpec(val provider: String, val platform: String) {
+internal enum class RaftPushProviderSpec(val provider: String, val platform: String) {
     /** iOS: hex APNs device token, sandbox or production. */
     Apns(provider = "apns", platform = "ios"),
 
@@ -67,7 +67,7 @@ internal enum class SlockPushProviderSpec(val provider: String, val platform: St
             Fcm -> raw.trim()
         }
 
-    fun accepts(payload: SlockPushRegistrationPayload): Boolean {
+    fun accepts(payload: RaftPushRegistrationPayload): Boolean {
         if (payload.provider != provider || payload.platform != platform) return false
         if (payload.installationId.isBlank() || payload.topic.isBlank() || payload.appVersion.isBlank()) return false
         val token = payload.deviceToken
@@ -103,7 +103,7 @@ internal const val PUSH_DELIVERY_STATUS_MIN_REQUEST_INTERVAL_MILLIS: Long = 5L *
  * an active FCM registration.
  */
 @Serializable
-data class SlockPushDeliveryStatus(
+data class RaftPushDeliveryStatus(
     val environmentId: String,
     val userId: String,
     val installationId: String,
@@ -128,15 +128,15 @@ private data class PushDeliveryStatusResponseBody(
 fun normalizedPushEnvironmentId(raw: String?): String? =
     raw?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
 
-internal interface SlockPushRegistrationApi {
+internal interface RaftPushRegistrationApi {
     suspend fun upsert(payloadJson: String): HomeNetworkResponse
     suspend fun unbind(installationId: String): HomeNetworkResponse
     suspend fun deliveryStatus(installationId: String): HomeNetworkResponse
 }
 
-internal class SlockPushRegistrationNetworkApi(
-    private val networkClient: SlockNetworkClient
-) : SlockPushRegistrationApi {
+internal class RaftPushRegistrationNetworkApi(
+    private val networkClient: RaftNetworkClient
+) : RaftPushRegistrationApi {
     override suspend fun upsert(payloadJson: String): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Background,
@@ -161,15 +161,15 @@ internal class SlockPushRegistrationNetworkApi(
         )
 }
 
-internal interface SlockPushRegistrationLifecycleSink {
+internal interface RaftPushRegistrationLifecycleSink {
     fun onSessionSaved()
     fun onSessionInvalidated(reason: AuthSessionClearReason)
     suspend fun unbindBeforeLogout()
 }
 
-internal object SlockPushRegistrationLifecycle {
+internal object RaftPushRegistrationLifecycle {
     @Volatile
-    private var sink: SlockPushRegistrationLifecycleSink? = null
+    private var sink: RaftPushRegistrationLifecycleSink? = null
 
     @Volatile
     private var sessionEvents: SharedFlow<AuthSessionEvent>? = null
@@ -180,7 +180,7 @@ internal object SlockPushRegistrationLifecycle {
     private var sessionEventsObserverJob: Job? = null
     private var lastObservedGeneration = 0L
 
-    fun install(next: SlockPushRegistrationLifecycleSink) {
+    fun install(next: RaftPushRegistrationLifecycleSink) {
         sink = next
         startObserversIfReady()
     }
@@ -240,25 +240,25 @@ internal object SlockPushRegistrationLifecycle {
     }
 }
 
-internal interface SlockIosRemoteNotificationsController {
+internal interface RaftIosRemoteNotificationsController {
     suspend fun setEnabled(enabled: Boolean)
 }
 
-private object PlatformSlockIosRemoteNotificationsController : SlockIosRemoteNotificationsController {
+private object PlatformRaftIosRemoteNotificationsController : RaftIosRemoteNotificationsController {
     override suspend fun setEnabled(enabled: Boolean) {
-        slockSetIosRemoteNotificationsEnabled(enabled)
+        raftSetIosRemoteNotificationsEnabled(enabled)
     }
 }
 
-internal class SlockPushRegistrationCoordinator(
-    private val store: SlockKeyValueStore,
-    private val spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
+internal class RaftPushRegistrationCoordinator(
+    private val store: RaftKeyValueStore,
+    private val spec: RaftPushProviderSpec = RaftPushProviderSpec.Apns,
     private val currentSession: suspend () -> StoredAuthSession?,
     private val authRuntimeReady: () -> Boolean = { true },
-    private val apiProvider: () -> SlockPushRegistrationApi?,
+    private val apiProvider: () -> RaftPushRegistrationApi?,
     private val scope: CoroutineScope,
-    private val remoteNotificationsController: SlockIosRemoteNotificationsController =
-        PlatformSlockIosRemoteNotificationsController,
+    private val remoteNotificationsController: RaftIosRemoteNotificationsController =
+        PlatformRaftIosRemoteNotificationsController,
     /**
      * Non-null turns on the delivery-status cache (Android). The API base URL the shared network client
      * talks to; the stored answer is bound to it. iOS passes null and never asks.
@@ -267,7 +267,7 @@ internal class SlockPushRegistrationCoordinator(
     private val clockMillis: () -> Long = ::defaultNowMillis,
     private val infoLogger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
-) : SlockPushRegistrationLifecycleSink {
+) : RaftPushRegistrationLifecycleSink {
     private val mutex = Mutex()
 
     @Volatile
@@ -308,7 +308,7 @@ internal class SlockPushRegistrationCoordinator(
             return false
         }
         val payload =
-            SlockPushRegistrationPayload(
+            RaftPushRegistrationPayload(
                 installationId = installationId,
                 provider = spec.provider,
                 platform = spec.platform,
@@ -371,12 +371,12 @@ internal class SlockPushRegistrationCoordinator(
     }
 
     /** The stored delivery-status answer, whoever it belongs to; callers match it against the current state. */
-    fun storedDeliveryStatus(): SlockPushDeliveryStatus? =
+    fun storedDeliveryStatus(): RaftPushDeliveryStatus? =
         store.getString(DELIVERY_STATUS_KEY)
             ?.takeIf { it.isNotBlank() }
             ?.let { encoded ->
                 try {
-                    pushDeliveryStatusJson.decodeFromString<SlockPushDeliveryStatus>(encoded)
+                    pushDeliveryStatusJson.decodeFromString<RaftPushDeliveryStatus>(encoded)
                 } catch (_: SerializationException) {
                     null
                 } catch (_: IllegalArgumentException) {
@@ -387,7 +387,7 @@ internal class SlockPushRegistrationCoordinator(
     fun currentInstallationId(): String? =
         store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
 
-    private fun storedDeliveryStatusFor(userId: String, environmentId: String?): SlockPushDeliveryStatus? =
+    private fun storedDeliveryStatusFor(userId: String, environmentId: String?): RaftPushDeliveryStatus? =
         storedDeliveryStatus()?.takeIf { status ->
             status.userId == userId &&
                 status.installationId == currentInstallationId() &&
@@ -468,7 +468,7 @@ internal class SlockPushRegistrationCoordinator(
     }
 
     private suspend fun requestDeliveryStatus(
-        api: SlockPushRegistrationApi,
+        api: RaftPushRegistrationApi,
         reason: String,
         environmentProvider: () -> String?,
         environmentId: String,
@@ -495,7 +495,7 @@ internal class SlockPushRegistrationCoordinator(
             return false
         }
         val status =
-            SlockPushDeliveryStatus(
+            RaftPushDeliveryStatus(
                 environmentId = environmentId,
                 userId = userId,
                 installationId = installationId,
@@ -654,16 +654,16 @@ internal class SlockPushRegistrationCoordinator(
  * upsert dedupe and logout unbind stay in shared code so account changes cannot
  * create a second iOS-only registration model.
  */
-object SlockIosPushRegistrationBridge {
+object RaftIosPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
 
     @Volatile
-    private var coordinator: SlockPushRegistrationCoordinator? = null
+    private var coordinator: RaftPushRegistrationCoordinator? = null
 
     fun install(candidateInstallationId: String): String {
         val runtime = coordinator ?: createCoordinator().also {
             coordinator = it
-            SlockPushRegistrationLifecycle.install(it)
+            RaftPushRegistrationLifecycle.install(it)
         }
         val installationId = runtime.installationId(candidateInstallationId)
         runtime.onSessionSaved()
@@ -678,7 +678,7 @@ object SlockIosPushRegistrationBridge {
     ) {
         val runtime = coordinator
         if (runtime == null) {
-            slockLogWarn(PUSH_LOG_TAG, "registration_rejected reason=bridge_not_installed")
+            raftLogWarn(PUSH_LOG_TAG, "registration_rejected reason=bridge_not_installed")
             return
         }
         scope.launch {
@@ -698,22 +698,22 @@ object SlockIosPushRegistrationBridge {
         }
     }
 
-    private fun createCoordinator(): SlockPushRegistrationCoordinator {
+    private fun createCoordinator(): RaftPushRegistrationCoordinator {
         val store =
-            SlockSharedKeyValueStoreProvider.create(
-                namespace = SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE,
+            RaftSharedKeyValueStoreProvider.create(
+                namespace = RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE,
                 storageName = "push registration"
             ).store
-        return SlockPushRegistrationCoordinator(
+        return RaftPushRegistrationCoordinator(
             store = store,
-            currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
-            authRuntimeReady = { SlockSharedStoreRegistry.currentOrNull() != null },
+            currentSession = { RaftSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
+            authRuntimeReady = { RaftSharedStoreRegistry.currentOrNull() != null },
             apiProvider = {
-                SlockSharedStoreRegistry.currentOrNull()?.networkClient?.let(::SlockPushRegistrationNetworkApi)
+                RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
             },
             scope = scope,
-            infoLogger = { message -> slockLogInfo(PUSH_LOG_TAG, message) },
-            warningLogger = { message -> slockLogWarn(PUSH_LOG_TAG, message) }
+            infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, message) },
+            warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, message) }
         )
     }
 }

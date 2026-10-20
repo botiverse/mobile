@@ -410,9 +410,9 @@ class AppUpdatePageTest {
 
     @Test
     fun appUpdateUsesInstallAndCompletionIconsForPersistedTransaction() {
-        assertEquals(SlockLucideIconName.RefreshCw, appUpdatePrimaryActionIcon(null, "network_error"))
+        assertEquals(RaftLucideIconName.RefreshCw, appUpdatePrimaryActionIcon(null, "network_error"))
         assertEquals(
-            SlockLucideIconName.PackageCheck,
+            RaftLucideIconName.PackageCheck,
             appUpdatePrimaryActionIcon(
                 SharedSettingsUpdateCheckSnapshot(
                     transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall
@@ -421,7 +421,7 @@ class AppUpdatePageTest {
             )
         )
         assertEquals(
-            SlockLucideIconName.CircleCheckBig,
+            RaftLucideIconName.CircleCheckBig,
             appUpdatePrimaryActionIcon(
                 SharedSettingsUpdateCheckSnapshot(
                     transactionState = SharedSettingsUpdateTransactionState.Installed
@@ -430,7 +430,7 @@ class AppUpdatePageTest {
             )
         )
         assertEquals(
-            SlockLucideIconName.RefreshCw,
+            RaftLucideIconName.RefreshCw,
             appUpdatePrimaryActionIcon(
                 SharedSettingsUpdateCheckSnapshot(
                     transactionState = SharedSettingsUpdateTransactionState.Failed,

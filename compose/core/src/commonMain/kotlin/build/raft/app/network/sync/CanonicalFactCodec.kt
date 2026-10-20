@@ -1,6 +1,6 @@
 package build.raft.app.network.sync
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
@@ -56,7 +56,7 @@ private const val CANONICAL_FACT_VERSION_V1 = 1
 const val CANONICAL_FACT_SOLE_APPLY_ELIGIBLE: Boolean = false
 
 /** The byte-stable codec Json. Do NOT change without re-pinning the golden fixture. */
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 val canonicalFactCodecJson: Json = Json {
     explicitNulls = true // resolved null must serialize as null (not be dropped) — three-state byte-faithful
     encodeDefaults = true // emit every field incl. version + empty lists — byte-stable for the golden pin

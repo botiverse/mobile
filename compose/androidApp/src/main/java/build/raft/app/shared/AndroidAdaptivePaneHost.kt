@@ -9,7 +9,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import androidx.window.layout.WindowMetricsCalculator
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
@@ -102,7 +102,7 @@ internal class AndroidAdaptivePaneHost(
                         .catch { throwable ->
                             posture = AndroidAdaptivePanePosture.Unknown
                             publishCurrentWindow()
-                            SlockAppLog.w(
+                            RaftAppLog.w(
                                 "SlockAdaptivePane",
                                 "android_window_layout_observer_failed " +
                                     "type=${throwable.javaClass.simpleName}"
@@ -134,7 +134,7 @@ internal class AndroidAdaptivePaneHost(
         val bounds: Rect =
             runCatching { windowMetricsCalculator.computeCurrentWindowMetrics(activity).bounds }
                 .getOrElse { throwable ->
-                    SlockAppLog.w(
+                    RaftAppLog.w(
                         "SlockAdaptivePane",
                         "android_window_metrics_failed type=${throwable.javaClass.simpleName}"
                     )
@@ -148,7 +148,7 @@ internal class AndroidAdaptivePaneHost(
                 posture = posture,
             )
         if (publisher.publish(snapshot)) {
-            SlockAppLog.d(
+            RaftAppLog.d(
                 "SlockAdaptivePane",
                 "android_window_facts widthPx=${snapshot.widthPx} heightPx=${snapshot.heightPx} " +
                     "density=${snapshot.density} posture=${snapshot.posture.wireName}"

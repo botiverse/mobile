@@ -82,14 +82,14 @@ class SettingsHomeSearchEntityPinTest {
     @Test
     fun threadSettingsPinTargetUsesCanonicalChannelAndDmPeerIdentity() {
         val channel =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "channel",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "thread-1",
                 streamChannelId = "stream-1"
             )
-        val dm = channel.copy(surfaceKind = KuiklyThreadSurfaceKind.DirectMessage)
-        val reply = channel.copy(surfaceKind = KuiklyThreadSurfaceKind.ReplyThread)
+        val dm = channel.copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage)
+        val reply = channel.copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread)
         val agentProjection = dmProjection(MemberKind.Agent, "agent-1")
         val humanProjection = dmProjection(MemberKind.Human, "human-1")
 
@@ -139,26 +139,26 @@ class SettingsHomeSearchEntityPinTest {
         assertTrue(
             threadHeaderSettingsActionVisible(
                 payloadShowSettingsAction = false,
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage
             )
         )
-        assertFalse(threadHeaderInlineActivityMuteVisible(KuiklyThreadSurfaceKind.DirectMessage))
-        assertTrue(threadHeaderInlineActivityMuteVisible(KuiklyThreadSurfaceKind.Channel))
+        assertFalse(threadHeaderInlineActivityMuteVisible(RaftThreadSurfaceKind.DirectMessage))
+        assertTrue(threadHeaderInlineActivityMuteVisible(RaftThreadSurfaceKind.Channel))
         assertFalse(
             threadHeaderSettingsActionVisible(
                 payloadShowSettingsAction = false,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.Channel
             )
         )
         assertFalse(
             threadSettingsUsesStandalonePage(
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 newDesignSettingsEnabled = true
             )
         )
         assertTrue(
             threadSettingsUsesStandalonePage(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 newDesignSettingsEnabled = true
             )
         )
@@ -226,7 +226,7 @@ class SettingsHomeSearchEntityPinTest {
             canonicalChannelId = "dm-canonical",
             aliases = setOf("dm-canonical", "stream-1"),
             conversationKind = ConversationKind.DirectMessage,
-            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
             channelKind = "direct_message",
             title = "Peer",
             peerIdentity =

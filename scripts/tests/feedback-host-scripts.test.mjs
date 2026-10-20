@@ -26,7 +26,7 @@ const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/Sett
   .replaceAll('$trustedUrl', '"https://example.test/feedback/"')
   .replaceAll('$clientKind', '"android"')
   .replaceAll('$clientVersion', '"1.0.11-alpha+test"')
-  .replace('${json.encodeToString(slockFeedbackWebViewClientKind())}', '"android"');
+  .replace('${json.encodeToString(raftFeedbackWebViewClientKind())}', '"android"');
 
 for (const [platform, script] of [['android', android], ['ios', ios]]) {
   test(`${platform}: actual host and feedback scripts keep auth in memory and diagnostics payloads tokenless`, () => {

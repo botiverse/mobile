@@ -4,10 +4,10 @@ import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalBadge
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalTone
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalBadge
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalTone
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
@@ -18,7 +18,7 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
 import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.isUnfollowedActivityThread
@@ -29,9 +29,9 @@ import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealReadReceiptRepository
-import build.raft.app.data.NetworkSlockThreadApi
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
@@ -39,7 +39,7 @@ import build.raft.app.data.SharedActivityPresentationStore
 import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
@@ -48,7 +48,7 @@ import build.raft.app.data.activityPendingUpdateIncrement
 import build.raft.app.data.activityPendingUpdateMarkers
 import build.raft.app.data.activityUpdatePresentation
 import build.raft.app.data.activityUpdateRevisionMessageId
-import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.model.ChannelId
@@ -58,7 +58,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
@@ -127,16 +127,16 @@ private val ActivitySelectedRowShadowOffset = 2.dp
 @Composable
 internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     routeVisibleTick: Int = 0,
     active: Boolean = true,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     includeTopSafeArea: Boolean = true,
-    timeContext: SlockTimeContext? = null,
-    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
+    timeContext: RaftTimeContext? = null,
+    shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
+    storeScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
     activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     activitySenderAvatarsEnabled: Boolean = false,
     // task #383: secondary-route pages (ComposeHomeActivityPage) never see a
@@ -151,7 +151,7 @@ internal fun SharedHomeActivityScreen(
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val repository =
@@ -212,7 +212,7 @@ internal fun SharedHomeActivityScreen(
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
-                networkApi = NetworkSlockThreadApi(networkClient),
+                networkApi = NetworkRaftThreadApi(networkClient),
                 sessionStore = authStore,
                 pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
@@ -372,14 +372,14 @@ internal fun SharedHomeActivityScreen(
         }
     }
     if (refreshOnAppLifecycleResume) {
-        val realtimeEvents = remember(sharedStores) { KuiklyRealtimeEvents(sharedStores.eventBus) }
+        val realtimeEvents = remember(sharedStores) { RaftRealtimeEvents(sharedStores.eventBus) }
         DisposableEffect(realtimeEvents, activityStore) {
             val subscription =
                 realtimeEvents.addListener { data ->
                     if (
                         activityAppLifecycleResumeShouldRefresh(
-                            action = data.optString(SlockRealtimeNotifyContract.KeyAction),
-                            lifecycleEvent = data.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                            action = data.optString(RaftRealtimeNotifyContract.KeyAction),
+                            lifecycleEvent = data.optString(RaftRealtimeNotifyContract.KeyLifecycleEvent)
                         )
                     ) {
                         bridge.log("shared_activity_app_lifecycle_resume_refresh")
@@ -464,10 +464,10 @@ internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean 
  * pageDidAppear, so secondary-route surfaces match on those two wire values.
  */
 internal fun activityAppLifecycleResumeShouldRefresh(action: String, lifecycleEvent: String): Boolean =
-    action == SlockRealtimeNotifyContract.ActionAppLifecycle &&
+    action == RaftRealtimeNotifyContract.ActionAppLifecycle &&
         (
-            lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
-                lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleShow
+            lifecycleEvent == RaftRealtimeNotifyContract.LifecycleVisibleResume ||
+                lifecycleEvent == RaftRealtimeNotifyContract.LifecycleVisibleShow
             )
 
 internal data class ActivityRefreshPresentation(
@@ -487,7 +487,7 @@ internal data class ActivityRefreshPresentation(
  * previously-unlogged call site does not change what existing consumers grep.
  */
 internal fun sharedActivityStoreDiagnosticsLogger(): (String) -> Unit {
-    val delegate = slockLogger("SlockHomeActivity", "shared_home_activity")
+    val delegate = raftLogger("SlockHomeActivity", "shared_home_activity")
     return { message -> delegate(stampSharedActivityDiagnosticsSequence(message)) }
 }
 
@@ -601,10 +601,10 @@ internal fun SharedHomeActivityScreen(
     onIntent: (SharedActivityIntent) -> Unit,
     onOpenItem: (InboxItem) -> Unit,
     onClose: (() -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     includeTopSafeArea: Boolean = true,
-    timeContext: SlockTimeContext? = null,
-    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    timeContext: RaftTimeContext? = null,
+    shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
@@ -641,11 +641,11 @@ internal fun SharedHomeActivityPanel(
     selectedFilter: InboxFilter = InboxFilter.All,
     onOpenItem: (InboxItem) -> Unit = {},
     onClose: (() -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     includeTopSafeArea: Boolean = false,
     pullRefreshing: Boolean = false,
-    timeContext: SlockTimeContext? = null,
-    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    timeContext: RaftTimeContext? = null,
+    shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
     activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
@@ -660,7 +660,7 @@ internal fun SharedHomeActivityPanel(
     // recomposed on every state snapshot change; this marker tells us how much
     // wall-time the panel render itself costs on the UI thread (excluding
     // inner List measure which we'd add separately if this shows hot).
-    traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
+    traceMarkdownSection(RaftInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
         SharedActivityPanelContent(
             state =
                 SharedActivityState(
@@ -710,7 +710,7 @@ private fun SharedActivityPanelContent(
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
     topSafeAreaPadding: Dp,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
     activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
@@ -740,7 +740,7 @@ private fun SharedActivityPanelContent(
     )
     val scrollToTopScope = rememberCoroutineScope()
     Column(
-        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+        modifier = modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
     ) {
         SharedActivityHeader(
             totalCount = state.totalCount,
@@ -755,7 +755,7 @@ private fun SharedActivityPanelContent(
                 }
             }
         )
-        SlockAppShellBodyTopBanner()
+        RaftAppShellBodyTopBanner()
         // task #232: filter tabs are a TabPager — the filter bar stays the tap
         // surface (its SetFilter flows back in as selectedIndex and animates
         // the pager); a horizontal swipe settling on a page dispatches the
@@ -770,7 +770,7 @@ private fun SharedActivityPanelContent(
             onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
             pageCount = filters.size,
             gesturePolicy = TabPagerGesturePolicy(
-                startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+                startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
             ),
             keepItemAlive = true,
             tabBar = {
@@ -838,7 +838,7 @@ private fun SharedActivityBodyContent(
     onOpenItem: (InboxItem) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
     activitySenderAvatarsEnabled: Boolean,
@@ -941,7 +941,7 @@ private fun SharedActivityHeader(
     refreshing: Boolean,
     onTitleClick: (() -> Unit)? = null
 ) {
-    SlockTopPageHeader(
+    RaftTopPageHeader(
         title = stringResource(MR.strings.home_nav_activity),
         subtitle =
             if (totalUnreadCount > 0) {
@@ -949,13 +949,13 @@ private fun SharedActivityHeader(
             } else {
                 stringResource(MR.strings.activity_header_active_count, totalCount)
             },
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = RaftColor.SurfaceWhite,
         topSafeAreaOverride = topSafeAreaPadding,
         refreshing = refreshing,
         leadingContent =
             onClose?.let { close ->
                 {
-                    SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = close)
+                    RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = close)
                 }
             },
         onTitleClick = onTitleClick,
@@ -970,7 +970,7 @@ private fun SharedActivityFilterBar(
     onFilterSelected: (InboxFilter) -> Unit,
     onMarkAllRead: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().height(54.dp).background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
         Row(
             modifier =
                 Modifier
@@ -992,18 +992,18 @@ private fun SharedActivityFilterBar(
                 modifier = Modifier.weight(1f)
             )
             if (totalUnreadCount > 0) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.inbox_action_mark_all_read),
                     minHeight = 28.dp,
                     minWidth = 0.dp,
                     shadowOffset = 2.dp,
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    backgroundColor = RaftColor.SurfaceWhite,
+                    textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
                     onClick = onMarkAllRead
                 )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
     }
 }
 
@@ -1021,7 +1021,7 @@ private fun SharedActivityList(
     onOpenItem: (InboxItem) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean,
     activitySenderAvatarsEnabled: Boolean,
@@ -1055,7 +1055,7 @@ private fun SharedActivityList(
             }
         }
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
-    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var menuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var selectedItemKey by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.selectedItemKey)
     }
@@ -1281,7 +1281,7 @@ private fun SharedActivityList(
             latestOnIntent(SharedActivityIntent.DetachPrewarmViewport)
         }
     }
-    val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
+    val showPullToRefreshItem = raftPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
     val presentationOwnerIdentity =
         activityPresentationOwnerIdentity(
@@ -1300,7 +1300,7 @@ private fun SharedActivityList(
     LaunchedEffect(renderedItems.isNotEmpty()) {
         if (!firstRenderLogged && renderedItems.isNotEmpty()) {
             firstRenderLogged = true
-            slockLogInfo(
+            raftLogInfo(
                 "SlockForegroundPerf",
                 "first_render elapsedMs=${panelFirstRenderMark.elapsedNow().inWholeMilliseconds} serverId=$presentationServerId items=${renderedItems.size} basis=per_cold_start"
             )
@@ -1309,7 +1309,7 @@ private fun SharedActivityList(
     LaunchedEffect(renderedItems.isNotEmpty(), foregroundEpoch) {
         if (foregroundEpoch != 0L && !resumeFirstRenderLogged && renderedItems.isNotEmpty()) {
             resumeFirstRenderLogged = true
-            slockLogInfo(
+            raftLogInfo(
                 "SlockForegroundPerf",
                 "resume_first_render elapsedMs=${resumeFirstRenderMark.elapsedNow().inWholeMilliseconds} epoch=$foregroundEpoch serverId=$presentationServerId items=${renderedItems.size} basis=per_resume"
             )
@@ -1318,7 +1318,7 @@ private fun SharedActivityList(
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
             modifier =
@@ -1329,7 +1329,7 @@ private fun SharedActivityList(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (showPullToRefreshItem) {
-                slockRaftPullToRefreshItem(
+                raftPullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
@@ -1430,7 +1430,7 @@ private fun SharedActivityList(
             item { Spacer(Modifier.height(bottomContentPadding)) }
         }
         if (stableOrderEnabled && updateTracking.pendingCount > 0) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(
                     if (updateTracking.pendingCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
                     updateTracking.pendingCount
@@ -1455,17 +1455,17 @@ private fun SharedActivityList(
                 minHeight = 30.dp,
                 minWidth = 0.dp,
                 shadowOffset = 2.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
             )
         }
         activeMenuItem?.let { item ->
             val resolvedMenuAnchor = menuAnchor ?: return@let
-            SlockBaseMenuOverlay(
+            RaftBaseMenuOverlay(
                 anchor = resolvedMenuAnchor,
                 items = activityContextMenuActionIds(item).map { actionId ->
                     when (actionId) {
                         "toggle-read" ->
-                            SlockBaseMenuItem(
+                            RaftBaseMenuItem(
                                 id = actionId,
                                 label =
                                     if (item.unreadCount > 0) {
@@ -1473,25 +1473,25 @@ private fun SharedActivityList(
                                     } else {
                                         stringResource(MR.strings.home_action_mark_as_unread)
                                     },
-                                icon = SlockLucideIconName.Mail
+                                icon = RaftLucideIconName.Mail
                             )
                         "done" ->
-                            SlockBaseMenuItem(
+                            RaftBaseMenuItem(
                                 id = actionId,
                                 label = stringResource(MR.strings.common_done),
-                                icon = SlockLucideIconName.Check
+                                icon = RaftLucideIconName.Check
                             )
                         "follow-thread" ->
-                            SlockBaseMenuItem(
+                            RaftBaseMenuItem(
                                 id = actionId,
                                 label = stringResource(MR.strings.thread_action_follow_thread),
-                                icon = SlockLucideIconName.Bell
+                                icon = RaftLucideIconName.Bell
                             )
                         "unfollow-thread" ->
-                            SlockBaseMenuItem(
+                            RaftBaseMenuItem(
                                 id = actionId,
                                 label = stringResource(MR.strings.thread_action_unfollow_thread),
-                                icon = SlockLucideIconName.BellOff
+                                icon = RaftLucideIconName.BellOff
                             )
                         else -> error("unknown Activity menu action: $actionId")
                     }
@@ -1622,16 +1622,16 @@ private fun SharedActivitySelectedRowSurface(
                 Modifier
                     .matchParentSize()
                     .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
-                    .background(SlockColor.ShadowBlack)
+                    .background(RaftColor.ShadowBlack)
             )
         }
         content(
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .border(
-                    SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
+                    RaftAppStroke.Default,
+                    if (selected) RaftColor.BorderBlack else RaftColor.TextBlack.copy(alpha = 0.3f)
                 )
         )
     }
@@ -1644,7 +1644,7 @@ private fun SharedActivityRow(
     dmPeerNames: Map<String, String> = emptyMap(),
     selected: Boolean,
     modifier: Modifier = Modifier,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
     activitySenderAvatarsEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
@@ -1652,7 +1652,7 @@ private fun SharedActivityRow(
     presentationOwnerIdentity: String = "",
     onOpen: () -> Unit,
     onDone: () -> Unit,
-    onOpenMenu: (SlockPopoverAnchor) -> Unit
+    onOpenMenu: (RaftPopoverAnchor) -> Unit
 ) {
     val openGestureKey =
         remember(item, presentationGeneration, presentationOwnerIdentity) {
@@ -1722,17 +1722,17 @@ private fun SharedActivityRow(
                     // on the tag row; the title and the rows below do not move.
                     Text(
                         text = item.channelLabel(dmPeerNames),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(end = 10.dp)
                     )
-                    SlockRelativeTimestampText(
+                    RaftRelativeTimestampText(
                         value = item.latestActivityAt ?: item.lastMessageAt,
                         timeContext = timeContext,
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = SlockMonoFamily),
-                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+                        color = RaftColor.TextBlack.copy(alpha = 0.4f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1743,8 +1743,8 @@ private fun SharedActivityRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (item.kind == InboxItemKind.Thread) {
-                        SlockLucideIcon(
-                            SlockLucideIconName.MessageSquare,
+                        RaftLucideIcon(
+                            RaftLucideIconName.MessageSquare,
                             modifier = Modifier.size(13.dp),
                             // react title icon is text-black/45 in EVERY state
                             // (#1039); only the title text dims when read.
@@ -1763,11 +1763,11 @@ private fun SharedActivityRow(
                         text = primaryPreview.toAnnotatedString(),
                         style =
                             if (item.unreadCount > 0) {
-                                SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
+                                RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
                             } else {
-                                SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                                RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
                             },
-                        color = if (mutedPrimaryContent) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
+                        color = if (mutedPrimaryContent) RaftColor.TextBlack.copy(alpha = 0.5f) else RaftColor.TextBlack,
                         maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -1782,8 +1782,8 @@ private fun SharedActivityRow(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = secondary.toAnnotatedString(),
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
+                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = if (item.unreadCount > 0) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.45f),
                         // react body is line-clamp-2 (#1039): the preview gets
                         // two lines before ellipsis, not one.
                         maxLines = 2,
@@ -1801,7 +1801,7 @@ private fun SharedActivityRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         SharedActivitySmallIconButton(
-                            iconName = SlockLucideIconName.Check,
+                            iconName = RaftLucideIconName.Check,
                             clickIdentity =
                                 item.activityDoneClickIdentity(
                                     presentationGeneration = presentationGeneration,
@@ -1835,11 +1835,11 @@ internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
 
 // Activity sender avatar for the Mobile-only appearance experiment. The outer frame is
 // 32dp with a 2dp black border; the fill is keyed by sender kind: agent /
-// human reuse the canonical SlockAvatar wire-value pipeline (pixel avatar,
+// human reuse the canonical RaftAppAvatar wire-value pipeline (pixel avatar,
 // uploaded image, Gravatar, then User-icon placeholder), while system /
 // unknown render the app "SY" initials placeholder.
 internal val ActivitySenderAvatarSize = 32.dp
-private val ActivitySenderAvatarBorder = SlockStroke.Default
+private val ActivitySenderAvatarBorder = RaftAppStroke.Default
 private const val ActivitySenderAppInitials = "SY"
 
 internal data class ActivitySenderAvatarPresentation(
@@ -1918,12 +1918,12 @@ private fun SharedActivitySenderAvatar(
             // External senders render their wire avatar; the cache subject stays
             // null because external ids are never member-cache identities.
             MemberKind.External ->
-                SlockAvatar(
+                RaftAppAvatar(
                     avatarWireValue = identity.avatarWireValue,
                     label = identity.label,
                     avatarSize = ActivitySenderAvatarSize,
                     borderWidth = ActivitySenderAvatarBorder,
-                    cacheSubject = slockMemberAvatarCacheSubject(identity.senderKind, identity.senderId)
+                    cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId)
                 )
             MemberKind.System,
             null -> SharedActivityAppAvatar()
@@ -1937,17 +1937,17 @@ private fun SharedActivityAppAvatar(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .size(ActivitySenderAvatarSize)
-                .background(SlockColor.SoftSignal)
-                .border(ActivitySenderAvatarBorder, SlockColor.BorderBlack),
+                .background(RaftColor.SoftSignal)
+                .border(ActivitySenderAvatarBorder, RaftColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = ActivitySenderAppInitials,
             style =
-                SlockType.Caption
-                    .withSlockFontWeight(FontWeight.Black)
+                RaftType.Caption
+                    .withRaftFontWeight(FontWeight.Black)
                     .copy(fontSize = 12.sp, lineHeight = 12.sp),
-            color = SlockColor.TextBlack,
+            color = RaftColor.TextBlack,
             maxLines = 1
         )
     }
@@ -1965,11 +1965,11 @@ private fun Modifier.activityRowGestures(
     gestureKey: String,
     captureMenuAnchor: Boolean,
     onClick: () -> Unit,
-    onOpenMenu: (SlockPopoverAnchor) -> Unit
+    onOpenMenu: (RaftPopoverAnchor) -> Unit
 ): Modifier {
-    val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef(identity = gestureKey) }
+    val rootAnchor = remember(gestureKey) { RaftLiveRootAnchorRef(identity = gestureKey) }
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "activity-row",
             semanticIdentity = gestureKey,
             callbacks = ActivityRowGestureCallbacks(onClick, onOpenMenu, rootAnchor)
@@ -1978,13 +1978,13 @@ private fun Modifier.activityRowGestures(
         this
             .then(
                 if (captureMenuAnchor) {
-                    Modifier.slockCaptureLiveRootAnchor(rootAnchor)
+                    Modifier.raftCaptureLiveRootAnchor(rootAnchor)
                 } else {
                     Modifier
                 }
             )
-    return anchored.slockGesturePointerInput(gestureOwner) { owner ->
-        var gesture: SlockGestureSession<ActivityRowGestureCallbacks>? = null
+    return anchored.raftGesturePointerInput(gestureOwner) { owner ->
+        var gesture: RaftGestureSession<ActivityRowGestureCallbacks>? = null
         detectTapGestures(
             // Preserve the authority that owned DOWN for this gesture. The semantic owner token
             // cancels a lazy-slot replacement, while ordinary recomposition does not tear down a
@@ -1997,7 +1997,7 @@ private fun Modifier.activityRowGestures(
             onLongPress = { localOffset ->
                 (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
                     callbacks.rootAnchor
-                        .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                        .resolve(RaftPopoverLocalPoint.Exact(localOffset))
                         ?.let(callbacks.onOpenMenu)
                 }
             }
@@ -2007,8 +2007,8 @@ private fun Modifier.activityRowGestures(
 
 private data class ActivityRowGestureCallbacks(
     val onClick: () -> Unit,
-    val onOpenMenu: (SlockPopoverAnchor) -> Unit,
-    val rootAnchor: SlockLiveRootAnchorRef
+    val onOpenMenu: (RaftPopoverAnchor) -> Unit,
+    val rootAnchor: RaftLiveRootAnchorRef
 )
 
 internal fun InboxItem.inboxItemOpenGestureKey(): String =
@@ -2098,13 +2098,13 @@ private fun SharedActivityFooterDraftBadge(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .size(20.dp)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite)
-                .slockSquareCorners(),
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .background(RaftColor.SurfaceWhite)
+                .raftSquareCorners(),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(
-            name = SlockLucideIconName.Pencil,
+        RaftLucideIcon(
+            name = RaftLucideIconName.Pencil,
             modifier = Modifier.size(10.dp),
             color = "#FF000000"
         )
@@ -2119,7 +2119,7 @@ private fun SharedActivityFooterBadge(
     modifier: Modifier = Modifier
 ) {
     val visual = slot.badgeVisual(taskStatus)
-    SlockBrutalBadge(
+    RaftBrutalBadge(
         label = label,
         modifier = modifier,
         tone = visual.tone,
@@ -2137,12 +2137,12 @@ internal fun InboxItem.activityTaskBadgeText(): String =
 
 @Composable
 private fun SharedActivitySmallIconButton(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     modifier: Modifier = Modifier,
     clickIdentity: Any? = null,
     onClick: () -> Unit
 ) {
-    SlockBrutalIconButton(
+    RaftBrutalIconButton(
         iconName = iconName,
         modifier = modifier,
         clickIdentity = clickIdentity,
@@ -2155,17 +2155,17 @@ private fun SharedActivitySmallIconButton(
 @Composable
 private fun SharedActivitySmallButton(
     label: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     onClick: () -> Unit
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         leadingIcon = iconName,
         minHeight = 30.dp,
         minWidth = 0.dp,
         shadowOffset = 2.dp,
-        backgroundColor = SlockColor.SurfaceWhite,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+        backgroundColor = RaftColor.SurfaceWhite,
+        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
         onClick = onClick
     )
 }
@@ -2182,8 +2182,8 @@ private fun SharedActivityLoadingMoreRow() {
     ) {
         Text(
             text = stringResource(MR.strings.inbox_state_loading_more),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
     }
 }
@@ -2201,17 +2201,17 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
     ) {
         Text(
             text = stringResource(MR.strings.inbox_error_load_more),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             modifier = Modifier.padding(end = 8.dp)
         )
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = stringResource(MR.strings.common_retry),
             minHeight = 30.dp,
             minWidth = 0.dp,
             shadowOffset = 2.dp,
-            backgroundColor = SlockColor.SurfaceWhite,
-            textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            backgroundColor = RaftColor.SurfaceWhite,
+            textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
             onClick = onClick
         )
     }
@@ -2236,11 +2236,11 @@ private fun SharedActivityRefreshableStateBody(
         modifier =
             Modifier
                 .fillMaxSize()
-                .raftPullToRefresh(pullToRefreshState, enabled = slockPlatformSupportsKuiklyPullToRefreshItem()),
+                .raftPullToRefresh(pullToRefreshState, enabled = raftPlatformSupportsKuiklyPullToRefreshItem()),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-            slockRaftPullToRefreshItem(
+        if (raftPlatformSupportsKuiklyPullToRefreshItem()) {
+            raftPullToRefreshItem(
                 state = pullToRefreshState,
                 scrollState = listState,
                 onRefresh = onRefresh
@@ -2270,13 +2270,13 @@ private fun SharedActivityStateBody(
     modifier: Modifier = Modifier
 ) {
     if (loading) {
-        SlockCenteredLoading(message = title)
+        RaftCenteredLoading(message = title)
         return
     }
-    SlockEmptyState(
+    RaftEmptyState(
         title = title,
         detail = detail,
-        iconName = SlockLucideIconName.Activity,
+        iconName = RaftLucideIconName.Activity,
         actionLabel = actionLabel,
         onAction = onAction.takeIf { actionLabel != null },
         modifier = modifier.padding(bottom = bottomContentPadding)
@@ -2372,7 +2372,7 @@ private fun InboxItem.senderDisplayName(
             ?: latestActivitySenderName
     }
 
-internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String =
+internal fun InboxItem.activityTimeLabel(timeContext: RaftTimeContext?): String =
     timeContext?.formatTimestampLabel(latestActivityAt ?: lastMessageAt)
         ?: latestActivityAt
         ?: lastMessageAt
@@ -2413,7 +2413,7 @@ internal data class ActivityPreviewText(
     fun toAnnotatedString(): AnnotatedString =
         buildAnnotatedString {
             if (!senderName.isNullOrBlank()) {
-                withStyle(slockSpanStyleForWeight(FontWeight.Bold)) {
+                withStyle(raftSpanStyleForWeight(FontWeight.Bold)) {
                     append(senderName)
                     append(": ")
                 }
@@ -2469,8 +2469,8 @@ internal enum class SharedActivityFooterSlot {
 }
 
 internal data class SharedActivityFooterBadgeVisual(
-    val tone: SlockBrutalTone,
-    val leadingIcon: SlockLucideIconName? = null,
+    val tone: RaftBrutalTone,
+    val leadingIcon: RaftLucideIconName? = null,
     val foregroundColor: Color? = null
 )
 
@@ -2481,11 +2481,11 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
             val statusMeta = status.sharedTaskStatusChipMeta()
             val tone =
                 when (status) {
-                    TaskStatus.Todo -> SlockBrutalTone.Orange
-                    TaskStatus.InProgress -> SlockBrutalTone.Cyan
-                    TaskStatus.InReview -> SlockBrutalTone.Lavender
-                    TaskStatus.Done -> SlockBrutalTone.Lime
-                    TaskStatus.Closed -> SlockBrutalTone.Stone
+                    TaskStatus.Todo -> RaftBrutalTone.Orange
+                    TaskStatus.InProgress -> RaftBrutalTone.Cyan
+                    TaskStatus.InReview -> RaftBrutalTone.Lavender
+                    TaskStatus.Done -> RaftBrutalTone.Lime
+                    TaskStatus.Closed -> RaftBrutalTone.Stone
                 }
             SharedActivityFooterBadgeVisual(
                 tone = tone,
@@ -2493,12 +2493,12 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
                 foregroundColor = statusMeta.foregroundColor
             )
         }
-        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White)
-        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign)
-        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(SlockBrutalTone.Pink)
+        SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White)
+        SharedActivityFooterSlot.Mention -> SharedActivityFooterBadgeVisual(RaftBrutalTone.Yellow, RaftLucideIconName.AtSign)
+        SharedActivityFooterSlot.New -> SharedActivityFooterBadgeVisual(RaftBrutalTone.Pink)
         SharedActivityFooterSlot.Unfollowed ->
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.Stone, SlockLucideIconName.BellOff)
-        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(SlockBrutalTone.White, SlockLucideIconName.Pencil)
+            SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff)
+        SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White, RaftLucideIconName.Pencil)
     }
 
 internal fun InboxItem.activityFooterSlots(

@@ -2,8 +2,8 @@ package build.raft.app.push
 
 import android.content.Context
 import build.raft.app.BuildConfig
-import build.raft.app.core.data.diagnostics.SlockAppLog
-import build.raft.app.data.SlockAndroidPushRegistrationBridge
+import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import java.util.UUID
@@ -18,9 +18,9 @@ internal object AndroidPushRegistration {
 
     fun start(context: Context) {
         runCatching {
-            SlockAndroidPushRegistrationBridge.install(UUID.randomUUID().toString())
+            RaftAndroidPushRegistrationBridge.install(UUID.randomUUID().toString())
         }.onFailure { error ->
-            SlockAppLog.w(TAG, "push_registration_install_failed errorType=${error::class.simpleName ?: "unknown"}")
+            RaftAppLog.w(TAG, "push_registration_install_failed errorType=${error::class.simpleName ?: "unknown"}")
             return
         }
         // Registration by Firebase Installation ID: the FID arrives through
@@ -36,16 +36,16 @@ internal object AndroidPushRegistration {
                     if (!fid.isNullOrBlank()) onFirebaseInstallationId(context, fid)
                 }
                 .addOnFailureListener { error ->
-                    SlockAppLog.w(TAG, "fcm_installation_id_unavailable errorType=${error::class.simpleName ?: "unknown"}")
+                    RaftAppLog.w(TAG, "fcm_installation_id_unavailable errorType=${error::class.simpleName ?: "unknown"}")
                 }
         }.onFailure { error ->
             // Builds without google-services.json have no Firebase app.
-            SlockAppLog.i(TAG, "fcm_register_unavailable errorType=${error::class.simpleName ?: "unknown"}")
+            RaftAppLog.i(TAG, "fcm_register_unavailable errorType=${error::class.simpleName ?: "unknown"}")
         }
     }
 
     fun onFirebaseInstallationId(context: Context, firebaseInstallationId: String) {
-        SlockAndroidPushRegistrationBridge.updateRegistration(
+        RaftAndroidPushRegistrationBridge.updateRegistration(
             firebaseInstallationId = firebaseInstallationId,
             applicationId = context.packageName,
             appVersion = BuildConfig.VERSION_NAME

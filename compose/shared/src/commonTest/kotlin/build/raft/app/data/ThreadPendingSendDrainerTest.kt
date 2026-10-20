@@ -1,13 +1,13 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadMessageItem
-import build.raft.app.KuiklyThreadPendingSendContext
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadMessageItem
+import build.raft.app.RaftThreadPendingSendContext
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.ThreadMessageDeliveryFailed
 import build.raft.app.ThreadMessageDeliverySending
 import build.raft.app.ThreadRouteIdentity
-import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.retry.RetryPolicy
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -237,7 +237,7 @@ class ThreadPendingSendDrainerTest {
     fun timeoutExceptionIsClassifiedAndBackedOff() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()
-        send.throwables += SlockRequestTimeoutException("send request exceeded 30000ms")
+        send.throwables += RaftRequestTimeoutException("send request exceeded 30000ms")
         send.results += ThreadApiResult.Success(successPage())
         val drainer = drainer(store = store, send = send.handler)
 
@@ -318,7 +318,7 @@ class ThreadPendingSendDrainerTest {
 
     private fun drainer(
         store: FakeDrainStore,
-        send: suspend (KuiklyThreadPendingSendContext) -> ThreadApiResult<ThreadMessagesPage>,
+        send: suspend (RaftThreadPendingSendContext) -> ThreadApiResult<ThreadMessagesPage>,
         onSent: suspend (String, ThreadMessagesPage, ReplyCacheProvenance, ThreadRouteIdentity) -> Unit =
             { _, _, _, _ -> },
         onRowFailed: (String, ReplyCacheProvenance, ThreadRouteIdentity, String?, String?) -> Unit =
@@ -356,7 +356,7 @@ class ThreadPendingSendDrainerTest {
 
     private fun route() =
         ThreadRouteIdentity(
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = "group",
             instanceKey = "instance-1",
             timelineKey = "channel-1",
@@ -371,13 +371,13 @@ class ThreadPendingSendDrainerTest {
         )
 
     private fun pendingMessage(localId: String, randomId: String, failed: Boolean) =
-        KuiklyThreadMessageItem(
+        RaftThreadMessageItem(
             id = localId,
             authorId = "user-1",
             authorName = "User",
             deliveryState = if (failed) ThreadMessageDeliveryFailed else ThreadMessageDeliverySending,
             pendingSendContext =
-                KuiklyThreadPendingSendContext(
+                RaftThreadPendingSendContext(
                     channelId = "channel-1",
                     body = "hello",
                     randomId = randomId,
@@ -390,7 +390,7 @@ class ThreadPendingSendDrainerTest {
         val randomIds = mutableListOf<String>()
         val results = ArrayDeque<ThreadApiResult<ThreadMessagesPage>>()
         val throwables = ArrayDeque<Throwable>()
-        val handler: suspend (KuiklyThreadPendingSendContext) -> ThreadApiResult<ThreadMessagesPage> =
+        val handler: suspend (RaftThreadPendingSendContext) -> ThreadApiResult<ThreadMessagesPage> =
             { context ->
                 beforeResult()
                 randomIds += context.randomId.orEmpty()
@@ -407,7 +407,7 @@ class ThreadPendingSendDrainerTest {
     }
 
     private class FakeDrainStore : ThreadPendingSendDrainStore {
-        val rows = mutableListOf<KuiklyThreadMessageItem>()
+        val rows = mutableListOf<RaftThreadMessageItem>()
         val markFailedCalls = mutableListOf<Pair<String, String>>()
         val consumedRandomIds = mutableListOf<String>()
         val secondPass = CompletableDeferred<Unit>()
@@ -416,7 +416,7 @@ class ThreadPendingSendDrainerTest {
         override fun rowsForDrain(
             provenance: ReplyCacheProvenance,
             route: ThreadRouteIdentity
-        ): List<KuiklyThreadMessageItem> {
+        ): List<RaftThreadMessageItem> {
             rowsForDrainCalls += 1
             if (rowsForDrainCalls == 2) secondPass.complete(Unit)
             return rows.toList()

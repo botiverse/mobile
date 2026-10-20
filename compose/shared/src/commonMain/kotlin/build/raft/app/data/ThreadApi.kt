@@ -36,7 +36,7 @@ private val threadApiJson = Json {
  * Field names are exact camelCase. No snake_case fallbacks, no
  * `hasMore`/`hasNextPage`/`downloadUrl` speculation.
  */
-internal interface SlockThreadApi {
+internal interface RaftThreadApi {
     suspend fun channelMessages(
         threadId: String,
         limit: Int = 50,
@@ -76,10 +76,10 @@ internal interface SlockThreadApi {
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult>
 }
 
-internal class SlockThreadApiClient(
+internal class RaftThreadApiClient(
     private val transport: SharedThreadNetworkApi,
     private val diagnosticsLogger: (String) -> Unit = {}
-) : SlockThreadApi {
+) : RaftThreadApi {
     override suspend fun channelMessages(
         threadId: String,
         limit: Int,
@@ -264,8 +264,8 @@ internal class SlockThreadApiClient(
             }
 }
 
-internal class NetworkSlockThreadApi(
-    private val networkClient: SlockNetworkClient
+internal class NetworkRaftThreadApi(
+    private val networkClient: RaftNetworkClient
 ) : SharedThreadNetworkApi {
     override suspend fun channelMessages(
         threadId: String,
@@ -527,10 +527,10 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
     diagnosticsLogger(
-        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     val result =
-        withContext(SlockJsonParseDispatcher) {
+        withContext(RaftJsonParseDispatcher) {
             mapThreadBodySync(contractCode, serializer, transform)
         }
     val resultLabel =
@@ -543,7 +543,7 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     }
     diagnosticsLogger(
         "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
-            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     return result
 }
@@ -560,10 +560,10 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
     )
     val parseStartedAt = TimeSource.Monotonic.markNow()
     diagnosticsLogger(
-        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+        "thread_parse_start source=$source responseBytes=$responseBytes dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     val result =
-        withContext(SlockJsonParseDispatcher) {
+        withContext(RaftJsonParseDispatcher) {
             mapThreadSendBodySync(contractCode)
         }
     val resultLabel =
@@ -574,7 +574,7 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
     val messageCount = (result as? ThreadApiResult.Success<ThreadMessagesPage>)?.data?.messageCount ?: 0
     diagnosticsLogger(
         "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
-            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
     )
     return result
 }

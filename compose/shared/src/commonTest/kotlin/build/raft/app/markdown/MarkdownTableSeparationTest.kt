@@ -1,6 +1,6 @@
 package build.raft.app.markdown
 
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
@@ -113,7 +113,7 @@ class MarkdownTableSeparationTest {
         assertFalse(parseContainsTable(body))
         assertEquals(
             astSignature(body, GFMFlavourDescriptor()),
-            astSignature(body, SlockGFMFlavourDescriptor()),
+            astSignature(body, RaftGFMFlavourDescriptor()),
         )
     }
 
@@ -141,7 +141,7 @@ class MarkdownTableSeparationTest {
         // Slock closes the quote after the `>` lines.
         assertEquals(
             listOf(MarkdownElementTypes.BLOCK_QUOTE, MarkdownElementTypes.PARAGRAPH),
-            blockShape(body, SlockGFMFlavourDescriptor()),
+            blockShape(body, RaftGFMFlavourDescriptor()),
         )
         assertEquals(
             listOf(MarkdownElementTypes.BLOCK_QUOTE),
@@ -170,7 +170,7 @@ class MarkdownTableSeparationTest {
 
         assertEquals(
             astSignature(body, GFMFlavourDescriptor()),
-            astSignature(body, SlockGFMFlavourDescriptor()),
+            astSignature(body, RaftGFMFlavourDescriptor()),
         )
     }
 
@@ -178,11 +178,11 @@ class MarkdownTableSeparationTest {
         parseTree(content).findFirst(GFMElementTypes.TABLE)
 
     private fun parseTree(content: String): ASTNode =
-        MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+        MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
 
     private fun parseContainsTable(
         content: String,
-        flavour: GFMFlavourDescriptor = SlockGFMFlavourDescriptor(),
+        flavour: GFMFlavourDescriptor = RaftGFMFlavourDescriptor(),
     ): Boolean =
         MarkdownParser(flavour)
             .buildMarkdownTreeFromString(content)

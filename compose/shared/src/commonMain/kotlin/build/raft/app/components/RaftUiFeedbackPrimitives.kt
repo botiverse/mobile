@@ -1,0 +1,559 @@
+package build.raft.app.components
+
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftStatusIndicator
+import build.raft.app.RaftStatusIndicatorShape
+import build.raft.app.raftArgbHex
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftType
+import androidx.compose.ui.text.font.FontWeight
+import build.raft.app.withRaftFontWeight
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+internal enum class RaftCheckMarkerShape {
+    Square,
+    Circle
+}
+
+internal enum class RaftCheckMarkerTone(val background: Color, val foregroundArgb: String) {
+    BlackFill(RaftColor.TextBlack, "#FFFFFFFF"),
+    YellowFill(RaftColor.BrandYellow, "#FF000000")
+}
+
+internal enum class RaftProgressBarTone(val color: Color) {
+    Pink(RaftColor.AccentPink),
+    Cyan(RaftColor.AccentCyan),
+    Lime(RaftColor.AccentLime),
+    Orange(RaftColor.AccentOrange)
+}
+
+internal enum class RaftAppSkeletonVariant {
+    Line,
+    Block,
+    Circle
+}
+
+internal const val RaftSpinnerActiveSweepAngle = 46f
+
+/**
+ * raft-ui Spinner sizes: a 2x2 grid of [pixel] squares [gap] apart
+ * (`--spinner-pixel` / `--spinner-gap`). [brutalDiameter] is the legacy arc's box.
+ */
+internal enum class RaftAppSpinnerSize(val pixel: Dp, val gap: Dp, val brutalDiameter: Dp) {
+    Xs(4.dp, 1.5.dp, 10.dp),
+    Sm(5.dp, 2.dp, 16.dp),
+    Md(6.dp, 2.dp, 20.dp),
+    Lg(8.dp, 3.dp, 32.dp);
+
+    /** Edge of the grid: two pixels and the gap between them. */
+    val extent: Dp get() = pixel * 2 + gap
+}
+
+/** raft-ui `raft-spinner-pixel` cycle: 1s, in four `steps(1)` quarters. */
+internal const val RaftAppSpinnerCycleMillis = 1000
+internal const val RaftAppSpinnerStepMillis = RaftAppSpinnerCycleMillis / 4
+
+/** Lit pixel opacity and the resting opacity of the other three (`opacity-20`). */
+internal const val RaftSpinnerPixelRestAlpha = 0.2f
+
+/**
+ * Grid cell (0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right, the DOM order) lit at
+ * [step]. raft-ui delays the children 0 / 0.25 / 0.75 / 0.5s, so the light walks clockwise:
+ * top-left, top-right, bottom-right, bottom-left.
+ */
+internal fun raftAppSpinnerLitCell(step: Int): Int = RaftSpinnerClockwiseCells[((step % 4) + 4) % 4]
+
+/** Animation step at [elapsedMillis] into the cycle. */
+internal fun raftSpinnerStepAt(elapsedMillis: Int): Int =
+    ((elapsedMillis % RaftAppSpinnerCycleMillis + RaftAppSpinnerCycleMillis) % RaftAppSpinnerCycleMillis) / RaftAppSpinnerStepMillis
+
+private val RaftSpinnerClockwiseCells = intArrayOf(0, 1, 3, 2)
+
+@Composable
+internal fun RaftAttentionDot(
+    modifier: Modifier = Modifier,
+    size: Dp = 10.dp,
+    color: Color = RaftColor.AccentPink
+) {
+    if (raftActive()) {
+        // raft attention pixel: 9px pink (`bg-attention`) square, 2px radius, 1.5px sticker-ink
+        // edge; the legacy 10dp default lands on the 9px DS pixel, smaller sizes keep a 1px edge.
+        val pixel = if (size == 10.dp) RaftMetrics.StatusSize else size
+        RaftStatusIndicator(
+            color = if (color == RaftColor.AccentPink) RaftColor.Attention else color,
+            modifier = modifier,
+            size = pixel,
+            shape = RaftStatusIndicatorShape.Square,
+            borderColor = RaftColor.StickerInk,
+            borderWidth = if (pixel < 8.dp) RaftAppStroke.Thin else RaftAppStroke.Control
+        )
+        return
+    }
+    RaftStatusIndicator(color = color, modifier = modifier, size = size, borderWidth = RaftAppStroke.Thin)
+}
+
+@Composable
+internal fun RaftAppStatusDot(
+    modifier: Modifier = Modifier,
+    size: Dp = 10.dp,
+    // react StatusDot.tsx defaults to bg-gray-400 (#99A1AF); no production call
+    // site relies on this default today, only the states fixture exercises it.
+    color: Color = RaftColor.StatusNeutralGray,
+    pulsing: Boolean = false
+) {
+    if (raftActive()) {
+        // raft presence light: square 9px pixel with a 1.5px sticker-ink edge; the neutral
+        // default is `--presence-offline`. Raft status lights never animate.
+        RaftStatusIndicator(
+            color = if (color == RaftColor.StatusNeutralGray) RaftColor.PresenceOffline else color,
+            modifier = modifier,
+            size = if (size == 10.dp) RaftMetrics.StatusSize else size,
+            shape = RaftStatusIndicatorShape.Square,
+            borderColor = RaftColor.StickerInk,
+            borderWidth = RaftAppStroke.Control
+        )
+        return
+    }
+    RaftStatusIndicator(color = color, modifier = modifier, size = size, borderWidth = RaftAppStroke.Thin, pulsing = pulsing)
+}
+
+@Composable
+internal fun RaftCheckMarker(
+    checked: Boolean,
+    modifier: Modifier = Modifier,
+    shape: RaftCheckMarkerShape = RaftCheckMarkerShape.Square,
+    size: Dp = 14.dp,
+    tone: RaftCheckMarkerTone = RaftCheckMarkerTone.BlackFill,
+    disabled: Boolean = false
+) {
+    if (raftActive()) {
+        RaftLookCheckMarker(checked = checked, modifier = modifier, shape = shape, size = size, disabled = disabled)
+        return
+    }
+    val borderWidth = RaftAppStroke.Default
+    val fillColor = if (checked) tone.background else RaftColor.SurfaceWhite
+    val contentAlpha = if (disabled) 0.50f else 1f
+    Box(
+        modifier = modifier.size(size),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(size)) {
+            val stroke = borderWidth.toPx()
+            val halfStroke = stroke / 2f
+            val fill = fillColor.copy(alpha = fillColor.alpha * contentAlpha)
+            val border = RaftColor.BorderBlack.copy(alpha = contentAlpha)
+            if (shape == RaftCheckMarkerShape.Circle) {
+                val radius = (minOf(this.size.width, this.size.height) - stroke).coerceAtLeast(0f) / 2f
+                val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                drawCircle(fill, radius = radius, center = center, style = Fill)
+                drawCircle(border, radius = radius, center = center, style = Stroke(width = stroke))
+            } else {
+                val rectSize = Size(
+                    width = (this.size.width - stroke).coerceAtLeast(0f),
+                    height = (this.size.height - stroke).coerceAtLeast(0f)
+                )
+                drawRect(fill, topLeft = Offset(halfStroke, halfStroke), size = rectSize, style = Fill)
+                drawRect(border, topLeft = Offset(halfStroke, halfStroke), size = rectSize, style = Stroke(width = stroke))
+            }
+        }
+        if (checked) {
+            RaftLucideIcon(
+                RaftLucideIconName.Check,
+                modifier = Modifier.size((size.value * 0.72f).dp),
+                color = tone.foregroundArgb,
+                strokeWidth = if (size <= 16.dp) 4f else 3f
+            )
+        }
+    }
+}
+
+/**
+ * raft-ui 0.6.0 checkbox / radio indicator at the caller's size. Square = checkbox
+ * (sticker radius, `--foreground` fill + inverse check when checked); circle = radio
+ * (card fill, 1.5dp `--line-strong` ring, 8dp `--foreground` dot when checked; raft
+ * radios never take the yellow fill). Disabled = `--foreground-disabled` on `--fill-muted`.
+ */
+@Composable
+private fun RaftLookCheckMarker(
+    checked: Boolean,
+    modifier: Modifier,
+    shape: RaftCheckMarkerShape,
+    size: Dp,
+    disabled: Boolean
+) {
+    val circle = shape == RaftCheckMarkerShape.Circle
+    val boxShape = RoundedCornerShape(if (circle) size / 2 else RaftAppRadius.Sticker)
+    val fill =
+        when {
+            !circle && checked && !disabled -> RaftColor.TextBlack
+            !circle && checked -> RaftColor.ForegroundDisabled
+            disabled -> RaftColor.FillMuted
+            else -> RaftColor.Card
+        }
+    val edge =
+        when {
+            disabled -> RaftColor.ForegroundDisabled
+            checked && !circle -> RaftColor.TextBlack
+            else -> RaftColor.BorderBlack
+        }
+    Box(
+        modifier =
+            modifier
+                .size(size)
+                .background(fill, boxShape)
+                .border(RaftAppStroke.Control, edge, boxShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (checked) {
+            if (circle) {
+                val dot = (size.value * 0.4f).dp
+                Box(
+                    modifier =
+                        Modifier
+                            .size(dot)
+                            .background(
+                                if (disabled) RaftColor.ForegroundDisabled else RaftColor.TextBlack,
+                                RoundedCornerShape(dot / 2)
+                            )
+                )
+            } else {
+                RaftLucideIcon(
+                    RaftLucideIconName.Check,
+                    modifier = Modifier.size((size.value * 0.7f).dp),
+                    color = raftArgbHex(if (disabled) RaftColor.Card else RaftColor.ForegroundInverse),
+                    strokeWidth = 2f
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftProgressBar(
+    value: Int?,
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    tone: RaftProgressBarTone = RaftProgressBarTone.Pink,
+    label: String = "",
+    showPercent: Boolean = false
+) {
+    val percent = value?.coerceIn(0, 100)
+    if (raftActive()) {
+        RaftLookProgressBar(percent = percent, modifier = modifier, tone = tone, label = label, showPercent = showPercent)
+        return
+    }
+    Column(modifier = modifier) {
+        if (label.isNotBlank() || (showPercent && percent != null)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
+                    color = RaftColor.TextBlack.copy(alpha = 0.60f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Box(modifier = Modifier.weight(1f))
+                if (showPercent && percent != null) {
+                    Text(
+                        text = "$percent%",
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.60f),
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+        val shadowOffset = 2.dp
+        Box(modifier = Modifier.fillMaxWidth().height(16.dp + shadowOffset).padding(end = shadowOffset, bottom = shadowOffset)) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(RaftColor.ShadowBlack)
+            )
+            Canvas(modifier = Modifier.fillMaxWidth().height(16.dp)) {
+                val stroke = RaftAppStroke.Default.toPx()
+                val halfStroke = stroke / 2f
+                val trackSize = Size(
+                    width = (size.width - stroke).coerceAtLeast(0f),
+                    height = (size.height - stroke).coerceAtLeast(0f)
+                )
+                val innerWidth = (size.width - stroke * 2f).coerceAtLeast(0f)
+                val innerHeight = (size.height - stroke * 2f).coerceAtLeast(0f)
+                val fillFraction = ((percent ?: 40).coerceIn(0, 100).toFloat() / 100f).coerceIn(0f, 1f)
+                drawRect(
+                    color = RaftColor.SurfaceWhite,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = trackSize,
+                    style = Fill
+                )
+                if (fillFraction > 0f) {
+                    drawRect(
+                        color = tone.color,
+                        topLeft = Offset(stroke, stroke),
+                        size = Size(width = innerWidth * fillFraction, height = innerHeight),
+                        style = Fill
+                    )
+                }
+                drawRect(
+                    color = RaftColor.BorderBlack,
+                    topLeft = Offset(halfStroke, halfStroke),
+                    size = trackSize,
+                    style = Stroke(width = stroke)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * raft-ui 0.6.0 Progress (web `ProgressBar`): optional header (13/18 semibold label, mono
+ * 12/16 hint percent, 6dp gap), an 8dp `--fill-muted` track with sticker radius, and an
+ * indicator in the tone colour with a 1.5dp sticker-ink edge. raft has no pink progress:
+ * pink and cyan both map to `information`.
+ */
+@Composable
+private fun RaftLookProgressBar(
+    percent: Int?,
+    modifier: Modifier,
+    tone: RaftProgressBarTone,
+    label: String,
+    showPercent: Boolean
+) {
+    val indicatorColor =
+        when (tone) {
+            RaftProgressBarTone.Pink,
+            RaftProgressBarTone.Cyan -> RaftColor.Info
+            RaftProgressBarTone.Lime -> RaftColor.Success
+            RaftProgressBarTone.Orange -> RaftColor.Warning
+        }
+    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (label.isNotBlank() || (showPercent && percent != null)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.SemiBold),
+                    color = RaftColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (showPercent && percent != null) {
+                    Text(
+                        text = "$percent%",
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+        // Indeterminate keeps the brutal 40% placeholder width (no animation here).
+        val fraction = ((percent ?: 40).toFloat() / 100f).coerceIn(0f, 1f)
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(shape)
+                    .background(RaftColor.FillMuted, shape)
+        ) {
+            if (fraction > 0f) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(fraction)
+                            .height(8.dp)
+                            .background(indicatorColor, shape)
+                            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftAppSkeleton(
+    modifier: Modifier = Modifier,
+    variant: RaftAppSkeletonVariant = RaftAppSkeletonVariant.Block
+) {
+    if (raftActive()) {
+        // raft-ui Skeleton: `--fill-muted` blocks with the sticker radius; the "circle"
+        // variant is a rounded square too (raft avatars are square).
+        Box(modifier = modifier.background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker)))
+        return
+    }
+    when (variant) {
+        RaftAppSkeletonVariant.Line,
+        RaftAppSkeletonVariant.Block -> Box(modifier = modifier.background(RaftColor.TextBlack.copy(alpha = 0.10f)))
+        RaftAppSkeletonVariant.Circle -> {
+            Canvas(modifier = modifier) {
+                val stroke = RaftAppStroke.Default.toPx()
+                val radius = (minOf(size.width, size.height) - stroke).coerceAtLeast(0f) / 2f
+                val center = Offset(size.width / 2f, size.height / 2f)
+                drawCircle(RaftColor.TextBlack.copy(alpha = 0.05f), radius = radius, center = center, style = Fill)
+                drawCircle(RaftColor.BorderBlack, radius = radius, center = center, style = Stroke(width = stroke))
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftSkeletonRow(
+    modifier: Modifier = Modifier,
+    avatar: Boolean = false,
+    avatarSize: Dp = 18.dp,
+    lineWidths: List<Dp> = listOf(156.dp, 96.dp)
+) {
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (avatar) {
+            RaftAppSkeleton(modifier = Modifier.size(avatarSize), variant = RaftAppSkeletonVariant.Circle)
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            lineWidths.forEach { width ->
+                RaftAppSkeleton(modifier = Modifier.width(width).height(12.dp), variant = RaftAppSkeletonVariant.Line)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RaftAppSpinner(
+    modifier: Modifier = Modifier,
+    size: RaftAppSpinnerSize = RaftAppSpinnerSize.Sm,
+    inverse: Boolean = false,
+    // A fixed step instead of the animation, so still captures are deterministic.
+    stillStep: Int? = null
+) {
+    if (raftActive()) {
+        RaftPixelSpinner(modifier = modifier, size = size, inverse = inverse, stillStep = stillStep)
+        return
+    }
+    val track = if (inverse) RaftColor.SurfaceWhite.copy(alpha = 0.40f) else RaftColor.TextBlack.copy(alpha = 0.20f)
+    val active = if (inverse) RaftColor.SurfaceWhite else RaftColor.TextBlack
+    Canvas(modifier = modifier.size(size.brutalDiameter)) {
+        val stroke = 2.dp.toPx()
+        val inset = stroke / 2f
+        val arcSize = Size(width = this.size.width - stroke, height = this.size.height - stroke)
+        drawArc(
+            color = track,
+            startAngle = 0f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = Offset(inset, inset),
+            size = arcSize,
+            style = Stroke(width = stroke)
+        )
+        drawArc(
+            color = active,
+            startAngle = -90f,
+            sweepAngle = RaftSpinnerActiveSweepAngle,
+            useCenter = false,
+            topLeft = Offset(inset, inset),
+            size = arcSize,
+            style = Stroke(width = stroke)
+        )
+    }
+}
+
+/**
+ * raft-ui 0.7 Spinner: four [RaftAppSpinnerSize.pixel] squares (1dp radius) in a 2x2 grid,
+ * drawn in the current ink (`--foreground`, or `--foreground-inverse` for `inverse`). Each
+ * rests at 20% and one at a time is lit at full ink for a quarter of a 1s cycle, stepping
+ * (no fade) clockwise from the top-left.
+ */
+@Composable
+private fun RaftPixelSpinner(
+    modifier: Modifier,
+    size: RaftAppSpinnerSize,
+    inverse: Boolean,
+    stillStep: Int?
+) {
+    val ink = if (inverse) RaftColor.ForegroundInverse else RaftColor.TextBlack
+    val animatedStep: State<Int>? =
+        if (stillStep == null) {
+            val elapsed =
+                rememberInfiniteTransition(label = "slock-spinner").animateFloat(
+                    initialValue = 0f,
+                    targetValue = RaftAppSpinnerCycleMillis.toFloat(),
+                    animationSpec =
+                        infiniteRepeatable(
+                            animation = tween(durationMillis = RaftAppSpinnerCycleMillis, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                    label = "slock-spinner-elapsed"
+                )
+            // The elapsed time changes every frame, the step only four times a cycle: draw
+            // observes the derived step alone, so the canvas redraws 4x a second.
+            remember(elapsed) { derivedStateOf { raftSpinnerStepAt(elapsed.value.toInt()) } }
+        } else {
+            null
+        }
+    Canvas(modifier = modifier.size(size.extent)) {
+        // Read the step in the draw phase so a step change only redraws the canvas.
+        val step = stillStep ?: animatedStep?.value ?: 0
+        val lit = raftAppSpinnerLitCell(step)
+        val pixel = size.pixel.toPx()
+        val pitch = pixel + size.gap.toPx()
+        val radius = CornerRadius(1.dp.toPx())
+        for (cell in 0 until 4) {
+            drawRoundRect(
+                color = if (cell == lit) ink else ink.copy(alpha = ink.alpha * RaftSpinnerPixelRestAlpha),
+                topLeft = Offset((cell % 2) * pitch, (cell / 2) * pitch),
+                size = Size(pixel, pixel),
+                cornerRadius = radius
+            )
+        }
+    }
+}

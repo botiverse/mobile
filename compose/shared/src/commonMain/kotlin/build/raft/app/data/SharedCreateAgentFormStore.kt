@@ -49,7 +49,7 @@ internal fun sharedCreateAgentFormOwner(
 }
 
 internal class SharedCreateAgentFormStore(
-    private val computersApiClient: SlockComputersApiClient,
+    private val computersApiClient: RaftComputersApiClient,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
     private val ownerProvider: suspend () -> SharedCreateAgentFormOwner? = {

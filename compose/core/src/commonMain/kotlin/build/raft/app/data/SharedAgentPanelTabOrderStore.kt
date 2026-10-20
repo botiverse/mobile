@@ -1,18 +1,18 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 data class SharedAgentPanelTabOrderState(
     val serverId: String? = null,
     val order: List<String> = emptyList(),
     val loaded: Boolean = false
 )
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 class SharedAgentPanelTabOrderStore {
     private val _state = MutableStateFlow(SharedAgentPanelTabOrderState())
     val state: StateFlow<SharedAgentPanelTabOrderState> = _state.asStateFlow()

@@ -27,7 +27,7 @@ class SharedAuthTokenProviderTest {
     fun persistsAttemptBeforeTransportAndAtomicallyClearsItWithSuccessor() = runBlocking {
         var resultPublishedBeforeRetirement: Boolean? = null
         val original = sampleSession(accessToken = "crash-old-access", refreshToken = "crash-old-refresh")
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         var persistedBeforeTransport: StoredAuthRefreshAttempt? = null
         val api =
             FakeAuthApi(
@@ -74,7 +74,7 @@ class SharedAuthTokenProviderTest {
                 createdAtMillis = 10L,
             )
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession("predecessor-access", "predecessor-refresh")
                     .copy(refreshAttempt = persistedAttempt)
             )
@@ -111,7 +111,7 @@ class SharedAuthTokenProviderTest {
     @Test
     fun ambiguousRetryUsesSameDurableAttempt() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(sampleSession("ambiguous-access", "ambiguous-refresh"))
+            InMemoryRaftAuthSessionStore(sampleSession("ambiguous-access", "ambiguous-refresh"))
         val api =
             FakeAuthApi(
                 refreshTokenAssertion = "ambiguous-refresh",
@@ -147,7 +147,7 @@ class SharedAuthTokenProviderTest {
                 predecessorRefreshToken = "old-refresh",
                 createdAtMillis = 0L,
             )
-        val store = InMemorySlockAuthSessionStore(sampleSession("old-access", "old-refresh").copy(refreshAttempt = oldAttempt))
+        val store = InMemoryRaftAuthSessionStore(sampleSession("old-access", "old-refresh").copy(refreshAttempt = oldAttempt))
         store.replaceAuthenticatedSession(
             sampleSession("account-b-access", "account-b-refresh")
                 .copy(user = StoredAuthUser(id = "user-2", email = "b@raft.build"))
@@ -184,7 +184,7 @@ class SharedAuthTokenProviderTest {
                 createdAtMillis = 1L,
             )
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession("healed-access", "healed-refresh").copy(refreshAttempt = malformed)
             )
         val api =
@@ -223,7 +223,7 @@ class SharedAuthTokenProviderTest {
                 createdAtMillis = 1L,
             )
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession("install-access", "install-refresh").copy(refreshAttempt = foreignAttempt)
             )
         val api =
@@ -251,7 +251,7 @@ class SharedAuthTokenProviderTest {
     fun refreshDiagnosticsNeverExposePredecessorOrSuccessorTokens() = runBlocking {
         val secrets = listOf("raw-old-access", "raw-old-refresh", "raw-new-access", "raw-new-refresh")
         val logs = mutableListOf<String>()
-        val store = InMemorySlockAuthSessionStore(sampleSession(secrets[0], secrets[1]))
+        val store = InMemoryRaftAuthSessionStore(sampleSession(secrets[0], secrets[1]))
         val coordinator =
             SharedAuthRefreshCoordinator(
                 sessionStore = store,
@@ -291,7 +291,7 @@ class SharedAuthTokenProviderTest {
     @Test
     fun webViewBootstrapCannotConsumeNativeRefreshOwnerBeforeNextNativeRefresh() = runBlocking {
         val original = sampleSession(accessToken = "webview-old-access", refreshToken = "native-refresh-secret")
-        val store = InMemorySlockAuthSessionStore(original)
+        val store = InMemoryRaftAuthSessionStore(original)
         val scripts =
             listOf(
                 settingsComputersWebViewInjectedJavaScript(original),
@@ -340,7 +340,7 @@ class SharedAuthTokenProviderTest {
     @Test
     fun coalescesRefreshAcrossProviderInstances() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(accessToken = "old-access", refreshToken = "old-refresh")
             )
         val api =
@@ -434,7 +434,7 @@ class SharedAuthTokenProviderTest {
     @Test
     fun returnsNewerStoredSessionWithoutRefreshingOldTokensAgain() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "already-new-access",
                     refreshToken = "already-new-refresh"
@@ -470,7 +470,7 @@ class SharedAuthTokenProviderTest {
         val requestStarted = CompletableDeferred<Unit>()
         val releaseResponse = CompletableDeferred<Unit>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "cross-caller-old-access",
                     refreshToken = "cross-caller-old-refresh"
@@ -501,7 +501,7 @@ class SharedAuthTokenProviderTest {
                 clockMillis = { 0L }
             )
         val middleware =
-            SlockNetworkAuthMiddleware(
+            RaftNetworkAuthMiddleware(
                 sessionStore = store,
                 authApi = api,
                 logger = { message ->
@@ -547,7 +547,7 @@ class SharedAuthTokenProviderTest {
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "ambiguous-old-access",
                     refreshToken = "ambiguous-old-refresh",
@@ -605,7 +605,7 @@ class SharedAuthTokenProviderTest {
         var now = 1_000L
         val neverRespond = CompletableDeferred<Unit>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "timeout-old-access",
                     refreshToken = "timeout-old-refresh",
@@ -670,7 +670,7 @@ class SharedAuthTokenProviderTest {
         var now = 1_000L
         val neverRespond = CompletableDeferred<Unit>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "suspend-old-access",
                     refreshToken = "suspend-old-refresh",
@@ -723,7 +723,7 @@ class SharedAuthTokenProviderTest {
         var resultPublishedBeforeRetirement: Boolean? = null
         val criticalLogs = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "ambiguous-network-access",
                     refreshToken = "ambiguous-network-refresh",
@@ -766,7 +766,7 @@ class SharedAuthTokenProviderTest {
     @Test
     fun cancelledOwnerRetiresFlightBeforeWaitersObserveCancellation() = runBlocking {
         var resultPublishedBeforeRetirement: Boolean? = null
-        val store = InMemorySlockAuthSessionStore(
+        val store = InMemoryRaftAuthSessionStore(
             sampleSession("cancelled-flight-access", "cancelled-flight-refresh")
         )
         val api = FakeAuthApi(
@@ -801,7 +801,7 @@ class SharedAuthTokenProviderTest {
         val immediateRetryCompleted = CompletableDeferred<Unit>()
         val criticalLogs = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "near-expiry-access",
                     refreshToken = "near-expiry-refresh",
@@ -852,7 +852,7 @@ class SharedAuthTokenProviderTest {
         val requestStarted = CompletableDeferred<Unit>()
         val releaseResponse = CompletableDeferred<Unit>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "unauthorized-shared-access",
                     refreshToken = "unauthorized-shared-refresh"
@@ -881,7 +881,7 @@ class SharedAuthTokenProviderTest {
                 clockMillis = { 0L }
             )
         val middleware =
-            SlockNetworkAuthMiddleware(
+            RaftNetworkAuthMiddleware(
                 sessionStore = store,
                 authApi = api,
                 logger = { message ->
@@ -925,7 +925,7 @@ class SharedAuthTokenProviderTest {
         val warnings = mutableListOf<String>()
         val criticalWarnings = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(accessToken = "old-access", refreshToken = "old-refresh")
             )
         val provider =
@@ -998,7 +998,7 @@ class SharedAuthTokenProviderTest {
     fun logsRefreshLifecycleWithTokenFingerprintsOnly() = runBlocking {
         val logs = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(accessToken = "old-access-token", refreshToken = "old-refresh-token")
             )
         val provider =
@@ -1050,7 +1050,7 @@ class SharedAuthTokenProviderTest {
     fun preservesSessionWhenRefreshTokenIsUnauthorizedAndClearDisabled() = runBlocking {
         val warnings = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(accessToken = "preserve-access", refreshToken = "preserve-refresh")
             )
         val provider =
@@ -1088,7 +1088,7 @@ class SharedAuthTokenProviderTest {
     fun currentSessionConsumesCommittedTokensWithoutProactiveRefresh() = runBlocking {
         val warnings = mutableListOf<String>()
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(accessToken = "old-access", refreshToken = "")
             )
         val provider =
@@ -1111,14 +1111,14 @@ class SharedAuthTokenProviderTest {
     @Test
     fun networkMiddlewarePreservesSessionWhenRefreshIsUnauthorized() = runBlocking {
         val store =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(
                     accessToken = "middleware-preserve-access",
                     refreshToken = "middleware-preserve-refresh"
                 )
             )
         val middleware =
-            SlockNetworkAuthMiddleware(
+            RaftNetworkAuthMiddleware(
                 sessionStore = store,
                 authApi =
                     FakeAuthApi(
@@ -1144,7 +1144,7 @@ class SharedAuthTokenProviderTest {
         private val responses: List<AuthApiResult<AuthRefreshResponse>>,
         private val delayMillis: Long = 0L,
         private val beforeResponse: suspend (Int) -> Unit = {}
-    ) : SlockAuthApi {
+    ) : RaftAuthApi {
         var refreshCalls: Int = 0
             private set
         val attempts = mutableListOf<AuthRefreshAttemptContext>()
@@ -1244,8 +1244,8 @@ class SharedAuthTokenProviderTest {
     private class BlockingCommitSessionStore(
         initialSession: StoredAuthSession,
         private val blockedAccessToken: String
-    ) : SlockAuthSessionStore {
-        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+    ) : RaftAuthSessionStore {
+        private val delegate = InMemoryRaftAuthSessionStore(initialSession)
         val commitStarted = CompletableDeferred<Unit>()
         val releaseCommit = CompletableDeferred<Unit>()
 
@@ -1276,8 +1276,8 @@ class SharedAuthTokenProviderTest {
         initialSession: StoredAuthSession,
         private val successorAccessToken: String,
         private val successorRefreshToken: String,
-    ) : SlockAuthSessionStore {
-        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+    ) : RaftAuthSessionStore {
+        private val delegate = InMemoryRaftAuthSessionStore(initialSession)
         var compareAndClearCalls: Int = 0
             private set
 

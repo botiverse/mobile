@@ -60,7 +60,7 @@ class SharedMembersStoreTest {
 
     private fun store(channelRepository: FakeChannelRepository): SharedMembersStore =
         SharedMembersStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             channelRepository = channelRepository,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         )

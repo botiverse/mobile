@@ -112,7 +112,7 @@ internal fun buildSharedMessageTranslationBatchBody(
         put("mode", mode)
     }.let { body: JsonObject -> messageTranslationsJson.encodeToString(JsonObject.serializer(), body) }
 
-internal interface SlockMessageTranslationApi {
+internal interface RaftMessageTranslationApi {
     suspend fun translateBatch(
         messageIds: List<String>,
         targetLanguage: String,
@@ -124,9 +124,9 @@ internal interface SlockMessageTranslationApi {
     suspend fun serverTranslationSettings(serverId: String): HomeNetworkResponse
 }
 
-internal class NetworkSlockMessageTranslationApi(
-    private val networkClient: SlockNetworkClient
-) : SlockMessageTranslationApi {
+internal class NetworkRaftMessageTranslationApi(
+    private val networkClient: RaftNetworkClient
+) : RaftMessageTranslationApi {
     override suspend fun translateBatch(
         messageIds: List<String>,
         targetLanguage: String,

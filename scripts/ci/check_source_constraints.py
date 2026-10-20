@@ -29,14 +29,14 @@ BASIC_WIDGET = "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.
 THREAD_COMPOSER_PAGE = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
 )
-HOME_COMPONENTS = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt"
+HOME_COMPONENTS = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt"
 SHARED_TASKS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt"
 SHARED_INBOX_PANEL = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt"
 SETTINGS_HOME_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt"
-BRUTAL_DROPDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockBrutalDropdownMenu.kt"
-FOREGROUND_BANNER = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockForegroundBannerHost.kt"
-GESTURE_OWNER = "compose/shared/src/commonMain/kotlin/build/raft/app/SlockGestureOwner.kt"
-SLOCK_MARKDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
+BRUTAL_DROPDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftBrutalDropdownMenu.kt"
+FOREGROUND_BANNER = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftForegroundBannerHost.kt"
+GESTURE_OWNER = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftGestureOwner.kt"
+SLOCK_MARKDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt"
 VENDOR_PARAGRAPH = (
     "third_party/kuikly-compose-markdown/src/commonMain/kotlin/"
     "com/tencent/kuiklybase/markdown/compose/elements/MarkdownParagraph.kt"
@@ -50,17 +50,17 @@ SHARED_TASKS_DATA_STORE = (
 SHARED_TASKS_STORE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedTasksStore.kt"
 TASKS_DATA_SOURCE = "compose/shared/src/commonMain/kotlin/build/raft/app/data/TasksDataSource.kt"
 SLOCK_SHARED_STORE_PROVIDER = (
-    "compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt"
+    "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftSharedStoreProvider.kt"
 )
-ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt"
+ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"
 VISUAL_FIXTURE_DATA = (
     "compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixtureData.kt"
 )
 COMPOSER_IME_CONNECTED_TEST = (
     "compose/androidApp/src/androidTest/java/build/raft/app/shared/"
-    "SlockThreadImePaintConnectedTest.kt"
+    "RaftThreadImePaintConnectedTest.kt"
 )
-IOS_MOBILE_OAUTH_HOST = "compose/iosApp/iosApp/SlockIosMobileOAuthHost.swift"
+IOS_MOBILE_OAUTH_HOST = "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
 IOS_MOBILE_OAUTH_SHARED = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
 )
@@ -98,7 +98,7 @@ GESTURE_OWNER_REGIONS = (
     (
         BASIC_WIDGET,
         "internal fun Modifier.touchListenerWithConfiguration(",
-        "private data class SlockTouchListenerGestureCallbacks(",
+        "private data class RaftTouchListenerGestureCallbacks(",
         "touch-listener",
     ),
     (BASIC_WIDGET, "internal fun Button(", "internal class Border(", "button"),
@@ -123,7 +123,7 @@ GESTURE_OWNER_REGIONS = (
     (
         HOME_COMPONENTS,
         "val clickGestureOwner =",
-        "traceMarkdownSection(SlockHomeTraceNames.CHANNEL_ROW_RENDER",
+        "traceMarkdownSection(RaftHomeTraceNames.CHANNEL_ROW_RENDER",
         "home-channel-row-click",
     ),
     (
@@ -139,8 +139,8 @@ GESTURE_OWNER_REGIONS = (
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),
     (THREAD_PAGE, "private fun ThreadReactionChip(", "internal fun threadNeutralMessageSurfaceColor(", "thread-reaction-chip"),
     (THREAD_PAGE, "private fun ThreadMessageAvatar(", "private fun ThreadMessageStaticAvatar(", "thread-message-avatar"),
-    (BRUTAL_DROPDOWN, "internal fun SlockBrutalDropdownMenuRow(", "private data class SlockBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),
-    (FOREGROUND_BANNER, "internal fun SlockForegroundMessageBannerView(", "private data class ForegroundBannerGestureCallbacks(", "foreground-banner"),
+    (BRUTAL_DROPDOWN, "internal fun RaftBrutalDropdownMenuRow(", "private data class RaftBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),
+    (FOREGROUND_BANNER, "internal fun RaftForegroundMessageBannerView(", "private data class ForegroundBannerGestureCallbacks(", "foreground-banner"),
 )
 
 
@@ -167,7 +167,7 @@ def check_retained_pointer_gesture_owners(sources: dict[str, str]) -> None:
         if ".pointerInput(" in region or " pointerInput(" in region:
             raise Violation(
                 f"task #991 regression: {surface} uses raw pointerInput; "
-                "route callbacks/state through SlockGestureOwner"
+                "route callbacks/state through RaftGestureOwner"
             )
         if ".callbacks" in region:
             raise Violation(
@@ -175,9 +175,9 @@ def check_retained_pointer_gesture_owners(sources: dict[str, str]) -> None:
                 "read callbacks through currentCallbacksOrNull()"
             )
         required = (
-            "rememberSlockGestureOwner(",
+            "rememberRaftGestureOwner(",
             f'surface = "{surface}"',
-            ".slockGesturePointerInput(",
+            ".raftGesturePointerInput(",
             ".beginGesture()",
             ".currentCallbacksOrNull()",
         )
@@ -391,7 +391,7 @@ def check_system_selectable_text_dialog(thread_page: str) -> None:
         "TextField",
         "pointerInput",
         "thread_text_selection_",
-        "SlockBrutalActionButton",
+        "RaftBrutalActionButton",
     )
     for token in forbidden:
         if token in dialog:
@@ -518,7 +518,7 @@ def check_composer_native_send_snapshot_wiring(
             break
         text_field_end = basic_widget.find("\n}\n", text_field_start)
         candidate = basic_widget[text_field_start : text_field_end if text_field_end >= 0 else None]
-        if "nativeEditingStateReader: SlockTextFieldNativeEditingStateReader?" in candidate:
+        if "nativeEditingStateReader: RaftTextFieldNativeEditingStateReader?" in candidate:
             text_field = candidate
             break
         search_from = text_field_start + 1
@@ -530,7 +530,7 @@ def check_composer_native_send_snapshot_wiring(
         "liveValueForReader.recordEdit(next)",
         "onValueChange = onValueChangeRecordingLive,",
         "nativeEditingStateReader.bind(nativeEditingStateBindingOwner)",
-        "state = liveValueForReader.value.toSlockTextInputState()",
+        "state = liveValueForReader.value.toRaftTextInputState()",
         "nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner)",
     )
     for token in basic_required:
@@ -538,7 +538,7 @@ def check_composer_native_send_snapshot_wiring(
             raise Violation(
                 f"task #127 regression: Send snapshot reader lost live-value wiring {token!r}"
             )
-    if re.search(r"state\s*=\s*(value|currentValueForReader)\.toSlockTextInputState\(\)", text_field):
+    if re.search(r"state\s*=\s*(value|currentValueForReader)\.toRaftTextInputState\(\)", text_field):
         raise Violation(
             "task #127 regression: Send snapshot reader captures the composition-time value; "
             "read liveValueForReader.value instead"
@@ -591,7 +591,7 @@ def check_native_apple_authentication_services(
         "authorization.credential as? ASAuthorizationAppleIDCredential": (
             "admit only Apple ID credentials"
         ),
-        "SlockIosMobileOAuthBridge.shared.completeNativeApple(": (
+        "RaftIosMobileOAuthBridge.shared.completeNativeApple(": (
             "complete native Apple credentials through the typed shared bridge"
         ),
     }
@@ -601,9 +601,9 @@ def check_native_apple_authentication_services(
 
     dispatch = re.search(
         r'if normalizedProvider == "apple" \{\s*'
-        r'(?P<apple>SlockIosMobileOAuthBridge\.shared\.startNativeApple\(.*?)'
+        r'(?P<apple>RaftIosMobileOAuthBridge\.shared\.startNativeApple\(.*?)'
         r'\n\s*\} else \{\s*'
-        r'(?P<browser>SlockIosMobileOAuthBridge\.shared\.startBrowser\(.*?)'
+        r'(?P<browser>RaftIosMobileOAuthBridge\.shared\.startBrowser\(.*?)'
         r'\n\s*\}',
         host,
         flags=re.DOTALL,
@@ -715,10 +715,10 @@ def check_label_facing_resolver_has_no_production_callers(root: Path) -> None:
     #256). Production dot *and* label sites both have safe alternatives, so a production
     caller is always a mistake; the resolver survives for tests that pin its behaviour.
 
-    This replaces an earlier check that scanned MembersPage.kt for `SlockStatusIndicator(`
+    This replaces an earlier check that scanned MembersPage.kt for `RaftStatusIndicator(`
     argument lists. That check had two independent scope holes, and a real defect went
     through both: SettingsHomePage.kt:17360 painted a dot from this resolver via
-    `SlockAvatarWithStatus(statusColor = ...)`. It was in a file the check never read, AND
+    `RaftAvatarWithStatus(statusColor = ...)`. It was in a file the check never read, AND
     behind a composable the pattern never matched -- widening either one alone would still
     have missed it. Checking the resolver's callers instead is scope-free: it cannot be
     evaded by a new file, a new dot-painting composable, or a renamed local.
@@ -1053,7 +1053,7 @@ def check_task_259_members_visual_fixtures(
 
 SHARED_COMMON_TEST_ROOT = "compose/shared/src/commonTest/kotlin"
 TEST_SESSION_STORE_CLASS_FIELD = re.compile(
-    r"^ {4}(?:private |internal |protected )?(?:val|var|lateinit var) \w+(?:\s*:\s*[\w.<>?]+)?\s*=\s*InMemorySlockAuthSessionStore\(",
+    r"^ {4}(?:private |internal |protected )?(?:val|var|lateinit var) \w+(?:\s*:\s*[\w.<>?]+)?\s*=\s*InMemoryRaftAuthSessionStore\(",
     re.MULTILINE,
 )
 
@@ -1061,7 +1061,7 @@ TEST_SESSION_STORE_CLASS_FIELD = re.compile(
 def check_test_session_stores_are_test_local(sources: dict[str, str]) -> None:
     """Task #1122: the test identity authority is memoised per session-store INSTANCE.
 
-    Every data source built on one `InMemorySlockAuthSessionStore` shares one
+    Every data source built on one `InMemoryRaftAuthSessionStore` shares one
     generation sequence; that is the property the card wanted. It stays a
     property only while each test function creates its own store. A store held
     as a class field would let generations leak silently between test
@@ -1072,9 +1072,9 @@ def check_test_session_stores_are_test_local(sources: dict[str, str]) -> None:
     # must see commonTest files AND at least one function-local store, or the glob has drifted.
     if not sources:
         raise Violation("task #1122 checker saw no commonTest sources (glob drift?)")
-    if not any("InMemorySlockAuthSessionStore(" in text for text in sources.values()):
+    if not any("InMemoryRaftAuthSessionStore(" in text for text in sources.values()):
         raise Violation(
-            "task #1122 checker saw no InMemorySlockAuthSessionStore construction at all in commonTest "
+            "task #1122 checker saw no InMemoryRaftAuthSessionStore construction at all in commonTest "
             "(the constraint no longer observes what it constrains)"
         )
     for name, text in sorted(sources.items()):
@@ -1082,7 +1082,7 @@ def check_test_session_stores_are_test_local(sources: dict[str, str]) -> None:
         if match:
             line = text.count("\n", 0, match.start()) + 1
             raise Violation(
-                f"task #1122 regression: {name}:{line} holds an InMemorySlockAuthSessionStore as a "
+                f"task #1122 regression: {name}:{line} holds an InMemoryRaftAuthSessionStore as a "
                 "class field; create it inside the test function so the memoised identity "
                 "authority stays test-local"
             )
@@ -1214,7 +1214,7 @@ internal fun TextField(value: String = "", onValueChange: (String) -> Unit) {
 @Composable
 internal fun TextField(
     value: TextFieldValue,
-    nativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+    nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
     DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
@@ -1231,7 +1231,7 @@ internal fun TextField(
     if (nativeEditingStateReader != null) {
         SideEffect {
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
-                callback(SlockTextFieldNativeEditorRead(state = liveValueForReader.value.toSlockTextInputState()))
+                callback(RaftTextFieldNativeEditorRead(state = liveValueForReader.value.toRaftTextInputState()))
             }
         }
     }
@@ -1289,8 +1289,8 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
     try:
         check_composer_native_send_snapshot_wiring(
             good_snapshot_basic_widget.replace(
-                "state = liveValueForReader.value.toSlockTextInputState()",
-                "state = value.toSlockTextInputState()",
+                "state = liveValueForReader.value.toRaftTextInputState()",
+                "state = value.toRaftTextInputState()",
             ),
             good_snapshot_composer_page,
         )
@@ -1305,12 +1305,12 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
             good_gesture_sources.get(path, "")
             + f"""
 {start_token}
-    val owner = rememberSlockGestureOwner(
+    val owner = rememberRaftGestureOwner(
         surface = "{surface}",
         semanticIdentity = "id",
         callbacks = Callbacks()
     )
-    Modifier.slockGesturePointerInput(owner) {{ currentOwner ->
+    Modifier.raftGesturePointerInput(owner) {{ currentOwner ->
         val gesture = currentOwner.beginGesture()
         gesture.currentCallbacksOrNull()
     }}
@@ -1322,8 +1322,8 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
         source = good_gesture_sources[path]
         start = source.index(start_token)
         end = source.index(end_token, start + len(start_token))
-        pointer = source.index(".slockGesturePointerInput(", start, end)
-        mutated = source[:pointer] + ".pointerInput(" + source[pointer + len(".slockGesturePointerInput("):]
+        pointer = source.index(".raftGesturePointerInput(", start, end)
+        mutated = source[:pointer] + ".pointerInput(" + source[pointer + len(".raftGesturePointerInput("):]
         bad_sources = dict(good_gesture_sources)
         bad_sources[path] = mutated
         try:
@@ -1569,7 +1569,7 @@ private fun ThreadMessageMenuChrome() = Unit
         good_dialog.replace('.testTag("thread_message_selection_text")', ""),
         good_dialog.replace(
             "item {",
-            "SlockBrutalActionButton(); item {",
+            "RaftBrutalActionButton(); item {",
             1,
         ),
         good_dialog.replace("key(message.id, message.body)", "key(message.id)"),
@@ -1655,17 +1655,17 @@ request.nonce = pkce.challenge
 let controller = ASAuthorizationController(authorizationRequests: [request])
 guard result.presentation == "native_apple", result.authorizationUrl == nil else { return }
 guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else { return }
-SlockIosMobileOAuthBridge.shared.completeNativeApple(
+RaftIosMobileOAuthBridge.shared.completeNativeApple(
     generation: generation,
     authorizationCode: authorizationCode,
     identityToken: identityToken
 )
 if normalizedProvider == "apple" {
-    SlockIosMobileOAuthBridge.shared.startNativeApple(
+    RaftIosMobileOAuthBridge.shared.startNativeApple(
         mode: mode
     )
 } else {
-    SlockIosMobileOAuthBridge.shared.startBrowser(
+    RaftIosMobileOAuthBridge.shared.startBrowser(
         provider: normalizedProvider
     )
 }
@@ -1701,8 +1701,8 @@ com.apple.SignInWithApple = {
     bad_native_apple_shapes = (
         (
             good_native_apple_host.replace(
-                "SlockIosMobileOAuthBridge.shared.startNativeApple(",
-                "SlockIosMobileOAuthBridge.shared.startBrowser(",
+                "RaftIosMobileOAuthBridge.shared.startNativeApple(",
+                "RaftIosMobileOAuthBridge.shared.startBrowser(",
                 1,
             ),
             good_native_apple_shared,
@@ -1964,8 +1964,8 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
 
     check_test_session_stores_are_test_local(
         {
-            "f": "class T {\n    @Test\n    fun a() = runBlocking {\n        val store = InMemorySlockAuthSessionStore(session())\n    }\n}\n",
-            "g": "class U {\n    private fun make() = InMemorySlockAuthSessionStore(session())\n}\n",
+            "f": "class T {\n    @Test\n    fun a() = runBlocking {\n        val store = InMemoryRaftAuthSessionStore(session())\n    }\n}\n",
+            "g": "class U {\n    private fun make() = InMemoryRaftAuthSessionStore(session())\n}\n",
         }
     )
     for empty_input in ({}, {"f": "class T {\n    @Test\n    fun a() = Unit\n}\n"}):
@@ -1976,9 +1976,9 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         else:
             raise SystemExit("self-test: task #1122 checker passed vacuously on input without any session store")
     for offending in (
-        "class T {\n    private val store = InMemorySlockAuthSessionStore(session())\n}\n",
-        "class T {\n    val authStore: InMemorySlockAuthSessionStore = InMemorySlockAuthSessionStore(session())\n}\n",
-        "class T {\n    lateinit var store = InMemorySlockAuthSessionStore(session())\n}\n",
+        "class T {\n    private val store = InMemoryRaftAuthSessionStore(session())\n}\n",
+        "class T {\n    val authStore: InMemoryRaftAuthSessionStore = InMemoryRaftAuthSessionStore(session())\n}\n",
+        "class T {\n    lateinit var store = InMemoryRaftAuthSessionStore(session())\n}\n",
     ):
         try:
             check_test_session_stores_are_test_local({"f": offending})

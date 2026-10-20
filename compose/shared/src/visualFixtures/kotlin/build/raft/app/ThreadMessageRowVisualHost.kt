@@ -1,20 +1,20 @@
 package build.raft.app
 
-import build.raft.app.components.SlockAnchoredMetaChip
-import build.raft.app.components.SlockAttachmentPreviewCard
-import build.raft.app.components.SlockAttachmentPreviewCardWidth
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockChipLoadingIndicator
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalSearchField
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockRaftUiBanner
-import build.raft.app.components.SlockRaftUiBannerSize
-import build.raft.app.components.SlockRaftUiBannerStatus
-import build.raft.app.components.SlockRaftUiControlledMenu
-import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.components.RaftAnchoredMetaChip
+import build.raft.app.components.RaftAttachmentPreviewCard
+import build.raft.app.components.RaftAttachmentPreviewCardWidth
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftChipLoadingIndicator
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.RaftToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -35,9 +35,9 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.NetworkSlockTasksApi
-import build.raft.app.data.NetworkSlockThreadApi
-import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.NetworkRaftTasksApi
+import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -47,7 +47,7 @@ import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SlockEventBus
+import build.raft.app.data.RaftEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -59,22 +59,22 @@ import build.raft.app.data.ThreadReadAnchorOwner
 import build.raft.app.data.ThreadReadAnchorStore
 import build.raft.app.data.ThreadUnreadAnchorMessage
 import build.raft.app.data.projectThreadUnreadJump
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.formatAttachmentSizeLabel
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
-import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
-import build.raft.app.data.isSlockHostVisible
+import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
@@ -111,9 +111,9 @@ import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -148,20 +148,20 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
-import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
-import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
-import build.raft.app.markdown.SlockMarkdownBody
-import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
-import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
+import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
 import build.raft.app.markdown.threadMarkdownLightGateInputsOrNull
-import build.raft.app.markdown.slockMarkdownProvidedValuesWith
-import build.raft.app.markdown.slockTraceDiagnosticsEnabled
-import build.raft.app.markdown.SlockMarkdownRenderConfig
+import build.raft.app.markdown.raftMarkdownProvidedValuesWith
+import build.raft.app.markdown.raftTraceDiagnosticsEnabled
+import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
-import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
-import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
+import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
+import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
@@ -174,16 +174,16 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
-import build.raft.app.model.formatSlockTimestampEpochMillis
-import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.model.formatRaftTimestampEpochMillis
+import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
-import build.raft.app.model.slockEpochMillisUtcIso
-import build.raft.app.model.SlockTimeFormat24Hour
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.raftEpochMillisUtcIso
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resources.MR
@@ -372,7 +372,7 @@ internal fun ThreadMessageVisualScreenContent() {
     val visualSingleMessage = params.optBoolean("visualSingleMessage", false)
     val messageBodyTextStyle =
         remember(params.optString("messageBodyFontSize")) {
-            slockMessageBodyTextStyle(params.optString("messageBodyFontSize"))
+            raftMessageBodyTextStyle(params.optString("messageBodyFontSize"))
         }
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
@@ -383,7 +383,7 @@ internal fun ThreadMessageVisualScreenContent() {
     val newMessageMenuEnabled =
         remember(visualFixture) {
             visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO &&
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readNewMessageMenuEnabledSync()
         }
     val payload =
@@ -484,9 +484,9 @@ internal fun ThreadMessageVisualScreenContent() {
                 Modifier
                     .width(390.dp)
                     .height(844.dp)
-                    .background(SlockColor.SurfaceWhite)
+                    .background(RaftColor.SurfaceWhite)
         ) {
-            Column(modifier = Modifier.padding(SlockSpacing.Md)) {
+            Column(modifier = Modifier.padding(RaftAppSpacing.Md)) {
                 messages.forEach { selectedMessage ->
                     ThreadMessageCard(
                         memberAvatarResolver = ThreadVisualMemberAvatarResolver,
@@ -516,7 +516,7 @@ internal fun ThreadMessageVisualScreenContent() {
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        outerPadding = SlockSpacing.Sm
+                        outerPadding = RaftAppSpacing.Sm
                     )
                 }
             }
@@ -534,7 +534,7 @@ internal fun ThreadMessageVisualScreenContent() {
         return
     }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             ThreadSharePreviewModal(
                 messages = payload.toThreadTimelineSlice().messages,
                 image = null,
@@ -555,12 +555,12 @@ internal fun ThreadMessageVisualScreenContent() {
             modifier =
                 Modifier
                     .width(390.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Md)
+                    .background(RaftColor.SurfaceWhite)
+                    .padding(RaftAppSpacing.Md)
         ) {
             messages.forEachIndexed { index, visualMessage ->
                 if (index > 0) {
-                    Spacer(Modifier.height(SlockSpacing.Sm))
+                    Spacer(Modifier.height(RaftAppSpacing.Sm))
                 }
                 ThreadMessageCard(
                     memberAvatarResolver = ThreadVisualMemberAvatarResolver,
@@ -586,7 +586,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     onOpenAttachment = {},
                     onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {},
-                    outerPadding = SlockSpacing.Sm
+                    outerPadding = RaftAppSpacing.Sm
                 )
             }
         }
@@ -633,7 +633,7 @@ internal fun ThreadMessageVisualScreenContent() {
     }
     var actionsMenuVisible by remember(visualFixture, menuVariant) { mutableStateOf(menuVariant.isNotBlank()) }
     var compactMenuAnchor by remember(visualFixture, message?.id) {
-        mutableStateOf<SlockPopoverAnchor?>(null)
+        mutableStateOf<RaftPopoverAnchor?>(null)
     }
     var menuRowBounds by remember(visualFixture, message?.id) { mutableStateOf<Rect?>(null) }
     val menuActions =
@@ -701,7 +701,7 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val visualMessagePermalinkLabelResolver =
         remember(visualFixture) {
-            { target: SlockMessagePermalinkTarget ->
+            { target: RaftMessagePermalinkTarget ->
                 when (target.channelId.value) {
                     "channel-proj-server-management" ->
                         if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW) {
@@ -721,16 +721,16 @@ internal fun ThreadMessageVisualScreenContent() {
     var inlineReplyTimestampBounds by remember(interactionProbe) {
         mutableStateOf<ThreadInlineReplyTimestampBounds?>(null)
     }
-    val inheritedTimeContextProvider = LocalSlockTimeContextProvider.current
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
     // A fixture that pins `nowEpochMillis` owns its clock, so every relative timestamp under it
     // resolves against that fixed instant: deterministic across runs AND rendered as real digits.
-    // Without a time context, resolveSlockRelativeTimeLabel() returns Unknown and the row shows the
+    // Without a time context, resolveRaftRelativeTimeLabel() returns Unknown and the row shows the
     // literal "unknown time" — which is how a non-monospace inline reply timestamp (#2074) shipped
     // past the case built to guard that row. Fixtures that pin no clock keep the Unknown behavior.
     val visualTimeContextProvider =
         remember(payload, interactionProbe) {
             if (interactionProbe == "reply-timestamp-owner" || payload.nowEpochMillis != null) {
-                SlockTimeContextProvider(payload.toSlockTimeContext())
+                RaftTimeContextProvider(payload.toRaftTimeContext())
             } else {
                 null
             }
@@ -749,10 +749,10 @@ internal fun ThreadMessageVisualScreenContent() {
             }
         }
     CompositionLocalProvider(
-        LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
-        LocalSlockMarkdownRenderConfig provides
-            SlockMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
-        LocalSlockTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
+        LocalRaftMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
+        LocalRaftMarkdownRenderConfig provides
+            RaftMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
+        LocalRaftTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
         LocalThreadInlineReplyTimestampReporter provides inlineReplyTimestampReporter,
     ) {
         Box(
@@ -762,7 +762,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     // portal, so the page behind the open menu is the panel, not the host cream.
                     Modifier
                         .size(ThreadMessageMenuVisualViewportWidth, ThreadMessageMenuVisualViewportHeight)
-                        .background(SlockColor.Canvas)
+                        .background(RaftColor.Canvas)
                 } else {
                     Modifier
                 }
@@ -794,7 +794,7 @@ internal fun ThreadMessageVisualScreenContent() {
                                 )
                             }
                         }
-                        .background(SlockColor.SurfaceWhite)
+                        .background(RaftColor.SurfaceWhite)
                         .padding(
                             start = threadMessageVisualHostPadding(visualFixture),
                             top = threadMessageVisualHostPadding(visualFixture),
@@ -803,17 +803,17 @@ internal fun ThreadMessageVisualScreenContent() {
             ) {
             if (interactionProbe == "reply-timestamp-owner") {
                 Spacer(modifier = Modifier.height(32.dp))
-                SlockRelativeTimestampText(
+                RaftRelativeTimestampText(
                     value = "2026-07-24T10:05:00Z",
-                    timeContext = payload.toSlockTimeContext(),
-                    displayGroup = SlockTimestampDisplayGroup.Conversation,
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
-                    color = SlockColor.TextBlack,
+                    timeContext = payload.toRaftTimeContext(),
+                    displayGroup = RaftTimestampDisplayGroup.Conversation,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     onToggle = { ordinaryTimestampToggleCount += 1 },
                 )
                 if (ordinaryTimestampToggleCount > 0) {
-                    Box(modifier = Modifier.size(12.dp).background(SlockColor.AccentCyan))
+                    Box(modifier = Modifier.size(12.dp).background(RaftColor.AccentCyan))
                 }
             }
             if (message != null) {
@@ -862,7 +862,7 @@ internal fun ThreadMessageVisualScreenContent() {
                                         // Keep the fixture's open-thread oracle distinct from colorful reactions.
                                         Color(0xFFFF00A8)
                                     } else {
-                                        SlockColor.BrandYellow
+                                        RaftColor.BrandYellow
                                     }
                                 )
                     )
@@ -889,7 +889,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
                     popupOpen = menuActions.isNotEmpty(),
-                    inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
+                    inlineReplyParticipantsById = payload.members.associateBy(RaftThreadMemberItem::id),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
@@ -929,7 +929,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
                     onLongPressInputReady = onLongPressInputReady,
-                    outerPadding = SlockSpacing.Sm
+                    outerPadding = RaftAppSpacing.Sm
                 )
                 }
                 compactMenuAnchor?.let { anchor ->
@@ -969,16 +969,16 @@ internal fun ThreadMessageVisualScreenContent() {
                             showReactionActions = payload.showReactionActions
                         ).dp.toPx()
                     }
-                val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
+                val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
                 val menuX =
-                    slockContextMenuAxisPosition(
+                    raftContextMenuAxisPosition(
                         anchor = rowBounds.center.x,
                         contentSize = menuWidthPx,
                         viewportSize = with(density) { ThreadMessageMenuVisualViewportWidth.toPx() },
                         viewportGap = viewportGapPx
                     )
                 val menuY =
-                    slockContextMenuAxisPosition(
+                    raftContextMenuAxisPosition(
                         anchor = rowBounds.center.y,
                         contentSize = menuHeightPx,
                         viewportSize = with(density) { ThreadMessageMenuVisualViewportHeight.toPx() },
@@ -1019,17 +1019,17 @@ internal fun ThreadMessageVisualScreenContent() {
 }
 @Composable
 internal fun ThreadNewMessageMenuCompactGroupVisual(
-    messages: List<KuiklyThreadMessageItem>,
+    messages: List<RaftThreadMessageItem>,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     messageBodyTextStyle: TextStyle,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     newMessageMenuEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean,
     composerBoundaryVisible: Boolean,
     longPressMenuVisibleToken: String = ""
 ) {
     var openedMessageId by remember { mutableStateOf<String?>(null) }
-    var compactMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var compactMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     // task #228: report the compact menu's own state the way the legacy menu
     // already does. The sibling case (preference-off) has always gated on this
     // token; the compact path simply never passed one, which is why its tests
@@ -1051,7 +1051,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
         } else {
             messages
         }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         Box(
             modifier =
                 Modifier
@@ -1059,7 +1059,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                     .fillMaxWidth()
         ) {
             LazyColumn(
-                modifier = Modifier.width(390.dp).fillMaxSize().padding(SlockSpacing.Md),
+                modifier = Modifier.width(390.dp).fillMaxSize().padding(RaftAppSpacing.Md),
                 verticalArrangement =
                     if (composerBoundaryVisible) Arrangement.Bottom else Arrangement.Top
             ) {
@@ -1095,7 +1095,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        outerPadding = SlockSpacing.Sm
+                        outerPadding = RaftAppSpacing.Sm
                     )
                 }
             }
@@ -1137,7 +1137,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
             }
         }
         if (composerBoundaryVisible) {
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
             Box(
                 modifier =
                     Modifier
@@ -1146,11 +1146,11 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         // Composer host bounds, so compact-menu pixels are
                         // never counted as Composer overlap.
                         .height(150.dp)
-                        .padding(start = SlockSpacing.Sm, top = 12.dp, end = SlockSpacing.Sm, bottom = 14.dp)
+                        .padding(start = RaftAppSpacing.Sm, top = 12.dp, end = RaftAppSpacing.Sm, bottom = 14.dp)
             ) {
                 ThreadComposerContent(
                     payload =
-                        KuiklyThreadComposerPayload(
+                        RaftThreadComposerPayload(
                             instanceId = "visual-new-message-menu-composer",
                             placeholder = "Message",
                             streamChannelId = "visual-new-message-menu-thread"
@@ -1170,11 +1170,11 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
  *
  * Production message snapshots deliberately carry no volatile agent status. Keeping fixture
  * status here preserves deterministic status-dot coverage without reintroducing a snapshot
- * fallback into [KuiklyThreadMessageItem].
+ * fallback into [RaftThreadMessageItem].
  */
 private fun threadMessageVisualAgentStatusResolver(
     visualFixture: String
-): SlockAgentStatusResolver {
+): RaftAgentStatusResolver {
     val resolvedFixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }
     val cindyStatus =
         when (resolvedFixture) {
@@ -1193,10 +1193,10 @@ private fun threadMessageVisualAgentStatusResolver(
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607,
             THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE -> AgentStatus.Working
             THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> AgentStatus.Online
-            else -> return EmptySlockAgentStatusResolver
+            else -> return EmptyRaftAgentStatusResolver
         }
     val cindyState =
-        slockAgentStatusIndicatorState(
+        raftAgentStatusIndicatorState(
             status = cindyStatus,
             presence = cindyStatus.presence,
             external = false
@@ -1207,14 +1207,14 @@ private fun threadMessageVisualAgentStatusResolver(
 }
 
 @Composable
-internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessageItem) {
+internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: RaftThreadMessageItem) {
     var result by remember(message.id) { mutableStateOf<Boolean?>(null) }
     Column(
         modifier =
             Modifier
                 .width(390.dp)
-                .background(SlockColor.SurfaceWhite)
-                .padding(SlockSpacing.Md)
+                .background(RaftColor.SurfaceWhite)
+                .padding(RaftAppSpacing.Md)
     ) {
         Box(
             modifier =
@@ -1229,7 +1229,7 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessage
                         }
                     )
         )
-        Spacer(Modifier.height(SlockSpacing.Md))
+        Spacer(Modifier.height(RaftAppSpacing.Md))
         ThreadMessageFooterMeta(
             message = message,
             taskOpenEnabled = false,
@@ -1251,9 +1251,9 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessage
  * so a capture case that exercises it has to say so. A count of zero returns the
  * payload untouched, keeping every case that omits the parameter unchanged.
  */
-internal fun KuiklyThreadScreenPayload.withNewMessageMenuTargetReplyCount(
+internal fun RaftThreadScreenPayload.withNewMessageMenuTargetReplyCount(
     count: Int
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     if (count <= 0) {
         this
     } else {

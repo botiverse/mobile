@@ -16,8 +16,8 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
 import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.isAgentFallbackAvatarWireValue
-import build.raft.app.slockAvatarDiagnosticsHash
-import build.raft.app.slockAvatarDiagnosticsSource
+import build.raft.app.raftAvatarDiagnosticsHash
+import build.raft.app.raftAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -1043,8 +1043,8 @@ class SharedServerMembersStore internal constructor(
             }
         logger(
             "member_avatar_url_dropped source=$source " +
-                "serverHash=${serverKey.slockAvatarDiagnosticsHash()} " +
-                "memberHash=${existing.id.value.slockAvatarDiagnosticsHash()} " +
+                "serverHash=${serverKey.raftAvatarDiagnosticsHash()} " +
+                "memberHash=${existing.id.value.raftAvatarDiagnosticsHash()} " +
                 "incomingAvatar=$incomingAvatarKind"
         )
     }
@@ -1278,8 +1278,8 @@ class SharedServerMembersStore internal constructor(
     internal suspend fun uploadAgentAvatarWithAvatarCacheInvalidation(
         serverId: ServerId,
         request: AgentAvatarUploadRequest,
-        avatarCacheRuntime: SlockAvatarCacheRuntime,
-        avatarCacheNativeCache: SlockAvatarNativeCache,
+        avatarCacheRuntime: RaftAvatarCacheRuntime,
+        avatarCacheNativeCache: RaftAvatarNativeCache,
         priority: DataRequestPriority = DataRequestPriority.Foreground
     ): DataResult<MemberProfile> {
         val serverKey = serverId.value.trim()
@@ -1287,7 +1287,7 @@ class SharedServerMembersStore internal constructor(
         val retirement =
             if (serverKey.isNotBlank() && agentKey.isNotBlank()) {
                 avatarCacheRuntime.captureCurrentSubjectRetirement(
-                    subject = SlockAvatarCacheSubject.Member(MemberKind.Agent, agentKey),
+                    subject = RaftAvatarCacheSubject.Member(MemberKind.Agent, agentKey),
                     serverId = serverKey
                 )
             } else {
@@ -1306,8 +1306,8 @@ class SharedServerMembersStore internal constructor(
                     (profileServerId == null || profileServerId == serverKey)
                 ) {
                     when (val receipt = avatarCacheRuntime.retireSubject(retirement, avatarCacheNativeCache)) {
-                        SlockAvatarCacheClearReceipt.Success -> Unit
-                        is SlockAvatarCacheClearReceipt.Failed ->
+                        RaftAvatarCacheClearReceipt.Success -> Unit
+                        is RaftAvatarCacheClearReceipt.Failed ->
                             logger(
                                 "shared_server_members_avatar_cache_retire result=failure " +
                                     "source=agent_avatar_upload stages=" +

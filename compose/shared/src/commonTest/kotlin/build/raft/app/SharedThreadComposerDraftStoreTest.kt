@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
@@ -18,7 +18,7 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun originalImageDefaultsToCompressedAndTogglesWithinSession() {
         val store = SharedThreadComposerDraftStore()
-        val composer = KuiklyThreadComposerPayload(instanceId = "composer-image")
+        val composer = RaftThreadComposerPayload(instanceId = "composer-image")
 
         store.dispatch(SharedThreadComposerDraftIntent.Start(composer = composer, draftKey = "send=channel-image"))
         assertFalse(store.state.value.originalImage)
@@ -40,7 +40,7 @@ class SharedThreadComposerDraftStoreTest {
         val store = SharedThreadComposerDraftStore()
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-old"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-old"),
                 draftKey = "send=channel-old"
             )
         )
@@ -48,7 +48,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-new"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-new"),
                 draftKey = "send=channel-new"
             )
         )
@@ -67,7 +67,7 @@ class SharedThreadComposerDraftStoreTest {
         // BeginSend + CompleteSend immediately. A mid-send process kill must restart with
         // an empty composer (the journaled row renders sending/failed instead), and a
         // later inline failure must not resurrect the draft text.
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-journal|parent=_|mention=channel-journal"
@@ -75,7 +75,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-journal"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-journal"),
                 draftKey = draftKey
             )
         )
@@ -93,7 +93,7 @@ class SharedThreadComposerDraftStoreTest {
         val restarted = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         restarted.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-journal"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-journal"),
                 draftKey = draftKey
             )
         )
@@ -110,7 +110,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun originalImagePreferenceIsNotWrittenToPersistedDraft() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val key = "send=channel-image|parent=_|mention=channel-image"
@@ -118,7 +118,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-image"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-image"),
                 draftKey = key
             )
         )
@@ -132,7 +132,7 @@ class SharedThreadComposerDraftStoreTest {
         val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))))
         restoredStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-restored"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-restored"),
                 draftKey = key
             )
         )
@@ -144,7 +144,7 @@ class SharedThreadComposerDraftStoreTest {
         val store = SharedThreadComposerDraftStore()
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer"),
+                composer = RaftThreadComposerPayload(instanceId = "composer"),
                 draftKey = null,
             )
         )
@@ -183,7 +183,7 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "composer",
                         seedText = "ni",
                         seedAsTask = true,
@@ -211,7 +211,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-rapid"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-rapid"),
                 draftKey = draftKey
             )
         )
@@ -242,7 +242,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-blur"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-blur"),
                 draftKey = draftKey
             )
         )
@@ -260,14 +260,14 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun delayedHydrateCannotOverwriteFirstKeystrokeAndLatestOwnerWinsPersistence() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-hydrate|parent=_|mention=channel-hydrate"
         persistence.save(draftKey, text = "n", asTask = false)
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-hydrate"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-hydrate"),
                 draftKey = null,
             )
         )
@@ -283,7 +283,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-hydrate"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-hydrate"),
                 draftKey = draftKey,
             )
         )
@@ -314,7 +314,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-send"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-send"),
                 draftKey = draftKey
             )
         )
@@ -344,14 +344,14 @@ class SharedThreadComposerDraftStoreTest {
 
         firstStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-one"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-one"),
                 draftKey = firstKey
             )
         )
         firstStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "first"))
         secondStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-two"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-two"),
                 draftKey = secondKey
             )
         )
@@ -366,11 +366,11 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun persistedDraftRestoresByComposerKey() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         val composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 instanceId = "composer-1",
                 seedText = "",
                 seedAsTask = false
@@ -398,7 +398,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun stagedUploadedAttachmentsRestoreOnceForMatchingComposerKey() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
         val attachment =
@@ -418,7 +418,7 @@ class SharedThreadComposerDraftStoreTest {
         val otherStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         otherStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "other-composer"),
+                composer = RaftThreadComposerPayload(instanceId = "other-composer"),
                 draftKey = "send=channel-2|parent=_|mention=channel-2"
             )
         )
@@ -427,7 +427,7 @@ class SharedThreadComposerDraftStoreTest {
         val matchingStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         matchingStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "matching-composer"),
+                composer = RaftThreadComposerPayload(instanceId = "matching-composer"),
                 draftKey = draftKey
             )
         )
@@ -436,7 +436,7 @@ class SharedThreadComposerDraftStoreTest {
         val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         nextStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "next-composer"),
+                composer = RaftThreadComposerPayload(instanceId = "next-composer"),
                 draftKey = draftKey
             )
         )
@@ -445,12 +445,12 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun insertMentionAppendsTokenFocusesComposerAndPersistsDraft() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
         val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         val composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 instanceId = "composer-mention",
                 seedText = "hello",
                 seedAsTask = true,
@@ -480,14 +480,14 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun successfulSendClearsPersistedDraftForComposerKey() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=thread-1|parent=message-1"
         val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -498,7 +498,7 @@ class SharedThreadComposerDraftStoreTest {
         val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         nextStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = draftKey
             )
         )
@@ -509,7 +509,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun activeDraftRecordsTrackRootAndReplyComposerKeys() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         persistence.save(
             key = "send=channel-1|parent=_|mention=channel-1",
             text = "channel draft",
@@ -530,7 +530,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun replyDraftRestoresByParentComposerKey() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=reply-thread-1|parent=message-1|mention=channel-1"
         val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
@@ -538,7 +538,7 @@ class SharedThreadComposerDraftStoreTest {
         firstStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "reply-composer-1",
                         parentMessageId = "message-1",
                         streamChannelId = "reply-thread-1"
@@ -552,7 +552,7 @@ class SharedThreadComposerDraftStoreTest {
         secondStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "reply-composer-2",
                         parentMessageId = "message-1",
                         streamChannelId = "reply-thread-1"
@@ -567,7 +567,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun replyDraftRestoreBumpsSyncNonceForSameComposerInstance() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=reply-thread-1|parent=message-1|mention=channel-1"
         persistence.save(
@@ -580,7 +580,7 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "reply-composer",
                         seedText = "",
                         syncNonce = 0,
@@ -597,7 +597,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun replyDraftRestoresAndMigratesWhenSendTargetChangesForSameParentTuple() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val oldDraftKey = "send=reply-thread-old|parent=message-1|mention=channel-1"
         val currentDraftKey = "send=reply-thread-new|parent=message-1|mention=channel-1"
@@ -611,7 +611,7 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "reply-composer",
                         parentMessageId = "message-1",
                         streamChannelId = "reply-thread-new",
@@ -630,7 +630,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun replyDraftFallbackRequiresParentChannelMatch() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         persistence.save(
             key = "send=reply-thread-old|parent=message-1|mention=channel-1",
@@ -642,7 +642,7 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "reply-composer",
                         parentMessageId = "message-1",
                         streamChannelId = "reply-thread-new",
@@ -706,7 +706,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun clearingBlankDraftRemovesActiveDraftRecord() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
 
         persistence.save(draftKey, "channel draft", asTask = false)
@@ -717,7 +717,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun activeDraftRecordsStateUpdatesAcrossPersistSliceInstances() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val threadPersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val threadStore = SharedThreadComposerDraftStore(persistSlices = listOf(threadPersistSlice))
@@ -727,7 +727,7 @@ class SharedThreadComposerDraftStoreTest {
 
         threadStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -745,7 +745,7 @@ class SharedThreadComposerDraftStoreTest {
     fun deliveredMentionActionShowsAddedStateBeforeRemoval() {
         val store = SharedThreadComposerDraftStore()
         val action =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "user",
                 targetHandle = "jane",
@@ -785,7 +785,7 @@ class SharedThreadComposerDraftStoreTest {
     fun failedMentionActionKeepsPendingRowAndShowsNotice() {
         val store = SharedThreadComposerDraftStore()
         val action =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-2",
                 targetType = "user",
                 targetHandle = "jane",
@@ -811,7 +811,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun uploadedAttachmentOnlyDraftPersistsActiveRecordAndRestores() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val threadPersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
@@ -828,7 +828,7 @@ class SharedThreadComposerDraftStoreTest {
 
         firstStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -839,7 +839,7 @@ class SharedThreadComposerDraftStoreTest {
         val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(threadPersistSlice))
         secondStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = draftKey
             )
         )
@@ -851,7 +851,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun reverseCompletedMixedAttachmentsRestoreInSelectionOrderAfterRestart() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistence = SharedThreadComposerDraftPersistence(storage)
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
         val localImage = SharedThreadComposerAttachment("picked-image", "image.png", mimeType = "image/png", status = "uploading")
@@ -865,7 +865,7 @@ class SharedThreadComposerDraftStoreTest {
 
         firstStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -889,7 +889,7 @@ class SharedThreadComposerDraftStoreTest {
             )
         restoredStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = draftKey
             )
         )
@@ -902,7 +902,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun removingLastPersistedUploadedAttachmentClearsActiveRecord() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val threadPersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
@@ -918,7 +918,7 @@ class SharedThreadComposerDraftStoreTest {
 
         firstStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -930,7 +930,7 @@ class SharedThreadComposerDraftStoreTest {
         val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(threadPersistSlice))
         secondStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = draftKey
             )
         )
@@ -940,7 +940,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun uploadingLocalAttachmentDoesNotPersistUnrecoverableDraft() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val threadPersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
@@ -956,7 +956,7 @@ class SharedThreadComposerDraftStoreTest {
 
         firstStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -967,7 +967,7 @@ class SharedThreadComposerDraftStoreTest {
         val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(threadPersistSlice))
         secondStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = draftKey
             )
         )
@@ -977,7 +977,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun uploadingLocalAttachmentSurvivesSameComposerKeyRestart() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
         val local =
@@ -993,14 +993,14 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
         store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1", syncNonce = 0),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1", syncNonce = 0),
                 draftKey = draftKey
             )
         )
@@ -1012,7 +1012,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun removedLocalAttachmentDoesNotReappearAfterSameComposerKeyRestart() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
         val local =
@@ -1035,7 +1035,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -1043,7 +1043,7 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(local.id))
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1", syncNonce = 0),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1", syncNonce = 0),
                 draftKey = draftKey
             )
         )
@@ -1061,7 +1061,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun uploadingLocalAttachmentDoesNotSurviveDifferentComposerKeyRestart() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val firstDraftKey = "send=channel-1|parent=_|mention=channel-1"
         val secondDraftKey = "send=channel-2|parent=_|mention=channel-2"
@@ -1077,14 +1077,14 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = firstDraftKey
             )
         )
         store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = secondDraftKey
             )
         )
@@ -1095,14 +1095,14 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun draftPersistenceIsOptInToMviStore() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
         val storeWithoutSlice = SharedThreadComposerDraftStore()
 
         storeWithoutSlice.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-1"),
                 draftKey = draftKey
             )
         )
@@ -1113,7 +1113,7 @@ class SharedThreadComposerDraftStoreTest {
         val storeWithSlice = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         storeWithSlice.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-2"),
                 draftKey = draftKey
             )
         )
@@ -1127,7 +1127,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                KuiklyThreadComposerPayload(
+                RaftThreadComposerPayload(
                     instanceId = "composer-1",
                     seedText = "hello",
                     seedAsTask = true,
@@ -1165,7 +1165,7 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                KuiklyThreadComposerPayload(
+                RaftThreadComposerPayload(
                     instanceId = "composer-send-focus",
                     seedText = "first",
                     focusRequestNonce = 7
@@ -1259,7 +1259,7 @@ class SharedThreadComposerDraftStoreTest {
         )
         val partiallyReady =
             store.state.value.uploadedAttachments.map { attachment ->
-                KuiklyPendingAttachmentItem(
+                RaftPendingAttachmentItem(
                     id = attachment.id,
                     fileName = attachment.fileName,
                     status = attachment.status
@@ -1278,7 +1278,7 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals(
             listOf(remoteA.id, remoteB.id),
             store.state.value.uploadedAttachments
-                .map { KuiklyPendingAttachmentItem(id = it.id, fileName = it.fileName, status = it.status) }
+                .map { RaftPendingAttachmentItem(id = it.id, fileName = it.fileName, status = it.status) }
                 .readyThreadAttachmentIdsForSend()
         )
     }
@@ -1568,7 +1568,7 @@ class SharedThreadComposerDraftStoreTest {
     fun completeSendReplacesPendingMentionActionsAndSuccessfulNextSendClearsThem() {
         val store = SharedThreadComposerDraftStore()
         val pending =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "user",
                 targetHandle = "outside",
@@ -1596,7 +1596,7 @@ class SharedThreadComposerDraftStoreTest {
     fun failedSendPreservesExistingPendingMentionAction() {
         val store = SharedThreadComposerDraftStore()
         val pending =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "outside",
@@ -1622,7 +1622,7 @@ class SharedThreadComposerDraftStoreTest {
     fun inlineSendFailureClearsComposerWithoutRestoringDraft() {
         val store = SharedThreadComposerDraftStore()
         val pending =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "outside",
@@ -1669,7 +1669,7 @@ class SharedThreadComposerDraftStoreTest {
     fun deliveredMentionActionMarksRowAndFailureKeepsRow() {
         val store = SharedThreadComposerDraftStore()
         val pending =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "outside",
@@ -1712,7 +1712,7 @@ class SharedThreadComposerDraftStoreTest {
     fun clearingMentionActionNoticeDoesNotRemovePendingAction() {
         val store = SharedThreadComposerDraftStore()
         val pending =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "res-1",
                 targetType = "agent",
                 targetHandle = "outside",
@@ -1736,7 +1736,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun externalShareStagesDurableQueuedDraftIntoCanonicalRootComposer() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=channel-share|parent=_|mention=channel-share"
         val source = SharedThreadComposerExternalShareSource("token", "account", "server")
@@ -1755,7 +1755,7 @@ class SharedThreadComposerDraftStoreTest {
         val restoredStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         restoredStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-share"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-share"),
                 draftKey = draftKey
             )
         )
@@ -1767,7 +1767,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun interruptedExternalShareUploadRestoresAsQueuedAfterProcessDeath() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val draftKey = "send=channel-share|parent=_|mention=channel-share"
         persistence.save(
             key = draftKey,
@@ -1786,7 +1786,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun interruptedOwnedUploadRestoresAsQueuedAndVideoRemainsDurable() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val draftKey = "send=channel-owned|parent=_|mention=channel-owned"
         val image =
             SharedThreadComposerAttachment(
@@ -1824,7 +1824,7 @@ class SharedThreadComposerDraftStoreTest {
         val retired = mutableListOf<Pair<String, Set<String>>>()
         val persistence =
             SharedThreadComposerDraftPersistence(
-                store = InMemorySlockKeyValueStore(),
+                store = InMemoryRaftKeyValueStore(),
                 retireTemporaryFileRefs = { key, refs -> retired += key to refs }
             )
         val draftKey = "send=channel-retire|parent=_|mention=channel-retire"
@@ -1887,7 +1887,7 @@ class SharedThreadComposerDraftStoreTest {
         val retired = mutableListOf<Set<String>>()
         val persistence =
             SharedThreadComposerDraftPersistence(
-                store = InMemorySlockKeyValueStore(),
+                store = InMemoryRaftKeyValueStore(),
                 retireTemporaryFileRefs = { _, refs -> retired += refs }
             )
         val firstKey = "send=channel-one|parent=_|mention=channel-one"
@@ -1916,7 +1916,7 @@ class SharedThreadComposerDraftStoreTest {
         val retired = mutableListOf<Set<String>>()
         val persistence =
             SharedThreadComposerDraftPersistence(
-                store = InMemorySlockKeyValueStore(),
+                store = InMemoryRaftKeyValueStore(),
                 retireTemporaryFileRefs = { _, refs -> retired += refs }
             )
         val draftKey = "send=channel-stage|parent=_|mention=channel-stage"
@@ -1976,7 +1976,7 @@ class SharedThreadComposerDraftStoreTest {
     fun externalShareStagingRejectsReplyComposerAndUnboundFileReference() {
         val persistSlice =
             SharedThreadComposerDraftPersistSlice(
-                SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+                SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
             )
         val source = SharedThreadComposerExternalShareSource("token", "account", "server")
         val reply =
@@ -2007,7 +2007,7 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun queuedExternalShareAttachmentWaitsForExplicitSendWithoutPretendingUploadStarted() {
         val queued =
-            KuiklyPendingAttachmentItem(
+            RaftPendingAttachmentItem(
                 id = "local",
                 fileName = "image.jpg",
                 status = "queued",
@@ -2042,7 +2042,7 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun mentionActionBatchPartialFinishRemovesOnlyDeliveredAndKeepsFailuresRetryable() {
         val first =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = " first ",
                 targetType = "user",
                 targetHandle = "first",
@@ -2075,7 +2075,7 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun mentionActionBatchMissingResultsKeepEveryPendingRow() {
         val first =
-            KuiklyPendingMentionActionItem(
+            RaftPendingMentionActionItem(
                 resolutionId = "first",
                 targetType = "user",
                 targetHandle = "first",
@@ -2131,7 +2131,7 @@ class SharedThreadComposerDraftStoreTest {
         val draftKey = "send=channel-synced|parent=_|mention=channel-synced"
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-synced"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-synced"),
                 draftKey = draftKey
             )
         )

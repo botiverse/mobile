@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.ConversationOpenSource
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -43,7 +43,7 @@ class SharedConversationForwardHistoryTest {
                         "server-a",
                         "dm-a",
                         kind = ConversationKind.DirectMessage,
-                        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+                        surfaceKind = RaftThreadSurfaceKind.DirectMessage
                     )
                 )
             )
@@ -102,7 +102,7 @@ class SharedConversationForwardHistoryTest {
                                 serverId = "server-b",
                                 channelId = "dm-b",
                                 kind = ConversationKind.DirectMessage,
-                                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+                                surfaceKind = RaftThreadSurfaceKind.DirectMessage
                             ),
                         knownServerIds = setOf("server-a", "server-b")
                     )
@@ -220,9 +220,9 @@ class SharedConversationForwardHistoryTest {
 
     @Test
     fun windowScopesAndReleaseKeepHistoryIsolated() {
-        val cache = SlockShellScopedStoreCache<SharedConversationForwardHistory>()
-        val scopeA = SlockShellStoreScope.create("window-a", "server-a")
-        val scopeB = SlockShellStoreScope.create("window-b", "server-b")
+        val cache = RaftShellScopedStoreCache<SharedConversationForwardHistory>()
+        val scopeA = RaftShellStoreScope.create("window-a", "server-a")
+        val scopeB = RaftShellStoreScope.create("window-b", "server-b")
         val historyA = cache.getOrPut(scopeA) { enabledHistory() }
         val historyB = cache.getOrPut(scopeB) { enabledHistory() }
         historyA.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
@@ -312,7 +312,7 @@ class SharedConversationForwardHistoryTest {
         serverId: String,
         channelId: String,
         kind: ConversationKind = ConversationKind.Channel,
-        surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+        surfaceKind: String = RaftThreadSurfaceKind.Channel,
         joined: Boolean = true,
         archived: Boolean = false,
         canRead: Boolean = joined
@@ -325,9 +325,9 @@ class SharedConversationForwardHistoryTest {
             surfaceKind = surfaceKind,
             channelKind =
                 when (kind) {
-                    ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                    ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
                     ConversationKind.Joint -> "joint"
-                    else -> KuiklyThreadSurfaceKind.Channel
+                    else -> RaftThreadSurfaceKind.Channel
                 },
             title = "ignored display title",
             joined = joined,

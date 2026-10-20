@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.PresenceNoopMemberRepository
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
@@ -49,7 +49,7 @@ class SharedThreadStoreDurableLastKnownTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
         val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body")))
-        val loadingStateApplied = CompletableDeferred<KuiklyThreadScreenPayload>()
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
         val releaseLoadingState = CompletableDeferred<Unit>()
         val dataSource = dataSource(reader = reader, identity = { ownerA })
         val store =
@@ -157,7 +157,7 @@ class SharedThreadStoreDurableLastKnownTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
         val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
-        val loadingStateApplied = CompletableDeferred<KuiklyThreadScreenPayload>()
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
         val releaseLoadingState = CompletableDeferred<Unit>()
         val store =
             SharedThreadStore(
@@ -487,7 +487,7 @@ class SharedThreadStoreDurableLastKnownTest {
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
-            sessionStore = InMemorySlockAuthSessionStore(identity().session),
+            sessionStore = InMemoryRaftAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { identity() },
             durableLastKnownReader = reader,
@@ -583,8 +583,8 @@ class SharedThreadStoreDurableLastKnownTest {
             selectedServerId = "server-1",
         )
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
             title = "general",
             sourceThreadId = "channel-1",
@@ -592,9 +592,9 @@ class SharedThreadStoreDurableLastKnownTest {
             canSend = true,
         )
 
-    private fun replyRoute(): KuiklyThreadScreenPayload =
+    private fun replyRoute(): RaftThreadScreenPayload =
         basePayload().copy(
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "thread-parent-1",
             streamChannelId = "thread-parent-1",
             parentChannelId = "channel-1",
@@ -603,7 +603,7 @@ class SharedThreadStoreDurableLastKnownTest {
             originStatus = "loading",
         )
 
-    private fun contentPayload(body: String): KuiklyThreadScreenPayload =
+    private fun contentPayload(body: String): RaftThreadScreenPayload =
         buildSharedThreadPayloadFromMessagesPage(
             basePayload = basePayload(),
             page = ThreadMessagesPage(

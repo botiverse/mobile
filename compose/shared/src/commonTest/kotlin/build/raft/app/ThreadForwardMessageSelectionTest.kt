@@ -125,8 +125,8 @@ class ThreadForwardMessageSelectionTest {
         taskStatus: String? = null,
         actionCard: Boolean = false,
         messageType: String = "Chat"
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "member-1",
             authorName = "Member",

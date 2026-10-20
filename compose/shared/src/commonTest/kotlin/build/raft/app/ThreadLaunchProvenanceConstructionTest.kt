@@ -25,30 +25,30 @@ class ThreadLaunchProvenanceConstructionTest {
         val vectors =
             listOf(
                 TopLevelVector(
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                    channelKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    channelKind = RaftThreadSurfaceKind.Channel,
                     expectedKind = ConversationKind.Channel,
-                    expectedNormalizedChannelKind = KuiklyThreadSurfaceKind.Channel,
+                    expectedNormalizedChannelKind = RaftThreadSurfaceKind.Channel,
                     dmPeerIdentity = null
                 ),
                 TopLevelVector(
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = "private",
                     expectedKind = ConversationKind.Channel,
                     expectedNormalizedChannelKind = "private",
                     dmPeerIdentity = null
                 ),
                 TopLevelVector(
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = JointChannelKindWireValue,
                     expectedKind = ConversationKind.Joint,
                     expectedNormalizedChannelKind = JointChannelKindWireValue,
                     dmPeerIdentity = null
                 ),
                 TopLevelVector(
-                    surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                     // The old screen DTO commonly left its render default on the DM wire.
-                    channelKind = KuiklyThreadSurfaceKind.Channel,
+                    channelKind = RaftThreadSurfaceKind.Channel,
                     expectedKind = ConversationKind.DirectMessage,
                     expectedNormalizedChannelKind = null,
                     dmPeerIdentity = dmPeer
@@ -101,8 +101,8 @@ class ThreadLaunchProvenanceConstructionTest {
             val wire =
                 WireThreadLaunchPayload(
                     instanceId = "reply-instance",
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                    channelKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                    channelKind = RaftThreadSurfaceKind.Channel,
                     streamChannelId = vector.resolvedStream,
                     parentChannelId = "parent-1",
                     parentMessageId = "message-1",
@@ -138,37 +138,37 @@ class ThreadLaunchProvenanceConstructionTest {
             listOf(
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         parentChannelId = "parent-1",
-                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        parentChannelKind = KuiklyThreadSurfaceKind.Channel
+                        parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                        parentChannelKind = RaftThreadSurfaceKind.Channel
                     ),
                     ThreadLaunchIdentityConstructionError.MissingReplyParentPair
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         parentChannelId = "parent-1",
                         parentMessageId = "message-1",
                         parentSurfaceKind = "unknown",
-                        parentChannelKind = KuiklyThreadSurfaceKind.Channel
+                        parentChannelKind = RaftThreadSurfaceKind.Channel
                     ),
                     ThreadLaunchIdentityConstructionError.MalformedLegacyKind
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         parentChannelId = "parent-1",
                         parentMessageId = "message-1",
-                        parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
                         parentChannelKind = JointChannelKindWireValue
                     ),
                     ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        channelKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftThreadSurfaceKind.Channel,
                         threadId = "channel-1",
                         streamChannelId = "channel-2"
                     ),
@@ -176,7 +176,7 @@ class ThreadLaunchProvenanceConstructionTest {
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                         channelKind = JointChannelKindWireValue,
                         threadId = "dm-1"
                     ),
@@ -184,50 +184,50 @@ class ThreadLaunchProvenanceConstructionTest {
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftThreadSurfaceKind.DirectMessage,
                         threadId = "dm-1"
                     ),
                     ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        channelKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftThreadSurfaceKind.ReplyThread,
                         threadId = "reply-stream-1",
                         parentChannelId = "parent-1",
                         parentMessageId = "message-1",
-                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                         parentChannelKind = "private"
                     ),
                     ThreadLaunchIdentityConstructionError.ConflictingLegacyIdentity
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        channelKind = KuiklyThreadSurfaceKind.Channel
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = RaftThreadSurfaceKind.Channel
                     ),
                     ThreadLaunchIdentityConstructionError.BlankRouteIdentity
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         threadId = "channel-1",
                         parentChannelId = "parent-1",
                         parentMessageId = "message-1",
-                        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        parentChannelKind = KuiklyThreadSurfaceKind.Channel
+                        parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                        parentChannelKind = RaftThreadSurfaceKind.Channel
                     ),
                     ThreadLaunchIdentityConstructionError.UnexpectedReplyMetadata
                 ),
                 RejectionVector(
                     WireThreadLaunchPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         streamChannelId = "reply-stream-1",
                         parentChannelId = "parent-1",
                         parentMessageId = "message-1",
-                        parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                        parentChannelKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                        parentChannelKind = RaftThreadSurfaceKind.DirectMessage,
                         dmPeerIdentity =
                             MemberDetailIdentity(
                                 memberId = MemberId("human-1"),
@@ -283,12 +283,12 @@ class ThreadLaunchProvenanceConstructionTest {
         val accepted =
             assertAccepted(
                 WireThreadLaunchPayload(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     streamChannelId = "parent-1",
                     sourceThreadId = "reply-stream-1",
                     parentChannelId = "parent-1",
                     parentMessageId = "message-1",
-                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                     parentChannelKind = "private"
                 ).toThreadLaunchIdentityConstruction()
             )
@@ -302,11 +302,11 @@ class ThreadLaunchProvenanceConstructionTest {
         fun digest(parentChannelKind: String): ThreadLaunchProvenanceDigest =
             assertAccepted(
                 WireThreadLaunchPayload(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     streamChannelId = "reply-stream-1",
                     parentChannelId = "parent-1",
                     parentMessageId = "message-1",
-                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                     parentChannelKind = parentChannelKind
                 ).toThreadLaunchIdentityConstruction()
             ).digest

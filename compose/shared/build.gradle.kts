@@ -14,31 +14,31 @@ plugins {
 
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
-val generatedSlockDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
+val generatedRaftDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
-val slockKuiklyBaseDatetimeEnabled =
+val raftKuiklyBaseDatetimeEnabled =
     providers.gradleProperty("slock.kuiklyBaseDatetime.enabled")
         .orElse(providers.environmentVariable("SLOCK_KUIKLYBASE_DATETIME_ENABLED"))
         .map { value ->
             value.trim().lowercase() !in setOf("0", "false", "no", "off")
         }
         .orElse(true)
-val generateSlockDatetimeBuildConfig by tasks.registering {
+val generateRaftDatetimeBuildConfig by tasks.registering {
     val outputFile =
-        generatedSlockDatetimeConfigDir.map {
-            it.file("build/raft/app/data/SlockDatetimeBuildConfig.kt")
+        generatedRaftDatetimeConfigDir.map {
+            it.file("build/raft/app/data/RaftDatetimeBuildConfig.kt")
         }
-    inputs.property("kuiklyBaseDatetimeEnabled", slockKuiklyBaseDatetimeEnabled)
+    inputs.property("kuiklyBaseDatetimeEnabled", raftKuiklyBaseDatetimeEnabled)
     outputs.file(outputFile)
     doLast {
-        val enabled = slockKuiklyBaseDatetimeEnabled.get()
+        val enabled = raftKuiklyBaseDatetimeEnabled.get()
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
             writeText(
                 """
                 package build.raft.app.data
 
-                internal const val SlockKuiklyBaseDatetimeEnabledByBuild: Boolean = $enabled
+                internal const val RaftKuiklyBaseDatetimeEnabledByBuild: Boolean = $enabled
                 """.trimIndent() + "\n"
             )
         }
@@ -48,7 +48,7 @@ val pinnedNetworkCurlCaBundle =
     layout.projectDirectory.file("src/commonMain/assets/network/cacert-2026-05-14.pem")
 val pinnedNetworkCurlCaSha256 =
     "86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c"
-val slockVisualFixturesEnabled =
+val raftVisualFixturesEnabled =
     providers.gradleProperty("slockVisualFixtures")
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
         .map { it.equals("true", ignoreCase = true) }
@@ -77,8 +77,8 @@ kotlin {
     // suppression (KT-61573) — zero behavior change.
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
-        // :core declarations that are public only for :shared (see SlockCoreInternalApi).
-        optIn.add("build.raft.app.SlockCoreInternalApi")
+        // :core declarations that are public only for :shared (see RaftCoreInternalApi).
+        optIn.add("build.raft.app.RaftCoreInternalApi")
     }
 
     androidTarget {
@@ -110,7 +110,7 @@ kotlin {
                     "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
             isStatic = true
             license = "MIT"
-            // Compose Multiplatform pages: Swift/ObjC reach SlockCmpIos (view controller factory,
+            // Compose Multiplatform pages: Swift/ObjC reach RaftCmpIos (view controller factory,
             // routing, bridge/navigator protocols). Not transitive: :core stays unexported.
             export(project(":ui-cmp"))
         }
@@ -123,8 +123,8 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
             kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
-            kotlin.srcDir(generatedSlockDatetimeConfigDir)
-            if (slockVisualFixturesEnabled) {
+            kotlin.srcDir(generatedRaftDatetimeConfigDir)
+            if (raftVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
                 // Visual fixture DATA follows the gated host into commonMain, so the visual
                 // @Page can read the fixtures it renders. When the flag is off it goes to
@@ -140,7 +140,7 @@ kotlin {
                 // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
                 api(project(":core"))
                 // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
-                // through the :ui-cmp hosts (SlockCmpRoot). The Kuikly compose fork, Kuikly core
+                // through the :ui-cmp hosts (RaftCmpRoot). The Kuikly compose fork, Kuikly core
                 // (Pager/Module/nvi JSON) and core-render-android are gone; their remaining API
                 // surface lives in the build.raft.app.compat package (TODO(cmp-switch) shims).
                 api(project(":ui-cmp"))
@@ -166,7 +166,7 @@ kotlin {
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.5")
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
                 // Unified network infra (task #12): all platforms' HTTP goes
-                // through NetworkKMM behind the SlockHttpExecutor seam.
+                // through NetworkKMM behind the RaftHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
                 // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
                 // by the commonMain Compose Canvas renderer (RaftMermaidCanvas); mermaid-kuikly is gone.
@@ -176,7 +176,7 @@ kotlin {
             }
         }
         val commonTest by getting {
-            if (!slockVisualFixturesEnabled) {
+            if (!raftVisualFixturesEnabled) {
                 // Production builds must ship zero fixture code, but fixture-contract unit tests
                 // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
                 // data here (and only here) keeps both true without a second gated test source set.
@@ -267,7 +267,7 @@ publishing {
 
 sqldelight {
     databases {
-        create("SlockDatabase") {
+        create("RaftDatabase") {
             packageName.set("build.raft.app.shared.data.local")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
             verifyMigrations.set(true)
@@ -305,14 +305,14 @@ tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
 tasks.matching { task ->
     task.name.startsWith("compile") && task.name.contains("Kotlin") && !task.name.contains("Test")
 }.configureEach {
-    dependsOn("generateCommonMainSlockDatabaseInterface")
+    dependsOn("generateCommonMainRaftDatabaseInterface")
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
+    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainRaftDatabaseInterface")
 }
 
-if (slockVisualFixturesEnabled) {
+if (raftVisualFixturesEnabled) {
     tasks.matching { task ->
         task.name in setOf(
             "bundleLibRuntimeToJarDebug",
@@ -332,7 +332,7 @@ tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
             else -> null
         }
     if (generatedResourcesTask != null) {
-        dependsOn(stageTmmCommonSources, generatedResourcesTask, "generateCommonMainSlockDatabaseInterface")
+        dependsOn(stageTmmCommonSources, generatedResourcesTask, "generateCommonMainRaftDatabaseInterface")
     }
 }
 
@@ -345,7 +345,7 @@ tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
 }
 
 tasks.matching { it.name.startsWith("compile") || it.name.startsWith("ksp") }.configureEach {
-    dependsOn(generateSlockDatetimeBuildConfig)
+    dependsOn(generateRaftDatetimeBuildConfig)
 }
 
 tasks.matching { it.name == "generateMRandroidMain" }.configureEach {
@@ -457,7 +457,7 @@ val verifyNetworkCurlCaBundle by tasks.registering {
 val verifyNetworkTransportClientWiring by tasks.registering {
     val clientSources =
         listOf(
-            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/NetworkKmmSlockHttpExecutor.kt"),
+            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/NetworkKmmRaftHttpExecutor.kt"),
             layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/SharedBinaryDownloader.kt"),
             layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt")
         )
@@ -465,7 +465,7 @@ val verifyNetworkTransportClientWiring by tasks.registering {
     doLast {
         clientSources.forEach { source ->
             val text = source.asFile.readText()
-            check("slockNetworkClientConfig(" in text) {
+            check("raftNetworkClientConfig(" in text) {
                 "${source.asFile.name} must use the app-global NetworkKMM selector/diagnostics helper"
             }
         }

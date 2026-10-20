@@ -2,7 +2,7 @@ package build.raft.app.data.runtimeform.v2
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SlockComputersApi
+import build.raft.app.data.RaftComputersApi
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -199,7 +199,7 @@ class RuntimeFormV2SavedConnectionTest {
     private class RevisionApi(
         private val forms: MutableList<String>,
         private val respond: (sourceId: String, formRevision: String?, refresh: Boolean) -> HomeNetworkResponse
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         val formRequests = mutableListOf<String>()
         val sourceRequests = mutableListOf<String>()
 

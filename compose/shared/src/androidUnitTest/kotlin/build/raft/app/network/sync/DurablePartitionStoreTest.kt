@@ -6,8 +6,8 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalMessageRow
-import build.raft.app.data.InMemorySlockKeyValueStore
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.model.ServerId
 import java.nio.file.Files
@@ -82,17 +82,17 @@ class DurablePartitionStoreTest {
         ),
     )
 
-    private fun freshDatabase(driver: JdbcSqliteDriver): SlockSqlDatabase {
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
-        return SlockSqlDatabase(driver)
+    private fun freshDatabase(driver: JdbcSqliteDriver): RaftSqlDatabase {
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
+        return RaftSqlDatabase(driver)
     }
 
-    private fun adapter(database: SlockSqlDatabase) = DefaultFoldPersistenceAdapter(
+    private fun adapter(database: RaftSqlDatabase) = DefaultFoldPersistenceAdapter(
         runner = SqlDelightFoldPersistTransactionRunner(database),
         store = SqlDelightFoldPersistStore(database, now = { 100L }),
     )
 
-    private fun store(database: SlockSqlDatabase) = SqlDelightFoldPersistStore(database, now = { 100L })
+    private fun store(database: RaftSqlDatabase) = SqlDelightFoldPersistStore(database, now = { 100L })
 
     @Test
     fun crossServerPartitionsCannotReadOrOverwriteEachOther() = runBlocking {
@@ -164,7 +164,7 @@ class DurablePartitionStoreTest {
             }
 
             JdbcSqliteDriver(url).use { secondDriver ->
-                val secondDatabase = SlockSqlDatabase(secondDriver)
+                val secondDatabase = RaftSqlDatabase(secondDriver)
                 assertEquals(listOf("restart-message"), store(secondDatabase).readFacts(exact).map { it.id })
                 assertEquals(7L, store(secondDatabase).readCursor(exact)?.latestSeq)
                 assertTrue(store(secondDatabase).readFacts(scope(principalId = "principal-b")).isEmpty())
@@ -193,7 +193,7 @@ class DurablePartitionStoreTest {
 
     @Test
     fun serverOnlyLegacyMmkvCursorNeverSeedsAFreshDurablePartition() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         keyValueStore.putString("realtime.cursor.appliedLastSeq.server-a", "42")
         val legacy = RealtimeAppliedSeqCursorStore(keyValueStore)
         assertEquals(42L, legacy.readAppliedLastSeq(ServerId("server-a")))
@@ -255,8 +255,8 @@ class DurablePartitionStoreTest {
     @Test
     fun directStoreMismatchFailsBeforeAnySql() = runBlocking {
         val counting = SqlCountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(counting).value
-        val database = SlockSqlDatabase(counting)
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(counting).value
+        val database = RaftSqlDatabase(counting)
         // Database construction now forces lazy SQLDelight initialization. This assertion is
         // scoped to the rejected store mutation, so reset the witness after bootstrap.
         counting.statementCount = 0

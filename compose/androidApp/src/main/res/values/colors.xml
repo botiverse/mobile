@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="slock_brand_yellow">#FFFFD440</color>
-    <color name="slock_accent_pink">#FFFE7DA8</color>
-    <color name="slock_surface_cream">#FFFFFAEF</color>
-    <color name="slock_agent_active">#FF3DDC84</color>
-    <color name="slock_agent_idle">#FFFFD440</color>
-    <color name="slock_agent_error">#FFFF6A3D</color>
-    <color name="slock_agent_offline">#FF9CA3AF</color>
+    <color name="raft_brand_yellow">#FFFFD440</color>
+    <color name="raft_accent_pink">#FFFE7DA8</color>
+    <color name="raft_surface_cream">#FFFFFAEF</color>
+    <color name="raft_agent_active">#FF3DDC84</color>
+    <color name="raft_agent_idle">#FFFFD440</color>
+    <color name="raft_agent_error">#FFFF6A3D</color>
+    <color name="raft_agent_offline">#FF9CA3AF</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

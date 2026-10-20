@@ -1,11 +1,11 @@
 package build.raft.app.image
 
-import build.raft.app.data.SlockAvatarMountedRenderDescriptor
+import build.raft.app.data.RaftAvatarMountedRenderDescriptor
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.binaryDownloadUrlDiagnostics
-import build.raft.app.slockLogInfo
-import build.raft.app.slockLogWarn
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
 import coil3.Extras
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -33,11 +33,11 @@ private const val SVG_MIME = "image/svg+xml"
 
 /**
  * Host-provided reader for managed avatar bytes (`slock-avatar-render-v1:` models). Android maps
- * this to `SlockAndroidAvatarCacheProcess.beginRender`, iOS to `SlockIosAvatarCacheHost`.
+ * this to `RaftAndroidAvatarCacheProcess.beginRender`, iOS to `RaftIosAvatarCacheHost`.
  * Returning null fails the load (the avatar falls back to its placeholder / url candidate).
  */
 fun interface RaftManagedImageReader {
-    suspend fun open(descriptor: SlockAvatarMountedRenderDescriptor): RaftManagedImageRead?
+    suspend fun open(descriptor: RaftAvatarMountedRenderDescriptor): RaftManagedImageRead?
 }
 
 /**
@@ -157,7 +157,7 @@ private class RaftNetworkImageFetcher(
         if (sniffedMimeType == null) {
             // A 2xx body that is not an image (captive portal HTML, proxy error page): never
             // commit it under the image's key; the decoders still get a chance at the bytes.
-            slockLogWarn(
+            raftLogWarn(
                 LOG_TAG,
                 "source=network status=non_image_body bytes=${downloaded.bytes.size} ${binaryDownloadUrlDiagnostics(data.url)}"
             )
@@ -206,7 +206,7 @@ private object RaftImageByteFlights {
         return try {
             deferred.await()
         } catch (failure: Throwable) {
-            slockLogWarn(
+            raftLogWarn(
                 LOG_TAG,
                 "source=network status=failed type=${failure::class.simpleName} ${binaryDownloadUrlDiagnostics(url)}"
             )
@@ -224,7 +224,7 @@ private class RaftBundledAssetFetcher(
         if (bytes == null) {
             // Bundled asset paths carry no user data, so log the path itself: a missing packaged
             // asset is otherwise invisible (task #335).
-            slockLogWarn(LOG_TAG, "source=assets status=failed path=${data.path}")
+            raftLogWarn(LOG_TAG, "source=assets status=failed path=${data.path}")
             error("Bundled image asset not found: ${data.path}")
         }
         return SourceFetchResult(
@@ -250,7 +250,7 @@ private class RaftManagedAvatarFetcher(
         val reader = RaftImageHost.managedImageReader
         val read = reader?.open(data.descriptor)
         if (read == null) {
-            slockLogInfo(
+            raftLogInfo(
                 LOG_TAG,
                 "source=managed_avatar status=render_read_unavailable reader=${if (reader == null) "none" else "present"} " +
                     "managedModelHash=${data.model.hashCode().toString(16)}"

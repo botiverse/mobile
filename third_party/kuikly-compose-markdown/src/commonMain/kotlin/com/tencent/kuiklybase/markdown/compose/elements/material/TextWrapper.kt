@@ -18,9 +18,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
-import com.tencent.kuiklybase.markdown.compose.SlockMarkdownVendorTraceThresholdUs
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownMonotonicNanosSince
+import com.tencent.kuiklybase.markdown.compose.RaftMarkdownVendorTraceThresholdUs
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownMonotonicNanosSince
 import kotlin.time.TimeSource
 
 @Composable
@@ -59,9 +59,9 @@ fun MarkdownBasicText(
         fontStyle = fontStyle,
         letterSpacing = letterSpacing
     )
-    val styleMergeDurationUs = slockMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
-    if (styleMergeDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace {
+    val styleMergeDurationUs = raftMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
+    if (styleMergeDurationUs >= RaftMarkdownVendorTraceThresholdUs) {
+        raftMarkdownLogSubTrace {
             "phase=markdown.text.merge_style durationUs=$styleMergeDurationUs textLength=${text.length}"
         }
     }
@@ -86,9 +86,9 @@ fun MarkdownBasicText(
         maxLines = maxLines,
         minLines = minLines,
     )
-    val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
-    if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace {
+    val textProviderDurationUs = raftMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
+    if (textProviderDurationUs >= RaftMarkdownVendorTraceThresholdUs) {
+        raftMarkdownLogSubTrace {
             "phase=markdown.text.provider_text durationUs=$textProviderDurationUs textLength=${text.length}"
         }
     }
@@ -132,9 +132,9 @@ fun MarkdownBasicText(
         fontStyle = fontStyle,
         letterSpacing = letterSpacing
     )
-    val styleMergeDurationUs = slockMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
-    if (styleMergeDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace {
+    val styleMergeDurationUs = raftMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
+    if (styleMergeDurationUs >= RaftMarkdownVendorTraceThresholdUs) {
+        raftMarkdownLogSubTrace {
             "phase=markdown.text.merge_style durationUs=$styleMergeDurationUs textLength=${text.text.length}"
         }
     }
@@ -160,19 +160,19 @@ fun MarkdownBasicText(
         minLines = minLines,
         inlineContent = inlineContent,
     )
-    val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
+    val textProviderDurationUs = raftMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
     // Annotation scans are O(annotations) and only feed the log line, so they
     // live inside the lazily-evaluated message lambdas (skipped when the
-    // SlockMarkdownSubTrace gate is off).
-    slockMarkdownLogSubTrace {
+    // RaftMarkdownSubTrace gate is off).
+    raftMarkdownLogSubTrace {
         val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
         val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
         "phase=markdown.text.provider_rich_text_all durationUs=$textProviderDurationUs textHash=${text.text.hashCode().toString(16)} " +
             "textLength=${text.text.length} spanStyles=${text.spanStyles.size} paragraphStyles=${text.paragraphStyles.size} " +
             "stringAnnotations=$stringAnnotationCount linkAnnotations=$linkAnnotationCount inlineContent=${inlineContent.size}"
     }
-    if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace {
+    if (textProviderDurationUs >= RaftMarkdownVendorTraceThresholdUs) {
+        raftMarkdownLogSubTrace {
             val stringAnnotationCount = text.getStringAnnotations(start = 0, end = text.length).size
             val linkAnnotationCount = text.getLinkAnnotations(start = 0, end = text.length).size
             "phase=markdown.text.provider_rich_text durationUs=$textProviderDurationUs textLength=${text.text.length} " +

@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -88,7 +88,7 @@ class SettingsStandaloneWebViewHostTest {
                 settingsWebViewPageData(
                     surface = surface,
                     storeScope =
-                        SlockShellStoreScope.create(
+                        RaftShellStoreScope.create(
                             shellInstanceId = "shell-${surface.diagnosticsName}",
                             initialServerId = "server-1",
                         ),
@@ -105,7 +105,7 @@ class SettingsStandaloneWebViewHostTest {
         val pageData =
             settingsWebViewPageData(
                 surface = SettingsWebViewSurface.ReleaseNotes,
-                storeScope = SlockShellStoreScope.create(shellInstanceId = "shell-release-notes"),
+                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-release-notes"),
                 versionCode = " 1010000 ",
             )
 

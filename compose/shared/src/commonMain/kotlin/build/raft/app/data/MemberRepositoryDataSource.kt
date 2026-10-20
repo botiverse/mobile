@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.slockAvatarDiagnosticsHash
+import build.raft.app.raftAvatarDiagnosticsHash
 
 import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
 import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
@@ -11,8 +11,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.SlockWorkspaceFileKind
-import build.raft.app.model.SlockWorkspaceNode
+import build.raft.app.model.RaftWorkspaceFileKind
+import build.raft.app.model.RaftWorkspaceNode
 import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -57,7 +57,7 @@ private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
-interface SlockNetworkClient {
+interface RaftNetworkClient {
     suspend fun request(
         priority: DataRequestPriority,
         path: String,
@@ -128,14 +128,14 @@ interface SlockNetworkClient {
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     suspend fun putAttachmentUploadFile(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     /**
@@ -145,8 +145,8 @@ interface SlockNetworkClient {
      */
     suspend fun prepareAttachmentUploadFile(
         file: PlatformFile,
-    ): SlockPlatformFilePreparationResult =
-        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_required")
+    ): RaftPlatformFilePreparationResult =
+        RaftPlatformFilePreparationResult.Rejected("auth_authority_binding_required")
 
     suspend fun uploadAttachments(
         priority: DataRequestPriority,
@@ -181,11 +181,11 @@ internal fun interface ProgressiveAttachmentNetworkClient {
         priority: DataRequestPriority,
         channelId: ChannelId,
         files: List<MultipartFile>,
-        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
     ): HomeNetworkResponse
 }
 
-internal interface AuthorityBoundSlockNetworkClient {
+internal interface AuthorityBoundRaftNetworkClient {
     suspend fun requestBound(
         priority: DataRequestPriority,
         path: String,
@@ -193,10 +193,10 @@ internal interface AuthorityBoundSlockNetworkClient {
         query: List<Pair<String, String>> = emptyList(),
         serverIdOverride: ServerId? = null,
         bodyText: String? = null,
-        expectedAuthority: SlockExpectedAuthBinding
+        expectedAuthority: RaftExpectedAuthBinding
     ): HomeNetworkResponse
 
-    /** [requestBound] with extra request headers; see [SlockNetworkClient.requestWithHeaders]. */
+    /** [requestBound] with extra request headers; see [RaftNetworkClient.requestWithHeaders]. */
     suspend fun requestBoundWithHeaders(
         priority: DataRequestPriority,
         path: String,
@@ -205,7 +205,7 @@ internal interface AuthorityBoundSlockNetworkClient {
         query: List<Pair<String, String>> = emptyList(),
         serverIdOverride: ServerId? = null,
         bodyText: String? = null,
-        expectedAuthority: SlockExpectedAuthBinding
+        expectedAuthority: RaftExpectedAuthBinding
     ): HomeNetworkResponse =
         requestBound(
             priority = priority,
@@ -221,31 +221,31 @@ internal interface AuthorityBoundSlockNetworkClient {
         priority: DataRequestPriority,
         channelId: ChannelId,
         files: List<MultipartFile>,
-        expectedAuthority: SlockExpectedAuthBinding
+        expectedAuthority: RaftExpectedAuthBinding
     ): HomeNetworkResponse
 
     suspend fun createAttachmentUploadSessionBound(
         priority: DataRequestPriority,
         request: AttachmentUploadSessionCreateRequest,
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun completeAttachmentUploadSessionBound(
         priority: DataRequestPriority,
         uploadId: String,
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun cancelAttachmentUploadSessionBound(
         priority: DataRequestPriority,
         uploadId: String,
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun statusAttachmentUploadSessionBound(
         priority: DataRequestPriority,
         uploadId: String,
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     /** Presigned PUTs carry no bearer token, but are still fenced to the captured route authority. */
@@ -253,23 +253,23 @@ internal interface AuthorityBoundSlockNetworkClient {
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        expectedAuthority: SlockExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+        expectedAuthority: RaftExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun putAttachmentUploadFileBound(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        expectedAuthority: SlockExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+        expectedAuthority: RaftExpectedAuthBinding,
+        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun prepareAttachmentUploadFileBound(
         file: PlatformFile,
-        expectedAuthority: SlockExpectedAuthBinding,
-    ): SlockPlatformFilePreparationResult =
-        SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
+        expectedAuthority: RaftExpectedAuthBinding,
+    ): RaftPlatformFilePreparationResult =
+        RaftPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
 }
 
 /**
@@ -277,9 +277,9 @@ internal interface AuthorityBoundSlockNetworkClient {
  * receipt. Every JSON request reaches the auth middleware with the same
  * account/token/server witness; unsupported carriers fail closed before I/O.
  */
-internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBinding): SlockNetworkClient {
-    val bound = this as? AuthorityBoundSlockNetworkClient
-    return object : SlockNetworkClient {
+internal fun RaftNetworkClient.boundTo(expectedAuthority: RaftExpectedAuthBinding): RaftNetworkClient {
+    val bound = this as? AuthorityBoundRaftNetworkClient
+    return object : RaftNetworkClient {
         override suspend fun request(
             priority: DataRequestPriority,
             path: String,
@@ -366,7 +366,7 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             bytes: ByteArray,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
             bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority, onUploadProgress)
                 ?: authorityBindingUnsupportedResponse()
@@ -375,16 +375,16 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             file: PlatformFile,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
             bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority, onUploadProgress)
                 ?: authorityBindingUnsupportedResponse()
 
         override suspend fun prepareAttachmentUploadFile(
             file: PlatformFile,
-        ): SlockPlatformFilePreparationResult =
+        ): RaftPlatformFilePreparationResult =
             bound?.prepareAttachmentUploadFileBound(file, expectedAuthority)
-                ?: SlockPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
+                ?: RaftPlatformFilePreparationResult.Rejected("auth_authority_binding_unsupported")
     }
 }
 
@@ -404,56 +404,56 @@ internal fun authorityBindingRequiredResponse(): HomeNetworkResponse =
         errorBodyText = """{"error":"auth_authority_binding_required"}"""
     )
 
-private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/members", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.settingsAgents(
+private suspend fun RaftNetworkClient.settingsAgents(
     priority: DataRequestPriority,
     serverId: ServerId? = null
 ): HomeNetworkResponse =
     request(priority, "agents", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.settingsMachines(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsMachines(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/machines", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.updateAgent(priority: DataRequestPriority, agentId: MemberId, bodyText: String): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.updateAgent(priority: DataRequestPriority, agentId: MemberId, bodyText: String): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}", method = "PATCH", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.memberProfile(
+private suspend fun RaftNetworkClient.memberProfile(
     priority: DataRequestPriority,
     serverId: ServerId,
     memberId: MemberId
 ): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/members/${memberId.value}/profile", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.agentDirectMessages(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.agentDirectMessages(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/agent-dms")
 
-private suspend fun SlockNetworkClient.agentChannels(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.agentChannels(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/channels")
 
-private suspend fun SlockNetworkClient.reminders(
+private suspend fun RaftNetworkClient.reminders(
     priority: DataRequestPriority,
     ownerAgentId: MemberId,
     status: String = "scheduled"
 ): HomeNetworkResponse =
     request(priority, "reminders", query = listOf("ownerAgentId" to ownerAgentId.value, "status" to status))
 
-private suspend fun SlockNetworkClient.agentActivityLog(
+private suspend fun RaftNetworkClient.agentActivityLog(
     priority: DataRequestPriority,
     agentId: MemberId,
     limit: Int = 50
 ): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/activity-log", query = listOf("limit" to limit.toString()))
 
-private suspend fun SlockNetworkClient.settingsMachineWorkspaces(
+private suspend fun RaftNetworkClient.settingsMachineWorkspaces(
     priority: DataRequestPriority,
     serverId: ServerId,
     machineId: String
 ): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/machines/$machineId/workspaces", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.agentWorkspaceFiles(
+private suspend fun RaftNetworkClient.agentWorkspaceFiles(
     priority: DataRequestPriority,
     agentId: MemberId,
     dirPath: String? = null
@@ -464,34 +464,34 @@ private suspend fun SlockNetworkClient.agentWorkspaceFiles(
         query = listOfNotNull(dirPath?.let { "dirPath" to it })
     )
 
-private suspend fun SlockNetworkClient.readAgentWorkspaceFile(
+private suspend fun RaftNetworkClient.readAgentWorkspaceFile(
     priority: DataRequestPriority,
     agentId: MemberId,
     path: String
 ): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/workspace-files/read", query = listOf("path" to path))
 
-private suspend fun SlockNetworkClient.agentSkills(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.agentSkills(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/skills")
 
-private suspend fun SlockNetworkClient.channelMembers(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.channelMembers(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/members")
 
-private suspend fun SlockNetworkClient.addChannelMember(
+private suspend fun RaftNetworkClient.addChannelMember(
     priority: DataRequestPriority,
     channelId: ChannelId,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/members", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.addChannelMembersBatch(
+private suspend fun RaftNetworkClient.addChannelMembersBatch(
     priority: DataRequestPriority,
     channelId: ChannelId,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/members/batch", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.removeChannelMember(
+private suspend fun RaftNetworkClient.removeChannelMember(
     priority: DataRequestPriority,
     channelId: ChannelId,
     kind: MemberKind,
@@ -500,17 +500,17 @@ private suspend fun SlockNetworkClient.removeChannelMember(
     request(priority, "channels/${channelId.value}/members/${kind.channelMemberPathSegment}/${memberId.value}", method = "DELETE")
 
 class RealMemberRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {},
     private val logger: (String) -> Unit = {}
 ) : MemberRepository {
-    private val agentsApiClient = SlockAgentsApiClient(
-        transport = SlockAgentsNetworkApi(networkClient),
+    private val agentsApiClient = RaftAgentsApiClient(
+        transport = RaftAgentsNetworkApi(networkClient),
         diagnosticsLogger = { message -> logger("agents_api $message") }
     )
-    private val integrationsApiClient = SlockIntegrationsActionsPushApiClient(
-        transport = SlockIntegrationsActionsPushNetworkApi(networkClient)
+    private val integrationsApiClient = RaftIntegrationsActionsPushApiClient(
+        transport = RaftIntegrationsActionsPushNetworkApi(networkClient)
     )
     private val agentLifecycleActionMutex = Mutex()
     private val agentLifecycleActionsInFlight = mutableSetOf<MemberId>()
@@ -879,11 +879,11 @@ class RealMemberRepository(
                 AgentWorkspaceTreeSnapshot(
                     agentId = agentId,
                     rootPath = "Workspace",
-                    root = SlockWorkspaceNode(
+                    root = RaftWorkspaceNode(
                         id = "/",
                         name = "workspace",
                         path = "/",
-                        kind = SlockWorkspaceFileKind.Folder,
+                        kind = RaftWorkspaceFileKind.Folder,
                         children = children
                     )
                 )
@@ -1037,7 +1037,7 @@ class RealMemberRepository(
             emptyReason = EmptyReason.NoMembers,
             block = { networkClient.request(priority, "channels/${channelId.value}") },
             source = "channel_member_capabilities",
-            mapper = { body -> parseSlockChannelDetail(body)
+            mapper = { body -> parseRaftChannelDetail(body)
                 ?: throw IllegalStateException("Channel detail missing") },
         )
         val channel = (detail as? DataResult.Content)?.data
@@ -1478,7 +1478,7 @@ private fun logAgentsWithoutComputer(logger: (String) -> Unit, serverId: ServerI
     logger(
         "repository_agents_computer serverId=${serverId.value} agents=${agents.size} missingComputerId=${missing.size}" +
             missing.joinToString(separator = ",", prefix = " missing=[", postfix = "]") {
-                it.id.value.slockAvatarDiagnosticsHash()
+                it.id.value.raftAvatarDiagnosticsHash()
             }
     )
 }

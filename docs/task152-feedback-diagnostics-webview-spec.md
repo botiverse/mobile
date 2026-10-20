@@ -39,8 +39,8 @@ The page ignores duplicate, stale, late, or mismatched events. Native origin/mai
 ## Platform mapping
 
 - **Android:** extend the existing AndroidX `WebMessageListener` and document-start host script. Upload/cancellation is owned by the Android activity/Hands client and fenced by request/session/WebView generation.
-- **iOS:** add `WKScriptMessageHandler` plus a document-start `WKUserScript` to `SlockSandboxWebView`; upload/cancellation is owned by the existing feedback bridge module and fenced by WebView generation.
-- **OHOS:** add ArkWeb JavaScript/native messaging to `SlockSandboxWebView.ets`; upload/cancellation is owned by `KRBridgeModule.ets` and fenced by render generation.
+- **iOS:** add `WKScriptMessageHandler` plus a document-start `WKUserScript` to `RaftSandboxWebView`; upload/cancellation is owned by the existing feedback bridge module and fenced by WebView generation.
+- **OHOS:** add ArkWeb JavaScript/native messaging to `RaftSandboxWebView.ets`; upload/cancellation is owned by `KRBridgeModule.ets` and fenced by render generation.
 
 ## Acceptance matrix
 

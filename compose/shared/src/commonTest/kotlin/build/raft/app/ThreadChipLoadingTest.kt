@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class ThreadChipLoadingTest {
     private fun pending(
-        reaction: KuiklyThreadReactionItem,
+        reaction: RaftThreadReactionItem,
         originalIndex: Int = 0
     ): ThreadReactionPendingVisual =
         ThreadReactionPendingVisual(reaction = reaction, originalIndex = originalIndex)
@@ -31,7 +31,7 @@ class ThreadChipLoadingTest {
     @Test
     fun lastReactionRemovalDisappearsImmediatelyWhileRequestIsPending() {
         val key = threadReactionPendingKey("message-1", "👍")
-        val original = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
+        val original = RaftThreadReactionItem(emoji = "👍", count = 1, selected = true)
 
         assertEquals(
             emptyList(),
@@ -53,7 +53,7 @@ class ThreadChipLoadingTest {
 
     @Test
     fun failedLastRemovalUsesRestoredCanonicalRowAfterPendingClears() {
-        val restored = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
+        val restored = RaftThreadReactionItem(emoji = "👍", count = 1, selected = true)
 
         assertEquals(
             listOf(restored),
@@ -68,16 +68,16 @@ class ThreadChipLoadingTest {
     @Test
     fun addAndMultiCountRemovalKeepOptimisticRowWithoutDuplicate() {
         val key = threadReactionPendingKey("message-1", "👍")
-        val optimisticAdd = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
-        val originalRemove = KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true)
-        val optimisticRemove = KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false)
+        val optimisticAdd = RaftThreadReactionItem(emoji = "👍", count = 1, selected = true)
+        val originalRemove = RaftThreadReactionItem(emoji = "👍", count = 3, selected = true)
+        val optimisticRemove = RaftThreadReactionItem(emoji = "👍", count = 2, selected = false)
 
         assertEquals(
             listOf(optimisticAdd),
             threadVisibleReactionsWithPending(
                 messageId = "message-1",
                 reactions = listOf(optimisticAdd),
-                pendingVisuals = mapOf(key to emptyList<KuiklyThreadReactionItem>().toPendingReactionVisual("👍", selected = true))
+                pendingVisuals = mapOf(key to emptyList<RaftThreadReactionItem>().toPendingReactionVisual("👍", selected = true))
             )
         )
         assertEquals(
@@ -104,7 +104,7 @@ class ThreadChipLoadingTest {
                 reactions = emptyList(),
                 pendingVisuals =
                     mapOf(
-                        key to pending(KuiklyThreadReactionItem(emoji = "👍", count = 1))
+                        key to pending(RaftThreadReactionItem(emoji = "👍", count = 1))
                     )
             )
         )
@@ -113,7 +113,7 @@ class ThreadChipLoadingTest {
     @Test
     fun footerMountFollowsOptimisticPendingReactionCount() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "member-1",
                 authorName = "Member"
@@ -126,8 +126,8 @@ class ThreadChipLoadingTest {
 
     @Test
     fun pendingRemovalUpdatesStaleSnapshotAndPreservesNeighborOrder() {
-        val thumbs = KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
-        val heart = KuiklyThreadReactionItem(emoji = "❤️", count = 2)
+        val thumbs = RaftThreadReactionItem(emoji = "👍", count = 1, selected = true)
+        val heart = RaftThreadReactionItem(emoji = "❤️", count = 2)
         val key = threadReactionPendingKey("message-1", thumbs.emoji)
 
         assertEquals(

@@ -1,21 +1,21 @@
 [
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftChildPage.kt",
     "literal": "Child Page Host Smoke",
     "reason": "internal child-host smoke page, not a product surface"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftChildPage.kt",
     "literal": "pageData.marker = $marker",
     "reason": "internal child-host diagnostic marker"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
     "literal": "Tight Fallback Lines",
     "reason": "internal typography probe label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
     "literal": "Message Body Path",
     "reason": "internal typography probe label"
   },
@@ -102,73 +102,73 @@
     "reason": "internal server danger-modal visual fixture label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockFloatingOverlayTouchGuardVisualPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftFloatingOverlayTouchGuardVisualPage.kt",
     "literal": "MENU ACTION",
     "reason": "internal floating-overlay touch guard visual probe"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockHomeComponents.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt",
     "literal": "HOME",
     "reason": "internal home app-update banner visual fixture label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftChildPage.kt",
     "literal": "Android proof for nested Kuikly child pages with independent child delegators.",
     "reason": "internal nested child-page host proof copy"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockKuiklyChildPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftChildPage.kt",
     "literal": "If this renders inside the parent page, Android host registration and child onAttach pageData are working.",
     "reason": "internal nested child-page host proof copy"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockLucideIconGalleryPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
     "literal": "Lucide Icons",
     "reason": "internal generated icon gallery heading"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockLucideIconGalleryPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
     "literal": "${names.size} icons · generated OHOS paths",
     "reason": "internal generated icon gallery diagnostic copy"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalPointerBarrierVisualPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
     "literal": "MODAL ACTION",
     "reason": "internal modal pointer-barrier visual probe state"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalPointerBarrierVisualPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
     "literal": "UNDERLAY HIT",
     "reason": "internal modal pointer-barrier visual probe state"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockModalPointerBarrierVisualPage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
     "literal": "CURSOR MOVED",
     "reason": "internal modal pointer-barrier visual probe state"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
     "literal": "Typography Probe",
     "reason": "internal typography probe heading"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
     "literal": "Space Grotesk weight and CJK fallback parity checks",
     "reason": "internal typography probe diagnostic copy"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
     "literal": "20sp/22sp · combining mark + emoji + CJK",
     "reason": "internal typography probe measurement label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
-    "literal": "SlockMarkdownBody · 14sp/24sp · regular",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
+    "literal": "RaftMarkdownBody · 14sp/24sp · regular",
     "reason": "internal typography probe measurement label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockTypographyProbePage.kt",
-    "literal": "SlockMarkdownBody · 14sp/24sp · medium probe",
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
+    "literal": "RaftMarkdownBody · 14sp/24sp · medium probe",
     "reason": "internal typography probe measurement label"
   }
 ]

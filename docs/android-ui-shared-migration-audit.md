@@ -25,8 +25,8 @@ runtime product callers from `MainActivity.kt` into Android-owned UI/theme:
 - `MainActivity.kt` still directly renders native product screens:
   `ThreadScreen`, `InboxScreen`, `SettingsHomeScreen`, and several Settings
   detail screens.
-- Those native screens in turn import Android `SlockColor`, `SlockType`,
-  `SlockSpacing`, `SlockShadow`, and Android components such as `SlockButton`,
+- Those native screens in turn import Android `RaftColor`, `RaftType`,
+  `RaftAppSpacing`, `RaftShadow`, and Android components such as `RaftAppButton`,
   `SlockTextField`, `SlockModal`, `SlockKeySurface`, and `SlockPageHeader`.
 
 So the current answer is: Android should not own final theme, but deleting
@@ -49,7 +49,7 @@ runtime product path:
 - Removed the old Android native component screenshot harness:
   `VisualScreenshotCaptureTest.kt` and `VisualScreenshotCases.kt`.
 
-Reason: `SlockMemberRow` / `SlockMemberKind` / `SlockPresence` had no runtime
+Reason: `SlockMemberRow` / `SlockMemberKind` / `RaftAppPresence` had no runtime
 callers; the only remaining usage was the old Android component screenshot
 harness. That harness also kept native Android token/button/input baselines alive
 after visual validation moved to shared route captures such as
@@ -65,7 +65,7 @@ product components/tokens.
 ## 2026-05-27 Icon Ownership Check
 
 Product UI icons should use the shared Lucide path. Current shared/KMP routes do
-that through `SlockLucideIcon` and named shared icons, with Android/OHOS renderers
+that through `RaftLucideIcon` and named shared icons, with Android/OHOS renderers
 providing the platform drawing bridge.
 
 The remaining Android `ui/icons/LucideIcons.kt` file is still generated from the
@@ -101,7 +101,7 @@ keep `ui/icons/LucideIcons.kt` are superseded.
 
 Current Android product rendering uses:
 
-- the shared `SlockLucideIcon` contract and generated icon-name inventory;
+- the shared `RaftLucideIcon` contract and generated icon-name inventory;
 - the pinned generated Android path registry under `shared/generated`;
 - one native Canvas render view that parses each path and paint once into a
   first-use cache, then draws without Compose, `ImageVector`, or per-frame path
@@ -143,8 +143,8 @@ These should stay Android-specific even after product theme exits:
 
 These should not remain Android-owned in the final architecture:
 
-- `SlockColor`, `SlockType`, `SlockSpacing`, `SlockStroke`, `SlockRadius`,
-  `SlockShadow`, `slockHardShadow`, and other product visual tokens.
+- `RaftColor`, `RaftType`, `RaftAppSpacing`, `RaftAppStroke`, `RaftAppRadius`,
+  `RaftShadow`, `slockHardShadow`, and other product visual tokens.
 - Product components: buttons, inputs, modals, badges, page headers, bottom tab
   bars, avatars/status indicators, menus/popovers, empty/error/loading blocks.
 - Route UI for Home, Thread, Inbox, Tasks, Members, Settings, Search/Saved, and
@@ -183,10 +183,10 @@ The Android `compose/androidApp/src/main/java/build/raft/app/ui` tree still cont
 
 Shared already has equivalents for the long-term product path:
 
-- `compose/shared/.../SlockDesignTokens.kt`: shared colors, spacing, stroke, radius, size, typography.
-- `compose/shared/.../SlockTabBar.kt`: shared bottom tab contract/renderer seam.
-- `compose/shared/.../SlockLucideIcon.kt`: shared icon bridge for Kuikly/OHOS/native renderers.
-- `compose/shared/.../AuthComponents.kt`, `ThreadComposerPage.kt`, `ThreadPage.kt`, `SlockHomeComponents.kt`, Settings pages: migrated page-specific UI.
+- `compose/shared/.../RaftDesignTokens.kt`: shared colors, spacing, stroke, radius, size, typography.
+- `compose/shared/.../RaftTabBar.kt`: shared bottom tab contract/renderer seam.
+- `compose/shared/.../RaftLucideIcon.kt`: shared icon bridge for Kuikly/OHOS/native renderers.
+- `compose/shared/.../AuthComponents.kt`, `ThreadComposerPage.kt`, `ThreadPage.kt`, `RaftHomeComponents.kt`, Settings pages: migrated page-specific UI.
 
 ## Classification
 
@@ -214,7 +214,7 @@ by legacy Thread/Settings fallback were split into smaller temporary files:
 
 - `ui/components/SlockComposer.kt`
 - `ui/components/SlockMessageItem.kt`
-- `ui/components/SlockCheckbox.kt`
+- `ui/components/RaftAppCheckbox.kt`
 
 ### Migrated To Shared MVI
 
@@ -236,8 +236,8 @@ the shared store/reducer first.
 
 These are reusable product UI concepts and should be moved to shared variants instead of remaining Android-only:
 
-- Buttons/text fields/check controls: `SlockButton`, `SlockTextField`, plus temporary `SlockLabeledCheckbox` and `SlockSegmentOption` used by remaining native Thread/Settings fallbacks. Toggle/radio variants should be reintroduced only as shared components when a real shared route needs them.
-- Feedback states: `SlockEmptyState`, `SlockLoadingState`, `SlockInlineLoading`, `SlockErrorState`.
+- Buttons/text fields/check controls: `RaftAppButton`, `SlockTextField`, plus temporary `SlockLabeledCheckbox` and `SlockSegmentOption` used by remaining native Thread/Settings fallbacks. Toggle/radio variants should be reintroduced only as shared components when a real shared route needs them.
+- Feedback states: `RaftEmptyState`, `SlockLoadingState`, `SlockInlineLoading`, `SlockErrorState`.
 - Modal/menu/key-surface primitives: `SlockModal`, `SlockMenuOverlay`, `SlockKeySurface`.
 - Avatar/member/task/file-tree primitives if their product routes remain in KMP.
 - Pull-to-refresh wordmark should be owned by shared Home/Inbox routes, not Android `SlockPullRefreshContainer`.
@@ -249,10 +249,10 @@ Migration rule: create shared components in `compose/shared/commonMain`, wire th
 These are platform/host-specific and should not move into common UI:
 
 - `ui/system/SystemBarColor.kt`: Android status-bar side effect. Shared should request safe area/status treatment through host capability/pageData, not own Android window APIs.
-- Android `SlockTheme`: can remain only for legacy/native fallback screens and connected Android component tests. Product shared shell should not depend on MaterialTheme.
-- Android font resource binding in `Type.kt`: shared uses Kuikly font declarations in `SlockDesignTokens.kt`; Android resources are platform fallback.
+- Android `RaftAppTheme`: can remain only for legacy/native fallback screens and connected Android component tests. Product shared shell should not depend on MaterialTheme.
+- Android font resource binding in `Type.kt`: shared uses Kuikly font declarations in `RaftDesignTokens.kt`; Android resources are platform fallback.
 - `ui/icons/LucideIcons.kt`: retired and deleted; do not restore it. Native
-  Android legacy/test paths must use `SlockLucideIcon` and the native Canvas
+  Android legacy/test paths must use `RaftLucideIcon` and the native Canvas
   adapter.
 
 ### Still Blocking Full Removal

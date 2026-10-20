@@ -22,7 +22,7 @@ class ThreadHeaderDmAgentActivityTest {
 
     @Test
     fun channelHeaderNeverReusesAnAgentIdentityAsDmActivity() {
-        val display = displayModel(MemberKind.Agent).copy(surfaceKind = KuiklyThreadSurfaceKind.Channel)
+        val display = displayModel(MemberKind.Agent).copy(surfaceKind = RaftThreadSurfaceKind.Channel)
 
         assertNull(display.dmAgentActivityMemberId())
     }
@@ -48,8 +48,8 @@ class ThreadHeaderDmAgentActivityTest {
         ThreadHeaderDisplayModel(
             title = "Friday",
             subtitle = null,
-            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-            channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+            channelKind = RaftThreadSurfaceKind.DirectMessage,
             dmPeerIdentity =
                 MemberDetailIdentity(
                     memberId = MemberId("agent-friday"),

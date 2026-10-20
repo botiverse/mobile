@@ -1,9 +1,9 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import kotlinx.coroutines.CancellationException
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 suspend inline fun <T> runCatchingPreservingCancellation(
     crossinline block: suspend () -> T
 ): Result<T> =

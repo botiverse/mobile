@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class FocusDismissProductionContractTest {
     @Test
     fun focusOwnerRegistryDoesNotArmOutsideDismissUntilAFieldOwnsFocus() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val composerOwner = Any()
         val unrelatedOwner = Any()
 
@@ -27,7 +27,7 @@ class FocusDismissProductionContractTest {
 
     @Test
     fun focusOwnerRegistryOnlyProtectsDownsInsideAnActiveInput() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val activeOwner = Any()
         val inactiveOwner = Any()
 

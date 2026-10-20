@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -31,7 +31,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "canonical-1",
                     aliases = setOf("canonical-1", "shared-alias"),
                     conversationKind = ConversationKind.Channel,
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = "channel",
                     title = "First"
                 ),
@@ -40,7 +40,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "canonical-1",
                     aliases = setOf("canonical-1", "shared-alias"),
                     conversationKind = ConversationKind.Joint,
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = "joint",
                     title = "Replacement"
                 ),
@@ -49,7 +49,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "canonical-2",
                     aliases = setOf("canonical-2", "shared-alias"),
                     conversationKind = ConversationKind.DirectMessage,
-                    surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                     channelKind = "direct_message",
                     title = "Second"
                 )
@@ -264,7 +264,7 @@ class SharedConversationDirectoryStoreTest {
 
             assertEquals("reply-stream", resolved.canonicalChannelId)
             assertEquals(ConversationKind.Thread, resolved.conversationKind)
-            assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
+            assertEquals(RaftThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
             assertEquals("parent-channel", resolved.parentChannelId)
             assertEquals("parent-message", resolved.parentMessageId)
         }
@@ -279,7 +279,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "dm-parent",
                     aliases = setOf("dm-parent", "reply-stream"),
                     conversationKind = ConversationKind.DirectMessage,
-                    surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                     channelKind = "dm",
                     title = "Cindy"
                 )
@@ -291,7 +291,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "reply-stream",
                     aliases = setOf("reply-stream", "parent-channel", "parent-message"),
                     conversationKind = ConversationKind.Thread,
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     channelKind = "thread",
                     title = "home-fixes",
                     subtitle = "Original thread question",
@@ -308,7 +308,7 @@ class SharedConversationDirectoryStoreTest {
 
             assertEquals("reply-stream", resolved.canonicalChannelId)
             assertEquals(ConversationKind.Thread, resolved.conversationKind)
-            assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
+            assertEquals(RaftThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
             assertEquals("parent-channel", resolved.parentChannelId)
             assertEquals("parent-message", resolved.parentMessageId)
         }
@@ -323,7 +323,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "parent-channel",
                     aliases = setOf("parent-channel", "reply-stream"),
                     conversationKind = ConversationKind.Channel,
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = "channel",
                     title = "home-fixes"
                 ),
@@ -332,7 +332,7 @@ class SharedConversationDirectoryStoreTest {
                     canonicalChannelId = "reply-stream",
                     aliases = setOf("reply-stream", "parent-channel", "parent-message"),
                     conversationKind = ConversationKind.Thread,
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                     channelKind = "thread",
                     title = "home-fixes",
                     subtitle = "Original thread question",
@@ -346,10 +346,10 @@ class SharedConversationDirectoryStoreTest {
 
         assertEquals("parent-channel", parent.canonicalChannelId)
         assertEquals(ConversationKind.Channel, parent.conversationKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, parent.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, parent.surfaceKind)
         assertEquals("reply-stream", thread.canonicalChannelId)
         assertEquals(ConversationKind.Thread, thread.conversationKind)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, thread.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, thread.surfaceKind)
     }
 
     @Test

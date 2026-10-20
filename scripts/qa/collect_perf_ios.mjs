@@ -2,7 +2,7 @@
 // qa/collect_perf_ios — assemble a self-describing perf.json for an iOS acceptance run.
 //
 // iOS v1 of task #14 (artin: "ios也要"). HONEST SCOPE: there is no gfxinfo
-// equivalent on the iOS simulator, and the app's SlockPerformanceDiagnostics
+// equivalent on the iOS simulator, and the app's RaftPerformanceDiagnostics
 // markers are Android-only today (compose/androidApp). So v1 captures the two
 // signals that exist NOW, harness-side:
 //   1. per-step timing windows from steps.jsonl (slowest actions of the run)
@@ -81,7 +81,7 @@ const report = {
   },
   system_log_signals: signals,
   slowest_step_windows: stepWindows,
-  known_gap: "No app-level frame/jank metrics: SlockPerformanceDiagnostics is Android-only; the iOS perf-marker port is a product change (KMP lane). This v1 covers action timing + system-log lifecycle signals only.",
+  known_gap: "No app-level frame/jank metrics: RaftPerformanceDiagnostics is Android-only; the iOS perf-marker port is a product change (KMP lane). This v1 covers action timing + system-log lifecycle signals only.",
   note: "Advisory record-only sample. Simulator absolute timings are not hardware truth; compare only same-device run-over-run deltas.",
 };
 

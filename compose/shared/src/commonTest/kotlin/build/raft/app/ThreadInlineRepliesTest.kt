@@ -45,7 +45,7 @@ class ThreadInlineRepliesTest {
     @Test
     fun replyMetadataDoesNotQualifyForTheRetiredFooterChip() {
         assertFalse(
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "parent-1",
                 authorId = "user-1",
                 authorName = "User",
@@ -57,22 +57,22 @@ class ThreadInlineRepliesTest {
     @Test
     fun neutralMessageSurfacesMatchWebBlackOpacityContract() {
         assertEquals(
-            SlockColor.TextBlack.copy(alpha = 0.03f),
+            RaftColor.TextBlack.copy(alpha = 0.03f),
             threadNeutralMessageSurfaceColor(emphasized = false),
         )
         assertEquals(
-            SlockColor.TextBlack.copy(alpha = 0.08f),
+            RaftColor.TextBlack.copy(alpha = 0.08f),
             threadNeutralMessageSurfaceColor(emphasized = true),
         )
-        assertEquals(SlockColor.TextBlack.copy(alpha = 0.03f), threadReactionChipBackground(selected = false))
+        assertEquals(RaftColor.TextBlack.copy(alpha = 0.03f), threadReactionChipBackground(selected = false))
         assertEquals(
-            SlockColor.TextBlack.copy(alpha = 0.08f),
+            RaftColor.TextBlack.copy(alpha = 0.08f),
             threadReactionChipBackground(selected = false, emphasized = true),
         )
-        assertEquals(SlockColor.AccentPink.copy(alpha = 0.2f), threadReactionChipBackground(selected = true))
-        assertEquals(SlockColor.TextBlack.copy(alpha = 0.03f), threadReactionAddChipBackground())
+        assertEquals(RaftColor.AccentPink.copy(alpha = 0.2f), threadReactionChipBackground(selected = true))
+        assertEquals(RaftColor.TextBlack.copy(alpha = 0.03f), threadReactionAddChipBackground())
         assertEquals(
-            SlockColor.TextBlack.copy(alpha = 0.08f),
+            RaftColor.TextBlack.copy(alpha = 0.08f),
             threadReactionAddChipBackground(emphasized = true),
         )
     }
@@ -215,7 +215,7 @@ class ThreadInlineRepliesTest {
 
     @Test
     fun inlineReplyTimestampUsesTheSharedMonospaceFamily() {
-        assertEquals(SlockMonoFamily, ThreadInlineReplyTimestampStyle.fontFamily)
+        assertEquals(RaftMonoFamily, ThreadInlineReplyTimestampStyle.fontFamily)
     }
 
     @Test
@@ -282,7 +282,7 @@ class ThreadInlineRepliesTest {
                 limit = 3,
             )
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "parent-1",
                 authorId = "user-1",
                 authorName = "User",

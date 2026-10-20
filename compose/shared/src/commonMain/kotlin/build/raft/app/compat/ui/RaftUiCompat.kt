@@ -60,7 +60,7 @@ fun raftColorFromArgbHex(value: String): Color {
 
 /**
  * Whether the enclosing page is the active one. Kept-alive inactive pages (hidden app-shell tabs,
- * `SlockKuiklyChildPage` with `active = false`) stay composed, so without this their back
+ * `RaftChildPage` with `active = false`) stay composed, so without this their back
  * handlers would stay registered and, being registered after the shell's, would win: Back would
  * close a menu on an invisible tab. Provided by `RaftPagerHost` via [RaftProvidePageActive].
  */
@@ -104,7 +104,7 @@ data class KeyboardParams(val height: Float, val duration: Float)
  *
  * Keeps Kuikly's per-platform meaning of the height: on Android, Kuikly's keyboard watcher
  * reported `ime - navigationBars` and the host advertises that through
- * `slockKeyboardInsetExcludesBottomSafeArea`, so pages add their bottom safe area back while the
+ * `raftKeyboardInsetExcludesBottomSafeArea`, so pages add their bottom safe area back while the
  * keyboard is open. Reporting the raw `WindowInsets.ime` bottom (which already includes the
  * navigation bar) counted the navigation bar twice and left a gap between the composer and the
  * keyboard. See [raftKeyboardHeightExcludesNavigationBars].

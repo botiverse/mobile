@@ -22,13 +22,13 @@ import androidx.compose.ui.unit.dp
  * colour paints are built with the actual tint instead (see [RaftLucideImageVectors.vector]).
  */
 internal object RaftLucideImageVectors {
-    private data class Key(val name: SlockLucideIconName, val filled: Boolean, val strokeWidth: Float?)
+    private data class Key(val name: RaftLucideIconName, val filled: Boolean, val strokeWidth: Float?)
 
     // Composition runs on the main thread; the cache is only touched from there and from tests.
     private val cache = HashMap<Key, ImageVector>()
 
     /** The spec drawn for [name]; [filled] picks the filled variant when one exists. */
-    fun spec(name: SlockLucideIconName, filled: Boolean): RaftLucideIconSpec =
+    fun spec(name: RaftLucideIconName, filled: Boolean): RaftLucideIconSpec =
         (if (filled) RaftLucideIconPaths.filledSpec(name) else null) ?: RaftLucideIconPaths.spec(name)
 
     /** True when every paint of [spec] is `currentColor`, i.e. the vector can be tinted. */
@@ -44,7 +44,7 @@ internal object RaftLucideImageVectors {
      * bake in; such vectors are not cached.
      */
     fun vector(
-        name: SlockLucideIconName,
+        name: RaftLucideIconName,
         filled: Boolean = false,
         strokeWidthOverride: Float? = null,
         currentColor: Color = Color.Black

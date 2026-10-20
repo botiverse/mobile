@@ -11,7 +11,7 @@ import kotlinx.coroutines.runBlocking
 
 class AttachmentOpenSemanticResultTest {
     private val localizedTerms =
-        SlockAttachmentOpenResultTerms(
+        RaftAttachmentOpenResultTerms(
             downloadStopped = "下载已停止",
             unableToDownloadAttachment = "无法下载附件",
             noAppCanOpenFile = "没有应用可以打开此文件",
@@ -22,26 +22,26 @@ class AttachmentOpenSemanticResultTest {
 
     @Test
     fun nativeOpenStatusesResolveToSharedLocalizedCopy() {
-        assertNull(slockAttachmentOpenResultMessage("opened", localizedTerms))
-        assertNull(slockAttachmentOpenResultMessage("", localizedTerms))
-        assertNull(slockAttachmentOpenResultMessage("save_cancelled", localizedTerms))
-        assertEquals("下载已停止", slockAttachmentOpenResultMessage("cancelled", localizedTerms))
-        assertEquals("无法下载附件", slockAttachmentOpenResultMessage("missing", localizedTerms))
-        assertEquals("没有应用可以打开此文件", slockAttachmentOpenResultMessage("no_app", localizedTerms))
-        assertEquals("存储空间不可用", slockAttachmentOpenResultMessage("storage_failed", localizedTerms))
-        assertEquals("下载失败", slockAttachmentOpenResultMessage("download_failed", localizedTerms))
-        assertEquals("无法打开附件", slockAttachmentOpenResultMessage("failed", localizedTerms))
-        assertEquals("无法打开附件", slockAttachmentOpenResultMessage("unexpected", localizedTerms))
+        assertNull(raftAttachmentOpenResultMessage("opened", localizedTerms))
+        assertNull(raftAttachmentOpenResultMessage("", localizedTerms))
+        assertNull(raftAttachmentOpenResultMessage("save_cancelled", localizedTerms))
+        assertEquals("下载已停止", raftAttachmentOpenResultMessage("cancelled", localizedTerms))
+        assertEquals("无法下载附件", raftAttachmentOpenResultMessage("missing", localizedTerms))
+        assertEquals("没有应用可以打开此文件", raftAttachmentOpenResultMessage("no_app", localizedTerms))
+        assertEquals("存储空间不可用", raftAttachmentOpenResultMessage("storage_failed", localizedTerms))
+        assertEquals("下载失败", raftAttachmentOpenResultMessage("download_failed", localizedTerms))
+        assertEquals("无法打开附件", raftAttachmentOpenResultMessage("failed", localizedTerms))
+        assertEquals("无法打开附件", raftAttachmentOpenResultMessage("unexpected", localizedTerms))
     }
 
     @Test
     fun diagnosticStatusAllowsOnlyFixedCategories() {
-        assertEquals("opened", slockAttachmentOpenDiagnosticStatus(" OPENED "))
-        assertEquals("failed", slockAttachmentOpenDiagnosticStatus("failed"))
-        assertEquals("download_failed", slockAttachmentOpenDiagnosticStatus("download_failed"))
-        assertEquals("none", slockAttachmentOpenDiagnosticStatus(null))
-        assertEquals("none", slockAttachmentOpenDiagnosticStatus(""))
-        assertEquals("other", slockAttachmentOpenDiagnosticStatus("private-upstream-detail"))
+        assertEquals("opened", raftAttachmentOpenDiagnosticStatus(" OPENED "))
+        assertEquals("failed", raftAttachmentOpenDiagnosticStatus("failed"))
+        assertEquals("download_failed", raftAttachmentOpenDiagnosticStatus("download_failed"))
+        assertEquals("none", raftAttachmentOpenDiagnosticStatus(null))
+        assertEquals("none", raftAttachmentOpenDiagnosticStatus(""))
+        assertEquals("other", raftAttachmentOpenDiagnosticStatus("private-upstream-detail"))
     }
 
     @Test
@@ -53,7 +53,7 @@ class AttachmentOpenSemanticResultTest {
             hasOwner: Boolean = true,
             hasPolicy: Boolean = true
         ): String? =
-            slockFilePreviewExternalOpenRejectionReason(
+            raftFilePreviewExternalOpenRejectionReason(
                 canOpenWith,
                 exportInProgress,
                 downloadStatus,
@@ -73,7 +73,7 @@ class AttachmentOpenSemanticResultTest {
     fun productionAdmissionTraceEmitsExactlyOneTerminalDecision() {
         val rejected = mutableListOf<String>()
         assertFalse(
-            traceSlockFilePreviewExternalOpenAdmission(
+            traceRaftFilePreviewExternalOpenAdmission(
                 rejectionReason = "operation_busy",
                 policy = null,
                 trace = rejected::add
@@ -86,9 +86,9 @@ class AttachmentOpenSemanticResultTest {
 
         val admitted = mutableListOf<String>()
         assertTrue(
-            traceSlockFilePreviewExternalOpenAdmission(
+            traceRaftFilePreviewExternalOpenAdmission(
                 rejectionReason = null,
-                policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true),
+                policy = RaftFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true),
                 trace = admitted::add
             )
         )
@@ -102,10 +102,10 @@ class AttachmentOpenSemanticResultTest {
 
     @Test
     fun productionExternalOpenTraceCoversMissingAndHostTerminalInOrder() = runBlocking {
-        val policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true)
+        val policy = RaftFilePreviewExternalOpenPolicy(requirePublicDownload = false, trackProgress = true)
         val missingTrace = mutableListOf<String>()
         val missing =
-            runSlockFilePreviewExternalOpenTraceFlow(
+            runRaftFilePreviewExternalOpenTraceFlow(
                 policy = policy,
                 resolveUrl = { null },
                 onUrlResolved = { error("must not resolve") },
@@ -113,7 +113,7 @@ class AttachmentOpenSemanticResultTest {
                 statusOf = { null },
                 trace = missingTrace::add
             )
-        assertEquals(SlockFilePreviewExternalOpenTraceResult.UrlResolutionFailed, missing)
+        assertEquals(RaftFilePreviewExternalOpenTraceResult.UrlResolutionFailed, missing)
         assertEquals(
             listOf(
                 "file_preview_open stage=url_resolution_failed committedRequired=false trackProgress=true"
@@ -123,7 +123,7 @@ class AttachmentOpenSemanticResultTest {
 
         val events = mutableListOf<String>()
         val completed =
-            runSlockFilePreviewExternalOpenTraceFlow(
+            runRaftFilePreviewExternalOpenTraceFlow(
                 policy = policy,
                 resolveUrl = {
                     events += "resolve"
@@ -137,7 +137,7 @@ class AttachmentOpenSemanticResultTest {
                 statusOf = { it },
                 trace = { events += it }
             )
-        assertEquals(SlockFilePreviewExternalOpenTraceResult.HostTerminal("failed"), completed)
+        assertEquals(RaftFilePreviewExternalOpenTraceResult.HostTerminal("failed"), completed)
         assertEquals(
             listOf(
                 "resolve",
@@ -151,8 +151,8 @@ class AttachmentOpenSemanticResultTest {
 
         val publicEvents = mutableListOf<String>()
         val publicOffline =
-            runSlockFilePreviewExternalOpenTraceFlow(
-                policy = SlockFilePreviewExternalOpenPolicy(requirePublicDownload = true, trackProgress = false),
+            runRaftFilePreviewExternalOpenTraceFlow(
+                policy = RaftFilePreviewExternalOpenPolicy(requirePublicDownload = true, trackProgress = false),
                 resolveUrl = {
                     publicEvents += "resolve"
                     ""
@@ -165,7 +165,7 @@ class AttachmentOpenSemanticResultTest {
                 statusOf = { it },
                 trace = { publicEvents += it }
             )
-        assertEquals(SlockFilePreviewExternalOpenTraceResult.HostTerminal("opened"), publicOffline)
+        assertEquals(RaftFilePreviewExternalOpenTraceResult.HostTerminal("opened"), publicOffline)
         assertEquals(
             listOf(
                 "resolve",
@@ -180,10 +180,10 @@ class AttachmentOpenSemanticResultTest {
 
     @Test
     fun materializationFailureLeavesExternalOpenRetryAdmissionAvailable() {
-        assertEquals("无法下载附件", slockAttachmentOpenResultMessage("missing", localizedTerms))
-        assertTrue(slockFilePreviewCanStartExternalOperation("failed"))
-        assertFalse(slockFilePreviewCanStartExternalOperation("opening"))
-        assertFalse(slockFilePreviewCanStartExternalOperation("downloading"))
+        assertEquals("无法下载附件", raftAttachmentOpenResultMessage("missing", localizedTerms))
+        assertTrue(raftFilePreviewCanStartExternalOperation("failed"))
+        assertFalse(raftFilePreviewCanStartExternalOperation("opening"))
+        assertFalse(raftFilePreviewCanStartExternalOperation("downloading"))
     }
 
     @Test
@@ -223,10 +223,10 @@ class AttachmentOpenSemanticResultTest {
     @Test
     fun threadOpenPreservesKnownSemanticStatusesAndFailsClosedOtherwise() {
         listOf("opened", "cancelled", "save_cancelled", "missing", "no_app", "storage_failed", "download_failed").forEach { status ->
-            assertEquals(status, slockThreadAttachmentOpenStatus(status))
+            assertEquals(status, raftThreadAttachmentOpenStatus(status))
         }
-        assertEquals("failed", slockThreadAttachmentOpenStatus("failed"))
-        assertEquals("failed", slockThreadAttachmentOpenStatus(""))
-        assertEquals("failed", slockThreadAttachmentOpenStatus("native english detail"))
+        assertEquals("failed", raftThreadAttachmentOpenStatus("failed"))
+        assertEquals("failed", raftThreadAttachmentOpenStatus(""))
+        assertEquals("failed", raftThreadAttachmentOpenStatus("native english detail"))
     }
 }

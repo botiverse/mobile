@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 class SettingsHandsFeedbackDraftStoreTest {
     @Test
     fun textAndCachedAttachmentsSurviveStoreRecreationForSameAccount() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         SettingsHandsFeedbackDraftStore(preferences).save(
             accountId = "user-1",
             text = "Repro steps\nExpected result",
@@ -34,7 +34,7 @@ class SettingsHandsFeedbackDraftStoreTest {
 
     @Test
     fun draftsAreAccountScopedAndBlankContentClearsPersistedValue() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save("user-1", "First account draft")
         store.save("user-2", "Second account draft")
@@ -50,7 +50,7 @@ class SettingsHandsFeedbackDraftStoreTest {
 
     @Test
     fun transientByteOnlyAttachmentsAreNotRestoredAsBrokenFiles() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save(
             accountId = "user-1",
@@ -74,7 +74,7 @@ class SettingsHandsFeedbackDraftStoreTest {
 
     @Test
     fun successfulSubmissionClearsTextAndAttachments() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save(
             accountId = "user-1",

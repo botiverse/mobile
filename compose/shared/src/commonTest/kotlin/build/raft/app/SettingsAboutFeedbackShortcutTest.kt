@@ -29,7 +29,7 @@ class SettingsAboutFeedbackShortcutTest {
         assertFalse(rows.any { it.key == SETTINGS_ABOUT_FEEDBACK_ACTION })
     }
 
-    private fun shortcutRows(includeFeedback: Boolean): List<KuiklySharedSettingsRow> =
+    private fun shortcutRows(includeFeedback: Boolean): List<RaftSharedSettingsRow> =
         settingsAboutDeveloperShortcutRows(
             environmentTitle = "API environment",
             environmentDetail = "Current endpoint",

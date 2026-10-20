@@ -371,7 +371,7 @@ class ProcessActivityUnreadStoreTest {
     @Test
     fun processRestoreUsesPersistedProjectionOnlyAsStaleSeedThenReconciles() = runBlocking {
         val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val cache = ProcessActivityUnreadProjectionCache(keyValueStore, nowMillis = { 123L })
         cache.write(owner(), totalUnreadCount = 6, totalCount = 8)
         var fetches = 0
@@ -396,7 +396,7 @@ class ProcessActivityUnreadStoreTest {
     @Test
     fun invalidatingAuthGenerationClearsPersistedProjection() = runBlocking {
         val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val cache = ProcessActivityUnreadProjectionCache(keyValueStore, nowMillis = { 123L })
         cache.write(owner(), totalUnreadCount = 6, totalCount = 8)
         val store = store(ownerFlow, projectionCache = cache) { _, _ -> DataResult.Empty(EmptyReason.NoInboxItems) }

@@ -22,11 +22,11 @@ import platform.posix.open as posixOpen
 import platform.posix.pread
 import platform.posix.stat
 
-internal actual fun createSlockSqlDatabase(): SlockSqlDatabase =
-    SlockSqlDatabase(
+internal actual fun createRaftSqlDatabase(): RaftSqlDatabase =
+    RaftSqlDatabase(
         NativeSqliteDriver(
-            schema = SlockSqlDatabase.Schema,
-            name = SlockSqlDatabase.DatabaseName,
+            schema = RaftSqlDatabase.Schema,
+            name = RaftSqlDatabase.DatabaseName,
             onConfiguration = { configuration ->
                 configuration.copy(
                     extendedConfig =

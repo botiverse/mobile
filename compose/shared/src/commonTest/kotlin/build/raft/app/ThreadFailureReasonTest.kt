@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.network.RaftRequestTimeoutException
 import com.tencent.tmm.kmmresource.resource.desc.ResourceStringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -131,7 +131,7 @@ class ThreadFailureReasonTest {
     fun sendExceptionErrorCodeMapsCommonFailureTypes() {
         assertEquals(
             "thread_send_timeout",
-            threadSendExceptionErrorCode(SlockRequestTimeoutException("timed out"))
+            threadSendExceptionErrorCode(RaftRequestTimeoutException("timed out"))
         )
         assertEquals(
             "thread_send_cancelled",

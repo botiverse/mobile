@@ -44,7 +44,7 @@ class SearchPersonalizationRepositoryTest {
 
     @Test
     fun repositoryScopesHistoryAndUsageAndClearPreservesUsage() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val repository = PersistentSearchPersonalizationRepository(store)
         val ownerA = SearchPersonalizationOwner("server-a", "user-a")
         val ownerB = SearchPersonalizationOwner("server-a", "user-b")
@@ -63,7 +63,7 @@ class SearchPersonalizationRepositoryTest {
 
     @Test
     fun corruptOrFailingStorageIsEmptyAndNeverBlocksUpdates() = runBlocking {
-        val corrupt = InMemorySlockKeyValueStore(mapOf("search:personalization:v1" to "{not-json"))
+        val corrupt = InMemoryRaftKeyValueStore(mapOf("search:personalization:v1" to "{not-json"))
         val owner = SearchPersonalizationOwner("server-a", "user-a")
         val now = 1_800_000_000_000L
         assertEquals(emptyList(), PersistentSearchPersonalizationRepository(corrupt).read(owner, now).history)
@@ -77,7 +77,7 @@ class SearchPersonalizationRepositoryTest {
 
     @Test
     fun oldestScopeIsEvictedWithoutBorrowingAnotherOwnersData() = runBlocking {
-        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
         val now = 1_800_000_000_000L
         repeat(SearchPersonalizationScopeLimit + 1) { index ->
             repository.recordSuccessfulOpen(

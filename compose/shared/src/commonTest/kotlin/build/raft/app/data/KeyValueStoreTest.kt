@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class KeyValueStoreTest {
     @Test
     fun inMemoryStoreReadsAndOverwritesStrings() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
 
         assertNull(store.getString("locale"))
 
@@ -24,7 +24,7 @@ class KeyValueStoreTest {
 
     @Test
     fun nullStringRemovesValue() {
-        val store = InMemorySlockKeyValueStore(mapOf("token" to "abc"))
+        val store = InMemoryRaftKeyValueStore(mapOf("token" to "abc"))
 
         store.putString("token", null)
 
@@ -33,7 +33,7 @@ class KeyValueStoreTest {
 
     @Test
     fun booleanHelpersRoundTripThroughStringStorage() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
 
         assertFalse(store.getBoolean("notifications"))
 
@@ -46,47 +46,47 @@ class KeyValueStoreTest {
 
     @Test
     fun authSessionKeyValueProviderUsesInstalledAppScopeFactory() {
-        val appScopeStore = InMemorySlockKeyValueStore()
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SLOCK_AUTH_SESSION_MMKV_NAMESPACE) { appScopeStore }
+        val appScopeStore = InMemoryRaftKeyValueStore()
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RAFT_AUTH_SESSION_MMKV_NAMESPACE) { appScopeStore }
         try {
-            val binding = SlockSharedAuthSessionKeyValueStoreProvider.create()
+            val binding = RaftSharedAuthSessionKeyValueStoreProvider.create()
 
             assertEquals("app", binding.scope)
             assertSame(appScopeStore, binding.store)
         } finally {
-            SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
         }
     }
 
     @Test
     fun authSessionKeyValueProviderFailsFastWithoutAppScopeStore() {
-        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
 
-        if (slockCreatePlatformAppScopeKeyValueStore(SLOCK_AUTH_SESSION_MMKV_NAMESPACE) == null) {
+        if (raftCreatePlatformAppScopeKeyValueStore(RAFT_AUTH_SESSION_MMKV_NAMESPACE) == null) {
             assertFailsWith<IllegalStateException> {
-                SlockSharedAuthSessionKeyValueStoreProvider.create()
+                RaftSharedAuthSessionKeyValueStoreProvider.create()
             }
         }
     }
 
     @Test
     fun globalKeyValueProviderUsesInstalledAppScopeFactoryForNamespace() {
-        val sharedPreferenceStore = InMemorySlockKeyValueStore()
-        val apiEnvironmentStore = InMemorySlockKeyValueStore()
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SlockLocalPreferenceStore.KuiklyNamespace) {
+        val sharedPreferenceStore = InMemoryRaftKeyValueStore()
+        val apiEnvironmentStore = InMemoryRaftKeyValueStore()
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) {
             sharedPreferenceStore
         }
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SharedApiEnvironmentStore.Namespace) {
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(SharedApiEnvironmentStore.Namespace) {
             apiEnvironmentStore
         }
         try {
             val sharedBinding =
-                SlockSharedKeyValueStoreProvider.create(
-                    namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+                RaftSharedKeyValueStoreProvider.create(
+                    namespace = RaftLocalPreferenceStore.KuiklyNamespace,
                     storageName = "shared preference"
                 )
             val apiBinding =
-                SlockSharedKeyValueStoreProvider.create(
+                RaftSharedKeyValueStoreProvider.create(
                     namespace = SharedApiEnvironmentStore.Namespace,
                     storageName = "API environment"
                 )
@@ -96,23 +96,23 @@ class KeyValueStoreTest {
             assertEquals("app", apiBinding.scope)
             assertSame(apiEnvironmentStore, apiBinding.store)
         } finally {
-            SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
         }
     }
 
     @Test
     fun globalKeyValueProviderDoesNotFallbackToPagerScopeStore() {
-        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
 
         listOf(
-            SLOCK_AUTH_SESSION_MMKV_NAMESPACE to "auth session",
-            SlockLocalPreferenceStore.KuiklyNamespace to "shared preference",
+            RAFT_AUTH_SESSION_MMKV_NAMESPACE to "auth session",
+            RaftLocalPreferenceStore.KuiklyNamespace to "shared preference",
             SharedApiEnvironmentStore.Namespace to "API environment",
-            SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE to "Activity unread summary"
+            RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE to "Activity unread summary"
         ).forEach { (namespace, storageName) ->
-            if (slockCreatePlatformAppScopeKeyValueStore(namespace) == null) {
+            if (raftCreatePlatformAppScopeKeyValueStore(namespace) == null) {
                 assertFailsWith<IllegalStateException> {
-                    SlockSharedKeyValueStoreProvider.create(
+                    RaftSharedKeyValueStoreProvider.create(
                         namespace = namespace,
                         storageName = storageName
                     )

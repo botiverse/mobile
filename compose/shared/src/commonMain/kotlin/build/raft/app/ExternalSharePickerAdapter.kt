@@ -15,7 +15,7 @@ import kotlinx.coroutines.delay
 internal const val ExternalShareSearchDebounceMillis = 300L
 
 internal data class ExternalSharePickerSurface(
-    val picker: SlockForwardTargetPickerUiState<build.raft.app.data.ForwardMessageTarget>,
+    val picker: RaftForwardTargetPickerUiState<build.raft.app.data.ForwardMessageTarget>,
     val selectionErrorCode: String? = null
 )
 
@@ -25,7 +25,7 @@ internal fun ExternalShareTargetPickerSurface(
     onIntent: (ExternalShareIntent) -> Unit
 ) {
     var inputQuery by remember(state.envelope.token, state.serverId) { mutableStateOf(state.query) }
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     LaunchedEffect(state.envelope.token, state.serverId, inputQuery) {
         if (inputQuery != state.query) {
             delay(ExternalShareSearchDebounceMillis)
@@ -34,14 +34,14 @@ internal fun ExternalShareTargetPickerSurface(
     }
     val surface = state.toExternalSharePickerSurface(queryOverride = inputQuery)
     val contentCount = state.envelope.items.size + if (state.envelope.text.isNotBlank() || state.envelope.subject.isNotBlank()) 1 else 0
-    SlockForwardTargetPicker(
+    RaftForwardTargetPicker(
         messageCount = contentCount,
         skippedCount = 0,
         nestedForwardCount = 0,
         taskLinkedCount = 0,
         state = surface.picker,
         onIntent = { pickerIntent ->
-            if (pickerIntent is SlockForwardTargetPickerIntent.QueryChanged) {
+            if (pickerIntent is RaftForwardTargetPickerIntent.QueryChanged) {
                 inputQuery = pickerIntent.query
             } else {
                 state.toExternalShareIntent(pickerIntent)?.let(onIntent)
@@ -52,7 +52,7 @@ internal fun ExternalShareTargetPickerSurface(
         searchInputInteractive = true,
         bottomSafeArea = bottomSafeArea,
         topContent = {
-            SlockServerChoice(
+            RaftServerChoice(
                 title = "Server",
                 options = state.serverOptions,
                 selectedId = state.serverId,
@@ -68,14 +68,14 @@ internal fun ExternalShareTargetPickerSurface(
 internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
     queryOverride: String = query
 ): ExternalSharePickerSurface {
-    val items = targets.map { it.toSlockForwardTargetPickerItem() }
-    val selected = selectedTargets.map { it.toSlockForwardTargetPickerItem() }
+    val items = targets.map { it.toRaftForwardTargetPickerItem() }
+    val selected = selectedTargets.map { it.toRaftForwardTargetPickerItem() }
     val queryPending = queryOverride != query
     return ExternalSharePickerSurface(
         picker =
-            SlockForwardTargetPickerUiState(
+            RaftForwardTargetPickerUiState(
                 sessionKey =
-                    SlockForwardPickerSessionKey(
+                    RaftForwardPickerSessionKey(
                         sourceContext = "external-share:${envelope.token}",
                         serverId = serverId,
                         openGeneration = 1
@@ -85,9 +85,9 @@ internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
                 selectedItems = selected,
                 loadState =
                     when {
-                        queryPending || loading -> SlockForwardPickerLoadState.Loading
-                        errorCode != null -> SlockForwardPickerLoadState.Error
-                        else -> SlockForwardPickerLoadState.Loaded
+                        queryPending || loading -> RaftForwardPickerLoadState.Loading
+                        errorCode != null -> RaftForwardPickerLoadState.Error
+                        else -> RaftForwardPickerLoadState.Loaded
                     },
                 errorCode = errorCode,
                 canLoadMore = nextCursor != null,
@@ -105,18 +105,18 @@ internal fun ExternalShareState.SelectingTargets.toExternalSharePickerSurface(
  * generation and target identity. A queued callback from an older query therefore fails closed.
  */
 internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
-    intent: SlockForwardTargetPickerIntent<build.raft.app.data.ForwardMessageTarget>
+    intent: RaftForwardTargetPickerIntent<build.raft.app.data.ForwardMessageTarget>
 ): ExternalShareIntent? =
     when (intent) {
-        is SlockForwardTargetPickerIntent.QueryChanged -> ExternalShareIntent.Search(intent.query)
-        SlockForwardTargetPickerIntent.Retry -> ExternalShareIntent.Search(query)
-        SlockForwardTargetPickerIntent.LoadMore -> ExternalShareIntent.LoadMore
-        SlockForwardTargetPickerIntent.Dismiss -> ExternalShareIntent.Cancel
-        SlockForwardTargetPickerIntent.Continue ->
+        is RaftForwardTargetPickerIntent.QueryChanged -> ExternalShareIntent.Search(intent.query)
+        RaftForwardTargetPickerIntent.Retry -> ExternalShareIntent.Search(query)
+        RaftForwardTargetPickerIntent.LoadMore -> ExternalShareIntent.LoadMore
+        RaftForwardTargetPickerIntent.Dismiss -> ExternalShareIntent.Cancel
+        RaftForwardTargetPickerIntent.Continue ->
             ExternalShareIntent.Continue.takeIf {
                 selectedTargets.size == 1 && !loading && !handoffInProgress && errorCode == null
             }
-        is SlockForwardTargetPickerIntent.RemoveSelection ->
+        is RaftForwardTargetPickerIntent.RemoveSelection ->
             selectedTargets
                 .firstOrNull { it.externalShareSelectionKey() == intent.stableKey }
                 ?.let { target ->
@@ -126,7 +126,7 @@ internal fun ExternalShareState.SelectingTargets.toExternalShareIntent(
                         renderGeneration = requestGeneration
                     )
                 }
-        is SlockForwardTargetPickerIntent.TargetSelected -> {
+        is RaftForwardTargetPickerIntent.TargetSelected -> {
             if (loading || handoffInProgress || errorCode != null || intent.renderGeneration != requestGeneration) {
                 null
             } else {

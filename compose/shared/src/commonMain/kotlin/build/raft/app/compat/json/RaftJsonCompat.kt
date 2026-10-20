@@ -1,9 +1,9 @@
 package build.raft.app.compat.json
 
-import build.raft.app.parseSlockJsonArray
-import build.raft.app.parseSlockJsonObject
-import build.raft.app.slockRawValue
-import build.raft.app.toSlockJsonString
+import build.raft.app.parseRaftJsonArray
+import build.raft.app.parseRaftJsonObject
+import build.raft.app.raftRawValue
+import build.raft.app.toRaftJsonString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -13,11 +13,11 @@ import kotlinx.serialization.json.JsonPrimitive
 /*
  * TODO(cmp-switch): drop-in replacement for Kuikly's nvi `JSONObject` / `JSONArray` (an AOSP
  * org.json port) so the ~375 UI-layer call sites keep compiling after Kuikly core is removed.
- * New code should use kotlinx `JsonObject` and the :core helpers in `build.raft.app.SlockJson`.
+ * New code should use kotlinx `JsonObject` and the :core helpers in `build.raft.app.RaftJson`.
  *
  * Behaviour matches Kuikly: mutable, insertion-ordered, loose `opt*` coercions, string-encoded
  * nested values for `optJSONObject`/`optJSONArray` on objects, and `toString()` writes exactly the
- * bytes Kuikly wrote (it goes through `toSlockJsonString`, which is pinned to Kuikly's stringer).
+ * bytes Kuikly wrote (it goes through `toRaftJsonString`, which is pinned to Kuikly's stringer).
  */
 
 class JSONException(message: String) : Exception(message)
@@ -96,7 +96,7 @@ class JSONObject private constructor(private val nameValuePairs: MutableMap<Stri
         return map
     }
 
-    override fun toString(): String = toKotlinxJson().toSlockJsonString()
+    override fun toString(): String = toKotlinxJson().toRaftJsonString()
 
     override fun equals(other: Any?): Boolean = other is JSONObject && other.nameValuePairs == nameValuePairs
 
@@ -110,7 +110,7 @@ class JSONObject private constructor(private val nameValuePairs: MutableMap<Stri
 
     companion object {
         /** Kuikly `JSONObject.quote`: [data] as a JSON string literal. */
-        fun quote(data: String?): String = JsonPrimitive(data ?: "").toSlockJsonString()
+        fun quote(data: String?): String = JsonPrimitive(data ?: "").toRaftJsonString()
 
         internal fun fromKotlinx(json: JsonObject): JSONObject {
             val map = LinkedHashMap<String, Any?>()
@@ -121,7 +121,7 @@ class JSONObject private constructor(private val nameValuePairs: MutableMap<Stri
         private fun parseObject(json: String): MutableMap<String, Any?> {
             val parsed =
                 try {
-                    parseSlockJsonObject(json)
+                    parseRaftJsonObject(json)
                 } catch (error: Exception) {
                     throw JSONException(error.message ?: "Value cannot be converted to JSONObject")
                 }
@@ -188,7 +188,7 @@ class JSONArray private constructor(private val values: MutableList<Any?>) {
         return list
     }
 
-    override fun toString(): String = toKotlinxJson().toSlockJsonString()
+    override fun toString(): String = toKotlinxJson().toRaftJsonString()
 
     override fun equals(other: Any?): Boolean = other is JSONArray && other.values == values
 
@@ -202,7 +202,7 @@ class JSONArray private constructor(private val values: MutableList<Any?>) {
         private fun parseArray(json: String): MutableList<Any?> {
             val parsed =
                 try {
-                    parseSlockJsonArray(json)
+                    parseRaftJsonArray(json)
                 } catch (error: Exception) {
                     throw JSONException(error.message ?: "Value cannot be converted to JSONArray")
                 }
@@ -215,7 +215,7 @@ private fun jsonElementToValue(element: JsonElement): Any? =
     when (element) {
         is JsonObject -> JSONObject.fromKotlinx(element)
         is JsonArray -> JSONArray.fromKotlinx(element)
-        else -> element.slockRawValue()
+        else -> element.raftRawValue()
     }
 
 private fun valueToJsonElement(value: Any?): JsonElement =

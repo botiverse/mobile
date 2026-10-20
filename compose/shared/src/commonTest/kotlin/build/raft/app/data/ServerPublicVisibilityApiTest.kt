@@ -30,7 +30,7 @@ class ServerPublicVisibilityApiTest {
 
     private class RecordingPublicVisibilityNetworkClient(
         private val responses: Map<String, HomeNetworkResponse>,
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         val requests = mutableListOf<RecordedRequest>()
 
         override suspend fun request(

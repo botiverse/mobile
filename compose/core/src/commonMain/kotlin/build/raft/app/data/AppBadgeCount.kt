@@ -43,7 +43,7 @@ data class AppBadgeCount(
      * Wall-clock millis when [count] was last successfully derived. The
      * `Long` (not `Instant`) is intentional to match the OHOS datetime
      * klib stability rule we adopted in `d56ed07d`; UI layer formats via
-     * [build.raft.app.model.SlockTime].
+     * [build.raft.app.model.RaftTime].
      *
      * Refresh-failure semantics: this field MUST NOT advance on a failed
      * fetch. Either keep the previous value or flip [isStale] to `true`

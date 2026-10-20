@@ -62,7 +62,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - 30_000L)
         )
-        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(RaftColor.AccentLime, result.state.color)
         assertEquals(ExternalAgentDetailCaption.Online, result.caption)
     }
 
@@ -73,7 +73,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - 200_000L)
         )
-        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(RaftColor.AccentCyan, result.state.color)
         assertEquals(
             ExternalAgentDetailCaption.LastSeen(now - 200_000L, iso(now - 200_000L)),
             result.caption
@@ -90,7 +90,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - 10_000L)
         )
-        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -101,7 +101,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = null
         )
-        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(RaftColor.AccentLime, result.state.color)
         assertEquals(ExternalAgentDetailCaption.Active, result.caption)
     }
 
@@ -115,7 +115,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - 5_000L)
         )
-        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(RaftColor.AccentLime, result.state.color)
         assertEquals(ExternalAgentDetailCaption.Online, result.caption)
 
         val stale = externalAgentDetailIndicator(
@@ -123,7 +123,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - 300_000L)
         )
-        assertEquals(SlockColor.AccentCyan, stale.state.color)
+        assertEquals(RaftColor.AccentCyan, stale.state.color)
         assertEquals(
             ExternalAgentDetailCaption.LastSeen(now - 300_000L, iso(now - 300_000L)),
             stale.caption
@@ -138,7 +138,7 @@ class ExternalAgentDetailIndicatorTest {
             nowEpochMillis = now,
             lastSeenAt = iso(now - ExternalAgentOnlineWindowMillis)
         )
-        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(RaftColor.AccentCyan, result.state.color)
         assertEquals(
             ExternalAgentDetailCaption.LastSeen(now - ExternalAgentOnlineWindowMillis, iso(now - ExternalAgentOnlineWindowMillis)),
             result.caption
@@ -148,7 +148,7 @@ class ExternalAgentDetailIndicatorTest {
     @Test
     fun notProvidedStatusIsPlainExternalCyanNeverGray() {
         val result = externalAgentDetailIndicator(status = null, nowEpochMillis = now)
-        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(RaftColor.AccentCyan, result.state.color)
         assertEquals(ExternalAgentDetailCaption.External, result.caption)
         assertTrue(result.state.external)
         assertFalse(result.state.pulsing)
@@ -158,7 +158,7 @@ class ExternalAgentDetailIndicatorTest {
     @Test
     fun waitingForLoginWithoutActivityIsGrayAndSetupRequired() {
         val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.WaitingForLogin), now)
-        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -169,7 +169,7 @@ class ExternalAgentDetailIndicatorTest {
                 status(ExternalAgentSetupState.Connected, lastActivityAt = iso(now - 2 * 60_000L)),
                 now
             )
-        assertEquals(SlockColor.AccentLime, result.state.color)
+        assertEquals(RaftColor.AccentLime, result.state.color)
         assertEquals(ExternalAgentDetailCaption.Active, result.caption)
     }
 
@@ -180,7 +180,7 @@ class ExternalAgentDetailIndicatorTest {
                 status(ExternalAgentSetupState.Connected, lastActivityAt = iso(now - ExternalAgentActiveThresholdMillis)),
                 now
             )
-        assertEquals(SlockColor.AccentCyan, atThreshold.state.color)
+        assertEquals(RaftColor.AccentCyan, atThreshold.state.color)
         assertEquals(ExternalAgentDetailCaption.LastActivity(now - ExternalAgentActiveThresholdMillis, iso(now - ExternalAgentActiveThresholdMillis)), atThreshold.caption)
     }
 
@@ -188,7 +188,7 @@ class ExternalAgentDetailIndicatorTest {
     fun activityOlderThanFiveMinutesIsCyanWithLastActivity() {
         val at = now - 10 * 60_000L
         val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected, lastActivityAt = iso(at)), now)
-        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(RaftColor.AccentCyan, result.state.color)
         assertEquals(ExternalAgentDetailCaption.LastActivity(at, iso(at)), result.caption)
     }
 
@@ -196,7 +196,7 @@ class ExternalAgentDetailIndicatorTest {
     fun oldActivityIsCyanWithLastActivity() {
         val at = now - 3 * 60 * 60_000L
         val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected, lastActivityAt = iso(at)), now)
-        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(RaftColor.AccentCyan, result.state.color)
         assertEquals(ExternalAgentDetailCaption.LastActivity(at, iso(at)), result.caption)
     }
 
@@ -211,7 +211,7 @@ class ExternalAgentDetailIndicatorTest {
                 status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 60_000L)),
                 now
             )
-        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -230,7 +230,7 @@ class ExternalAgentDetailIndicatorTest {
                 status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = iso(now - 20 * 60_000L)),
                 now
             )
-        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 
@@ -242,14 +242,14 @@ class ExternalAgentDetailIndicatorTest {
         )
         val connected = externalAgentDetailIndicator(status(ExternalAgentSetupState.Connected), now)
         assertEquals(ExternalAgentDetailCaption.NoRaftActivity, connected.caption)
-        assertEquals(SlockColor.AccentCyan, connected.state.color)
+        assertEquals(RaftColor.AccentCyan, connected.state.color)
     }
 
     @Test
     fun unknownSetupStateWithoutActivityIsNotConfigured() {
         val result = externalAgentDetailIndicator(status(ExternalAgentSetupState.Unknown), now)
         assertEquals(ExternalAgentDetailCaption.NotConfigured, result.caption)
-        assertEquals(SlockColor.AccentCyan, result.state.color)
+        assertEquals(RaftColor.AccentCyan, result.state.color)
     }
 
     @Test
@@ -258,7 +258,7 @@ class ExternalAgentDetailIndicatorTest {
         assertNull(parseExternalAgentTimestampOrNull(""))
         val result =
             externalAgentDetailIndicator(status(ExternalAgentSetupState.WaitingForLogin, lastActivityAt = "garbage"), now)
-        assertEquals(SlockColor.StatusNeutralGray, result.state.color)
+        assertEquals(RaftColor.StatusNeutralGray, result.state.color)
         assertEquals(ExternalAgentDetailCaption.SetupRequired, result.caption)
     }
 

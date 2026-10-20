@@ -29,21 +29,21 @@ internal fun parseSettingsHomePayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklySettingsHomePayload {
+): RaftSettingsHomePayload {
     val launch = parseSettingsLaunchPayload(
         payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsHomeLaunchPayload.serializer(),
         default = WireSettingsHomeLaunchPayload(instanceId = instanceId)
     )
-    return KuiklySettingsHomePayload(instanceId = launch.instanceId.ifBlank { instanceId })
+    return RaftSettingsHomePayload(instanceId = launch.instanceId.ifBlank { instanceId })
 }
 
 internal fun parseSettingsAccountPayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklySettingsAccountPayload {
+): RaftSettingsAccountPayload {
     val launch = parseSettingsLaunchPayload(
         payload = payload,
         fallbackPageData = fallbackPageData,
@@ -57,14 +57,14 @@ internal fun parseSettingsBillingPayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklySettingsBillingPayload {
+): RaftSettingsBillingPayload {
     val launch = parseSettingsLaunchPayload(
         payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsBillingLaunchPayload.serializer(),
         default = WireSettingsBillingLaunchPayload(instanceId = instanceId)
     )
-    return KuiklySettingsBillingPayload(
+    return RaftSettingsBillingPayload(
         instanceId = launch.instanceId.ifBlank { instanceId },
         status = "loading"
     )
@@ -74,18 +74,18 @@ internal fun parseSettingsStoragePayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklySettingsStoragePayload {
+): RaftSettingsStoragePayload {
     val launch = parseSettingsLaunchPayload(
         payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsStorageLaunchPayload.serializer(),
         default = WireSettingsStorageLaunchPayload(instanceId = instanceId)
     )
-    return KuiklySettingsStoragePayload(instanceId = launch.instanceId.ifBlank { instanceId })
+    return RaftSettingsStoragePayload(instanceId = launch.instanceId.ifBlank { instanceId })
 }
 
-private fun safeSettingsAccountLaunchPayload(instanceId: String): KuiklySettingsAccountPayload =
-    KuiklySettingsAccountPayload(
+private fun safeSettingsAccountLaunchPayload(instanceId: String): RaftSettingsAccountPayload =
+    RaftSettingsAccountPayload(
         instanceId = instanceId,
         canEditProfile = false,
         canUploadAvatar = false,

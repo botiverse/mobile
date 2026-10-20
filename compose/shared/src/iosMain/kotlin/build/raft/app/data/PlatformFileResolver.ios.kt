@@ -15,11 +15,11 @@ import platform.posix.close as posixClose
 import platform.posix.open as posixOpen
 import platform.posix.read as posixRead
 
-internal actual fun createDefaultPlatformFileResolver(): SlockPlatformFileResolver? =
-    SlockIosPlatformFileResolver()
+internal actual fun createDefaultPlatformFileResolver(): RaftPlatformFileResolver? =
+    RaftIosPlatformFileResolver()
 
-private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
-    override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult {
+private class RaftIosPlatformFileResolver : RaftPlatformFileResolver {
+    override suspend fun readFile(fileRef: String): RaftPlatformFileReadResult {
         val trimmed = fileRef.trim()
         if (trimmed.isEmpty()) {
             return failedRead("missing_file_ref", "Missing file ref")
@@ -35,13 +35,13 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
                     failure.message ?: "Unable to read file"
                 )
             }
-            SlockPlatformFileReadResult(code = 200, bytes = bytes, sizeBytes = bytes.size.toLong())
+            RaftPlatformFileReadResult(code = 200, bytes = bytes, sizeBytes = bytes.size.toLong())
         } finally {
             scoped.close()
         }
     }
 
-    override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult {
+    override suspend fun statFile(fileRef: String): RaftPlatformFileStatResult {
         val scoped = fileRef.openScopedFileUrl()
             ?: return failed("missing_file_ref", "Missing file ref")
         return try {
@@ -52,7 +52,7 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
             posixClose(descriptor)
             val sizeBytes = fileSize(path)
                 ?: return failed("attachment_size_unavailable", "Attachment size unavailable")
-            SlockPlatformFileStatResult(code = 200, sizeBytes = sizeBytes)
+            RaftPlatformFileStatResult(code = 200, sizeBytes = sizeBytes)
         } finally {
             scoped.close()
         }
@@ -61,7 +61,7 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
     override suspend fun openFileStream(
         fileRef: String,
         expectedSizeBytes: Long
-    ): SlockPlatformFileChunkSource {
+    ): RaftPlatformFileChunkSource {
         val scoped = fileRef.openScopedFileUrl()
             ?: error("Missing file ref")
         val path = scoped.url.path
@@ -80,7 +80,7 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
             scoped.close()
             error("Attachment size changed: expected=$expectedSizeBytes actual=${actualSizeBytes ?: "unknown"}")
         }
-        return object : SlockPlatformFileChunkSource {
+        return object : RaftPlatformFileChunkSource {
             override suspend fun read(maxBytes: Int): ByteArray = readChunk(descriptor, maxBytes)
 
             override fun close() {
@@ -90,15 +90,15 @@ private class SlockIosPlatformFileResolver : SlockPlatformFileResolver {
         }
     }
 
-    private fun failed(errorCode: String, message: String): SlockPlatformFileStatResult =
-        SlockPlatformFileStatResult(
+    private fun failed(errorCode: String, message: String): RaftPlatformFileStatResult =
+        RaftPlatformFileStatResult(
             code = 400,
             errorCode = errorCode,
             message = message
         )
 
-    private fun failedRead(errorCode: String, message: String): SlockPlatformFileReadResult =
-        SlockPlatformFileReadResult(
+    private fun failedRead(errorCode: String, message: String): RaftPlatformFileReadResult =
+        RaftPlatformFileReadResult(
             code = 400,
             bytes = ByteArray(0),
             errorCode = errorCode,

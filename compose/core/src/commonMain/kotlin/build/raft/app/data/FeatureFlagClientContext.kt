@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import com.tencent.kmm.network.export.NetworkUserAgent
 
 /**
@@ -8,7 +8,7 @@ import com.tencent.kmm.network.export.NetworkUserAgent
  * (task #1144). Version fields come from the same app identity the User-Agent carries; a field the host
  * never installed is sent as null, and the server treats a missing field as "rule does not match".
  */
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 data class FeatureFlagClientContext(
     val os: String,
     val appVersion: String?,
@@ -16,16 +16,16 @@ data class FeatureFlagClientContext(
     val buildType: String?,
 )
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 const val FEATURE_FLAG_CLIENT_OS_ANDROID: String = "android"
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 const val FEATURE_FLAG_CLIENT_OS_IOS: String = "ios"
 
 /** One of [FEATURE_FLAG_CLIENT_OS_ANDROID] / [FEATURE_FLAG_CLIENT_OS_IOS]. */
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 expect fun featureFlagClientOs(): String
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 fun currentFeatureFlagClientContext(): FeatureFlagClientContext {
     val identity = NetworkUserAgent.appIdentity
     return FeatureFlagClientContext(

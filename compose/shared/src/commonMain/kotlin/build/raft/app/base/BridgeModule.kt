@@ -2,13 +2,13 @@ package build.raft.app.base
 
 import build.raft.app.AttachmentOwnerLease
 import build.raft.app.ThreadComposerTemporaryFileRetirement
-import build.raft.app.data.SLOCK_SOCKET_BASE_URL
+import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import build.raft.app.host.HostCapabilities
 import build.raft.app.network.AttachmentDownloadCoordinator
-import build.raft.app.slockLogDebug
-import build.raft.app.slockLogError
-import build.raft.app.slockLogInfo
-import build.raft.app.slockLogWarn
+import build.raft.app.raftLogDebug
+import build.raft.app.raftLogError
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
 import build.raft.app.compat.module.toInt
 import build.raft.app.compat.module.CallbackRef
 import build.raft.app.compat.module.CallbackFn
@@ -58,7 +58,7 @@ internal class BridgeModule : Module() {
     private val nextAttachmentDownloadId = atomic(0L)
 
     /** This bridge as the pager-independent [HostCapabilities] the data layer consumes. */
-    val hostCapabilities: HostCapabilities by lazy { KuiklyHostCapabilities(this) }
+    val hostCapabilities: HostCapabilities by lazy { RaftHostCapabilities(this) }
 
     override fun moduleName(): String {
         return MODULE_NAME
@@ -86,15 +86,15 @@ internal class BridgeModule : Module() {
         // Diagnostics lambdas legitimately fire from worker coroutines, but any
         // bridge call off the context thread trips the fork's release-live
         // KR_ASSERT_CONTEXT_HTREAD and aborts the app (the TestFlight
-        // SIGABRTs). SlockPlatformLog is the bridge-free, any-thread-safe
+        // SIGABRTs). RaftPlatformLog is the bridge-free, any-thread-safe
         // channel built for exactly this; hosts route it into their own
-        // diagnostics pipelines (Android: SlockAndroidLocalDiagnostics sink,
+        // diagnostics pipelines (Android: RaftAndroidLocalDiagnostics sink,
         // iOS: slockSharedLog notification + console).
         when (level) {
-            BridgeLogLevel.Debug -> slockLogDebug(BRIDGE_LOG_TAG, content)
-            BridgeLogLevel.Info -> slockLogInfo(BRIDGE_LOG_TAG, content)
-            BridgeLogLevel.Warn -> slockLogWarn(BRIDGE_LOG_TAG, content)
-            BridgeLogLevel.Error -> slockLogError(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Debug -> raftLogDebug(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Info -> raftLogInfo(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Warn -> raftLogWarn(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Error -> raftLogError(BRIDGE_LOG_TAG, content)
         }
     }
 
@@ -427,7 +427,7 @@ internal class BridgeModule : Module() {
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs =
-                buildSlockAdaptiveNavigationMethodArgs(
+                buildRaftAdaptiveNavigationMethodArgs(
                     action = action,
                     requestId = requestId,
                     token = token,
@@ -770,7 +770,7 @@ internal class BridgeModule : Module() {
         // returning and may delete only those tombstones asynchronously.
         val result = ThreadComposerTemporaryFileRetirement.retire(cleanSessionId, cleanRefs.toSet())
         if (!result.succeeded) {
-            slockLogWarn(
+            raftLogWarn(
                 BRIDGE_LOG_TAG,
                 "thread_composer_temp_retire_fail sessionId=$cleanSessionId " +
                     "requested=${result.requestedCount} quarantined=${result.quarantinedCount} " +
@@ -894,8 +894,8 @@ internal class BridgeModule : Module() {
         callNativeMethod("appBadge", methodArgs, null)
     }
 
-    fun syncDesktopShortcuts(shortcuts: List<build.raft.app.data.SlockDesktopShortcutItem>) {
-        syncDesktopShortcuts(build.raft.app.data.SlockDesktopShortcutContract.serializeList(shortcuts))
+    fun syncDesktopShortcuts(shortcuts: List<build.raft.app.data.RaftDesktopShortcutItem>) {
+        syncDesktopShortcuts(build.raft.app.data.RaftDesktopShortcutContract.serializeList(shortcuts))
     }
 
     fun syncDesktopShortcuts(shortcutsJson: String) {
@@ -1124,7 +1124,7 @@ internal class BridgeModule : Module() {
         serverId: String,
         accessToken: String,
         shellInstanceId: String = "",
-        socketUrl: String = SLOCK_SOCKET_BASE_URL,
+        socketUrl: String = RAFT_SOCKET_BASE_URL,
         lastSeq: Long = 0L,
         forceReconnect: Boolean = false,
         authorityScopeLeaseId: String,
@@ -1151,7 +1151,7 @@ internal class BridgeModule : Module() {
         serverIds: Set<String>,
         accessToken: String,
         environmentId: String,
-        socketUrl: String = SLOCK_SOCKET_BASE_URL,
+        socketUrl: String = RAFT_SOCKET_BASE_URL,
         forceReconnect: Boolean = false,
         disconnectReason: String = "auth_invalid",
         authorityScopeLeaseId: String = "",
@@ -1555,7 +1555,7 @@ internal fun reduceAttachmentDownloadProgress(
  * stay a JSON number: iOS `slockAdaptiveEditorWithRefTag:` binds only a finite non-negative
  * NSNumber, so a stringly ref can never resolve an editor instance (task #18).
  */
-internal fun buildSlockAdaptiveNavigationMethodArgs(
+internal fun buildRaftAdaptiveNavigationMethodArgs(
     action: String,
     requestId: String,
     token: String? = null,

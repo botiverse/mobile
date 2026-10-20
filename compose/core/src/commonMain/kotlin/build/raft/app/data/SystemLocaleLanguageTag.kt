@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 
 /** Returns the device's current preferred system language without consulting App Language. */
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 expect fun currentSystemLanguageTag(): String?

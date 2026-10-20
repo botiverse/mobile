@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockAdaptiveWorkspaceState
+import build.raft.app.RaftAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal data class SharedAdaptiveWorkspaceSession(
-    val workspace: SlockAdaptiveWorkspaceState? = null,
+    val workspace: RaftAdaptiveWorkspaceState? = null,
     val launchPayload: WireThreadLaunchPayload? = null,
     val detailHistory: AdaptiveDetailHistory? = null,
     val handoffRoomLeaseOwner: RealtimeRoomLeaseOwner? = null,
@@ -48,7 +48,7 @@ internal data class SharedAdaptiveWorkspaceSession(
 internal data class PendingAdaptiveDetailOpen(
     val requestId: String,
     val hostId: String,
-    val identity: build.raft.app.SlockAdaptiveDetailIdentity,
+    val identity: build.raft.app.RaftAdaptiveDetailIdentity,
     val detailGeneration: Long,
     /** Wall-clock capture stamp of the fact that justified this request (freshness fence). */
     val windowFactCapturedAtMillis: Long,

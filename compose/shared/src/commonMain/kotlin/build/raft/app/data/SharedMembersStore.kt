@@ -80,7 +80,7 @@ sealed interface SharedMembersIntent {
 }
 
 class SharedMembersStore(
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     private val channelRepository: ChannelRepository,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {}

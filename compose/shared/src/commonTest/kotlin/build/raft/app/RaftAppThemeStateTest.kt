@@ -1,0 +1,57 @@
+package build.raft.app
+
+import build.raft.app.designtokens.RaftUiPalette
+import build.raft.app.designtokens.RaftUiThemeColors
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class RaftAppThemeStateTest {
+    // The theme state is process-wide; restore it so this suite cannot leak dark into others.
+    @AfterTest
+    fun restoreLight() {
+        RaftAppThemeState.apply(RaftAppAppearance.Light)
+        RaftAppThemeState.onSystemDarkChanged(false)
+    }
+
+    @Test
+    fun defaultsToRaftLight() {
+        assertEquals(RaftAppAppearance.Light, RaftAppThemeState.appearance)
+        assertEquals(raftLightTheme, RaftAppThemeState.theme)
+        assertEquals(RaftUiThemeColors.RaftLight.foreground, RaftColor.TextBlack)
+        assertEquals("#FF141111", RaftColor.TextBlackArgb)
+    }
+
+    @Test
+    fun darkAppearanceSwitchesThemedTokens() {
+        assertTrue(RaftAppThemeState.apply(RaftAppAppearance.Dark))
+        assertEquals(raftDarkTheme, RaftAppThemeState.theme)
+        assertEquals(RaftUiThemeColors.RaftDark.foreground, RaftColor.TextBlack)
+        assertEquals(RaftUiThemeColors.RaftDark.lineStrong, RaftColor.BorderBlack)
+        assertEquals(RaftUiThemeColors.RaftDark.layerCanvas, RaftColor.Canvas)
+        assertEquals(raftArgbHex(RaftUiThemeColors.RaftDark.foreground), RaftColor.TextBlackArgb)
+        // Fixed brand colours do not follow the theme.
+        assertEquals(RaftUiPalette.paletteYellow, RaftColor.BrandYellow)
+    }
+
+    @Test
+    fun systemAppearanceFollowsTheOsSetting() {
+        assertFalse(RaftAppThemeState.apply(RaftAppAppearance.System), "system light resolves to the same theme")
+        assertTrue(RaftAppThemeState.onSystemDarkChanged(true))
+        assertTrue(RaftAppThemeState.isDark)
+        assertTrue(RaftAppThemeState.apply(RaftAppAppearance.Light), "an explicit choice overrides the OS")
+        assertFalse(RaftAppThemeState.onSystemDarkChanged(false), "the OS no longer matters under Light")
+    }
+
+    @Test
+    fun argbHexMatchesTheLiteralFormat() {
+        assertEquals("#FFFFFFFF", raftArgbHex(RaftUiPalette.white))
+        // Source Yellow is raft-ui's `--brand-400` (#FFD440). raft-ui re-derives the
+        // `--palette-yellow-400` ramp from a rounded oklch that lands one step off (#FFD441),
+        // so the brand literal is checked against the brand token.
+        assertEquals(RaftColor.BrandYellowArgb, raftArgbHex(RaftColor.Brand))
+    }
+
+}

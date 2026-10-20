@@ -23,7 +23,7 @@ class RealtimeAuthorityProviderV12Test {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "provider-process",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -88,7 +88,7 @@ class RealtimeAuthorityProviderV12Test {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "provider-reread",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -120,7 +120,7 @@ class RealtimeAuthorityProviderV12Test {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "provider-registration-aba",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -147,7 +147,7 @@ class RealtimeAuthorityProviderV12Test {
         val auth = FakeTypedAuthSessionStore()
         val registry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "provider-invalid-principal",
             )
         val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -164,7 +164,7 @@ class RealtimeAuthorityProviderV12Test {
         lifecycleScope.cancel()
     }
 
-    private class FakeTypedAuthSessionStore : SlockAuthSessionStore, SlockAuthSessionEventSource {
+    private class FakeTypedAuthSessionStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
         private var session: StoredAuthSession? = null
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 16)
 

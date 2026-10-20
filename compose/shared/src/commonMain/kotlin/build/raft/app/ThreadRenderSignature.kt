@@ -28,7 +28,7 @@ internal data class ThreadRenderSignature(
 )
 
 /**
- * Project a [KuiklyThreadScreenPayload] down to its render-axis signature.
+ * Project a [RaftThreadScreenPayload] down to its render-axis signature.
  *
  * Members, settings, action menu state, realtime metadata, files
  * payload, and other non-render-axis fields are intentionally **not**
@@ -38,7 +38,7 @@ internal data class ThreadRenderSignature(
  * The function is pure and side-effect free; it is safe to call from
  * any Composable and is covered by `ThreadRenderSignatureTest`.
  */
-internal fun KuiklyThreadScreenPayload.toRenderSignature(): ThreadRenderSignature =
+internal fun RaftThreadScreenPayload.toRenderSignature(): ThreadRenderSignature =
     toThreadTimelineSlice().toRenderSignature(
         instanceId = instanceId,
         sourceThreadId = sourceThreadId,
@@ -50,7 +50,7 @@ internal fun ThreadTimelineSlice.toRenderSignature(
     sourceThreadId: String?,
     selectedTab: String
 ): ThreadRenderSignature {
-    val firstReply: KuiklyThreadMessageItem? = messages.firstOrNull { it.replyCount > 0 }
+    val firstReply: RaftThreadMessageItem? = messages.firstOrNull { it.replyCount > 0 }
     return ThreadRenderSignature(
         instanceId = instanceId,
         sourceThreadId = sourceThreadId,

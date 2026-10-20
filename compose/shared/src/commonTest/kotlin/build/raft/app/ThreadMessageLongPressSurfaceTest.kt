@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.putBoolean
 import androidx.compose.ui.geometry.Offset
@@ -79,7 +79,7 @@ class ThreadMessageLongPressSurfaceTest {
 
     @Test
     fun enabledRowTapRequiresExistingRepliesAndThePreferenceDefaultsOff() {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueChatLayoutPreferenceStore(keyValueStore)
 
         assertFalse(
@@ -150,9 +150,9 @@ class ThreadMessageLongPressSurfaceTest {
 
     @Test
     fun replyThreadIgnoresAnyStaleMessageOpenEvent() {
-        assertTrue(threadMessageOpenIgnoredForSurface(KuiklyThreadSurfaceKind.ReplyThread))
-        assertFalse(threadMessageOpenIgnoredForSurface(KuiklyThreadSurfaceKind.Channel))
-        assertFalse(threadMessageOpenIgnoredForSurface(KuiklyThreadSurfaceKind.DirectMessage))
+        assertTrue(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.ReplyThread))
+        assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel))
+        assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.DirectMessage))
     }
 
     @Test

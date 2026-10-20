@@ -225,7 +225,7 @@ class TasksPerStatusPaginationTest {
  */
 class TasksPerStatusBoardSeedWiringTest {
 
-    private class RecordingApi(val emptyStatuses: Set<String>) : SlockTasksApi {
+    private class RecordingApi(val emptyStatuses: Set<String>) : RaftTasksApi {
         val requests = mutableListOf<Pair<String?, String?>>() // (cursor, status)
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority) =
             HomeNetworkResponse(code = 500, bodyText = null)
@@ -260,7 +260,7 @@ class TasksPerStatusBoardSeedWiringTest {
     }
 
     private fun viewModel(api: RecordingApi) = SharedTasksViewModel(
-        authStore = InMemorySlockAuthSessionStore(
+        authStore = InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "u", email = "u@slock.ai"),
                 accessToken = "t", refreshToken = "r", selectedServerId = "server-1",

@@ -91,7 +91,7 @@ jobs:
 
       # Task #373 / PR #2497: mermaid consumer confinement. Since the CMP
       # switch mermaid renders through one commonMain adapter
-      # (SlockMermaidDiagramBlock + RaftMermaidCanvas); per-platform actuals
+      # (RaftMermaidDiagramBlock + RaftMermaidCanvas); per-platform actuals
       # must not return and no other production source imports mermaid.
       - name: Validate mermaid plane confinement contract
         run: |
@@ -585,7 +585,7 @@ jobs:
               compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/LazyViewportController.kt \
               compose/shared/src/commonMain/kotlin/build/raft/app/ThreadNewerPagination.kt \
-              compose/androidApp/src/androidTest/java/build/raft/app/shared/SlockThreadNewerAutoPaginationConnectedTest.kt \
+              compose/androidApp/src/androidTest/java/build/raft/app/shared/RaftThreadNewerAutoPaginationConnectedTest.kt \
               compose/shared/src/visualFixtures/kotlin/build/raft/app/ThreadNewerAutoPaginationVisualFixture.kt \
               || diff_rc=$?
             case "$diff_rc" in
@@ -1013,7 +1013,7 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            -only-testing:AdaptiveEditorTests/SlockAdaptiveEditorSnapshotTests \
+            -only-testing:AdaptiveEditorTests/RaftAdaptiveEditorSnapshotTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
@@ -1032,7 +1032,7 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            -only-testing:iosAppTests/SlockRouterLoginTransitionTests \
+            -only-testing:iosAppTests/RaftRouterLoginTransitionTests \
             -only-testing:iosAppTests/RaftCmpBridgeSelectorTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \

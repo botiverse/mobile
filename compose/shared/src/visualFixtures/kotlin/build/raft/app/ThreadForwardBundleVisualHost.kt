@@ -22,7 +22,7 @@ internal fun ThreadForwardBundleVisualScreen() {
     val bundle = remember { threadForwardBundleVisualFixtureBundle() }
     ThreadForwardBundleCard(
         bundle = bundle,
-        messageBodyTextStyle = slockMessageBodyTextStyle("md"),
+        messageBodyTextStyle = raftMessageBodyTextStyle("md"),
         onOpenAll = {},
     )
 }

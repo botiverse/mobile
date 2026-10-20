@@ -12,15 +12,15 @@ class RealtimeRawIngestTopicContractTest {
 
     @Test
     fun rawIngestTopicIsDistinctAndDerivedFromTheNotifyContract() {
-        assertTrue(SlockRealtimeNotifyContract.RawIngestEventName.isNotBlank())
+        assertTrue(RaftRealtimeNotifyContract.RawIngestEventName.isNotBlank())
         assertTrue(
-            SlockRealtimeNotifyContract.RawIngestEventName !=
-                SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.RawIngestEventName !=
+                RaftRealtimeNotifyContract.EventName,
             "raw ingest must be a separate topic so pages never parse large raw events"
         )
         assertTrue(
-            SlockRealtimeNotifyContract.RawIngestEventName
-                .startsWith(SlockRealtimeNotifyContract.EventName),
+            RaftRealtimeNotifyContract.RawIngestEventName
+                .startsWith(RaftRealtimeNotifyContract.EventName),
             "derived name keeps the contract family greppable"
         )
     }

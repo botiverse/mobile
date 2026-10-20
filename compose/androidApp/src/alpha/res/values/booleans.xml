@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <bool name="qa_session_bootstrap_enabled">true</bool>
-    <bool name="slock_screenshot_feedback_runtime_enabled">true</bool>
+    <bool name="raft_screenshot_feedback_runtime_enabled">true</bool>
 </resources>

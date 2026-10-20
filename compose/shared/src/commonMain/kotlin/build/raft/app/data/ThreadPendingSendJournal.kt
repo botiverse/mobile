@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadMessageItem
-import build.raft.app.KuiklyThreadPendingSendContext
+import build.raft.app.RaftThreadMessageItem
+import build.raft.app.RaftThreadPendingSendContext
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.ThreadMessageDeliveryFailed
 import build.raft.app.ThreadMessageDeliverySending
@@ -25,7 +25,7 @@ import kotlinx.serialization.json.Json
  * intent projection until the server confirms it.
  */
 internal class ThreadPendingSendJournal(
-    private val database: SlockSqlDatabase,
+    private val database: RaftSqlDatabase,
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
     /**
@@ -48,7 +48,7 @@ internal class ThreadPendingSendJournal(
     fun persistSending(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
-        message: KuiklyThreadMessageItem,
+        message: RaftThreadMessageItem,
     ): Boolean = synchronized(lock) {
         val ownerScopeId = provenance.threadPendingSendOwnerScopeId ?: return@synchronized false
         // A route is part of the durable identity, not presentation metadata.
@@ -146,7 +146,7 @@ internal class ThreadPendingSendJournal(
     fun restore(
         provenance: ReplyCacheProvenance,
         route: ThreadRouteIdentity,
-    ): List<KuiklyThreadMessageItem> = synchronized(lock) {
+    ): List<RaftThreadMessageItem> = synchronized(lock) {
         runCatching {
             stableIdentityRows(provenance)
                 .mapNotNull { row -> decodeAndValidate(row, route) }
@@ -446,12 +446,12 @@ internal class ThreadPendingSendJournal(
     private fun decodeAndValidate(
         row: ThreadPendingSendEntity,
         route: ThreadRouteIdentity,
-    ): KuiklyThreadMessageItem? {
+    ): RaftThreadMessageItem? {
         if (row.status != "sending" && row.status != "failed") return null
         if (!row.matchesRoute(route)) return null
         return runCatching {
-            val context = json.decodeFromString<KuiklyThreadPendingSendContext>(row.pendingContextJson)
-            val message = json.decodeFromString<KuiklyThreadMessageItem>(row.messageJson)
+            val context = json.decodeFromString<RaftThreadPendingSendContext>(row.pendingContextJson)
+            val message = json.decodeFromString<RaftThreadMessageItem>(row.messageJson)
             val messageContext = message.pendingSendContext
             if (
                 message.id != row.localId ||

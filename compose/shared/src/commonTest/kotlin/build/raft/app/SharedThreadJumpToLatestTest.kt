@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -24,7 +24,7 @@ class SharedThreadJumpToLatestTest {
         val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
         val api = TailNetworkApi()
         val window =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-channel-1",
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
@@ -71,7 +71,7 @@ class SharedThreadJumpToLatestTest {
                 dataSource = dataSource(api),
                 scope = scope,
                 initialPayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         instanceId = "shared-shell-thread-channel-1",
                         sourceThreadId = "channel-1",
                         streamChannelId = "channel-1",
@@ -98,7 +98,7 @@ class SharedThreadJumpToLatestTest {
         testSharedThreadDataSource(
             networkApi = api,
             sessionStore =
-                InMemorySlockAuthSessionStore(
+                InMemoryRaftAuthSessionStore(
                     StoredAuthSession(
                         user = StoredAuthUser("u1", "artin@example.test", "Artin"),
                         accessToken = "access",
@@ -109,8 +109,8 @@ class SharedThreadJumpToLatestTest {
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
         )
 
-    private fun message(id: String, seq: Long, body: String): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    private fun message(id: String, seq: Long, body: String): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "u1",
             authorName = "Artin",

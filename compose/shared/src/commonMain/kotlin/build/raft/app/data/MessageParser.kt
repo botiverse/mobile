@@ -21,7 +21,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.providerLabel
 import build.raft.app.model.MessageType
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.Presence
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
@@ -485,7 +485,7 @@ private fun MessagesWireMessage.toDomain(
         seq = seq,
         author = author,
         timestampLabel = createdAt,
-        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
+        createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),
         body = content,
         messageType = resolvedMessageType,
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),

@@ -1,14 +1,14 @@
 package build.raft.app.base
 
-import build.raft.app.SlockEnvironmentIndicatorHost
-import build.raft.app.slockEnvironmentIndicatorEnabledForPage
-import build.raft.app.slockLogError
-import build.raft.app.slockLogInfo
+import build.raft.app.RaftEnvironmentIndicatorHost
+import build.raft.app.raftEnvironmentIndicatorEnabledForPage
+import build.raft.app.raftLogError
+import build.raft.app.raftLogInfo
 import build.raft.app.toJsonObject
-import build.raft.app.SlockAdaptivePanePagerEvent
-import build.raft.app.SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
-import build.raft.app.data.SlockEnhancedNotifyCenter
-import build.raft.app.data.SlockStoreThreading
+import build.raft.app.RaftAdaptivePanePagerEvent
+import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
+import build.raft.app.data.RaftEnhancedNotifyCenter
+import build.raft.app.data.RaftStoreThreading
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,11 +20,11 @@ import build.raft.app.compat.pager.IModuleCreator
 
 internal abstract class BasePager : ComposeContainer() {
     private var nightModel: Boolean? = null
-    protected var slockPageVisibleResumeTick by mutableStateOf(0)
+    protected var raftPageVisibleResumeTick by mutableStateOf(0)
         private set
-    protected var slockPageVisible by mutableStateOf(false)
+    protected var raftPageVisible by mutableStateOf(false)
         private set
-    private var slockHasAppeared = false
+    private var raftHasAppeared = false
 
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
@@ -33,7 +33,7 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     override fun willInit() {
-        registerSlockExternalModuleCreators()
+        registerRaftExternalModuleCreators()
         super.willInit()
         configureStoreThreadVerification()
     }
@@ -45,14 +45,14 @@ internal abstract class BasePager : ComposeContainer() {
      */
     override fun setContent(content: @Composable () -> Unit) {
         super.setContent {
-            SlockEnvironmentIndicatorHost(
-                enabled = slockEnvironmentIndicatorEnabledForPage(pageData.params),
+            RaftEnvironmentIndicatorHost(
+                enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
                 content = content,
             )
         }
     }
 
-    private fun registerSlockExternalModuleCreators() {
+    private fun registerRaftExternalModuleCreators() {
         registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {
             override fun createModule(): Module = BridgeModule()
         })
@@ -65,24 +65,24 @@ internal abstract class BasePager : ComposeContainer() {
 
     override fun pageDidAppear() {
         super.pageDidAppear()
-        slockPageVisible = true
-        val initialAppearance = !slockHasAppeared
-        slockHasAppeared = true
+        raftPageVisible = true
+        val initialAppearance = !raftHasAppeared
+        raftHasAppeared = true
         if (!initialAppearance) {
-            slockPageVisibleResumeTick += 1
+            raftPageVisibleResumeTick += 1
         }
-        onSlockPageDidAppear(isInitialAppearance = initialAppearance)
+        onRaftPageDidAppear(isInitialAppearance = initialAppearance)
     }
 
     override fun pageDidDisappear() {
         super.pageDidDisappear()
-        slockPageVisible = false
-        onSlockPageDidDisappear()
+        raftPageVisible = false
+        onRaftPageDidDisappear()
     }
 
-    protected open fun onSlockPageDidAppear(isInitialAppearance: Boolean) = Unit
+    protected open fun onRaftPageDidAppear(isInitialAppearance: Boolean) = Unit
 
-    protected open fun onSlockPageDidDisappear() = Unit
+    protected open fun onRaftPageDidDisappear() = Unit
 
     override fun themeDidChanged(data: JSONObject) {
         super.themeDidChanged(data)
@@ -91,15 +91,15 @@ internal abstract class BasePager : ComposeContainer() {
 
     override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
         super.onReceivePagerEvent(pagerEvent, eventData)
-        if (pagerEvent == SlockAdaptivePanePagerEvent) {
-            onSlockAdaptivePaneChanged(eventData)
+        if (pagerEvent == RaftAdaptivePanePagerEvent) {
+            onRaftAdaptivePaneChanged(eventData)
         }
-        if (pagerEvent == SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT) {
+        if (pagerEvent == RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT) {
             // task #18 wiring gap (Jony's v12 QA): iOS delivers the commit receipt via the target
             // pager's sendWithEvent, not the shared eventBus — forward it in-process so the
             // shell's settle subscription sees it. Token/authority checks stay in the settle path.
-            SlockEnhancedNotifyCenter.post(
-                eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
+            RaftEnhancedNotifyCenter.post(
+                eventName = RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
                 eventData = eventData.toJsonObject(),
                 crossProcess = true,
                 source = "pager_commit_result_forward",
@@ -108,7 +108,7 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     /** Host window facts are not route data. Pages opt in when they own a responsive surface. */
-    protected open fun onSlockAdaptivePaneChanged(eventData: JSONObject) = Unit
+    protected open fun onRaftAdaptivePaneChanged(eventData: JSONObject) = Unit
 
     // 是否为夜间模式
     override fun isNightMode(): Boolean {
@@ -130,9 +130,9 @@ internal abstract class BasePager : ComposeContainer() {
     private fun configureStoreThreadVerification() {
         if (!pageData.params.optBoolean(KEY_VERIFY_THREAD, false)) return
         // Debug thread verification also reports process-wide store writes made outside the
-        // store dispatcher (logged, not thrown: see SlockStoreThreading for the known gaps).
-        SlockStoreThreading.installViolationHandler { violation -> slockLogError(TAG_VERIFY, violation.toString()) }
-        slockLogInfo(TAG_VERIFY, "store_verify_enabled")
+        // store dispatcher (logged, not thrown: see RaftStoreThreading for the known gaps).
+        RaftStoreThreading.installViolationHandler { violation -> raftLogError(TAG_VERIFY, violation.toString()) }
+        raftLogInfo(TAG_VERIFY, "store_verify_enabled")
     }
 
     companion object {

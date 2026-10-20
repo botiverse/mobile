@@ -56,14 +56,14 @@ class ThreadOfflineLastKnownTipTest {
     @Test
     fun payloadProjectionCarriesTheFlagIntoTheSliceAndTheChrome() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
                 status = "content",
                 backgroundRefreshing = false,
                 durableLastKnown = true,
-                messages = listOf(KuiklyThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
+                messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
             )
         assertTrue(payload.toThreadTimelineSlice().durableLastKnown)
         assertEquals(ThreadOfflineLastKnownChrome(insetActive = true, tipVisible = true), threadOfflineLastKnownChrome(payload))
@@ -92,21 +92,21 @@ class ThreadOfflineLastKnownTipTest {
         )
         // The slice-level overload reads the flag from the slice.
         val slice =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-channel-1",
                 title = "general",
                 sourceThreadId = "channel-1",
                 status = "content",
                 durableLastKnown = true,
                 canLoadMoreBefore = false,
-                messages = listOf(KuiklyThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
+                messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
             ).toThreadTimelineSlice()
         assertEquals(MR.strings.thread_offline_older_unavailable.desc(), threadOlderMessagesStatusSpec(slice).label)
     }
 
     @Test
     fun aRecoveredNetworkReasksAnIdleStandInAndDefersWhileARefreshIsRunning() {
-        val base = KuiklyThreadScreenPayload(status = "content")
+        val base = RaftThreadScreenPayload(status = "content")
         assertEquals(
             OfflineStandInRecoveryAction.Refresh,
             offlineStandInRecoveryAction(base.copy(durableLastKnown = true, backgroundRefreshing = false))
@@ -132,7 +132,7 @@ class ThreadOfflineLastKnownTipTest {
         assertEquals(
             OfflineStandInRecoveryAction.Refresh,
             offlineStandInRecoveryAction(
-                KuiklyThreadScreenPayload(status = "error", mainLoadFailed = true, errorCode = "network_timeout")
+                RaftThreadScreenPayload(status = "error", mainLoadFailed = true, errorCode = "network_timeout")
             ),
             "error page"
         )
@@ -145,12 +145,12 @@ class ThreadOfflineLastKnownTipTest {
         )
         assertEquals(
             OfflineStandInRecoveryAction.Defer,
-            offlineStandInRecoveryAction(KuiklyThreadScreenPayload(status = "loading")),
+            offlineStandInRecoveryAction(RaftThreadScreenPayload(status = "loading")),
             "first load still running"
         )
         assertEquals(
             OfflineStandInRecoveryAction.None,
-            offlineStandInRecoveryAction(KuiklyThreadScreenPayload(status = "no_permission", errorCode = "forbidden")),
+            offlineStandInRecoveryAction(RaftThreadScreenPayload(status = "no_permission", errorCode = "forbidden")),
             "a permission answer is final"
         )
     }
@@ -158,7 +158,7 @@ class ThreadOfflineLastKnownTipTest {
     @Test
     fun aRecoverySignalDuringARefreshFiresOnceThatRefreshFailsBackToTheStandIn() {
         // LiBai #2782 order: refresh running → online (de-duplicated, never repeated) → refresh fails.
-        val standIn = KuiklyThreadScreenPayload(status = "content", durableLastKnown = true)
+        val standIn = RaftThreadScreenPayload(status = "content", durableLastKnown = true)
         val gate = OfflineStandInRecoveryGate()
         assertFalse(gate.onNetworkRecovered(standIn.copy(backgroundRefreshing = true)), "deferred, not dropped")
         assertFalse(gate.onPayloadSettled(standIn.copy(backgroundRefreshing = true)), "still running")
@@ -179,10 +179,10 @@ class ThreadOfflineLastKnownTipTest {
     fun onlyThisServersTransportConnectedEventCountsAsARealtimeRecovery() {
         fun event(action: String, serverId: String?) =
             build.raft.app.compat.json.JSONObject().apply {
-                put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyAction, action)
-                if (serverId != null) put(build.raft.app.data.realtime.SlockRealtimeNotifyContract.KeyServerId, serverId)
+                put(build.raft.app.data.realtime.RaftRealtimeNotifyContract.KeyAction, action)
+                if (serverId != null) put(build.raft.app.data.realtime.RaftRealtimeNotifyContract.KeyServerId, serverId)
             }.toJsonObject()
-        val connected = build.raft.app.data.realtime.SlockRealtimeNotifyContract.ActionPresenceTransportConnected
+        val connected = build.raft.app.data.realtime.RaftRealtimeNotifyContract.ActionPresenceTransportConnected
         assertTrue(isRealtimeTransportConnectedEvent(event(connected, "server-a"), "server-a"))
         assertFalse(isRealtimeTransportConnectedEvent(event(connected, "server-b"), "server-a"), "another server's reconnect")
         assertFalse(isRealtimeTransportConnectedEvent(event(connected, null), "server-a"), "no server on the event")

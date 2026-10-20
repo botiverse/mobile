@@ -1,12 +1,12 @@
 package build.raft.app.data
 
-internal actual fun slockRequiresAppScopeKeyValueStore(namespace: String): Boolean =
-    namespace == SLOCK_AUTH_SESSION_MMKV_NAMESPACE ||
-        namespace == SlockLocalPreferenceStore.KuiklyNamespace ||
+internal actual fun raftRequiresAppScopeKeyValueStore(namespace: String): Boolean =
+    namespace == RAFT_AUTH_SESSION_MMKV_NAMESPACE ||
+        namespace == RaftLocalPreferenceStore.KuiklyNamespace ||
         namespace == SharedApiEnvironmentStore.Namespace ||
-        namespace == SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE ||
-        namespace == SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE ||
-        namespace == SLOCK_IOS_MOBILE_OAUTH_MMKV_NAMESPACE ||
-        namespace == SLOCK_APP_LOGIN_MMKV_NAMESPACE
+        namespace == RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE ||
+        namespace == RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE ||
+        namespace == RAFT_IOS_MOBILE_OAUTH_MMKV_NAMESPACE ||
+        namespace == RAFT_APP_LOGIN_MMKV_NAMESPACE
 
-internal actual fun slockCreatePlatformAppScopeKeyValueStore(namespace: String): SlockKeyValueStore? = null
+internal actual fun raftCreatePlatformAppScopeKeyValueStore(namespace: String): RaftKeyValueStore? = null

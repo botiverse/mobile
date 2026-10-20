@@ -49,14 +49,14 @@ class SharedForegroundBannerStoreTest {
         store.clear()
     }
 
-    private fun banner(id: String): SlockForegroundMessageBanner {
+    private fun banner(id: String): RaftForegroundMessageBanner {
         val conversation =
             ThreadLaunchConversationIdentity(
                 threadId = ThreadId("thread-$id"),
                 channelId = ChannelId("channel-$id"),
                 kind = ConversationKind.Channel
             )
-        return SlockForegroundMessageBanner(
+        return RaftForegroundMessageBanner(
             id = id,
             serverId = "server",
             focusedMessageId = "message-$id",
@@ -66,7 +66,7 @@ class SharedForegroundBannerStoreTest {
             context = "context",
             threadContext = null,
             body = "body",
-            iconKind = SlockForegroundMessageBannerIconKind.Channel,
+            iconKind = RaftForegroundMessageBannerIconKind.Channel,
             iconName = null,
             senderMemberId = null,
             avatarWireValue = null,
@@ -76,7 +76,7 @@ class SharedForegroundBannerStoreTest {
 
     private fun route(instanceKey: String): ThreadRouteIdentity =
         ThreadRouteIdentity(
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = null,
             instanceKey = instanceKey,
             timelineKey = instanceKey,

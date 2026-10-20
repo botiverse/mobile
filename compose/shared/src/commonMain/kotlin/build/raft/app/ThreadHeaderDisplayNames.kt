@@ -6,8 +6,8 @@ import build.raft.app.model.conversationSafeDisplayTitleOrNull
 
 internal fun threadHeaderFallbackTitle(surfaceKind: String): String =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
-        KuiklyThreadSurfaceKind.DirectMessage -> "Direct Message"
+        RaftThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
+        RaftThreadSurfaceKind.DirectMessage -> "Direct Message"
         else -> "Channel"
     }
 

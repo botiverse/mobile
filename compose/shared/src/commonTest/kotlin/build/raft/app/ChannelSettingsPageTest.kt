@@ -107,7 +107,7 @@ class ChannelSettingsPageTest {
             )
 
         assertEquals(
-            SlockLucideIconName.GitBranch,
+            RaftLucideIconName.GitBranch,
             joint
                 .toThreadLaunchConversationIdentity()
                 .threadRouteChannelKind()

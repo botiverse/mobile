@@ -5,15 +5,15 @@ import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
 import build.raft.app.shared.AndroidLoginTransitionRouting
-import build.raft.app.shared.SlockCmpActivity
-import build.raft.app.shared.SlockKuiklyRouteKeys
+import build.raft.app.shared.RaftCmpActivity
+import build.raft.app.shared.RaftRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
 import build.raft.app.shared.withAndroidShellRouteOwner
-import build.raft.app.data.SlockAppLoginBridge
+import build.raft.app.data.RaftAppLoginBridge
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
@@ -55,10 +55,10 @@ class MainActivity : ComponentActivity() {
             externalShareAdmissionOwner.submit(rawShare)
         }
         val resumedExternalShare = externalShareAdmissionOwner.attach(externalShareResultListener)
-        SlockAppLog.d(
+        RaftAppLog.d(
             "SlockBoot",
             "main_activity_created " +
-                "source=${intent.slockLaunchSource()} " +
+                "source=${intent.raftLaunchSource()} " +
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
@@ -76,10 +76,10 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         AndroidLoginTransitionRouting.observeNewIntent(this)
-        SlockAppLog.d(
+        RaftAppLog.d(
             "SlockBoot",
             "main_activity_new_intent " +
-                "source=${intent.slockLaunchSource()} " +
+                "source=${intent.raftLaunchSource()} " +
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
-            !handleUnsupportedSlockWebLink(intent)
+            !handleUnsupportedRaftWebLink(intent)
         ) {
             openSharedShell(intent)
         }
@@ -123,7 +123,7 @@ class MainActivity : ComponentActivity() {
             is AndroidExternalShareIntakeResult.Admitted ->
                 openSharedShellPageData(androidExternalSharePageData(result.launch))
             is AndroidExternalShareIntakeResult.Rejected -> {
-                SlockAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
+                RaftAppLog.w("SlockBoot", "external_share_rejected code=${result.code}")
                 Toast.makeText(
                     this,
                     getString(R.string.external_share_import_failed_toast),
@@ -141,20 +141,20 @@ class MainActivity : ComponentActivity() {
      * silently opening an empty app shell. The browser component is explicit so Android App Links
      * cannot resolve the fallback straight back to this activity.
      */
-    private fun handleUnsupportedSlockWebLink(intent: Intent?): Boolean {
-        if (!intent.shouldOpenUnsupportedSlockWebLinkExternally()) return false
+    private fun handleUnsupportedRaftWebLink(intent: Intent?): Boolean {
+        if (!intent.shouldOpenUnsupportedRaftWebLinkExternally()) return false
         val uri = checkNotNull(intent?.data)
         setIntent(Intent(this, MainActivity::class.java))
         val browserIntent = externalBrowserIntent(uri)
         if (browserIntent == null) {
-            SlockAppLog.w(
+            RaftAppLog.w(
                 "SlockBoot",
                 "app_web_link_external_fallback result=no_external_handler " +
                     "target=${uri.safeWebLinkTarget()}"
             )
             Toast.makeText(this, getString(R.string.browser_unavailable_toast), Toast.LENGTH_SHORT).show()
         } else {
-            SlockAppLog.d(
+            RaftAppLog.d(
                 "SlockBoot",
                 "app_web_link_external_fallback result=opened " +
                     "target=${uri.safeWebLinkTarget()} package=${browserIntent.component?.packageName.orEmpty()}"
@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
     private fun externalBrowserIntent(uri: Uri): Intent? = androidExternalBrowserIntent(this, uri)
 
     private fun openSharedShell(launchIntent: Intent? = intent) {
-        val pageData = SlockCmpActivity.appShellPageDataFromIntent(launchIntent)
+        val pageData = RaftCmpActivity.appShellPageDataFromIntent(launchIntent)
         openSharedShellPageData(pageData, launchIntent)
     }
 
@@ -176,7 +176,7 @@ class MainActivity : ComponentActivity() {
         pageData: JSONObject,
         launchIntent: Intent? = intent
     ) {
-        SlockCmpActivity.startAppShell(
+        RaftCmpActivity.startAppShell(
             this,
             pageData = pageData,
             clearTask = launchIntent.shouldClearTaskForSharedShell(),
@@ -250,7 +250,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleSocialAuthCallback(intent: Intent?): Boolean {
         val uri = intent?.data ?: return false
-        if (!uri.isSlockSocialAuthCallback()) return false
+        if (!uri.isRaftSocialAuthCallback()) return false
         setIntent(Intent(this, MainActivity::class.java))
         val provider = uri.getQueryParameter("provider").orEmpty().lowercase()
         if (provider != "google") {
@@ -306,9 +306,9 @@ class MainActivity : ComponentActivity() {
         // only as "this trampoline is not the task root". Restarting the shell there would destroy the
         // waiting page and race a fresh one against the exchange (build 38: "Unable to finish sign-in").
         val revealsExistingScreen = hasLiveShellInTask || !isTaskRoot
-        val accepted = SlockAppLoginBridge.completeCallbackUri(uri.toString())
+        val accepted = RaftAppLoginBridge.completeCallbackUri(uri.toString())
         setIntent(Intent(this, MainActivity::class.java))
-        SlockAppLog.d(
+        RaftAppLog.d(
             "SlockAuth",
             "app_login_callback accepted=$accepted liveShell=$hasLiveShellInTask taskRoot=$isTaskRoot"
         )
@@ -322,7 +322,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMobileOAuthCallback(intent: Intent?): Boolean {
         val uri = intent?.data ?: return false
-        if (!uri.isSlockMobileOAuthCallback()) return false
+        if (!uri.isRaftMobileOAuthCallback()) return false
         setIntent(Intent(this, MainActivity::class.java))
         val pendingStore = AndroidMobileOAuthPendingStore(applicationContext)
         val pending = pendingStore.read()
@@ -405,7 +405,7 @@ class MainActivity : ComponentActivity() {
                 is SharedAuthResult.Failure -> {
                     if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
                         pendingStore.clear()
-                        SlockCmpActivity.startAuthLegalAcceptance(
+                        RaftCmpActivity.startAuthLegalAcceptance(
                             this@MainActivity,
                             pageData = mobileOAuthLegalAcceptancePageData(
                                 provider = pending.provider,
@@ -436,7 +436,7 @@ class MainActivity : ComponentActivity() {
         val accepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(this, loginTransition) {
             when (postLoginDestination(session.selectedServerId)) {
                 PostLoginDestination.AppShell ->
-                    SlockCmpActivity.startAppShell(
+                    RaftCmpActivity.startAppShell(
                         this,
                         pageData =
                             postLoginAppShellPageData(
@@ -456,7 +456,7 @@ class MainActivity : ComponentActivity() {
                         clearTask = true
                     )
                 PostLoginDestination.ChooseServer ->
-                    SlockCmpActivity.startAuthChooseServer(
+                    RaftCmpActivity.startAuthChooseServer(
                         this,
                         clearTask = true
                     )
@@ -467,9 +467,9 @@ class MainActivity : ComponentActivity() {
 
     private fun openLoginAfterMobileOAuthError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        SlockCmpActivity.start(
+        RaftCmpActivity.start(
             this,
-            SlockCmpActivity.PAGE_LOGIN,
+            RaftCmpActivity.PAGE_LOGIN,
             pageData = mobileOAuthLoginErrorPageData(message),
             clearTask = true
         )
@@ -486,7 +486,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openSettingsAccountAfterMobileOAuthLink() {
-        SlockCmpActivity.startAppShell(
+        RaftCmpActivity.startAppShell(
             this,
             pageData =
                 settingsAccountAppShellPageData(
@@ -527,7 +527,7 @@ internal fun settingsAccountAppShellPageData(owner: AndroidShellRouteOwner? = nu
 internal fun mobileOAuthLoginErrorPageData(message: String): JSONObject =
     JSONObject()
         .put("slockAuthMessage", message)
-        .put(SlockKuiklyRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
+        .put(RaftRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 internal fun mobileOAuthLegalAcceptancePageData(
     provider: String,
@@ -535,14 +535,14 @@ internal fun mobileOAuthLegalAcceptancePageData(
     codeVerifier: String
 ): JSONObject =
     JSONObject()
-        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_PROVIDER, provider)
-        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_PLATFORM, "android")
-        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_CODE, code)
-        .put(SlockKuiklyRouteKeys.AUTH_LEGAL_CODE_VERIFIER, codeVerifier)
-        .put(SlockKuiklyRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
+        .put(RaftRouteKeys.AUTH_LEGAL_PROVIDER, provider)
+        .put(RaftRouteKeys.AUTH_LEGAL_PLATFORM, "android")
+        .put(RaftRouteKeys.AUTH_LEGAL_CODE, code)
+        .put(RaftRouteKeys.AUTH_LEGAL_CODE_VERIFIER, codeVerifier)
+        .put(RaftRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 private fun logSharedAuthDiagnostics(message: String) {
-    SlockAppLog.auth("SlockKuikly", "shared_auth $message")
+    RaftAppLog.auth("SlockKuikly", "shared_auth $message")
 }
 
 internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =
@@ -553,8 +553,8 @@ internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =
         appShellPageData = this.isAppShellPageDataIntent()
     )
 
-internal fun Intent?.slockLaunchSource(): String =
-    slockLaunchSource(
+internal fun Intent?.raftLaunchSource(): String =
+    raftLaunchSource(
         action = this?.action,
         dataScheme = this?.data?.scheme,
         dataHost = this?.data?.host,
@@ -567,9 +567,9 @@ internal fun shouldClearTaskForSharedShell(
     dataHost: String?,
     appShellPageData: Boolean = false
 ): Boolean =
-    !appShellPageData && !isSlockAppWebViewIntent(action, dataScheme, dataHost)
+    !appShellPageData && !isRaftAppWebViewIntent(action, dataScheme, dataHost)
 
-internal fun slockLaunchSource(
+internal fun raftLaunchSource(
     action: String?,
     dataScheme: String?,
     dataHost: String?,
@@ -578,19 +578,19 @@ internal fun slockLaunchSource(
     when {
         appShellPageData -> "app_shell_intent"
         action == null -> "missing"
-        isSlockAppWebViewIntent(action, dataScheme, dataHost) -> "app_web_view"
+        isRaftAppWebViewIntent(action, dataScheme, dataHost) -> "app_web_view"
         action == Intent.ACTION_VIEW -> "external_view"
         action == Intent.ACTION_MAIN -> "launcher"
         else -> action.ifBlank { "unknown" }
     }
 
-internal fun Intent?.shouldOpenUnsupportedSlockWebLinkExternally(): Boolean =
+internal fun Intent?.shouldOpenUnsupportedRaftWebLinkExternally(): Boolean =
     this?.data?.let { uri ->
         admittedUriQuery(
             isHierarchical = uri.isHierarchical,
-            routeAccepted = action == Intent.ACTION_VIEW && uri.isSlockAppWebLink(),
+            routeAccepted = action == Intent.ACTION_VIEW && uri.isRaftAppWebLink(),
         ) {
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = action,
                 dataScheme = uri.scheme,
                 dataHost = uri.host,
@@ -600,7 +600,7 @@ internal fun Intent?.shouldOpenUnsupportedSlockWebLinkExternally(): Boolean =
         }
     } ?: false
 
-internal fun shouldOpenUnsupportedSlockWebLinkExternally(
+internal fun shouldOpenUnsupportedRaftWebLinkExternally(
     action: String?,
     dataScheme: String?,
     dataHost: String?,
@@ -608,14 +608,14 @@ internal fun shouldOpenUnsupportedSlockWebLinkExternally(
     verifyToken: String? = null
 ): Boolean =
     action == Intent.ACTION_VIEW &&
-        isSlockAppWebLink(dataScheme, dataHost) &&
+        isRaftAppWebLink(dataScheme, dataHost) &&
         emailVerificationToken(action, dataScheme, dataHost, dataPath, verifyToken) == null
 
 internal fun Intent?.emailVerificationToken(): String? =
     this?.data?.let { uri ->
         admittedUriQuery(
             isHierarchical = uri.isHierarchical,
-            routeAccepted = action == Intent.ACTION_VIEW && uri.isSlockAppWebLink() && isRootWebPath(uri.path),
+            routeAccepted = action == Intent.ACTION_VIEW && uri.isRaftAppWebLink() && isRootWebPath(uri.path),
         ) {
             emailVerificationToken(
                 action = action,
@@ -637,7 +637,7 @@ internal fun emailVerificationToken(
     verifyToken?.takeIf {
         it.isNotBlank() &&
             action == Intent.ACTION_VIEW &&
-            isSlockAppWebLink(dataScheme, dataHost) &&
+            isRaftAppWebLink(dataScheme, dataHost) &&
             isRootWebPath(dataPath)
     }
 
@@ -717,15 +717,15 @@ internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
 }
 
 private fun Intent?.isAppShellPageDataIntent(): Boolean =
-    this?.getStringExtra(SlockCmpActivity.KEY_PAGE_NAME) == SlockCmpActivity.PAGE_APP_SHELL
+    this?.getStringExtra(RaftCmpActivity.KEY_PAGE_NAME) == RaftCmpActivity.PAGE_APP_SHELL
 
-private fun isSlockAppWebViewIntent(action: String?, dataScheme: String?, dataHost: String?): Boolean =
-    action == Intent.ACTION_VIEW && isSlockAppWebLink(dataScheme, dataHost)
+private fun isRaftAppWebViewIntent(action: String?, dataScheme: String?, dataHost: String?): Boolean =
+    action == Intent.ACTION_VIEW && isRaftAppWebLink(dataScheme, dataHost)
 
-internal fun Uri.isSlockAppWebLink(): Boolean =
-    isSlockAppWebLink(scheme, host)
+internal fun Uri.isRaftAppWebLink(): Boolean =
+    isRaftAppWebLink(scheme, host)
 
-private fun isSlockAppWebLink(scheme: String?, host: String?): Boolean =
+private fun isRaftAppWebLink(scheme: String?, host: String?): Boolean =
     scheme.equals("https", ignoreCase = true) &&
         host?.lowercase(Locale.US) in setOf("app.slock.ai", "app.raft.build")
 
@@ -735,7 +735,7 @@ private fun Intent?.safeDataString(): String =
 private fun Uri.safeWebLinkTarget(): String =
     buildUpon().clearQuery().fragment(null).build().toString()
 
-private fun Uri.isSlockSocialAuthCallback(): Boolean =
+private fun Uri.isRaftSocialAuthCallback(): Boolean =
     admittedUriQuery(
         isHierarchical = isHierarchical,
         routeAccepted = scheme == "https" && host in setOf("app.slock.ai", "app.raft.build"),
@@ -743,7 +743,7 @@ private fun Uri.isSlockSocialAuthCallback(): Boolean =
         getQueryParameter("auth_callback") == "social"
     } ?: false
 
-internal fun Uri.isSlockMobileOAuthCallback(): Boolean =
+internal fun Uri.isRaftMobileOAuthCallback(): Boolean =
     admittedUriQuery(
         isHierarchical = isHierarchical,
         routeAccepted = AndroidMobileOAuth.isCallbackRoute(scheme = scheme, host = host, path = path),

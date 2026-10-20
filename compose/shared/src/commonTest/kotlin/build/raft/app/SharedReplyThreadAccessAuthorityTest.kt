@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
-import build.raft.app.data.InMemorySlockAuthSessionStore
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 class SharedReplyThreadAccessAuthorityTest {
     @Test
     fun authorityChangeBeforeAccessSnapshotCompletionFailsClosedWithoutScopedWrite() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(accountSession("account-1", "server-1"))
+        val authStore = InMemoryRaftAuthSessionStore(accountSession("account-1", "server-1"))
         val messageStore = SharedThreadMessageStore()
         val releaseReply = CompletableDeferred<Unit>()
         val repository =
@@ -50,7 +50,7 @@ class SharedReplyThreadAccessAuthorityTest {
 
     @Test
     fun parentCompletionAfterOwnerChangeFailsClosedAndWritesOnlyToCapturedIdentity() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(accountSession("account-1", "server-1"))
+        val authStore = InMemoryRaftAuthSessionStore(accountSession("account-1", "server-1"))
         val messageStore = SharedThreadMessageStore()
         val releaseParent = CompletableDeferred<Unit>()
         val repository =
@@ -101,7 +101,7 @@ class SharedReplyThreadAccessAuthorityTest {
     }
 
     private fun replyThreadAccessDataSource(
-        sessionStore: SlockAuthSessionStore,
+        sessionStore: RaftAuthSessionStore,
         messageStore: SharedThreadMessageStore,
         repository: ReplyThreadAccessConversationRepositoryRecorder,
     ): SharedThreadDataSource =
@@ -116,7 +116,7 @@ class SharedReplyThreadAccessAuthorityTest {
 
     private suspend fun publishAccountSwitch(
         dataSource: SharedThreadDataSource,
-        authStore: InMemorySlockAuthSessionStore,
+        authStore: InMemoryRaftAuthSessionStore,
     ): String {
         authStore.saveSession(accountSession("account-2", "server-2"))
         return captureMessageStoreScopeId(dataSource)

@@ -1,8 +1,8 @@
 package build.raft.app.shared
 
-import build.raft.app.SLOCK_ROUTE_ACCOUNT_ID
-import build.raft.app.SLOCK_ROUTE_ENVIRONMENT_ID
-import build.raft.app.SLOCK_ROUTE_SERVER_ID
+import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
+import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
+import build.raft.app.RAFT_ROUTE_SERVER_ID
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -19,7 +19,7 @@ class AndroidShellWindowContractTest {
 
     @Test
     fun notificationServerUsesDefaultSingleShellIdentity() {
-        val pageData = JSONObject().put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
+        val pageData = JSONObject().put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
 
         val target = resolveAndroidShellLaunchTarget(pageData)
 
@@ -50,7 +50,7 @@ class AndroidShellWindowContractTest {
         )
 
         val target = resolveAndroidShellLaunchTarget(
-            JSONObject().put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
+            JSONObject().put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
         )
 
         assertEquals("android-default-app-shell", target.shellInstanceId)
@@ -101,9 +101,9 @@ class AndroidShellWindowContractTest {
         assertEquals("server-a", restored?.serverId)
         assertTrue(restored?.documentShell ?: false)
         assertEquals(owner, restored?.routeOwner)
-        assertEquals("https://api.test", enriched.getString(SLOCK_ROUTE_ENVIRONMENT_ID))
-        assertEquals("user-1", enriched.getString(SLOCK_ROUTE_ACCOUNT_ID))
-        assertEquals("server-a", enriched.getString(SLOCK_ROUTE_SERVER_ID))
+        assertEquals("https://api.test", enriched.getString(RAFT_ROUTE_ENVIRONMENT_ID))
+        assertEquals("user-1", enriched.getString(RAFT_ROUTE_ACCOUNT_ID))
+        assertEquals("server-a", enriched.getString(RAFT_ROUTE_SERVER_ID))
         assertTrue(enriched.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
         assertEquals("message-1", enriched.getString("slockNotificationMessageId"))
     }
@@ -114,17 +114,17 @@ class AndroidShellWindowContractTest {
             JSONObject()
                 .put(ANDROID_SHELL_INSTANCE_ID_KEY, "server-shell:server-b")
                 .put(ANDROID_DOCUMENT_SHELL_KEY, true)
-                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-b")
-                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-b")
-                .put(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-b")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-b")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-b")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-b")
 
         val normalized = normalizeAndroidAppShellPageData(source)
 
         assertEquals("android-default-app-shell", normalized.getString(ANDROID_SHELL_INSTANCE_ID_KEY))
         assertEquals("server-b", normalized.getString(ANDROID_SHELL_SERVER_ID_KEY))
         assertFalse(normalized.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
-        assertEquals("thread-b", normalized.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
-        assertEquals("message-b", normalized.getString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
+        assertEquals("thread-b", normalized.getString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
+        assertEquals("message-b", normalized.getString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
     }
 
     @Test

@@ -1,10 +1,10 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 suspend inline fun <T> parseResponseBodyWithTrace(
     source: String,
     markerPrefix: String,
@@ -17,7 +17,7 @@ suspend inline fun <T> parseResponseBodyWithTrace(
     crossinline parser: () -> T
 ): T {
     val responseBytes = body.encodeToByteArray().size
-    val dispatcherLabel = if (parseOnDefault) SLOCK_JSON_PARSE_DISPATCHER_LABEL else "caller"
+    val dispatcherLabel = if (parseOnDefault) RAFT_JSON_PARSE_DISPATCHER_LABEL else "caller"
     diagnosticsLogger(
         "${markerPrefix}_network_body_received source=$source " +
             "code=${code ?: "unknown"} responseBytes=$responseBytes hasBody=$hasBody"
@@ -29,7 +29,7 @@ suspend inline fun <T> parseResponseBodyWithTrace(
     )
     val result =
         if (parseOnDefault) {
-            withContext(SlockJsonParseDispatcher) { parser() }
+            withContext(RaftJsonParseDispatcher) { parser() }
         } else {
             parser()
         }

@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockSidebarSortMode
+import build.raft.app.RaftSidebarSortMode
 import build.raft.app.HomeConversationBadgeInput
 import build.raft.app.homeLazyItemCount
 import build.raft.app.homeConversationBadgeProjection
@@ -60,8 +60,8 @@ class SharedHomeStoreTest {
     fun flagOffHomeFinalStateIsByteEquivalentToLegacyPath() = runBlocking {
         val legacyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val canaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val legacyVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
-        val canaryVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val legacyVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+        val canaryVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         listOf(legacyVersionStore, canaryVersionStore).forEach { versionStore ->
             versionStore.writeReadStateCheckpoint(
                 ServerId("server-1"),
@@ -82,7 +82,7 @@ class SharedHomeStoreTest {
         )
         val legacy =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(base),
                 scope = legacyScope,
                 perReceiverStateVersionStore = legacyVersionStore,
@@ -91,7 +91,7 @@ class SharedHomeStoreTest {
             )
         val flagOff =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(carrier),
                 scope = canaryScope,
                 perReceiverStateVersionStore = canaryVersionStore,
@@ -128,7 +128,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot),
                 scope = scope,
                 readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
@@ -152,7 +152,7 @@ class SharedHomeStoreTest {
     @Test
     fun selectedHydrateCommitsBeforeExactFencedFirstHomeStateAndNeverFillsLegacyCheckpoint() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             ServerId("server-1"),
             MemberId("user-1"),
@@ -188,7 +188,7 @@ class SharedHomeStoreTest {
             )
         store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot),
                 scope = scope,
                 perReceiverStateVersionStore = versionStore,
@@ -213,7 +213,7 @@ class SharedHomeStoreTest {
     @Test
     fun selectedHydrateCommitFailureKeepsFirstHomeStateDark() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             ServerId("server-1"),
             MemberId("user-1"),
@@ -238,7 +238,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot),
                 scope = scope,
                 perReceiverStateVersionStore = versionStore,
@@ -273,7 +273,7 @@ class SharedHomeStoreTest {
             )
         val dataSource =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = api,
                 parseHome = { _, _ -> DataResult.Content(networkSnapshot) },
             )
@@ -287,7 +287,7 @@ class SharedHomeStoreTest {
         var revokeBeforePublication = false
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = dataSource,
                 scope = scope,
                 readReceiptOwnerFactory = { serverId, accountId ->
@@ -360,7 +360,7 @@ class SharedHomeStoreTest {
     fun startLoadsHomeThroughCommonStateFlow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -388,7 +388,7 @@ class SharedHomeStoreTest {
         val originalLogs = Channel<String>(Channel.UNLIMITED)
         val refreshedLogs = Channel<String>(Channel.UNLIMITED)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-old"))),
             scope = storeScope,
             diagnosticsLogger = { originalLogs.trySend(it) }
@@ -441,11 +441,11 @@ class SharedHomeStoreTest {
     fun startHydratesConversationIdentityProviderFromHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 source(
                     api = RecordingHomeApi(),
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
                 ),
             scope = scope
         )
@@ -465,7 +465,7 @@ class SharedHomeStoreTest {
     fun channelProfileUpdatePatchesHomeAndConversationDirectoryWithoutDroppingRowState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -494,7 +494,7 @@ class SharedHomeStoreTest {
     fun activitySnapshotSupplementsMissingParentIdentityWithoutOverwritingHome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -547,7 +547,7 @@ class SharedHomeStoreTest {
     fun surfaceVisibilityChangeStaysOutOfHomeUiState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -573,7 +573,7 @@ class SharedHomeStoreTest {
     @Test
     fun selectServerPersistsSelectionAndClearsPendingAfterLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
             authStore = sessionStore,
@@ -599,11 +599,11 @@ class SharedHomeStoreTest {
 
     @Test
     fun shellScopedHomeStoresKeepRuntimeServerSelectionsIndependent() = runBlocking {
-        val processStore = InMemorySlockAuthSessionStore(sampleSession())
-        val runtimeA = SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
-        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
-        val authA = SlockShellAuthSessionStore(processStore, runtimeA)
-        val authB = SlockShellAuthSessionStore(processStore, runtimeB)
+        val processStore = InMemoryRaftAuthSessionStore(sampleSession())
+        val runtimeA = SelectedServerStore(RaftShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SelectedServerStore(RaftShellStoreScope.create("shell-b", "server-2"))
+        val authA = RaftShellAuthSessionStore(processStore, runtimeA)
+        val authB = RaftShellAuthSessionStore(processStore, runtimeB)
         val scopeA = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val scopeB = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val storeA =
@@ -640,7 +640,7 @@ class SharedHomeStoreTest {
     @Test
     fun selectServerShowsSelectedSessionWhileNetworkLoadIsPending() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
             authStore = sessionStore,
@@ -675,7 +675,7 @@ class SharedHomeStoreTest {
     @Test
     fun selectServerRestoresCachedServerContentWhileRefreshIsPending() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
             authStore = sessionStore,
@@ -713,7 +713,7 @@ class SharedHomeStoreTest {
     @Test
     fun openingServerDrawerSeedsEveryServerAndExpandsTheSelectedServer() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val store =
             SharedHomeStore(
                 authStore = sessionStore,
@@ -747,7 +747,7 @@ class SharedHomeStoreTest {
     @Test
     fun expandingNonSelectedServerLoadsItsSectionWithoutChangingSelectedHome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         val sidebarRequests = mutableListOf<String>()
         val store =
@@ -796,7 +796,7 @@ class SharedHomeStoreTest {
     @Test
     fun foregroundServerSelectionSupersedesOlderDrawerPublication() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         var server2SidebarLoads = 0
         val store =
@@ -849,7 +849,7 @@ class SharedHomeStoreTest {
     @Test
     fun reopeningDrawerExpandsOnlySelectedServerAndKeepsOtherCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         val store =
             SharedHomeStore(
@@ -890,7 +890,7 @@ class SharedHomeStoreTest {
                     baseSession.servers +
                         StoredAuthServer(id = "server-3", name = "Third", slug = "third")
             )
-        val sessionStore = InMemorySlockAuthSessionStore(session)
+        val sessionStore = InMemoryRaftAuthSessionStore(session)
         val api = RecordingHomeApi()
         val store =
             SharedHomeStore(
@@ -945,7 +945,7 @@ class SharedHomeStoreTest {
     @Test
     fun retryingServerDrawerSectionRotatesGenerationWithoutChangingSelection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         val store =
             SharedHomeStore(
@@ -984,7 +984,7 @@ class SharedHomeStoreTest {
     fun serverDrawerLoadDropsSectionWhenServerIsRemovedFromSession() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initialSession = sampleSession()
-        val sessionStore = InMemorySlockAuthSessionStore(initialSession)
+        val sessionStore = InMemoryRaftAuthSessionStore(initialSession)
         val api = RecordingHomeApi()
         val store =
             SharedHomeStore(
@@ -1019,7 +1019,7 @@ class SharedHomeStoreTest {
     @Test
     fun failedServerDrawerSectionCanRetryWithoutChangingSelection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = SwitchableHomeApi().apply { setServerUnread("server-1" to 0) }
         val store =
             SharedHomeStore(
@@ -1059,7 +1059,7 @@ class SharedHomeStoreTest {
     @Test
     fun noPermissionServerDrawerSectionBecomesUnavailableAndDoesNotRetry() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = SwitchableHomeApi().apply { setServerUnread("server-1" to 0) }
         val store =
             SharedHomeStore(
@@ -1092,7 +1092,7 @@ class SharedHomeStoreTest {
     @Test
     fun startHydratesPrunedHomeIdentitySnapshotWhileNetworkLoadIsPending() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val staleSnapshot =
             sampleHome(ServerId("server-1")).copy(
                 channels =
@@ -1144,14 +1144,14 @@ class SharedHomeStoreTest {
             )
         val warmStore =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(staleSnapshot),
                 scope = scope,
                 persistSlices = listOf(persistSlice)
             )
         warmStore.accept(SharedHomeIntent.Start)
 
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val coldStore =
             SharedHomeStore(
@@ -1207,7 +1207,7 @@ class SharedHomeStoreTest {
     @Test
     fun coldStartShowsLastKnownUnreadAndPreviewHintsUntilNetworkHomeArrives() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val lastSession =
             sampleHome(ServerId("server-1")).copy(
                 channels =
@@ -1230,13 +1230,13 @@ class SharedHomeStoreTest {
                 createSharedHomeRowHintPersistSlice(storage = HomeRowHintPersistStorage(storage))
             )
         SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(lastSession),
             scope = scope,
             persistSlices = slices()
         ).accept(SharedHomeIntent.Start)
 
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val coldStore =
             SharedHomeStore(
@@ -1282,10 +1282,10 @@ class SharedHomeStoreTest {
     @Test
     fun rowHintsAreRestoredOnlyForTheAccountThatWroteThem() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val home = sampleHome(ServerId("server-1")).copy(channels = listOf(channel("channel-1", "general")))
         SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             persistSlices =
@@ -1300,7 +1300,7 @@ class SharedHomeStoreTest {
             )
             val coldStore =
                 SharedHomeStore(
-                    authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     dataSource = sourceWithSnapshot(home),
                     scope = scope,
                     persistSlices =
@@ -1323,20 +1323,20 @@ class SharedHomeStoreTest {
         scope.cancel()
     }
 
-    private fun InMemorySlockKeyValueStore.hintKeyFor(userId: String, serverId: String): String =
+    private fun InMemoryRaftKeyValueStore.hintKeyFor(userId: String, serverId: String): String =
         "mvi:persist:home:hints:v1:user:$userId:server:$serverId"
 
     @Test
     fun hydrateCachedHomeDoesNotStartNetworkLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistSlice =
             createSharedHomeIdentityPersistSlice(
                 storage = SharedPreferencePersistStorage(storage)
             )
         val warmStore =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
                 scope = scope,
                 persistSlices = listOf(persistSlice)
@@ -1346,7 +1346,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val coldStore =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = source(api = api),
                 scope = scope,
                 persistSlices =
@@ -1371,7 +1371,7 @@ class SharedHomeStoreTest {
     @Test
     fun hydrateCachedHomeRejectsSnapshotWithMismatchedMemberIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistSlice =
             createSharedHomeIdentityPersistSlice(
                 storage = SharedPreferencePersistStorage(storage)
@@ -1382,7 +1382,7 @@ class SharedHomeStoreTest {
             )
         val warmStore =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(mismatched),
                 scope = scope,
                 persistSlices = listOf(persistSlice)
@@ -1391,7 +1391,7 @@ class SharedHomeStoreTest {
 
         val coldStore =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = source(api = RecordingHomeApi()),
                 scope = scope,
                 persistSlices =
@@ -1410,12 +1410,12 @@ class SharedHomeStoreTest {
     @Test
     fun resetRetiresPublishedHomeProjectionButKeepsDurableIdentitySnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistSlice =
             createSharedHomeIdentityPersistSlice(
                 storage = SharedPreferencePersistStorage(storage)
             )
-        val session = InMemorySlockAuthSessionStore(sampleSession())
+        val session = InMemoryRaftAuthSessionStore(sampleSession())
         val store =
             SharedHomeStore(
                 authStore = session,
@@ -1432,7 +1432,7 @@ class SharedHomeStoreTest {
         assertEquals(SharedHomeState(), store.state.value)
         val restored =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = source(api = RecordingHomeApi()),
                 scope = scope,
                 persistSlices = listOf(createSharedHomeIdentityPersistSlice(SharedPreferencePersistStorage(storage)))
@@ -1449,7 +1449,7 @@ class SharedHomeStoreTest {
         val blocked = api.blockNextChannels()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), api = api),
                 scope = scope
             )
@@ -1467,7 +1467,7 @@ class SharedHomeStoreTest {
     @Test
     fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = ServerUnreadHomeApi(
             unreadByServerId =
                 mapOf(
@@ -1481,7 +1481,7 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = sessionStore,
                     api = api,
-                    parseHome = ::parseSlockHome
+                    parseHome = ::parseRaftHome
                 ),
             scope = scope
         )
@@ -1522,7 +1522,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(),
+            authStore = InMemoryRaftAuthSessionStore(),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -1542,7 +1542,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = ThrowingHomeApi()),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -1564,10 +1564,10 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(ServerId("server-1")))
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = ThrowingHomeApi(),
                     parseHome = { _, _ -> error("network failure should not parse") }
                 ),
@@ -1589,10 +1589,10 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ ->
                         DataResult.Content(
@@ -1631,7 +1631,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore),
             scope = scope
         )
@@ -1688,7 +1688,7 @@ class SharedHomeStoreTest {
         // reach the home store's selectedConversationId.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
             scope = scope
         )
@@ -1752,7 +1752,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope
         )
@@ -1797,7 +1797,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope
         )
@@ -1839,7 +1839,7 @@ class SharedHomeStoreTest {
     @Test
     fun serverSwitchDoesNotLeakDirectMessagePreviewAcrossServersWithIdenticalRowKey() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         val server1Home =
             sampleHome(ServerId("server-1")).copy(
@@ -1889,7 +1889,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore, logger = logs::add),
             scope = scope,
             presenceFlushDelayMillis = 0L
@@ -1917,7 +1917,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -1948,7 +1948,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -2015,7 +2015,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -2050,7 +2050,7 @@ class SharedHomeStoreTest {
         val computersApi = RecordingComputersApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 source(
                     api = api,
@@ -2099,7 +2099,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope
         )
@@ -2135,7 +2135,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
             presenceFlushDelayMillis = 0L
@@ -2174,7 +2174,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope,
             presenceFlushDelayMillis = 0L
@@ -2213,7 +2213,7 @@ class SharedHomeStoreTest {
             directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Offline)
                 .copy(directMessagePeerType = "agent")
         val home = sampleHome(ServerId("server-1")).copy(directMessages = listOf(agentDm))
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
             authStore = sessionStore,
             dataSource =
@@ -2285,10 +2285,10 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { _, _ -> DataResult.Content(networkHome) }
                 ),
@@ -2341,7 +2341,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
             presenceFlushDelayMillis = 1L
@@ -2404,7 +2404,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
             presenceFlushDelayMillis = 1L
@@ -2450,7 +2450,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore, logger = logs::add),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -2500,7 +2500,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope,
             diagnosticsLogger = logs::add,
@@ -2544,7 +2544,7 @@ class SharedHomeStoreTest {
     fun selectConversationTracksSelectedRowAndClearsTopAction() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -2561,7 +2561,7 @@ class SharedHomeStoreTest {
     fun selectTopActionTracksActionAndClearsSelectedConversation() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -2578,7 +2578,7 @@ class SharedHomeStoreTest {
     fun refreshKeepsSelectedConversationAfterReturningFromThread() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -2597,7 +2597,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope
         )
@@ -2638,10 +2638,10 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
@@ -2676,10 +2676,10 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
@@ -2712,10 +2712,10 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
@@ -2749,10 +2749,10 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
@@ -2777,7 +2777,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -2814,7 +2814,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), api = api),
             scope = scope,
             diagnosticsLogger = logs::add
@@ -2877,10 +2877,10 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ ->
                         DataResult.Content(
@@ -2928,10 +2928,10 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = api,
                     parseHome = { payload, _ ->
                         DataResult.Content(
@@ -2980,7 +2980,7 @@ class SharedHomeStoreTest {
     fun channelCreatedOptimisticallyAddsAndSelectsChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -3004,7 +3004,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
             scope = scope
         )
@@ -3037,7 +3037,7 @@ class SharedHomeStoreTest {
                     """.trimIndent()
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
             scope = scope
         )
@@ -3055,7 +3055,7 @@ class SharedHomeStoreTest {
         val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
         val computersApi = RecordingComputersApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 source(
                     api = RecordingHomeApi(),
@@ -3096,7 +3096,7 @@ class SharedHomeStoreTest {
             null to false
         ).forEach { (role, expectedMachineNotification) ->
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = role))
+            val sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = role))
             val computersApi = RecordingComputersApi()
             val store =
                 SharedHomeStore(
@@ -3130,7 +3130,7 @@ class SharedHomeStoreTest {
     fun missingSelectedServerDoesNotCallMachineSource() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(role = "owner").copy(selectedServerId = "missing-server")
             )
         val computersApi = RecordingComputersApi()
@@ -3156,7 +3156,7 @@ class SharedHomeStoreTest {
     @Test
     fun sameServerDemotionClearsOnlyMachineNotificationsBeforeNetworkCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "owner"))
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "owner"))
         val homeApi = RecordingHomeApi()
         val store =
             SharedHomeStore(
@@ -3191,7 +3191,7 @@ class SharedHomeStoreTest {
     fun serverSwitchClearsOnlyMachineNotificationsBeforeNetworkCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(role = "owner", secondServerRole = "member")
             )
         val homeApi = RecordingHomeApi()
@@ -3229,7 +3229,7 @@ class SharedHomeStoreTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
             val initialSession =
                 sampleSession(role = "owner", secondServerRole = "member")
-            val sessionStore = InMemorySlockAuthSessionStore(initialSession)
+            val sessionStore = InMemoryRaftAuthSessionStore(initialSession)
             val computersApi = BlockingComputersApi()
             val store =
                 SharedHomeStore(
@@ -3272,7 +3272,7 @@ class SharedHomeStoreTest {
     fun ownerRequestThatPassedNetworkCannotPublishAfterCommitTimeServerSwitch() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession(role = "owner", secondServerRole = "member")
             )
         val homeApi = RecordingHomeApi()
@@ -3332,7 +3332,7 @@ class SharedHomeStoreTest {
                     """.trimIndent()
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 source(
                     api = RecordingHomeApi(),
@@ -3361,7 +3361,7 @@ class SharedHomeStoreTest {
     fun homeStartDoesNotLoadActiveAnnouncementsIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
             authStore = sessionStore,
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi, sessionStore = sessionStore),
@@ -3380,7 +3380,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
             scope = scope
         )
@@ -3423,7 +3423,7 @@ class SharedHomeStoreTest {
         val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
         val computersApi = RecordingComputersApi()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 source(
                     api = RecordingHomeApi(),
@@ -3445,7 +3445,7 @@ class SharedHomeStoreTest {
     fun upsertNotificationReplacesAppUpdateActionStateImmediately() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
         )
@@ -3481,7 +3481,7 @@ class SharedHomeStoreTest {
         // Happy path: a successful /servers/unread-summary response for the
         // active server gives us SERVER_UNREAD_SUMMARY with a non-null count.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = ServerUnreadHomeApi(unreadByServerId = mapOf("server-1" to 7))
         val store = SharedHomeStore(
             authStore = sessionStore,
@@ -3489,7 +3489,7 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = sessionStore,
                     api = api,
-                    parseHome = ::parseSlockHome
+                    parseHome = ::parseRaftHome
                 ),
             scope = scope
         )
@@ -3520,7 +3520,7 @@ class SharedHomeStoreTest {
         // We use a DedicatedMissingServerUnreadHomeApi for the empty case
         // because ServerUnreadHomeApi always returns at least one entry.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = MissingServerUnreadHomeApi() // summary = [] for active server
         val store = SharedHomeStore(
             authStore = sessionStore,
@@ -3528,7 +3528,7 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = sessionStore,
                     api = api,
-                    parseHome = ::parseSlockHome
+                    parseHome = ::parseRaftHome
                 ),
             scope = scope
         )
@@ -3552,7 +3552,7 @@ class SharedHomeStoreTest {
         // + drawer counts (only flip isStale) instead of zeroing them. A later
         // generation with available unread recovers the fresh value.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val serverId = ServerId("server-1")
         val availableWithBadges =
             sampleHome(serverId).copy(
@@ -3639,7 +3639,7 @@ class SharedHomeStoreTest {
         // baseSnapshot had been zeroed, a current-server message would increment
         // from 0 (→1). With unread frozen to prior 7, it must increment to 8.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val serverId = ServerId("server-1")
         val availableWithRowUnread =
             sampleHome(serverId).let { base ->
@@ -3719,7 +3719,7 @@ class SharedHomeStoreTest {
         // count = 0 so the host stops showing a stale count from the
         // previous server before the new server's first fetch arrives.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = ServerUnreadHomeApi(
             unreadByServerId =
                 mapOf(
@@ -3733,7 +3733,7 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = sessionStore,
                     api = api,
-                    parseHome = ::parseSlockHome
+                    parseHome = ::parseRaftHome
                 ),
             scope = scope
         )
@@ -3779,7 +3779,7 @@ class SharedHomeStoreTest {
         // end of this test fails deterministically with
         // `expected:<true> but was:<false>`.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val switchableApi = SwitchableHomeApi()
         switchableApi.setServerUnread("server-1" to 9)
         val store = SharedHomeStore(
@@ -3788,7 +3788,7 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = sessionStore,
                     api = switchableApi,
-                    parseHome = ::parseSlockHome
+                    parseHome = ::parseRaftHome
                 ),
             scope = scope
         )
@@ -3947,7 +3947,7 @@ class SharedHomeStoreTest {
     @Test
     fun serverActivityBatchPublishesThroughTheHomeStoreWithEnvironmentAccountAndServerFences() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val requestOwner = ReadReceiptOwner("https://raft.example", "user-1", "server-1")
         val snapshot =
             sampleHome(ServerId("server-1")).copy(
@@ -3979,7 +3979,7 @@ class SharedHomeStoreTest {
     @Test
     fun unavailableSummaryClearsActivityKnowledgeButKeepsLegacyUnreadFallback() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val owner = ReadReceiptOwner("https://raft.example", "user-1", "server-1")
         var snapshot =
             sampleHome(ServerId("server-1")).copy(
@@ -4025,7 +4025,7 @@ class SharedHomeStoreTest {
         val snapshot = sampleHome(ServerId("server-1"))
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot),
                 scope = scope,
                 readReceiptOwnerFactory = { serverId, accountId ->
@@ -4048,7 +4048,7 @@ class SharedHomeStoreTest {
         val blockedLoad = api.blockNextChannels("server-1")
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
                 readReceiptOwnerFactory = { serverId, accountId ->
@@ -4079,7 +4079,7 @@ class SharedHomeStoreTest {
         val blockedLoad = api.blockNextChannels("server-1")
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
                 readReceiptOwnerFactory = { serverId, accountId ->
@@ -4097,10 +4097,10 @@ class SharedHomeStoreTest {
     }
 
     private fun source(
-        api: SlockHomeApi,
-        announcementsApi: SlockAnnouncementsRemindersApi? = null,
-        computersApi: SlockComputersApi? = null,
-        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        api: RaftHomeApi,
+        announcementsApi: RaftAnnouncementsRemindersApi? = null,
+        computersApi: RaftComputersApi? = null,
+        sessionStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
         offlineComputerAlertsEnabled: Boolean = true,
     ): SharedHomeDataSource =
@@ -4132,8 +4132,8 @@ class SharedHomeStoreTest {
 
     private fun sourceWithSnapshot(
         snapshot: HomeSnapshot,
-        api: SlockHomeApi = RecordingHomeApi(),
-        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        api: RaftHomeApi = RecordingHomeApi(),
+        sessionStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         localStore: ComposeLocalDataStore? = null,
         logger: (String) -> Unit = {},
         serverMembersStore: SharedServerMembersStore? = null
@@ -4145,7 +4145,7 @@ class SharedHomeStoreTest {
             parseHome = { _, _ -> DataResult.Content(snapshot) }
         )
 
-    private class RecordingHomeApi : SlockHomeApi {
+    private class RecordingHomeApi : RaftHomeApi {
         val calls = mutableListOf<String>()
         private var channelBlock: BlockingCall? = null
         private val channelBlocksByServer = mutableMapOf<String, BlockingCall>()
@@ -4201,7 +4201,7 @@ class SharedHomeStoreTest {
         }
     }
 
-    private class BlockingHomeApi : SlockHomeApi {
+    private class BlockingHomeApi : RaftHomeApi {
         private var channelBlock: BlockingCall? = null
 
         fun blockNextChannels(): BlockingCall =
@@ -4261,7 +4261,7 @@ class SharedHomeStoreTest {
 
     private class ServerUnreadHomeApi(
         private val unreadByServerId: Map<String, Int>
-    ) : SlockHomeApi {
+    ) : RaftHomeApi {
         val calls = mutableListOf<String>()
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
@@ -4322,7 +4322,7 @@ class SharedHomeStoreTest {
      * through the [asRefreshFailed] path which is what flips
      * [AppBadgeCount.isStale] to true.
      */
-    private class SwitchableHomeApi : SlockHomeApi {
+    private class SwitchableHomeApi : RaftHomeApi {
         var callCount = 0
             private set
         private val unreadByServerId = mutableMapOf<String, Int>()
@@ -4398,14 +4398,14 @@ class SharedHomeStoreTest {
     }
 
     /**
-     * Variant of [SlockHomeApi] that returns an empty /servers/unread-summary
+     * Variant of [RaftHomeApi] that returns an empty /servers/unread-summary
      * for the active server (the wire-level fallback condition that should
      * drive the badge source to [AppBadgeSource.CHANNEL_DM_FALLBACK]).
      * [ServerUnreadHomeApi] always emits at least one summary entry per
      * call (it does not distinguish "missing" from "0 unread"), so we use
      * this class only for the CHANNEL_DM_FALLBACK test path.
      */
-    private class MissingServerUnreadHomeApi : SlockHomeApi {
+    private class MissingServerUnreadHomeApi : RaftHomeApi {
         val calls = mutableListOf<String>()
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
@@ -4451,7 +4451,7 @@ class SharedHomeStoreTest {
         }
     }
 
-    private class ThrowingHomeApi : SlockHomeApi {
+    private class ThrowingHomeApi : RaftHomeApi {
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
             throw IllegalStateException("offline")
 
@@ -4480,7 +4480,7 @@ class SharedHomeStoreTest {
               ]
             }
             """.trimIndent()
-    ) : SlockAnnouncementsRemindersApi {
+    ) : RaftAnnouncementsRemindersApi {
         val calls = mutableListOf<String>()
 
         override suspend fun activeAnnouncements(): HomeNetworkResponse {
@@ -4514,7 +4514,7 @@ class SharedHomeStoreTest {
               ]
             }
             """.trimIndent()
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         val calls = mutableListOf<String>()
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
@@ -4551,7 +4551,7 @@ class SharedHomeStoreTest {
             error("not reached")
     }
 
-    private class BlockingComputersApi : SlockComputersApi {
+    private class BlockingComputersApi : RaftComputersApi {
         private val started = CompletableDeferred<Unit>()
         private val released = CompletableDeferred<Unit>()
         var calls: Int = 0
@@ -4701,10 +4701,10 @@ class SharedHomeStoreTest {
             pinnedSortMode = "manual"
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { payload, _ ->
                         DataResult.Content(sampleHome(payload.serverId).copy(sidebarOrder = null))
@@ -4748,7 +4748,7 @@ class SharedHomeStoreTest {
         val sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("channel-pinned"))
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = source(api = RecordingHomeApi()),
                 scope = scope,
                 loadSidebarOrder = { _ -> DataResult.Content(sidebarOrder) }
@@ -4771,7 +4771,7 @@ class SharedHomeStoreTest {
         val gate = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = source(api = RecordingHomeApi()),
                 scope = scope,
                 loadSidebarOrder = { _ ->
@@ -4812,7 +4812,7 @@ class SharedHomeStoreTest {
         val pinnedSnapshot = pinBase.copy(pinnedChannelIds = listOf("channel-1"), pinnedOrder = listOf("channel-1"))
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = source(api = RecordingHomeApi()),
                 scope = scope,
                 loadSidebarOrder = { _ ->
@@ -4898,7 +4898,7 @@ class SharedHomeStoreTest {
             pinnedOrder = listOf("channel-1")
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial, updateResult = DataResult.Content(updatedSnapshot), updateCalls = updateCalls),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -4948,7 +4948,7 @@ class SharedHomeStoreTest {
                 sidebarOrder = initial
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -4998,7 +4998,7 @@ class SharedHomeStoreTest {
                 sidebarOrder = initial
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5047,7 +5047,7 @@ class SharedHomeStoreTest {
                 sidebarOrder = initial
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5081,7 +5081,7 @@ class SharedHomeStoreTest {
         val updatedSnapshot = initial.copy(pinned = expectedPinned, pinnedOrder = listOf("agent-no-dm"))
         val home = sampleHome(ServerId("server-1")).copy(directMessages = emptyList(), sidebarOrder = initial)
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5108,7 +5108,7 @@ class SharedHomeStoreTest {
     @Test
     fun togglePinnedWritesSidebarOrderToHomeIdentityPersist() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val persistSlice =
             createSharedHomeIdentityPersistSlice(
                 storage = SharedPreferencePersistStorage(storage)
@@ -5123,7 +5123,7 @@ class SharedHomeStoreTest {
             pinnedOrder = listOf("channel-1")
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5134,7 +5134,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
         store.accept(SharedHomeIntent.TogglePinned("channel-1"))
 
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val coldStore =
             SharedHomeStore(
@@ -5177,7 +5177,7 @@ class SharedHomeStoreTest {
         )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 // Home payload is returned without sidebarOrder; the store
                 // should fill it in from `loadSidebarOrder`.
@@ -5230,7 +5230,7 @@ class SharedHomeStoreTest {
         )
         val failureMessages = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 initial = initial,
                 updateResult = DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true))
@@ -5256,7 +5256,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val failureMessages = mutableListOf<String>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = null),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Error(ScreenError(code = "sidebar_order_load_failed", retryable = true)) },
@@ -5283,7 +5283,7 @@ class SharedHomeStoreTest {
             pinnedSortMode = "manual"
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 initial = initial,
                 updateResult = DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true))
@@ -5313,7 +5313,7 @@ class SharedHomeStoreTest {
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val updatedSnapshot = initial.copy(pinnedSortMode = "az")
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 initial = initial,
                 updateResult = DataResult.Content(updatedSnapshot),
@@ -5328,7 +5328,7 @@ class SharedHomeStoreTest {
         )
 
         store.accept(SharedHomeIntent.Start)
-        store.accept(SharedHomeIntent.SetPinnedSortMode(SlockSidebarSortMode.Az))
+        store.accept(SharedHomeIntent.SetPinnedSortMode(RaftSidebarSortMode.Az))
 
         val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals("az", after?.pinnedSortMode)
@@ -5347,7 +5347,7 @@ class SharedHomeStoreTest {
         val initial = SettingsServerSidebarOrderSnapshot(sectionsVersion = 3)
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5393,7 +5393,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5435,7 +5435,7 @@ class SharedHomeStoreTest {
         var current = initial
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(current) },
@@ -5487,7 +5487,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5531,7 +5531,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5542,7 +5542,7 @@ class SharedHomeStoreTest {
         )
 
         store.accept(SharedHomeIntent.Start)
-        store.accept(SharedHomeIntent.SetSidebarSectionSortMode("sec-1", SlockSidebarSortMode.Az))
+        store.accept(SharedHomeIntent.SetSidebarSectionSortMode("sec-1", RaftSidebarSortMode.Az))
 
         assertEquals(1, updateCalls.size)
         assertEquals(1L, updateCalls.first().sectionsVersion)
@@ -5567,7 +5567,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5617,7 +5617,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5658,7 +5658,7 @@ class SharedHomeStoreTest {
                 sectionsVersion = 9
             )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5694,7 +5694,7 @@ class SharedHomeStoreTest {
         val failureMessages = mutableListOf<String>()
         var loadCalls = 0
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
             loadSidebarOrder = { _ ->
@@ -5746,7 +5746,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5791,7 +5791,7 @@ class SharedHomeStoreTest {
             )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
             loadSidebarOrder = { _ -> DataResult.Content(initial) },
@@ -5832,10 +5832,10 @@ class SharedHomeStoreTest {
             channelSortMode = "manual"
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { _, _ -> DataResult.Content(home.copy(sidebarOrder = initial)) }
                 ),
@@ -5882,10 +5882,10 @@ class SharedHomeStoreTest {
             pinnedSortMode = "manual"
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { _, _ -> DataResult.Content(home.copy(sidebarOrder = initial)) }
                 ),
@@ -5931,7 +5931,7 @@ class SharedHomeStoreTest {
                     sampleSession().servers +
                         StoredAuthServer(id = "server-3", name = "Design", slug = "design")
             )
-        val sessionStore = InMemorySlockAuthSessionStore(session)
+        val sessionStore = InMemoryRaftAuthSessionStore(session)
         val updateCalls = mutableListOf<List<String>>()
         val store = SharedHomeStore(
             authStore = sessionStore,
@@ -5960,7 +5960,7 @@ class SharedHomeStoreTest {
         // (account-generation guard). The home projection must NOT re-project the captured account-A
         // reorder — that would revive in the UI a session the persistence layer just rejected.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sessionStore = InMemorySlockAuthSessionStore(sampleSession()) // account user-1, servers [1,2]
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession()) // account user-1, servers [1,2]
         val store = SharedHomeStore(
             authStore = sessionStore,
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
@@ -6003,7 +6003,7 @@ class SharedHomeStoreTest {
                     sampleSession().servers +
                         StoredAuthServer(id = "server-3", name = "Design", slug = "design")
             )
-        val sessionStore = InMemorySlockAuthSessionStore(session)
+        val sessionStore = InMemoryRaftAuthSessionStore(session)
         var loadCount = 0
         val blockedLoad = BlockingCall()
         val store = SharedHomeStore(
@@ -6050,10 +6050,10 @@ class SharedHomeStoreTest {
         val initial = SettingsServerSidebarOrderSnapshot()
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { payload, _ ->
                         DataResult.Content(
@@ -6087,10 +6087,10 @@ class SharedHomeStoreTest {
         val readCalls = mutableListOf<ChannelId>()
         val unreadCalls = mutableListOf<ChannelId>()
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { payload, _ ->
                         DataResult.Content(
@@ -6136,10 +6136,10 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     SharedHomeDataSource(
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         api = api,
                         parseHome = { payload, _ ->
                             DataResult.Content(
@@ -6212,7 +6212,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(home),
                 scope = scope,
                 readReceiptOwnerFactory = { serverId, accountId ->
@@ -6292,10 +6292,10 @@ class SharedHomeStoreTest {
     @Test
     fun perReceiverReadStateUsesVersionAuthorityAndAcceptsCanonicalCursorRewind() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -6383,7 +6383,7 @@ class SharedHomeStoreTest {
     fun canonicalSummaryAcceptedFactBeforeRequestAppliesServerSummary() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = RecordingHomeApi()
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val snapshot =
             sampleHome(ServerId("server-1")).copy(
                 channels =
@@ -6403,7 +6403,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
                 perReceiverStateVersionStore = versionStore
@@ -6452,11 +6452,11 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
                 perReceiverStateVersionStore =
-                    PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+                    PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
             )
 
         store.accept(SharedHomeIntent.Start)
@@ -6518,11 +6518,11 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
                 perReceiverStateVersionStore =
-                    PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+                    PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
             )
 
         store.accept(SharedHomeIntent.Start)
@@ -6568,10 +6568,10 @@ class SharedHomeStoreTest {
     @Test
     fun perReceiverReadStateMutedConversationDoesNotDriveAppBadgeCount() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -6640,10 +6640,10 @@ class SharedHomeStoreTest {
     @Test
     fun perReceiverNotificationPrefsAreVersionGatedAndFeedMutedBadgeProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -6719,10 +6719,10 @@ class SharedHomeStoreTest {
     @Test
     fun realtimePerReceiverReadStateEventGatesEachScopeIndependently() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -6815,10 +6815,10 @@ class SharedHomeStoreTest {
     fun realtimeReadStatePreservesPartialSummaryAndReconcilesAcceptedRewind() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = RecordingHomeApi()
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -6912,10 +6912,10 @@ class SharedHomeStoreTest {
     fun webReadStateSequenceKeepsBackgroundServerCountProjectionAligned() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = RecordingHomeApi()
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7132,7 +7132,7 @@ class SharedHomeStoreTest {
         val recreatedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val recreated =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7168,10 +7168,10 @@ class SharedHomeStoreTest {
     @Test
     fun realtimeNotificationPrefsEventAppliesMuteThroughVersionGate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7219,10 +7219,10 @@ class SharedHomeStoreTest {
     @Test
     fun perReceiverServerOrderUsesIndependentVersionGate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7279,10 +7279,10 @@ class SharedHomeStoreTest {
     @Test
     fun realtimePinnedUpdatedUsesUserGlobalVersionGateAndFeedsSidebarProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7374,7 +7374,7 @@ class SharedHomeStoreTest {
         val calls = mutableListOf<Pair<ChannelId, Boolean>>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7410,11 +7410,11 @@ class SharedHomeStoreTest {
     @Test
     fun notificationPrefsResponseThenSameVersionEchoFoldsOnlyOnce() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7477,14 +7477,14 @@ class SharedHomeStoreTest {
     @Test
     fun notificationPrefsEchoThenSameVersionResponseFoldsOnlyOnce() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val requestStarted = CompletableDeferred<Unit>()
         val releaseResponse = CompletableDeferred<Unit>()
         val responseReturned = CompletableDeferred<Unit>()
         val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7554,10 +7554,10 @@ class SharedHomeStoreTest {
     @Test
     fun newerNotificationPrefsEchoClearsMutedStateOnEchoOnlyDevice() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7631,11 +7631,11 @@ class SharedHomeStoreTest {
     @Test
     fun setChannelActivityMutedFailsClosedForUnversionedSuccess() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val versionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val failureMessages = mutableListOf<String>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7681,7 +7681,7 @@ class SharedHomeStoreTest {
         val failureMessages = mutableListOf<String>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7710,7 +7710,7 @@ class SharedHomeStoreTest {
         val calls = mutableListOf<Pair<ChannelId, Boolean>>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7777,7 +7777,7 @@ class SharedHomeStoreTest {
         val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
@@ -7881,7 +7881,7 @@ class SharedHomeStoreTest {
         updateCalls: MutableList<SettingsServerSidebarOrderUpdateRequest> = mutableListOf()
     ): SharedHomeDataSource =
         SharedHomeDataSource(
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             api = RecordingHomeApi(),
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId).copy(sidebarOrder = initial)) }
         )
@@ -7914,7 +7914,7 @@ class SharedHomeStoreTest {
             directMessages = listOf(dm1, dm2)
         )
         val store = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(snapshot),
             scope = scope,
             readReceiptOwnerFactory = { sId, accountId -> ReadReceiptOwner("production", accountId, sId) },
@@ -7972,7 +7972,7 @@ class SharedHomeStoreTest {
         )
         val snapshotWithDm3 = stateAfter2.copy(directMessages = stateAfter2.directMessages + dm3)
         val storeWithDm3 = SharedHomeStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(snapshotWithDm3),
             scope = scope,
             readReceiptOwnerFactory = { sId, accountId -> ReadReceiptOwner("production", accountId, sId) },

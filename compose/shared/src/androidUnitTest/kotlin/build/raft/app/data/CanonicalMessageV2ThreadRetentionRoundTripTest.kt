@@ -98,7 +98,7 @@ class CanonicalMessageV2ThreadRetentionRoundTripTest {
         }
     }
 
-    private class Rig(private val database: SlockSqlDatabase, retention: CanonicalMessageV2RetentionPolicy) {
+    private class Rig(private val database: RaftSqlDatabase, retention: CanonicalMessageV2RetentionPolicy) {
         val logs = mutableListOf<String>()
         private var clock = 0L
         private var nextSeq = 1L
@@ -161,11 +161,11 @@ class CanonicalMessageV2ThreadRetentionRoundTripTest {
             ).executeAsList().map { it.canonicalFactJson.decodeToStringOrSelf() }
     }
 
-    private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

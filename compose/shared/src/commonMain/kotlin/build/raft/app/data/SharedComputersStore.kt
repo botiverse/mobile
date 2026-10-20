@@ -123,7 +123,7 @@ internal sealed interface SharedComputersIntent {
 }
 
 class SharedComputersStore internal constructor(
-    private val computersApiClient: SlockComputersApiClient,
+    private val computersApiClient: RaftComputersApiClient,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
     private val ownerProvider: suspend () -> SharedComputersOwner? = {

@@ -20,7 +20,7 @@ class ThreadTimelineCreatedAtProjectionTest {
         val payload =
             buildSharedThreadPayloadFromMessagesPage(
                 basePayload =
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         sourceThreadId = "channel-1",
                         streamChannelId = "channel-1",
                     ),
@@ -68,6 +68,6 @@ class ThreadTimelineCreatedAtProjectionTest {
                 createdAtEpochMillis = null,
             )
 
-        assertNull(message.toKuiklyThreadMessageItem(currentUserId = null).createdAtEpochMillis)
+        assertNull(message.toRaftThreadMessageItem(currentUserId = null).createdAtEpochMillis)
     }
 }

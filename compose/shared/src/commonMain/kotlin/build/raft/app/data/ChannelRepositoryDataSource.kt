@@ -9,7 +9,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.strictMemberKindOrNull
-import build.raft.app.toSlockJsonString
+import build.raft.app.toRaftJsonString
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -22,40 +22,40 @@ private val channelRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private suspend fun SlockNetworkClient.channels(
+private suspend fun RaftNetworkClient.channels(
     priority: DataRequestPriority,
     serverId: ServerId? = null
 ): HomeNetworkResponse =
     request(priority, "channels", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.directMessages(
+private suspend fun RaftNetworkClient.directMessages(
     priority: DataRequestPriority,
     serverId: ServerId? = null
 ): HomeNetworkResponse =
     request(priority, "channels/dm", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "channels/unread")
 
-private suspend fun SlockNetworkClient.serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "servers/unread-summary")
 
-private suspend fun SlockNetworkClient.createChannel(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.createChannel(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.joinChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.joinChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/join", method = "POST")
 
-private suspend fun SlockNetworkClient.leaveChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.leaveChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/leave", method = "POST")
 
-private suspend fun SlockNetworkClient.archiveChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.archiveChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/archive", method = "POST")
 
-private suspend fun SlockNetworkClient.deleteChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.deleteChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}", method = "DELETE")
 
-internal suspend fun SlockNetworkClient.updateChannel(
+internal suspend fun RaftNetworkClient.updateChannel(
     priority: DataRequestPriority,
     channelId: ChannelId,
     visibility: ChannelVisibility
@@ -64,10 +64,10 @@ internal suspend fun SlockNetworkClient.updateChannel(
         priority,
         "channels/${channelId.value}",
         method = "PATCH",
-        bodyText = buildJsonObject { put("visibility", visibility.wireValue) }.toSlockJsonString()
+        bodyText = buildJsonObject { put("visibility", visibility.wireValue) }.toRaftJsonString()
     )
 
-private suspend fun SlockNetworkClient.updateChannelProfile(
+private suspend fun RaftNetworkClient.updateChannelProfile(
     priority: DataRequestPriority,
     request: ChannelProfileUpdateRequest
 ): HomeNetworkResponse =
@@ -78,10 +78,10 @@ private suspend fun SlockNetworkClient.updateChannelProfile(
         bodyText = buildChannelProfileUpdateBody(request)
     )
 
-private suspend fun SlockNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.setChannelActivityMuted(
+private suspend fun RaftNetworkClient.setChannelActivityMuted(
     priority: DataRequestPriority,
     channelId: ChannelId,
     bodyText: String
@@ -89,16 +89,16 @@ private suspend fun SlockNetworkClient.setChannelActivityMuted(
     request(priority, "channels/${channelId.value}/notification-settings", method = "PATCH", bodyText = bodyText)
 
 class RealChannelRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {}
 ) : ChannelRepository {
     private val homeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
-            api = NetworkSlockHomeApi(networkClient),
+            api = NetworkRaftHomeApi(networkClient),
             parseHome = { payload, session ->
-                parseSlockHome(payload, session, warningLogger)
+                parseRaftHome(payload, session, warningLogger)
             },
             diagnosticsLogger = { message -> warningLogger("home_data_source $message") }
         )
@@ -394,9 +394,9 @@ class RealChannelRepository(
 
 }
 
-internal class NetworkSlockHomeApi(
-    private val networkClient: SlockNetworkClient
-) : SlockHomeApi {
+internal class NetworkRaftHomeApi(
+    private val networkClient: RaftNetworkClient
+) : RaftHomeApi {
     override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.channels(priority)
 

@@ -8,8 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -31,37 +31,37 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 
-internal const val SLOCK_IN_APP_BROWSER_PAGE = "compose_in_app_browser"
-internal const val SLOCK_IN_APP_BROWSER_URL_KEY = "url"
+internal const val RAFT_IN_APP_BROWSER_PAGE = "compose_in_app_browser"
+internal const val RAFT_IN_APP_BROWSER_URL_KEY = "url"
 
-@Page(SLOCK_IN_APP_BROWSER_PAGE, supportInLocal = true)
-internal class ComposeSlockInAppBrowserPage : build.raft.app.base.BasePager() {
+@Page(RAFT_IN_APP_BROWSER_PAGE, supportInLocal = true)
+internal class ComposeRaftInAppBrowserPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockInAppBrowserScreen() }
+        setContent { RaftInAppBrowserScreen() }
     }
 }
 
 @Composable
-private fun SlockInAppBrowserScreen() {
+private fun RaftInAppBrowserScreen() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val launchUrl =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.slockInAppBrowserUrlOrNull()
+            pager.pageData.params.raftInAppBrowserUrlOrNull()
         }
-    val controller = rememberSlockWebViewController()
+    val controller = rememberRaftWebViewController()
     val externalNavigator =
-        rememberSlockLinkNavigator(
+        rememberRaftLinkNavigator(
             pager = pager,
             bridge = bridge,
-            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+            routeScope = RaftInAppBrowserRouteScope.Unscoped,
         )
     var navigationState by
         remember(launchUrl) {
             mutableStateOf(
-                SlockWebViewNavigationState(
+                RaftWebViewNavigationState(
                     url = launchUrl.orEmpty(),
                     isLoading = launchUrl != null,
                 )
@@ -85,26 +85,26 @@ private fun SlockInAppBrowserScreen() {
 
     fun openInSystemBrowser() {
         val target = navigationState.url.takeIf { it.isNotBlank() } ?: launchUrl ?: return
-        externalNavigator.open(target, SlockLinkOpenIntent.ForceExternal)
+        externalNavigator.open(target, RaftLinkOpenIntent.ForceExternal)
     }
 
-    SlockBackHandler(
+    RaftBackHandler(
         enabled = true,
         label = "in_app_browser",
         onBack = ::goBackOrClose,
     )
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        RaftTopPageHeader(
             title = navigationState.title.ifBlank { stringResource(MR.strings.in_app_browser_title) },
             subtitle =
                 (navigationState.url.takeIf { it.isNotBlank() } ?: launchUrl)
-                    ?.let(::slockInAppBrowserDisplayUrl),
-            iconName = SlockLucideIconName.Globe,
-            backgroundColor = SlockColor.SurfaceWhite,
+                    ?.let(::raftInAppBrowserDisplayUrl),
+            iconName = RaftLucideIconName.Globe,
+            backgroundColor = RaftColor.SurfaceWhite,
             leadingContent = {
-                SlockTopPageHeaderAction(
-                    icon = SlockLucideIconName.ArrowLeft,
+                RaftTopPageHeaderAction(
+                    icon = RaftLucideIconName.ArrowLeft,
                     onClick = ::goBackOrClose,
                 )
             },
@@ -113,16 +113,16 @@ private fun SlockInAppBrowserScreen() {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.ChevronRight,
+                    RaftBrutalIconButton(
+                        iconName = RaftLucideIconName.ChevronRight,
                         onClick = controller::goForward,
                         contentDescription = stringResource(MR.strings.in_app_browser_forward),
                         enabled = navigationState.canGoForward,
                         size = 26.dp,
                         shadowOffset = 1.dp,
                     )
-                    SlockBrutalIconButton(
-                        iconName = if (navigationState.isLoading) SlockLucideIconName.X else SlockLucideIconName.RefreshCw,
+                    RaftBrutalIconButton(
+                        iconName = if (navigationState.isLoading) RaftLucideIconName.X else RaftLucideIconName.RefreshCw,
                         onClick = {
                             if (navigationState.isLoading) controller.stop() else controller.reload()
                         },
@@ -135,8 +135,8 @@ private fun SlockInAppBrowserScreen() {
                         size = 26.dp,
                         shadowOffset = 1.dp,
                     )
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.ExternalLink,
+                    RaftBrutalIconButton(
+                        iconName = RaftLucideIconName.ExternalLink,
                         onClick = ::openInSystemBrowser,
                         contentDescription = stringResource(MR.strings.in_app_browser_open_system),
                         enabled = launchUrl != null,
@@ -147,12 +147,12 @@ private fun SlockInAppBrowserScreen() {
             },
         )
         if (navigationState.isLoading) {
-            SlockInAppBrowserProgress(navigationState.progress)
+            RaftInAppBrowserProgress(navigationState.progress)
         }
-        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             when {
                 launchUrl == null -> {
-                    SlockInAppBrowserError(
+                    RaftInAppBrowserError(
                         message = stringResource(MR.strings.in_app_browser_invalid_link),
                         onRetry = null,
                         onOpenSystem = null,
@@ -160,9 +160,9 @@ private fun SlockInAppBrowserScreen() {
                     )
                 }
                 webViewAttachReady -> {
-                    SlockWebView(
+                    RaftWebView(
                         url = launchUrl,
-                        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+                        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite),
                         controller = controller,
                         allowScripts = true,
                         allowNavigation = true,
@@ -177,7 +177,7 @@ private fun SlockInAppBrowserScreen() {
                             bridge.logWarn("in_app_browser_load_failed")
                         },
                         onNavigationBlocked = { blockedUrl ->
-                            externalNavigator.open(blockedUrl, SlockLinkOpenIntent.ForceExternal)
+                            externalNavigator.open(blockedUrl, RaftLinkOpenIntent.ForceExternal)
                         },
                         onNavigationStateChange = { nextState ->
                             navigationState = nextState
@@ -185,7 +185,7 @@ private fun SlockInAppBrowserScreen() {
                         },
                     )
                     if (loadError != null) {
-                        SlockInAppBrowserError(
+                        RaftInAppBrowserError(
                             message = stringResource(MR.strings.in_app_browser_load_error),
                             onRetry = {
                                 loadError = null
@@ -197,7 +197,7 @@ private fun SlockInAppBrowserScreen() {
                     }
                 }
                 else -> {
-                    SlockCenteredLoading(stringResource(MR.strings.common_loading))
+                    RaftCenteredLoading(stringResource(MR.strings.common_loading))
                 }
             }
         }
@@ -205,23 +205,23 @@ private fun SlockInAppBrowserScreen() {
 }
 
 @Composable
-private fun SlockInAppBrowserProgress(progress: Int) {
+private fun RaftInAppBrowserProgress(progress: Int) {
     val percent = progress.coerceIn(0, 100)
     if (percent <= 0) {
         LinearProgressIndicator(
             modifier = Modifier.fillMaxWidth().height(4.dp),
-            color = SlockColor.AccentCyan,
-            trackColor = SlockColor.SurfaceCream,
+            color = RaftColor.AccentCyan,
+            trackColor = RaftColor.SurfaceCream,
         )
         return
     }
-    Row(modifier = Modifier.fillMaxWidth().height(4.dp).background(SlockColor.SurfaceCream)) {
+    Row(modifier = Modifier.fillMaxWidth().height(4.dp).background(RaftColor.SurfaceCream)) {
         Box(
             modifier =
                 Modifier
                     .weight(percent.toFloat())
                     .fillMaxSize()
-                    .background(SlockColor.AccentCyan)
+                    .background(RaftColor.AccentCyan)
         )
         if (percent < 100) {
             Box(modifier = Modifier.weight((100 - percent).toFloat()).fillMaxSize())
@@ -230,16 +230,16 @@ private fun SlockInAppBrowserProgress(progress: Int) {
 }
 
 @Composable
-private fun SlockInAppBrowserError(
+private fun RaftInAppBrowserError(
     message: String,
     onRetry: (() -> Unit)?,
     onOpenSystem: (() -> Unit)?,
     onClose: (() -> Unit)?,
 ) {
     // task #176: the action buttons sit at the bottom of a standalone page.
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
             .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 20.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -247,34 +247,34 @@ private fun SlockInAppBrowserError(
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Text(
                 text = message,
-                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
             )
         }
         onRetry?.let {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_retry),
                 onClick = it,
-                leadingIcon = SlockLucideIconName.RefreshCw,
-                backgroundColor = SlockColor.BrandYellow,
+                leadingIcon = RaftLucideIconName.RefreshCw,
+                backgroundColor = RaftColor.BrandYellow,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         onOpenSystem?.let {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.in_app_browser_open_system),
                 onClick = it,
-                leadingIcon = SlockLucideIconName.ExternalLink,
-                backgroundColor = SlockColor.SurfaceWhite,
+                leadingIcon = RaftLucideIconName.ExternalLink,
+                backgroundColor = RaftColor.SurfaceWhite,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         onClose?.let {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_close),
                 onClick = it,
-                leadingIcon = SlockLucideIconName.X,
-                backgroundColor = SlockColor.SurfaceWhite,
+                leadingIcon = RaftLucideIconName.X,
+                backgroundColor = RaftColor.SurfaceWhite,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

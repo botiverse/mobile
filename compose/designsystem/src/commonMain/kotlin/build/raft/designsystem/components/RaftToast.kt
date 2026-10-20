@@ -39,7 +39,7 @@ enum class RaftToastSurface {
     Hud,
 
     /**
-     * The app's foreground in-app banner (page hand-off §11, `SlockForegroundBannerHost`):
+     * The app's foreground in-app banner (page hand-off §11, `RaftForegroundBannerHost`):
      * a message from elsewhere, on `layer-popover` with the `line-seam` ring.
      */
     Popover,

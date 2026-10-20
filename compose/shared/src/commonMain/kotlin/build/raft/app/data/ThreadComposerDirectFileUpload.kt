@@ -126,7 +126,7 @@ internal suspend fun DirectAttachmentUploadSessionGateway.uploadOneThreadFile(
     file: PlatformFile,
     clientRequestId: String,
     onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
-    onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+    onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
 ): DataResult<Attachment> {
     val prepared =
         when (val preparedResult = prepare(file.copy(sizeBytes = null))) {

@@ -10,7 +10,7 @@ class SelectedServerSelectionEpochTest {
     @Test
     fun processRebuildReusesEpochAndOnlyARealServerSwitchAdvancesIt() = runBlocking {
         val epochs = InMemorySelectionEpochStore()
-        val scope = SlockShellStoreScope.create("epoch-shell", "server-1")
+        val scope = RaftShellStoreScope.create("epoch-shell", "server-1")
         val first = store(epochs, scope)
         val session = session(selectedServerId = "server-1")
 
@@ -22,7 +22,7 @@ class SelectedServerSelectionEpochTest {
 
         // A new process/store instance reads the durable epoch instead of resetting to its
         // in-memory authority generation.
-        val rebuilt = store(epochs, SlockShellStoreScope.create("epoch-shell"))
+        val rebuilt = store(epochs, RaftShellStoreScope.create("epoch-shell"))
         assertEquals(
             1L,
             rebuilt.captureReplyCacheAuthority(session.copy(selectedServerId = "server-2"), 10L)?.selectionEpoch,
@@ -33,7 +33,7 @@ class SelectedServerSelectionEpochTest {
     @Test
     fun environmentAndPrincipalAreIndependentEpochNamespaces() = runBlocking {
         val epochs = InMemorySelectionEpochStore()
-        val scope = SlockShellStoreScope.create("same-shell", "server-1")
+        val scope = RaftShellStoreScope.create("same-shell", "server-1")
 
         assertEquals(0L, store(epochs, scope, environment = "env-a").captureReplyCacheAuthority(session(), 1L)?.selectionEpoch)
         assertEquals(0L, store(epochs, scope, environment = "env-b").captureReplyCacheAuthority(session(), 1L)?.selectionEpoch)
@@ -52,7 +52,7 @@ class SelectedServerSelectionEpochTest {
     @Test
     fun authRotationUpdatesRevisionButDoesNotAdvanceSelectionEpoch() = runBlocking {
         val epochs = InMemorySelectionEpochStore()
-        val store = store(epochs, SlockShellStoreScope.create("auth-shell", "server-1"))
+        val store = store(epochs, RaftShellStoreScope.create("auth-shell", "server-1"))
         val session = session()
 
         assertEquals(0L, store.captureReplyCacheAuthority(session, 4L)?.selectionEpoch)
@@ -72,7 +72,7 @@ class SelectedServerSelectionEpochTest {
         val epochs = InMemorySelectionEpochStore()
         // No route bootstrap override: the successor session's selected server is the
         // authoritative choice during an account transition.
-        val scope = SlockShellStoreScope.create("transition-shell")
+        val scope = RaftShellStoreScope.create("transition-shell")
         val store = store(epochs, scope)
 
         assertEquals(
@@ -106,7 +106,7 @@ class SelectedServerSelectionEpochTest {
 
         // A process rebuild must observe the transition epoch even if no post-transition Thread
         // capture ran before the old process died.
-        val rebuilt = store(epochs, SlockShellStoreScope.create("transition-shell"))
+        val rebuilt = store(epochs, RaftShellStoreScope.create("transition-shell"))
         assertEquals(
             5L,
             rebuilt.captureReplyCacheAuthority(
@@ -119,7 +119,7 @@ class SelectedServerSelectionEpochTest {
     @Test
     fun reconcileAndClearPersistAChangedSelectionBeforeAProcessDeathWindow() = runBlocking {
         val epochs = InMemorySelectionEpochStore()
-        val scope = SlockShellStoreScope.create("clear-shell", "server-1")
+        val scope = RaftShellStoreScope.create("clear-shell", "server-1")
         val store = store(epochs, scope)
         val session = session()
 
@@ -137,7 +137,7 @@ class SelectedServerSelectionEpochTest {
     @Test
     fun logoutClearNeverPersistsTheRouteBootstrapServerForTheRetiredPrincipal() = runBlocking {
         val epochs = InMemorySelectionEpochStore()
-        val scope = SlockShellStoreScope.create("clear-bootstrap-shell", "server-1")
+        val scope = RaftShellStoreScope.create("clear-bootstrap-shell", "server-1")
         val store = store(epochs, scope)
         val session = session()
 
@@ -150,7 +150,7 @@ class SelectedServerSelectionEpochTest {
 
         // A later authenticated capture may deliberately select the bootstrap server again, but
         // it must do so under a fresh selection epoch rather than reviving the retired fence.
-        val rebuilt = store(epochs, SlockShellStoreScope.create("clear-bootstrap-shell", "server-1"))
+        val rebuilt = store(epochs, RaftShellStoreScope.create("clear-bootstrap-shell", "server-1"))
         val restored = rebuilt.captureReplyCacheAuthority(session, authGeneration = 13L)
         assertEquals("server-1", restored?.selection?.serverId)
         assertEquals(2L, restored?.selectionEpoch)
@@ -167,7 +167,7 @@ class SelectedServerSelectionEpochTest {
             serverId = "server-1",
             authGeneration = 1L,
         )
-        val store = store(epochs, SlockShellStoreScope.create("overflow-shell", "server-2"))
+        val store = store(epochs, RaftShellStoreScope.create("overflow-shell", "server-2"))
 
         val authority = store.captureReplyCacheAuthority(session(selectedServerId = "server-2"), 2L)
 
@@ -178,7 +178,7 @@ class SelectedServerSelectionEpochTest {
 
     private fun store(
         epochs: InMemorySelectionEpochStore,
-        scope: SlockShellStoreScope,
+        scope: RaftShellStoreScope,
         environment: String = "env-a",
     ): SelectedServerStore =
         SelectedServerStore(

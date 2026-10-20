@@ -1,9 +1,9 @@
 package build.raft.app.core.data.realtime
 
 import build.raft.app.data.StoredAuthSession as AuthSession
-import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
-import build.raft.app.core.data.network.RealSlockNetworkClientFactory
+import build.raft.app.core.data.network.RealRaftNetworkClientFactory
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -83,7 +83,7 @@ class LiveRealtimeServerScopeTest {
     @Test
     fun liveCaptureInboxAndRealtimePayloadShape() = runBlocking {
         val fixture = LiveFixture.login()
-        val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
+        val networkClient = RealRaftNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
                 sessionStore = fixture.authStore,
@@ -178,7 +178,7 @@ class LiveRealtimeServerScopeTest {
         val secondServer = fixture.session.servers.firstOrNull { it.id != firstServer }
         assumeTrue("Live account needs at least two servers to verify cross-server socket delivery.", secondServer != null)
 
-        val networkClient = RealSlockNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
+        val networkClient = RealRaftNetworkClientFactory.create(fixture.authStore, baseUrl = fixture.baseUrl)
         val channelRepository =
             RealChannelRepository(
                 sessionStore = fixture.authStore,

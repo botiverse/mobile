@@ -13,7 +13,7 @@ internal class ThreadReadStateProjection {
     private var route: ThreadRouteIdentity? = null
     private val facts = linkedMapOf<String, Fact>()
 
-    fun observe(payload: KuiklyThreadScreenPayload, ownerScopeId: String, scopes: List<PerReceiverReadStateScope>) {
+    fun observe(payload: RaftThreadScreenPayload, ownerScopeId: String, scopes: List<PerReceiverReadStateScope>) {
         val identity = payload.resolveThreadRouteIdentity()
         if (owner != ownerScopeId || route != identity) {
             facts.clear()
@@ -43,9 +43,9 @@ internal class ThreadReadStateProjection {
         if (tailAdvanced) facts[threadChannelId] = fact.copy(unreadCount = null)
     }
 
-    fun project(payload: KuiklyThreadScreenPayload, ownerScopeId: String?): KuiklyThreadScreenPayload {
+    fun project(payload: RaftThreadScreenPayload, ownerScopeId: String?): RaftThreadScreenPayload {
         if (ownerScopeId == null || ownerScopeId != owner || route != payload.resolveThreadRouteIdentity()) return payload
-        fun KuiklyThreadMessageItem.project(): KuiklyThreadMessageItem {
+        fun RaftThreadMessageItem.project(): RaftThreadMessageItem {
             val fact = facts[threadChannelId] ?: return this
             val count = fact.unreadCount ?: return this
             val baseline = fact.replyCount ?: return this

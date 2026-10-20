@@ -7,11 +7,11 @@ Task: #product task #189
 
 Shared/KMP action controls should use the common brutal primitives instead of page-local `Button` or `Box + clickable + border` chrome:
 
-- `SlockBrutalActionButton` for text actions, CTA buttons, full-width settings actions, small action chips, and modal action rows that need the standard brutal border/shadow treatment.
-- `SlockBrutalIconButton` for square icon-only actions.
-- `SlockToolbarChip` / `SlockAnchoredToolbarChip` for toolbar filters, sort chips, and anchored menu triggers.
-- `SlockModalActionButton`, `SlockModalFullWidthActionButton`, and `SlockModalSquareActionButton` for modal-specific actions.
-- `SlockHeaderIconAction` for compact page/header icon controls where the header chrome is intentional.
+- `RaftBrutalActionButton` for text actions, CTA buttons, full-width settings actions, small action chips, and modal action rows that need the standard brutal border/shadow treatment.
+- `RaftBrutalIconButton` for square icon-only actions.
+- `RaftToolbarChip` / `RaftAnchoredToolbarChip` for toolbar filters, sort chips, and anchored menu triggers.
+- `RaftModalActionButton`, `RaftModalFullWidthActionButton`, and `RaftModalSquareActionButton` for modal-specific actions.
+- `RaftHeaderIconAction` for compact page/header icon controls where the header chrome is intentional.
 
 Low-level `Button` remains allowed inside the component implementations themselves and in deliberately custom controls whose behavior is not a normal action button: tabs, toggles, selectable rows/cards, text input chrome, reaction chips, image preview controls, and demo/sample pages.
 
@@ -21,61 +21,61 @@ These are the common KMP components that should be treated as existing source-of
 
 ### Action Buttons
 
-- `SlockBrutalActionButton`
-- `SlockBrutalIconButton`
-- `SlockModalActionButton`
-- `SlockModalFullWidthActionButton`
-- `SlockModalSquareActionButton`
-- `SlockModalIconButton`
+- `RaftBrutalActionButton`
+- `RaftBrutalIconButton`
+- `RaftModalActionButton`
+- `RaftModalFullWidthActionButton`
+- `RaftModalSquareActionButton`
+- `RaftModalIconButton`
 
 Current product usage includes Settings account/storage/billing/computers actions, Home notification actions, Members detail/add actions, Activity small actions, Thread header/back-to-bottom/inline actions, Thread composer icon/send actions, and modal footer actions.
 
 ### Toolbar Chips / Filters
 
-- `SlockToolbarChip`
-- `SlockAnchoredToolbarChip`
-- `SlockFilterPopover`
-- `SlockBaseMenuOverlay`
+- `RaftToolbarChip`
+- `RaftAnchoredToolbarChip`
+- `RaftFilterPopover`
+- `RaftBaseMenuOverlay`
 
 Current product usage includes Home Search filters/sort/channel dropdown, Tasks filter/status menus, and Thread overflow/status menus.
 
 ### Modal / Sheet Chrome
 
-- `SlockUnifiedDialog`
-- `SlockModalLayer`
-- `SlockModalListShell`
-- `SlockModalSectionHeader`
-- `SlockModalCompactMemberRow`
-- lower-level `SlockBrutalModalLayer` / `SlockBrutalModalHeader`
+- `RaftUnifiedDialog`
+- `RaftModalLayer`
+- `RaftModalListShell`
+- `RaftModalSectionHeader`
+- `RaftModalCompactMemberRow`
+- lower-level `RaftBrutalModalLayer` / `RaftBrutalModalHeader`
 
 Current product usage includes Home create-channel, Thread settings, Thread members/add-member, and Thread danger/action flows.
 
 ### Shell / Navigation / Layout
 
-- `SlockAppShellSurface`
-- `SlockAppShellRootBackHandler`
-- `SlockAppBottomTabBarHost`
-- `SlockBottomTabBar`
-- `SlockVerticalTabBar`
-- `SlockFloatingDockTabBar`
-- `SlockNavigationRailTabBar`
+- `RaftAppShellSurface`
+- `RaftAppShellRootBackHandler`
+- `RaftAppBottomTabBarHost`
+- `RaftBottomTabBar`
+- `RaftVerticalTabBar`
+- `RaftFloatingDockTabBar`
+- `RaftNavigationRailTabBar`
 
 Current product usage includes the shared Home app shell, Home/Activity/Search/Saved/Settings bottom tabbar, and root Back/safe-area handling.
 
 ### Rows / Sections / Content Rendering
 
-- `SlockCollapsibleSectionHeader`
-- `SlockBrutalListSectionHeader`
-- `SlockBrutalListShell`
-- `SlockBrutalPanelShell`
-- `SlockMarkdownBody`
-- markdown inline chips / mention text / inline code chips inside `SlockMarkdown.kt`
+- `RaftCollapsibleSectionHeader`
+- `RaftBrutalListSectionHeader`
+- `RaftBrutalListShell`
+- `RaftBrutalPanelShell`
+- `RaftMarkdownBody`
+- markdown inline chips / mention text / inline code chips inside `RaftMarkdown.kt`
 
 Current product usage includes Members section headers, Settings/Tasks list sectioning, Thread markdown message bodies, and shared Home/Search/Saved panels.
 
 ### Input / Field Chrome
 
-- `SlockBrutalTextField`
+- `RaftBrutalTextField`
 - `SlockModalTextField`
 - `SlockModalTextFieldComponent`
 - `SlockModalFieldLabel` / `SlockModalFieldLabelComponent`
@@ -115,22 +115,22 @@ This is the current follow-up scan for common primitives that exist but still ha
 
 ### Already Unified, Continue Using
 
-- Settings CTA/action buttons use `SlockBrutalActionButton`.
-- Home notification actions use `SlockBrutalActionButton`.
-- Members add/detail actions use `SlockBrutalIconButton` / `SlockBrutalActionButton`.
-- Thread composer icon/send actions use `SlockBrutalIconButton` / `SlockBrutalActionButton`.
-- Thread modal actions use `SlockModalActionButton` / `SlockModalFullWidthActionButton`.
-- Home Search and Tasks filters use `SlockToolbarChip`, `SlockAnchoredToolbarChip`, `SlockFilterPopover`, and `SlockBaseMenuOverlay`.
-- Shared Home shell/tabbar/safe-area uses `SlockAppShellSurface` and `SlockAppBottomTabBarHost`.
+- Settings CTA/action buttons use `RaftBrutalActionButton`.
+- Home notification actions use `RaftBrutalActionButton`.
+- Members add/detail actions use `RaftBrutalIconButton` / `RaftBrutalActionButton`.
+- Thread composer icon/send actions use `RaftBrutalIconButton` / `RaftBrutalActionButton`.
+- Thread modal actions use `RaftModalActionButton` / `RaftModalFullWidthActionButton`.
+- Home Search and Tasks filters use `RaftToolbarChip`, `RaftAnchoredToolbarChip`, `RaftFilterPopover`, and `RaftBaseMenuOverlay`.
+- Shared Home shell/tabbar/safe-area uses `RaftAppShellSurface` and `RaftAppBottomTabBarHost`.
 
 ### Local Usage That Is Allowed
 
 - `BasicWidget.Button`: the low-level pressable primitive used by shared components.
-- `SlockBrutalComponents.kt`: implementation of the shared brutal primitives.
-- `SlockModalComponents.kt`: implementation of modal action wrappers.
-- `SlockMenu.kt` / `SlockFilterPopover.kt`: menu row implementation, not product-page ad hoc button chrome.
-- `SlockTabBar.kt`: tab and navigation rail implementation.
-- `SlockSectionHeader.kt`: collapsible header toggle implementation.
+- `RaftBrutalComponents.kt`: implementation of the shared brutal primitives.
+- `RaftModalComponents.kt`: implementation of modal action wrappers.
+- `RaftMenu.kt` / `RaftFilterPopover.kt`: menu row implementation, not product-page ad hoc button chrome.
+- `RaftTabBar.kt`: tab and navigation rail implementation.
+- `RaftSectionHeader.kt`: collapsible header toggle implementation.
 - `RouterPage.kt`, `ReverseLazyColumnDemoPage.kt`, visual token pages, and smoke/demo pages.
 - Home channel/DM rows, Settings rows, Members rows, Thread file cards, and Tasks rows: row/card navigation targets, not standalone buttons.
 - Thread image preview controls: overlay/hit-area-specific preview controls.

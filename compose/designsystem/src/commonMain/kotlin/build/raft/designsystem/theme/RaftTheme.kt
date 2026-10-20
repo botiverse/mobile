@@ -31,7 +31,7 @@ enum class RaftAppearance {
 }
 
 /**
- * Observable appearance, modelled on compose/shared `SlockThemeState`: a Compose state
+ * Observable appearance, modelled on compose/shared `RaftAppThemeState`: a Compose state
  * holder, so changing [appearance] (or the OS setting under [RaftAppearance.System])
  * recomposes every [RaftTheme] that reads it.
  *
@@ -58,7 +58,7 @@ class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
                 RaftAppearance.System -> systemDark
             }
 
-    /** @return true when the resolved theme changed, as `SlockThemeState.apply` does. */
+    /** @return true when the resolved theme changed, as `RaftAppThemeState.apply` does. */
     fun apply(next: RaftAppearance): Boolean {
         val wasDark = isDark
         appearance = next
@@ -73,7 +73,7 @@ class RaftThemeState(appearance: RaftAppearance = RaftAppearance.Light) {
     }
 
     companion object {
-        /** Process-wide state app screens follow (the SlockThemeState counterpart). */
+        /** Process-wide state app screens follow (the RaftAppThemeState counterpart). */
         val App: RaftThemeState = RaftThemeState()
     }
 }

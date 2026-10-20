@@ -125,7 +125,7 @@ class ProcessPresenceBindingReadinessTest {
     ) {
         val authorityRegistry =
             RealtimeAuthorityRegistry(
-                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "readiness-process",
             )
         val auth = FakeTypedAuthSessionStore()
@@ -1101,7 +1101,7 @@ class ProcessPresenceBindingReadinessTest {
         secondScope.cancel()
     }
 
-    private class FakeTypedAuthSessionStore : SlockAuthSessionStore, SlockAuthSessionEventSource {
+    private class FakeTypedAuthSessionStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
         private var session: StoredAuthSession? = null
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 16)
 

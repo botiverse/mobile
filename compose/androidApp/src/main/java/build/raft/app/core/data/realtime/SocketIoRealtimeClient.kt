@@ -1,7 +1,7 @@
 package build.raft.app.core.data.realtime
 
 import build.raft.app.data.RealtimeSubscription
-import build.raft.app.data.SLOCK_SOCKET_BASE_URL
+import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
@@ -612,7 +612,7 @@ class SocketIoRealtimeClient(
     )
 
     companion object {
-        const val DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL
+        const val DEFAULT_SOCKET_URL = RAFT_SOCKET_BASE_URL
 
         val RealtimeWireEventNames = RealtimeSocketEvents.ServerWireEvents
     }
@@ -752,7 +752,7 @@ private fun runOnRealtimeAuthRefreshThread(task: () -> Unit) {
         try {
             task()
         } catch (throwable: Throwable) {
-            build.raft.app.core.data.diagnostics.SlockAppLog.w(
+            build.raft.app.core.data.diagnostics.RaftAppLog.w(
                 "SlockRealtime",
                 "auth_refresh_failed error=${throwable.javaClass.simpleName}",
             )

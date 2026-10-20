@@ -16,8 +16,8 @@ class ThreadImagePhotosSavePolicyTest {
     @Test
     fun actionIsHiddenWhenPlatformDoesNotOwnPhotosCapability() {
         assertEquals(
-            SlockFilePreviewPhotosActionState.Hidden,
-            slockFilePreviewPhotosActionState(
+            RaftFilePreviewPhotosActionState.Hidden,
+            raftFilePreviewPhotosActionState(
                 supported = false,
                 eligible = true,
                 operation = null,
@@ -29,8 +29,8 @@ class ThreadImagePhotosSavePolicyTest {
     @Test
     fun actionTransitionsFromSaveToSavingToRetry() {
         assertEquals(
-            SlockFilePreviewPhotosActionState.Save,
-            slockFilePreviewPhotosActionState(
+            RaftFilePreviewPhotosActionState.Save,
+            raftFilePreviewPhotosActionState(
                 supported = true,
                 eligible = true,
                 operation = null,
@@ -38,8 +38,8 @@ class ThreadImagePhotosSavePolicyTest {
             )
         )
         assertEquals(
-            SlockFilePreviewPhotosActionState.Saving,
-            slockFilePreviewPhotosActionState(
+            RaftFilePreviewPhotosActionState.Saving,
+            raftFilePreviewPhotosActionState(
                 supported = true,
                 eligible = true,
                 operation = "save_photos",
@@ -47,8 +47,8 @@ class ThreadImagePhotosSavePolicyTest {
             )
         )
         assertEquals(
-            SlockFilePreviewPhotosActionState.Saving,
-            slockFilePreviewPhotosActionState(
+            RaftFilePreviewPhotosActionState.Saving,
+            raftFilePreviewPhotosActionState(
                 supported = true,
                 eligible = true,
                 operation = "save_photos",
@@ -56,8 +56,8 @@ class ThreadImagePhotosSavePolicyTest {
             )
         )
         assertEquals(
-            SlockFilePreviewPhotosActionState.Retry,
-            slockFilePreviewPhotosActionState(
+            RaftFilePreviewPhotosActionState.Retry,
+            raftFilePreviewPhotosActionState(
                 supported = true,
                 eligible = true,
                 operation = "save_photos",
@@ -65,8 +65,8 @@ class ThreadImagePhotosSavePolicyTest {
             )
         )
         assertEquals(
-            SlockFilePreviewPhotosActionState.Busy,
-            slockFilePreviewPhotosActionState(
+            RaftFilePreviewPhotosActionState.Busy,
+            raftFilePreviewPhotosActionState(
                 supported = true,
                 eligible = true,
                 operation = "open",
@@ -78,7 +78,7 @@ class ThreadImagePhotosSavePolicyTest {
     @Test
     fun activePhotosOperationRetiresWhenGalleryAttachmentChanges() {
         val active =
-            SlockFilePreviewExternalOperationIdentity(
+            RaftFilePreviewExternalOperationIdentity(
                 source = "thread_attachment",
                 attachmentId = "image-a",
                 path = "a.jpg",
@@ -86,14 +86,14 @@ class ThreadImagePhotosSavePolicyTest {
             )
         val visible = active.copy(attachmentId = "image-b", path = "b.jpg")
 
-        assertEquals(true, slockFilePreviewShouldRetireExternalOperation(active, visible))
-        assertEquals(false, slockFilePreviewShouldRetireExternalOperation(active, active))
+        assertEquals(true, raftFilePreviewShouldRetireExternalOperation(active, visible))
+        assertEquals(false, raftFilePreviewShouldRetireExternalOperation(active, active))
     }
 
     @Test
     fun activePhotosOperationRetiresWhenOwnerGenerationChanges() {
         val active =
-            SlockFilePreviewExternalOperationIdentity(
+            RaftFilePreviewExternalOperationIdentity(
                 source = "thread_attachment",
                 attachmentId = "image-a",
                 path = "a.jpg",
@@ -101,7 +101,7 @@ class ThreadImagePhotosSavePolicyTest {
             )
         val successorOwner = active.copy(owner = owner(generation = 4L))
 
-        assertEquals(true, slockFilePreviewShouldRetireExternalOperation(active, successorOwner))
-        assertEquals(true, slockFilePreviewShouldRetireExternalOperation(active, null))
+        assertEquals(true, raftFilePreviewShouldRetireExternalOperation(active, successorOwner))
+        assertEquals(true, raftFilePreviewShouldRetireExternalOperation(active, null))
     }
 }

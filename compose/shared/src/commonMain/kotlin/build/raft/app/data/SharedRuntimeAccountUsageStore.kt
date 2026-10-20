@@ -50,10 +50,10 @@ internal fun SharedComputersOwner.sameIdentityAs(other: SharedComputersOwner?): 
  * deliberately no refresh/POST path; [read] with `force = true` simply re-reads the server.
  */
 internal class SharedRuntimeAccountUsageStore(
-    private val client: SlockComputersApiClient,
+    private val client: RaftComputersApiClient,
     /** The identity the network client will actually authenticate as right now. */
     private val currentIdentity: suspend () -> SharedComputersOwner?,
-    private val clock: SlockEpochMillisSource = SlockEpochMillisSource { Clock.System.now().toEpochMilliseconds() },
+    private val clock: RaftEpochMillisSource = RaftEpochMillisSource { Clock.System.now().toEpochMilliseconds() },
     private val cacheMillis: Long = RUNTIME_ACCOUNT_USAGE_CACHE_MILLIS
 ) {
     private class Cached(val value: RuntimeAccountUsageLoad, val expiresAt: Long)

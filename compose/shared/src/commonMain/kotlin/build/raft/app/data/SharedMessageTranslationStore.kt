@@ -72,8 +72,8 @@ internal const val MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS = 30_000L
 private const val MESSAGE_TRANSLATION_PENDING_TIMEOUT_SLACK_MS = 250L
 
 class SharedMessageTranslationStore internal constructor(
-    private val authStore: SlockAuthSessionStore,
-    private val api: SlockMessageTranslationApi,
+    private val authStore: RaftAuthSessionStore,
+    private val api: RaftMessageTranslationApi,
     private val scope: CoroutineScope,
     private val translationMode: () -> TranslationModePreference = { TranslationModePreference.Default },
     private val translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
@@ -81,7 +81,7 @@ class SharedMessageTranslationStore internal constructor(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val pendingTimeoutMs: Long = MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS,
 ) {
-    private val _state = slockStoreState(SharedMessageTranslationState(), "SharedMessageTranslationStore")
+    private val _state = raftStoreState(SharedMessageTranslationState(), "SharedMessageTranslationStore")
     val state: StateFlow<SharedMessageTranslationState> = _state.asStateFlow()
 
     private var settingsJob: Job? = null
@@ -131,7 +131,7 @@ class SharedMessageTranslationStore internal constructor(
 
     // Public entry points are called from the UI (the main thread under CMP). Their state writes and
     // the in-flight batch bookkeeping belong on the store scope (the serial store dispatcher in
-    // production, see SlockStoreThreading), so each one hops there before touching either.
+    // production, see RaftStoreThreading), so each one hops there before touching either.
 
     fun requestAutoTranslations(candidates: List<SharedMessageTranslationCandidate>) {
         scope.launch { requestAutoTranslationsOnStoreScope(candidates) }

@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 /**
  * Focused regression coverage for the bottom-anchor keying in ThreadPage.
  *
- * The Thread page uses two pure functions on KuiklyThreadScreenPayload
+ * The Thread page uses two pure functions on RaftThreadScreenPayload
  * to drive its bottom-anchor LaunchedEffect:
  *
  * - `latestMessageListItemIndex()`: which list index to anchor at
@@ -31,13 +31,13 @@ class ThreadBottomAnchorSignatureTest {
         replyCount: Int = 0,
         unreadReplyCount: Int = 0,
         taskId: String? = null,
-        attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
-        reactions: List<KuiklyThreadReactionItem> = emptyList(),
+        attachments: List<RaftThreadAttachmentItem> = emptyList(),
+        reactions: List<RaftThreadReactionItem> = emptyList(),
         metadata: Map<String, String> = emptyMap(),
         deliveryState: String = ThreadMessageDeliverySent,
-        pendingSendContext: KuiklyThreadPendingSendContext? = null,
+        pendingSendContext: RaftThreadPendingSendContext? = null,
         randomId: String? = null
-    ): KuiklyThreadMessageItem = KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem = RaftThreadMessageItem(
         id = id,
         authorId = "user-$id",
         authorName = "User $id",
@@ -55,12 +55,12 @@ class ThreadBottomAnchorSignatureTest {
 
     private fun payload(
         originStatus: String = "none",
-        messages: List<KuiklyThreadMessageItem> = emptyList(),
-        originMessage: KuiklyThreadMessageItem? = null,
+        messages: List<RaftThreadMessageItem> = emptyList(),
+        originMessage: RaftThreadMessageItem? = null,
         canLoadMoreBefore: Boolean = false,
         canLoadMoreAfter: Boolean = false,
-        members: List<KuiklyThreadMemberItem> = emptyList()
-    ): KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(
+        members: List<RaftThreadMemberItem> = emptyList()
+    ): RaftThreadScreenPayload = RaftThreadScreenPayload(
         originStatus = originStatus,
         messages = messages,
         originMessage = originMessage,
@@ -69,16 +69,16 @@ class ThreadBottomAnchorSignatureTest {
         members = members
     )
 
-    private fun KuiklyThreadScreenPayload.latestMessageLayoutKeyPublic(): String =
+    private fun RaftThreadScreenPayload.latestMessageLayoutKeyPublic(): String =
         latestMessageLayoutKey()
 
-    private fun KuiklyThreadScreenPayload.latestMessageListItemIndexPublic(): Int =
+    private fun RaftThreadScreenPayload.latestMessageListItemIndexPublic(): Int =
         latestMessageListItemIndex()
 
-    private fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKeyPublic(): String? =
+    private fun RaftThreadScreenPayload.latestLocalSendBottomAnchorKeyPublic(): String? =
         latestLocalSendBottomAnchorKey()
 
-    private fun KuiklyThreadScreenPayload.timelineSlice(): ThreadTimelineSlice =
+    private fun RaftThreadScreenPayload.timelineSlice(): ThreadTimelineSlice =
         toThreadTimelineSlice()
 
     @Test
@@ -154,7 +154,7 @@ class ThreadBottomAnchorSignatureTest {
                     listOf(
                         message(
                             "m1",
-                            reactions = listOf(KuiklyThreadReactionItem(emoji = "👍", count = 1))
+                            reactions = listOf(RaftThreadReactionItem(emoji = "👍", count = 1))
                         )
                     )
             )
@@ -164,7 +164,7 @@ class ThreadBottomAnchorSignatureTest {
                     listOf(
                         message(
                             "m1",
-                            reactions = listOf(KuiklyThreadReactionItem(emoji = "👍", count = 2))
+                            reactions = listOf(RaftThreadReactionItem(emoji = "👍", count = 2))
                         )
                     )
             )
@@ -175,13 +175,13 @@ class ThreadBottomAnchorSignatureTest {
     fun latestMessageLayoutKey_membersOnlyChange_keepsKeyEqual() {
         val a = payload(
             messages = listOf(message("m1", replyCount = 1)),
-            members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"))
+            members = listOf(RaftThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"))
         )
         val b = payload(
             messages = listOf(message("m1", replyCount = 1)),
             members = listOf(
-                KuiklyThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"),
-                KuiklyThreadMemberItem(id = "u2", displayName = "User 2", kind = "human")
+                RaftThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"),
+                RaftThreadMemberItem(id = "u2", displayName = "User 2", kind = "human")
             )
         )
         assertEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
@@ -208,7 +208,7 @@ class ThreadBottomAnchorSignatureTest {
         val a = payload(messages = sharedContent).copy(focusedMessageId = "m2")
         val b = payload(messages = sharedContent.toList()).copy(
             focusedMessageId = "m2",
-            members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1"))
+            members = listOf(RaftThreadMemberItem(id = "u1", displayName = "User 1"))
         )
 
         assertEquals(a.timelineSlice().messageIndexSignature(), b.timelineSlice().messageIndexSignature())
@@ -607,7 +607,7 @@ class ThreadBottomAnchorSignatureTest {
     fun markdownPreparseSignature_ignoresMemberOnlyChanges() {
         val fullRendererBody = "```kotlin\nprintln(\"hi\")\n```"
         val a = payload(messages = listOf(message("m1", body = fullRendererBody)))
-        val b = a.copy(members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1")))
+        val b = a.copy(members = listOf(RaftThreadMemberItem(id = "u1", displayName = "User 1")))
 
         assertEquals(
             a.timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true),
@@ -1031,7 +1031,7 @@ class ThreadBottomAnchorSignatureTest {
     @Test
     fun latestLocalSendBottomAnchor_defaultsReplyThreadReplyListToLatestItem() {
         val pendingContext =
-            KuiklyThreadPendingSendContext(
+            RaftThreadPendingSendContext(
                 channelId = "parent-channel",
                 body = "reply",
                 parentMessageId = "origin-message",
@@ -1067,7 +1067,7 @@ class ThreadBottomAnchorSignatureTest {
     @Test
     fun latestLocalSendBottomAnchor_revealsFirstLocalSendBeforeInitialAnchor() {
         val pendingContext =
-            KuiklyThreadPendingSendContext(
+            RaftThreadPendingSendContext(
                 channelId = "parent-channel",
                 body = "reply",
                 parentMessageId = "origin-message",
@@ -1128,7 +1128,7 @@ class ThreadBottomAnchorSignatureTest {
     @Test
     fun latestLocalSendBottomAnchor_keepsInitialLoadingForNonFirstLocalSend() {
         val pendingContext =
-            KuiklyThreadPendingSendContext(
+            RaftThreadPendingSendContext(
                 channelId = "channel-1",
                 body = "second",
                 streamChannelId = "channel-1"
@@ -1212,7 +1212,7 @@ class ThreadBottomAnchorSignatureTest {
                             "local-send-1",
                             deliveryState = ThreadMessageDeliverySending,
                             pendingSendContext =
-                                KuiklyThreadPendingSendContext(
+                                RaftThreadPendingSendContext(
                                     channelId = "channel-1",
                                     body = "pending"
                                 )
@@ -2582,7 +2582,7 @@ class ThreadBottomAnchorSignatureTest {
         val a =
             payload(
                 messages = listOf(message("m1")),
-                members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1"))
+                members = listOf(RaftThreadMemberItem(id = "u1", displayName = "User 1"))
             )
                 .copy(status = "content", sourceThreadId = "channel-1")
         val b =
@@ -2590,8 +2590,8 @@ class ThreadBottomAnchorSignatureTest {
                 messages = listOf(message("m1")),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(id = "u1", displayName = "User 1"),
-                        KuiklyThreadMemberItem(id = "u2", displayName = "User 2")
+                        RaftThreadMemberItem(id = "u1", displayName = "User 1"),
+                        RaftThreadMemberItem(id = "u2", displayName = "User 2")
                     )
             ).copy(status = "content", sourceThreadId = "channel-1")
         val c =
@@ -2669,7 +2669,7 @@ class ThreadBottomAnchorSignatureTest {
     @Test
     fun threadLifecycle_tracksAndroidAndSharedHostVisibility() {
         assertTrue(threadLifecycleEventTargetsThread(THREAD_PAGE))
-        assertTrue(threadLifecycleEventTargetsThread(SLOCK_APP_SHELL_PAGE))
+        assertTrue(threadLifecycleEventTargetsThread(RAFT_APP_SHELL_PAGE))
         assertFalse(threadLifecycleEventTargetsThread("compose_slock_settings_home"))
         assertTrue(appLifecycleEventTargetsShell("", "legacy-app-shell"))
         assertFalse(appLifecycleEventTargetsShell("", "shell-a"))

@@ -2,11 +2,11 @@ package build.raft.app
 
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.SlockAnchorPlacement
-import build.raft.app.components.SlockAnchoredMetaChip
-import build.raft.app.components.SlockAnchoredToolbarChip
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.RaftAnchorPlacement
+import build.raft.app.components.RaftAnchoredMetaChip
+import build.raft.app.components.RaftAnchoredToolbarChip
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftToolbarChip
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksRouteIntent
@@ -21,7 +21,7 @@ import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.boardColumns
 import build.raft.app.data.isCreatingTasksFor
 import build.raft.app.data.reduce
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.tasksAssigneeDisplayName
 import build.raft.app.data.tasksAvailableAssigneeFilterIds
 import build.raft.app.data.tasksDisplayTitle
@@ -31,7 +31,7 @@ import build.raft.app.data.visibleContent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.MR
@@ -99,12 +99,12 @@ internal fun SharedTasksScreen(
     scrollToTopRequest: Int = 0,
     modifier: Modifier = Modifier,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
     identityOptions: List<MemberProfile> = emptyList(),
-    timeContext: SlockTimeContext? = null
+    timeContext: RaftTimeContext? = null
 ) {
     SharedTasksPanel(
         state = state,
@@ -135,7 +135,7 @@ internal fun SharedTasksPanel(
      *  Server-mode (no implicit channel) leaves this null and the button is hidden. */
     createTasksChannelId: ChannelId? = null,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
@@ -146,7 +146,7 @@ internal fun SharedTasksPanel(
      *  mirroring the React capture's "Show Done" click (task #330/#353). */
     initialPresentationOverride: TasksPresentationState? = null,
     identityOptions: List<MemberProfile> = emptyList(),
-    timeContext: SlockTimeContext? = null
+    timeContext: RaftTimeContext? = null
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -163,7 +163,7 @@ internal fun SharedTasksPanel(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(SlockColor.SurfaceWhite)
+            .background(RaftColor.SurfaceWhite)
     ) {
         when (val loadState = displayState) {
             ScreenLoadState.Loading -> {
@@ -231,7 +231,7 @@ internal fun SharedTasksPanel(
                     SharedTasksStateBody(
                         title = emptyCopy.title,
                         detail = emptyCopy.description,
-                        iconName = SlockLucideIconName.SquareCheckBig
+                        iconName = RaftLucideIconName.SquareCheckBig
                     )
                 }
             }
@@ -264,8 +264,8 @@ private fun SharedTasksHeader(
     subtitle: String? = null,
     refreshing: Boolean = false
 ) {
-    SlockMainTabPageHeader(
-        surface = SlockMainTabHeaderSurface.Tasks,
+    RaftMainTabPageHeader(
+        surface = RaftMainTabHeaderSurface.Tasks,
         title = stringResource(MR.strings.tasks_title),
         subtitle = subtitle ?: stringResource(MR.strings.tasks_header_channel_tasks),
         refreshing = refreshing
@@ -367,7 +367,7 @@ private fun SharedTasksLoadedBody(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -402,7 +402,7 @@ private fun SharedTasksLoadedBody(
  * clobbering its selection/composition. The seed always places the caret at the end
  * of the durable text; within the session the local editor owns the selection.
  */
-internal fun slockFilterSearchSessionSeed(
+internal fun raftFilterSearchSessionSeed(
     openFilterId: String?,
     thisFilterId: String,
     durableSearch: String
@@ -430,12 +430,12 @@ private fun SharedTasksLoadedBodyContent(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
         remember(pager) {
-            KeyValueTasksViewPreferenceRepository(slockSharedPreferenceStore())
+            KeyValueTasksViewPreferenceRepository(raftSharedPreferenceStore())
         }
     val initialPresentationState =
         remember(viewModeRepository, defaultViewMode) {
@@ -504,9 +504,9 @@ private fun SharedTasksLoadedBodyContent(
     // coordinate after a LazyColumn scroll; reconstructing it from item layout offsets
     // moves the menu away from the chip and can leave the menu under the touch barrier.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
-    var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var statusMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var assigneeMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
-    var assigneeMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var assigneeMenuSearch by remember { mutableStateOf("") }
     val listModeListState =
         rememberLazyListState(
@@ -550,9 +550,9 @@ private fun SharedTasksLoadedBodyContent(
     }
 
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
-    var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var creatorAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var assigneeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var channelAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var creatorAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var assigneeAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     // Caller-local editing snapshots for the filter search inputs. The durable
     // filter String in presentationState is a downstream projection; the
     // caller-local TextFieldValue is the SOLE mounted editor owner for a filter
@@ -584,9 +584,9 @@ private fun SharedTasksLoadedBodyContent(
     // filters are reseeded when they next become the open session.
     LaunchedEffect(presentationState.openFilterId) {
         val openId = presentationState.openFilterId
-        slockFilterSearchSessionSeed(openId, "channel", presentationState.channelSearch)?.let { channelSearchValue = it }
-        slockFilterSearchSessionSeed(openId, "creator", presentationState.creatorSearch)?.let { creatorSearchValue = it }
-        slockFilterSearchSessionSeed(openId, "assignee", presentationState.assigneeSearch)?.let { assigneeSearchValue = it }
+        raftFilterSearchSessionSeed(openId, "channel", presentationState.channelSearch)?.let { channelSearchValue = it }
+        raftFilterSearchSessionSeed(openId, "creator", presentationState.creatorSearch)?.let { creatorSearchValue = it }
+        raftFilterSearchSessionSeed(openId, "assignee", presentationState.assigneeSearch)?.let { assigneeSearchValue = it }
     }
     var createDialogOpen by remember { mutableStateOf(false) }
     var createSubmitted by remember { mutableStateOf(false) }
@@ -614,16 +614,16 @@ private fun SharedTasksLoadedBodyContent(
         createSubmitted = false
     }
     val channelFilterOptions = remember(visibleContent.channelOptions) {
-        visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = SlockLucideIconName.Hash) }
+        visibleContent.channelOptions.map { name -> RaftFilterOption(id = name, label = name, icon = RaftLucideIconName.Hash) }
     }
     val creatorFilterOptions = remember(visibleContent.creatorOptions) {
-        visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = SlockLucideIconName.CircleUser) }
+        visibleContent.creatorOptions.map { RaftFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = RaftLucideIconName.CircleUser) }
     }
     val unassignedAssigneeLabel = stringResource(MR.strings.tasks_assignee_unassigned)
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions, unassignedAssigneeLabel) {
         tasksAssigneeFilterOptions(visibleContent.assigneeOptions, unassignedAssigneeLabel)
     }
-    SlockBackHandler(
+    RaftBackHandler(
         enabled = createDialogOpen || statusMenuTask != null || assigneeMenuTask != null || presentationState.openFilterId != null
     ) {
         when {
@@ -639,7 +639,7 @@ private fun SharedTasksLoadedBodyContent(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         if (showHeader) {
             SharedTasksHeader(
                 subtitle =
@@ -650,13 +650,13 @@ private fun SharedTasksLoadedBodyContent(
                 refreshing = state.refreshing
             )
         }
-        Box(modifier = Modifier.weight(1f).background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.weight(1f).background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 state.navigationErrorCode?.let { code ->
-                    SharedTasksNotice(stringResource(MR.strings.tasks_error_action_unavailable), code, modifier = Modifier.padding(SlockSpacing.Md))
+                    SharedTasksNotice(stringResource(MR.strings.tasks_error_action_unavailable), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
                 state.statusUpdateErrorCode?.let { code ->
-                    SharedTasksNotice(stringResource(MR.strings.tasks_error_update_status), code, modifier = Modifier.padding(SlockSpacing.Md))
+                    SharedTasksNotice(stringResource(MR.strings.tasks_error_update_status), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
                 SharedTasksToolbar(
                     channelOptions = visibleContent.channelOptions,
@@ -725,8 +725,8 @@ private fun SharedTasksLoadedBodyContent(
                         // scroll between left/right. Mirrors the React `overflow-x-auto` panel.
                         LazyRow(
                             modifier = Modifier.fillMaxSize(),
-                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                            contentPadding = PaddingValues(SlockSpacing.Md)
+                            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
+                            contentPadding = PaddingValues(RaftAppSpacing.Md)
                         ) {
                             items(boardColumns.size, key = { i -> "board-col-${boardColumns[i].status}" }) { index ->
                                 val column = boardColumns[index]
@@ -788,7 +788,7 @@ private fun SharedTasksLoadedBodyContent(
                             SharedTasksStateBody(
                                 title = emptyCopy.title,
                                 detail = emptyCopy.description,
-                                iconName = SlockLucideIconName.SquareCheckBig
+                                iconName = RaftLucideIconName.SquareCheckBig
                             )
                         } else {
                             LazyColumn(
@@ -796,12 +796,12 @@ private fun SharedTasksLoadedBodyContent(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding =
                                     PaddingValues(
-                                        start = SlockSpacing.Md,
-                                        top = SlockSpacing.Md,
-                                        end = SlockSpacing.Md,
+                                        start = RaftAppSpacing.Md,
+                                        top = RaftAppSpacing.Md,
+                                        end = RaftAppSpacing.Md,
                                         bottom = bottomContentPadding
                                     ),
-                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                             ) {
                                 listColumns.forEach { column ->
                                     item(key = "list-header-${column.status.name}") {
@@ -856,7 +856,7 @@ private fun SharedTasksLoadedBodyContent(
         // capture overlay too (otherwise the dim layer would swallow taps).
         when (presentationState.openFilterId) {
             "channel" ->
-                channelAnchor?.let { anchor -> SlockFilterPopover(
+                channelAnchor?.let { anchor -> RaftFilterPopover(
                     anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_channel),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_channels),
@@ -869,7 +869,7 @@ private fun SharedTasksLoadedBodyContent(
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
                 ) }
             "creator" ->
-                creatorAnchor?.let { anchor -> SlockFilterPopover(
+                creatorAnchor?.let { anchor -> RaftFilterPopover(
                     anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_creator),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_creators),
@@ -882,7 +882,7 @@ private fun SharedTasksLoadedBodyContent(
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
                 ) }
             "assignee" ->
-                assigneeAnchor?.let { anchor -> SlockFilterPopover(
+                assigneeAnchor?.let { anchor -> RaftFilterPopover(
                     anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_assignee),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
@@ -905,10 +905,10 @@ private fun SharedTasksLoadedBodyContent(
                     ?: return@let
             // artin msg=2736fb22: task-tab status click keeps the OLD anchored
             // menu interaction (Todo / In progress / …) — no modal.
-            SlockTaskStatusMenuOverlay(
+            RaftTaskStatusMenuOverlay(
                 anchor = resolvedStatusAnchor,
                 items = TaskStatus.values().map { status ->
-                    SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
+                    RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                 },
                 selectedId = task.status.name,
                 onDismiss = { statusMenuTask = null },
@@ -938,7 +938,7 @@ private fun SharedTasksLoadedBodyContent(
                     .filter { needle.isEmpty() || it.displayName.lowercase().contains(needle) }
                     .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
             val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
-            SlockFilterPopover(
+            RaftFilterPopover(
                 anchor = resolvedAssigneeAnchor,
                 title = stringResource(MR.strings.tasks_filter_assignee),
                 searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
@@ -946,13 +946,13 @@ private fun SharedTasksLoadedBodyContent(
                 onSearchChange = { assigneeMenuSearch = it },
                 options =
                     listOf(
-                        SlockFilterOption(
+                        RaftFilterOption(
                             id = TasksUnassignedAssigneeFilterId,
                             label = unassignedLabel
                         )
                     ) +
                         people.map { member ->
-                            SlockFilterOption(
+                            RaftFilterOption(
                                 id = member.tasksIdentityFilterId(),
                                 label = member.displayName
                             )
@@ -999,18 +999,18 @@ private fun SharedTasksLoadedBodyContent(
 internal fun tasksAssigneeFilterOptions(
     assignees: List<MemberProfile>,
     unassignedLabel: String
-): List<SlockFilterOption> =
+): List<RaftFilterOption> =
     listOf(
-        SlockFilterOption(
+        RaftFilterOption(
             id = TasksUnassignedAssigneeFilterId,
             label = unassignedLabel,
-            icon = SlockLucideIconName.User
+            icon = RaftLucideIconName.User
         )
     ) + assignees.map {
-        SlockFilterOption(
+        RaftFilterOption(
             id = it.tasksIdentityFilterId(),
             label = it.displayName,
-            icon = SlockLucideIconName.User
+            icon = RaftLucideIconName.User
         )
     }
 
@@ -1075,9 +1075,9 @@ private fun SharedTasksToolbar(
     openFilterId: String?,
     showCreateButton: Boolean,
     onModeSelected: (TasksViewMode) -> Unit,
-    onChannelChipClick: (SlockPopoverAnchor) -> Unit,
-    onCreatorChipClick: (SlockPopoverAnchor) -> Unit,
-    onAssigneeChipClick: (SlockPopoverAnchor) -> Unit,
+    onChannelChipClick: (RaftPopoverAnchor) -> Unit,
+    onCreatorChipClick: (RaftPopoverAnchor) -> Unit,
+    onAssigneeChipClick: (RaftPopoverAnchor) -> Unit,
     onClearAll: () -> Unit,
     onCreateClick: () -> Unit
 ) {
@@ -1086,10 +1086,10 @@ private fun SharedTasksToolbar(
     val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
     val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
     val channelChip: @Composable () -> Unit = {
-        SlockAnchoredToolbarChip(
+        RaftAnchoredToolbarChip(
             label = if (selectedChannels.isEmpty()) channelLabel else "$channelLabel · ${selectedChannels.size}",
             anchorIdentity = "tasks_filter:channel",
-            iconName = SlockLucideIconName.Hash,
+            iconName = RaftLucideIconName.Hash,
             // react filter chips are Title case (no uppercase transform) — task #373.
             uppercase = false,
             active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
@@ -1098,10 +1098,10 @@ private fun SharedTasksToolbar(
         )
     }
     val creatorChip: @Composable () -> Unit = {
-        SlockAnchoredToolbarChip(
+        RaftAnchoredToolbarChip(
             label = if (selectedCreatorIds.isEmpty()) creatorLabel else "$creatorLabel · ${selectedCreatorIds.size}",
             anchorIdentity = "tasks_filter:creator",
-            iconName = SlockLucideIconName.CircleUser,
+            iconName = RaftLucideIconName.CircleUser,
             uppercase = false,
             active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
             // Web leaves identity filters interactive while their server directory is
@@ -1111,10 +1111,10 @@ private fun SharedTasksToolbar(
         )
     }
     val assigneeChip: @Composable () -> Unit = {
-        SlockAnchoredToolbarChip(
+        RaftAnchoredToolbarChip(
             label = if (selectedAssigneeIds.isEmpty()) assigneeLabel else "$assigneeLabel · ${selectedAssigneeIds.size}",
             anchorIdentity = "tasks_filter:assignee",
-            iconName = SlockLucideIconName.User,
+            iconName = RaftLucideIconName.User,
             uppercase = false,
             active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
             // Web always exposes the localized Unassigned sentinel, even when the
@@ -1124,23 +1124,23 @@ private fun SharedTasksToolbar(
         )
     }
     val clearAllChip: @Composable () -> Unit = {
-        SlockToolbarChip(
+        RaftToolbarChip(
             label = stringResource(MR.strings.tasks_action_clear_all),
-            iconName = SlockLucideIconName.X,
+            iconName = RaftLucideIconName.X,
             uppercase = false,
             active = false,
             onClick = onClearAll
         )
     }
     val newTaskButton: @Composable () -> Unit = {
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = stringResource(MR.strings.tasks_action_new_task),
-            leadingIcon = SlockLucideIconName.Plus,
-            backgroundColor = SlockColor.AccentPink,
+            leadingIcon = RaftLucideIconName.Plus,
+            backgroundColor = RaftColor.AccentPink,
             minWidth = 0.dp,
             minHeight = 30.dp,
             shadowOffset = 2.dp,
-            textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            textStyle = RaftType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
             onClick = onCreateClick
         )
     }
@@ -1161,18 +1161,18 @@ private fun SharedTasksToolbar(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    .padding(horizontal = RaftAppSpacing.Md, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 items(filterControls.size, key = { index -> "tasks-filter-${filterControls[index]}" }) { index ->
                     when (filterControls[index]) {
@@ -1191,7 +1191,7 @@ private fun SharedTasksToolbar(
                             if (row.size == 1 && row.first() == TasksToolbarActionControl.ViewSwitch) {
                                 Arrangement.End
                             } else {
-                                Arrangement.spacedBy(SlockSpacing.Sm)
+                                Arrangement.spacedBy(RaftAppSpacing.Sm)
                             },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1212,8 +1212,8 @@ private fun SharedTasksToolbar(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(SlockStroke.Default)
-                    .background(SlockColor.BorderBlack)
+                    .height(RaftAppStroke.Default)
+                    .background(RaftColor.BorderBlack)
         )
     }
 }
@@ -1247,10 +1247,10 @@ private fun SharedTasksBoardColumn(
     collapsed: Boolean,
     onToggleCollapsed: () -> Unit,
     onOpenTask: ((TaskSummary) -> Unit)?,
-    timeContext: SlockTimeContext?,
-    onStatusBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
-    onAssigneeBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
-    onLongPressTask: (TaskSummary, SlockPopoverAnchor) -> Unit,
+    timeContext: RaftTimeContext?,
+    onStatusBadgeClick: (TaskSummary, RaftPopoverAnchor) -> Unit,
+    onAssigneeBadgeClick: (TaskSummary, RaftPopoverAnchor) -> Unit,
+    onLongPressTask: (TaskSummary, RaftPopoverAnchor) -> Unit,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
@@ -1285,8 +1285,8 @@ private fun SharedTasksBoardColumn(
             Modifier
                 .width(320.dp)
                 .fillMaxHeight()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                .background(RaftColor.SurfaceWhite)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.2f))
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1300,8 +1300,8 @@ private fun SharedTasksBoardColumn(
             if (tasks.isEmpty()) {
                 Text(
                     text = localizedTasksEmptyStatus(status),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             } else {
                 // Nested LazyColumn inside the outer LazyRow lets each column scroll its
@@ -1353,17 +1353,17 @@ private fun BoardSectionHeader(
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         SharedTasksStatusLabel(status)
         Text(
             text = count.toString(),
-            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
-            color = SlockColor.TextBlack.copy(alpha = 0.5f),
+            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
+            color = RaftColor.TextBlack.copy(alpha = 0.5f),
             maxLines = 1
         )
         Spacer(Modifier.weight(1f))
-        SlockLucideIcon(
+        RaftLucideIcon(
             "chevron-down",
             modifier = Modifier.size(14.dp).rotate(if (collapsed) -90f else 0f),
             color = "#FF000000"
@@ -1377,17 +1377,17 @@ private fun SharedTaskCard(
     task: TaskSummary,
     hasDraft: Boolean,
     captureLongPressAnchor: Boolean = true,
-    timeContext: SlockTimeContext? = null,
+    timeContext: RaftTimeContext? = null,
     onClick: () -> Unit,
-    onStatusBadgeClick: (SlockPopoverAnchor) -> Unit,
-    onAssigneeBadgeClick: (SlockPopoverAnchor) -> Unit = {},
-    onLongPress: (SlockPopoverAnchor) -> Unit
+    onStatusBadgeClick: (RaftPopoverAnchor) -> Unit,
+    onAssigneeBadgeClick: (RaftPopoverAnchor) -> Unit = {},
+    onLongPress: (RaftPopoverAnchor) -> Unit
 ) {
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
     val rootAnchor =
-        remember(task.id.value) { SlockLiveRootAnchorRef(identity = tasksStatusMenuOwnerIdentity(task.id.value)) }
+        remember(task.id.value) { RaftLiveRootAnchorRef(identity = tasksStatusMenuOwnerIdentity(task.id.value)) }
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "tasks-card",
             semanticIdentity = task.id.value,
             callbacks =
@@ -1404,7 +1404,7 @@ private fun SharedTaskCard(
             .padding(end = 3.dp, bottom = 3.dp)
             .then(
                 if (captureLongPressAnchor) {
-                    Modifier.slockCaptureLiveRootAnchor(rootAnchor)
+                    Modifier.raftCaptureLiveRootAnchor(rootAnchor)
                 } else {
                     Modifier
                 }
@@ -1414,15 +1414,15 @@ private fun SharedTaskCard(
             modifier = Modifier
                 .matchParentSize()
                 .offset(x = 3.dp, y = 3.dp)
-                .background(SlockColor.ShadowBlack)
+                .background(RaftColor.ShadowBlack)
         )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .slockGesturePointerInput(gestureOwner) { owner ->
-                    var gesture: SlockGestureSession<SharedTaskCardGestureCallbacks>? = null
+                .background(RaftColor.SurfaceWhite)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftGesturePointerInput(gestureOwner) { owner ->
+                    var gesture: RaftGestureSession<SharedTaskCardGestureCallbacks>? = null
                     // tap = open task; long-press = open status menu. Wrapping both in the
                     // same pointer input keeps gesture semantics consistent and avoids
                     // clickable() swallowing the long-press.
@@ -1437,7 +1437,7 @@ private fun SharedTaskCard(
                         onLongPress = { localOffset ->
                             (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
                                 callbacks.rootAnchor
-                                    .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                    .resolve(RaftPopoverLocalPoint.Exact(localOffset))
                                     ?.let(callbacks.onLongPress)
                             }
                         }
@@ -1449,13 +1449,13 @@ private fun SharedTaskCard(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
                     Text(
                         text = source,
-                        style = SlockType.TabLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                        style = RaftType.TabLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.65f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1463,41 +1463,41 @@ private fun SharedTaskCard(
                 task.taskNumber?.let { taskNumber ->
                     Text(
                         text = "#$taskNumber",
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
                     )
                 }
                 if (hasDraft) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.Pencil,
+                    RaftLucideIcon(
+                        RaftLucideIconName.Pencil,
                         modifier = Modifier.size(13.dp),
-                        color = SlockColor.TextMutedGrayArgb
+                        color = RaftColor.TextMutedGrayArgb
                     )
                 }
                 Spacer(Modifier.weight(1f))
                 task.updatedAtLabel.takeIf { it.isNotBlank() }?.let { updatedAt ->
-                    SlockRelativeTimestampText(
+                    RaftRelativeTimestampText(
                         value = updatedAt,
                         timeContext = timeContext,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.35f),
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
                     )
                 }
             }
             Text(
                 text = task.tasksMeaningfulDisplayTitle(),
-                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
             description?.let { desc ->
                 Text(
                     text = desc,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.65f),
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = RaftColor.TextBlack.copy(alpha = 0.65f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1507,7 +1507,7 @@ private fun SharedTaskCard(
                 // Task #251 (artin msg=c06b26d3): right-align the badge row so the
                 // shrink-wrapped assignee + status pills pack against the card's
                 // trailing edge instead of hugging the title.
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, alignment = Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, alignment = Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
@@ -1519,28 +1519,28 @@ private fun SharedTaskCard(
                 // InlineBadgeEditor does — never stretch to the leftover card width
                 // (artin 2026-08-27 verify-session screenshot). Long display names are
                 // capped and ellipsized so the status pill keeps its slot.
-                SlockAnchoredMetaChip(
+                RaftAnchoredMetaChip(
                     label = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
                     iconName = null,
-                    color = SlockColor.SurfaceWhite,
+                    color = RaftColor.SurfaceWhite,
                     onClick = onAssigneeBadgeClick,
                     clickIdentity = tasksAssigneeChipClickIdentity(task.id.value),
                     anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
                     modifier = Modifier.widthIn(max = SharedTaskCardAssigneeChipMaxWidth),
-                    trailingIconName = SlockLucideIconName.Pencil,
+                    trailingIconName = RaftLucideIconName.Pencil,
                     minHeight = 24.dp,
                     horizontalPadding = 8.dp,
                     labelFontSize = 12.sp,
                     labelLineHeight = 16.sp,
-                    borderWidth = SlockStroke.Default,
-                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                    borderWidth = RaftAppStroke.Default,
+                    anchorPlacement = RaftAnchorPlacement.BottomEnd
                 )
                 // Use the same anchored Button(onClick2) model as thread meta chips so the
                 // status pill reliably wins the tap instead of the parent card gesture.
                 // Sentence-case label + trailing pencil mirror React's editable status
                 // badge (InlineBadgeEditor with uppercase={false}).
-                SlockAnchoredMetaChip(
+                RaftAnchoredMetaChip(
                     label = task.status.localizedLabel(),
                     iconName = null,
                     color = task.status.color,
@@ -1548,7 +1548,7 @@ private fun SharedTaskCard(
                     clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
                     anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
-                    trailingIconName = SlockLucideIconName.Pencil,
+                    trailingIconName = RaftLucideIconName.Pencil,
                     // react's card status badge (InlineBadgeEditor, text-xs/leading-4 +
                     // py-0.5 + border-2) measures a 24dp box / 20dp fill; 22dp min + 14sp
                     // line rendered ~22dp box / 18dp fill. 24dp min + 16sp line matches (#373).
@@ -1556,8 +1556,8 @@ private fun SharedTaskCard(
                     horizontalPadding = 8.dp,
                     labelFontSize = 12.sp,
                     labelLineHeight = 16.sp,
-                    borderWidth = SlockStroke.Default,
-                    anchorPlacement = SlockAnchorPlacement.BottomEnd
+                    borderWidth = RaftAppStroke.Default,
+                    anchorPlacement = RaftAnchorPlacement.BottomEnd
                 )
             }
         }
@@ -1566,8 +1566,8 @@ private fun SharedTaskCard(
 
 private data class SharedTaskCardGestureCallbacks(
     val onClick: () -> Unit,
-    val onLongPress: (SlockPopoverAnchor) -> Unit,
-    val rootAnchor: SlockLiveRootAnchorRef
+    val onLongPress: (RaftPopoverAnchor) -> Unit,
+    val rootAnchor: RaftLiveRootAnchorRef
 )
 
 internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): String =
@@ -1591,15 +1591,15 @@ private fun SharedTasksStatusLabel(
             // React's section-header status pill uses a 1px border; android's 2dp
             // read as "too black / heavier" vs react's thinner (lighter-looking)
             // line. Same black color, just match the 1px stroke (task #384).
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
+            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+            .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
-            text = (label ?: status.localizedLabel()).slockDisplayUppercase(),
-            style = SlockType.TabLabel,
-            color = SlockColor.TextBlack,
+            text = (label ?: status.localizedLabel()).raftDisplayUppercase(),
+            style = RaftType.TabLabel,
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -1622,7 +1622,7 @@ private fun SharedTasksPillButton(
         contentAlignment = Alignment.Center
     ) {
         if (selected) {
-            Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+            Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(RaftColor.ShadowBlack))
         }
         Button(
             onClick = onClick,
@@ -1633,15 +1633,15 @@ private fun SharedTasksPillButton(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite, RoundedCornerShape(SlockRadius.Xs))
-                    .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Xs))
-                    .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                    .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite, RoundedCornerShape(RaftAppRadius.Xs))
+                    .border(RaftAppStroke.Default, if (enabled) RaftColor.BorderBlack else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Xs))
+                    .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = label.slockDisplayUppercase(),
-                    style = SlockType.SectionLabel,
-                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    text = label.raftDisplayUppercase(),
+                    style = RaftType.SectionLabel,
+                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1659,8 +1659,8 @@ private fun SharedTasksSegmentedControl(
         selectedValue = selectedMode.name,
         options =
             listOf(
-                SegmentedControlOption(value = TasksViewMode.Board.name, label = stringResource(MR.strings.tasks_view_board), iconName = SlockLucideIconName.Columns3),
-                SegmentedControlOption(value = TasksViewMode.List.name, label = stringResource(MR.strings.tasks_view_list), iconName = SlockLucideIconName.LayoutList)
+                SegmentedControlOption(value = TasksViewMode.Board.name, label = stringResource(MR.strings.tasks_view_board), iconName = RaftLucideIconName.Columns3),
+                SegmentedControlOption(value = TasksViewMode.List.name, label = stringResource(MR.strings.tasks_view_list), iconName = RaftLucideIconName.LayoutList)
             ),
         onValueSelected = { value ->
             when (value) {
@@ -1682,13 +1682,13 @@ private fun SharedTasksNotice(
             modifier
                 .fillMaxWidth()
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
-                .background(SlockColor.AccentRed.copy(alpha = 0.12f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
+                .background(RaftColor.AccentRed.copy(alpha = 0.12f))
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .padding(RaftAppSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text(text = title, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-        Text(text = detail, style = SlockType.Caption, color = SlockColor.AccentRed)
+        Text(text = title, style = RaftType.ButtonBold, color = RaftColor.TextBlack)
+        Text(text = detail, style = RaftType.Caption, color = RaftColor.AccentRed)
     }
 }
 
@@ -1697,15 +1697,15 @@ private fun SharedTasksStateBody(
     title: String,
     detail: String?,
     loading: Boolean = false,
-    iconName: SlockLucideIconName = SlockLucideIconName.SquareCheckBig,
+    iconName: RaftLucideIconName = RaftLucideIconName.SquareCheckBig,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
     if (loading) {
-        SlockCenteredLoading(message = title)
+        RaftCenteredLoading(message = title)
         return
     }
-    SlockEmptyState(
+    RaftEmptyState(
         title = title,
         detail = detail,
         iconName = iconName,
@@ -1729,25 +1729,25 @@ internal fun TaskStatus.localizedLabel(): String =
 private val TaskStatus.color: androidx.compose.ui.graphics.Color
     get() =
         when (this) {
-            TaskStatus.Todo -> SlockColor.AccentOrange
-            TaskStatus.InProgress -> SlockColor.AccentCyan
-            TaskStatus.InReview -> SlockColor.AccentLavender
-            TaskStatus.Done -> SlockColor.AccentLime
-            TaskStatus.Closed -> SlockColor.EmptyStateGray
+            TaskStatus.Todo -> RaftColor.AccentOrange
+            TaskStatus.InProgress -> RaftColor.AccentCyan
+            TaskStatus.InReview -> RaftColor.AccentLavender
+            TaskStatus.Done -> RaftColor.AccentLime
+            TaskStatus.Closed -> RaftColor.EmptyStateGray
         }
 
 private val SharedTaskCardStatusChipMinWidth = 78.dp
 private val SharedTaskCardAssigneeChipMaxWidth = 160.dp
 
-private val TaskStatus.iconName: SlockLucideIconName
+private val TaskStatus.iconName: RaftLucideIconName
     get() =
         when (this) {
-            TaskStatus.Todo -> SlockLucideIconName.Circle
-            TaskStatus.InProgress -> SlockLucideIconName.Play
-            TaskStatus.InReview -> SlockLucideIconName.Eye
+            TaskStatus.Todo -> RaftLucideIconName.Circle
+            TaskStatus.InProgress -> RaftLucideIconName.Play
+            TaskStatus.InReview -> RaftLucideIconName.Eye
             // Registry only ships "circle-check-big"; the smaller variant is not bundled.
-            TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
-            TaskStatus.Closed -> SlockLucideIconName.Ban
+            TaskStatus.Done -> RaftLucideIconName.CircleCheckBig
+            TaskStatus.Closed -> RaftLucideIconName.Ban
         }
 
 private fun TaskStatus.nextStatus(): TaskStatus =
@@ -1812,21 +1812,21 @@ private fun TasksStatusDialog(
     onDismiss: () -> Unit,
     onSelect: (TaskStatus) -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.tasks_label_status),
         onDismiss = onDismiss,
         dismissEnabled = !updating,
-        contentSpacing = SlockSpacing.Sm
+        contentSpacing = RaftAppSpacing.Sm
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             item {
                 Text(
                     text = task.tasksMeaningfulDisplayTitle(),
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
+                    style = RaftType.ButtonBold,
+                    color = RaftColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1834,17 +1834,17 @@ private fun TasksStatusDialog(
             item {
                 Text(
                     text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextBlack.copy(alpha = 0.65f)
+                    style = RaftType.Caption,
+                    color = RaftColor.TextBlack.copy(alpha = 0.65f)
                 )
             }
             items(TaskStatus.values().size) { idx ->
                 val status = TaskStatus.values()[idx]
                 val selected = status == task.status
-                SlockModalFullWidthActionButton(
+                RaftModalFullWidthActionButton(
                     label = status.localizedLabel(),
-                    icon = if (selected) SlockLucideIconName.Check else SlockLucideIconName.Circle,
-                    color = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                    icon = if (selected) RaftLucideIconName.Check else RaftLucideIconName.Circle,
+                    color = if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite,
                     enabled = !updating && !selected,
                     onClick = { onSelect(status) }
                 )
@@ -1853,8 +1853,8 @@ private fun TasksStatusDialog(
                 item {
                     Text(
                         text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption,
+                        color = RaftColor.AccentRed
                     )
                 }
             }
@@ -1871,25 +1871,25 @@ private fun TasksCreateDialog(
 ) {
     var titles by remember { mutableStateOf(listOf("")) }
     val anyNonBlank = titles.any { it.isNotBlank() }
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.tasks_label_new_tasks),
         onDismiss = onDismiss,
         dismissEnabled = !loading,
         keyboardAvoidanceEnabled = true,
         minWidth = 280.dp,
         maxWidth = 360.dp,
-        contentPadding = SlockSpacing.Md,
-        contentSpacing = SlockSpacing.Sm
+        contentPadding = RaftAppSpacing.Md,
+        contentSpacing = RaftAppSpacing.Sm
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             item {
                 Text(
                     text = stringResource(MR.strings.tasks_create_multiple_hint),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             }
             items(titles.size) { index ->
@@ -1900,22 +1900,22 @@ private fun TasksCreateDialog(
                         titles = titles.toMutableList().also { it[index] = next }
                     },
                     placeholder = stringResource(MR.strings.tasks_label_title),
-                    placeholderColor = SlockColor.TextMutedGray,
+                    placeholderColor = RaftColor.TextMutedGray,
                     enabled = !loading,
                     autoFocus = index == 0,
                     maxLines = 2,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 36.dp)
-                        .background(SlockColor.AppBgLightBlue.copy(alpha = 0.6f))
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(horizontal = SlockSpacing.Sm, vertical = 6.dp)
+                        .background(RaftColor.AppBgLightBlue.copy(alpha = 0.6f))
+                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                        .padding(horizontal = RaftAppSpacing.Sm, vertical = 6.dp)
                 )
             }
             item {
-                SlockToolbarChip(
+                RaftToolbarChip(
                     label = stringResource(MR.strings.tasks_action_add_another),
-                    iconName = SlockLucideIconName.Plus,
+                    iconName = RaftLucideIconName.Plus,
                     active = false,
                     enabled = !loading,
                     onClick = { titles = titles + "" }
@@ -1925,31 +1925,31 @@ private fun TasksCreateDialog(
                 item {
                     Text(
                         text = code,
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed,
+                        style = RaftType.Caption,
+                        color = RaftColor.AccentRed,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
-        SlockDialogFooter {
-            SlockBrutalActionButton(
+        RaftDialogFooter {
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !loading,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = RaftColor.SurfaceWhite,
                 onClick = onDismiss
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     if (loading) {
                         stringResource(MR.strings.tasks_create_action_creating)
                     } else {
                         stringResource(MR.strings.tasks_create_action)
                     },
-                leadingIcon = SlockLucideIconName.Check,
+                leadingIcon = RaftLucideIconName.Check,
                 enabled = anyNonBlank && !loading,
-                backgroundColor = SlockColor.AccentPink,
+                backgroundColor = RaftColor.AccentPink,
                 onClick = { onSubmit(titles) }
             )
         }
