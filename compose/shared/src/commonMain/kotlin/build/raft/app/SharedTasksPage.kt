@@ -1367,7 +1367,7 @@ private fun localizedTasksEmptyStatus(status: TaskStatus): String =
 
 /**
  * raft-ui TaskSectionTrigger (web TasksPanel `TaskSection`): a 32dp row, `px-2 gap-2`, the
- * status pixel, the label in callout bold hint ink and the count in mono-meta hint ink. The
+ * status pixel, the label in footnote bold hint ink and the count in mono-meta hint ink. The
  * whole row toggles the section; web's chevron is not drawn on the phone.
  */
 @Suppress("UNUSED_PARAMETER")
@@ -1395,7 +1395,7 @@ private fun BoardSectionHeader(
         )
         Text(
             text = status.localizedLabel(),
-            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold),
+            style = RaftType.SectionLabel,
             color = RaftColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -1525,7 +1525,7 @@ private fun SharedTaskCard(
                     )
                 }
             }
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(7.dp))
             Text(
                 text = task.tasksMeaningfulDisplayTitle(),
                 // `text-body` 16/24 at 600 (task titles).
@@ -1590,7 +1590,7 @@ private fun SharedTaskCard(
 /**
  * raft-ui TaskStatusBadge as an editable trigger (web InlineBadgeEditor with `badgeStatus`):
  * a 22dp soft chip in the status `-soft` wash, `px-1.5`, the 9dp status pixel, the label in
- * callout semibold foreground ink and a 12dp chevron. Tapping hands the chip's bottom-left
+ * caption semibold foreground ink and a 12dp chevron. Tapping hands the chip's bottom-left
  * anchor to [onClick] so the status menu drops below it, left-aligned.
  */
 @Composable
@@ -1617,8 +1617,8 @@ internal fun RaftTaskStatusChip(
         minHeight = 22.dp,
         horizontalPadding = 6.dp,
         verticalPadding = 0.dp,
-        labelFontSize = 14.sp,
-        labelLineHeight = 20.sp,
+        labelFontSize = 12.sp,
+        labelLineHeight = 16.sp,
         labelFontWeight = FontWeight.SemiBold,
         contentSpacing = 4.dp,
         leadingContent = {
