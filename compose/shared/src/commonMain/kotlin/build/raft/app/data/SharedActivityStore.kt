@@ -1803,7 +1803,6 @@ class SharedActivityStore internal constructor(
     }
 
     private fun markDone(requestedItem: InboxItem) {
-        if (requestedItem.isUnfollowedActivityThread) return
         val previous = _state.value
         if (previous.snapshot == null) return
         val overlayOwner = overlayOwner(previous)

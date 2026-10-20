@@ -1611,7 +1611,7 @@ class SharedInboxPanelTest {
             SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff),
             SharedActivityFooterSlot.Unfollowed.badgeVisual()
         )
-        assertFalse(item.activityShowsDoneAction())
+        assertTrue(item.activityShowsDoneAction(), "web keeps Done on unfollowed rows")
         assertTrue(item.copy(isFollowing = true).activityShowsDoneAction())
     }
 
@@ -1628,7 +1628,7 @@ class SharedInboxPanelTest {
         val unfollowed = followed.copy(key = "thread:unfollowed", isFollowing = false)
 
         assertEquals(listOf("toggle-read", "done", "unfollow-thread"), activityContextMenuActionIds(followed))
-        assertEquals(listOf("follow-thread"), activityContextMenuActionIds(unfollowed))
+        assertEquals(listOf("done", "follow-thread"), activityContextMenuActionIds(unfollowed))
     }
 
     @Test

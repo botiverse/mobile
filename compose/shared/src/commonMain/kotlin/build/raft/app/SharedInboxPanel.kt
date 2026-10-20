@@ -1656,9 +1656,9 @@ internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
 internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
     buildList {
         if (item.isUnfollowedActivityThread) {
-            // An unfollowed terminal row is historical context. It has no
-            // read/unread or Done affordance; the only valid action is an
-            // explicit Follow, which clears the server tombstone.
+            // Web InboxContextMenu: an unfollowed row has no read/unread toggle
+            // (the server zeroes its attention) but keeps Done, then Follow.
+            add("done")
             if (item.kind == InboxItemKind.Thread) add("follow-thread")
             return@buildList
         }
@@ -2038,7 +2038,13 @@ internal fun InboxItem.activityDoneClickIdentity(
     presentationOwnerIdentity: String = "",
 ): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
-internal fun InboxItem.activityShowsDoneAction(): Boolean = !isUnfollowedActivityThread
+/**
+ * Web always offers Done, including on an unfollowed thread row (slock
+ * 1bb70cbeb ThreadsInbox.tsx:375-392, InboxContextMenu.tsx:115-120): the server
+ * keeps such a row in All until it is marked Done, so it must stay clearable.
+ */
+@Suppress("UnusedReceiverParameter")
+internal fun InboxItem.activityShowsDoneAction(): Boolean = true
 
 @Composable
 private fun Modifier.activityRowGestures(

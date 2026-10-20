@@ -145,6 +145,27 @@ class SharedActivityStoreDoneFrontierTest {
         assertEquals("11", store.state.value.items.single().readStateLatestActivitySeq)
     }
 
+    @Test
+    fun unfollowedThreadRowsCanBeMarkedDoneLikeWeb() = runTest {
+        // filter=all carries unfollowed, not-Done threads inline
+        // (routes/channels.ts:1385 includeUnfollowedThreads); web lets them be Done.
+        val unfollowed =
+            threadItem("thread-unfollowed").copy(isFollowing = false, unfollowedAt = "2026-10-20T00:00:00.000Z").withFrontier("88")
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(unfollowed))))
+        val conversations = FakeConversationRepository()
+        val store = frontierStore(inbox, conversations)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+
+        assertEquals(listOf(ChannelId("thread-unfollowed")), conversations.doneThreadChannelIds)
+        assertEquals(listOf<InboxDoneFrontier>(InboxDoneFrontier.Storage("88")), conversations.doneThreadFrontiers)
+        assertEquals(emptyList(), store.state.value.items)
+        assertEquals(0, store.state.value.totalCount)
+    }
+
     private fun TestScope.frontierStore(
         inbox: InboxRepository,
         conversations: FakeConversationRepository = FakeConversationRepository()
