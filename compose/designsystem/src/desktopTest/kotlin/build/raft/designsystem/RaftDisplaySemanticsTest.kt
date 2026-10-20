@@ -13,10 +13,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -28,6 +31,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
@@ -181,6 +185,65 @@ class RaftDisplaySemanticsTest {
             mainClock.advanceTimeBy(300)
             onNode(hasText("Add Reaction")).assertExists()
             assertEquals(0, clicks)
+        }
+
+    /**
+     * The tooltip adds no screen-reader stop of its own: in the unmerged tree there is one
+     * node that merges its descendants or takes focus, and it is the labelled button.
+     */
+    @Test
+    fun anIconButtonWithItsTooltipIsOneFocusStop() =
+        runComposeUiTest {
+            setContent(themed { RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost) {} })
+            val focusStop =
+                SemanticsMatcher("merges descendants or is focusable") {
+                    it.config.isMergingSemanticsOfDescendants || SemanticsProperties.Focused in it.config
+                }
+            val stops = onAllNodes(focusStop, useUnmergedTree = true).fetchSemanticsNodes()
+            assertEquals(1, stops.size, "focus stops: ${stops.map { it.config }}")
+            val stop = stops.single().config
+            assertEquals(listOf("Add Reaction"), stop.getOrNull(SemanticsProperties.ContentDescription))
+            assertEquals(Role.Button, stop.getOrNull(SemanticsProperties.Role))
+            assertTrue(SemanticsProperties.Focused in stop, "the button itself is focusable")
+        }
+
+    /**
+     * A mouse keeps the tooltip open while it hovers (past Material's 1.5s) and closes it on
+     * leaving; a long press's tooltip still closes itself after 1.5s.
+     *
+     * The 1.5s is a coroutine timeout, and the test scene's effect dispatcher takes its delays
+     * from the wall clock, not [mainClock]: hence the real [Thread.sleep]s; [mainClock] then
+     * runs the fade.
+     */
+    @Test
+    fun aHoveredTooltipStaysOpenUntilThePointerLeaves() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Box(Modifier.size(200.dp)) {
+                        RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost, modifier = Modifier.align(Alignment.Center)) {}
+                    }
+                },
+            )
+            mainClock.autoAdvance = false
+            val button = onNodeWithContentDescription("Add Reaction")
+            button.performMouseInput { moveTo(center) }
+            mainClock.advanceTimeBy(300)
+            onNode(hasText("Add Reaction")).assertExists()
+            Thread.sleep(2_000)
+            mainClock.advanceTimeBy(1_000)
+            onNode(hasText("Add Reaction")).assertExists()
+            // Off the button, below it (the bubble is above).
+            button.performMouseInput { moveTo(bottomRight + Offset(30f, 30f)) }
+            mainClock.advanceTimeBy(1_000)
+            onNode(hasText("Add Reaction")).assertDoesNotExist()
+
+            button.performTouchInput { longClick() }
+            mainClock.advanceTimeBy(300)
+            onNode(hasText("Add Reaction")).assertExists()
+            Thread.sleep(2_000)
+            mainClock.advanceTimeBy(1_000)
+            onNode(hasText("Add Reaction")).assertDoesNotExist()
         }
 
     @Test
