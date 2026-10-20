@@ -15,8 +15,6 @@ import build.raft.app.components.RaftProgressBarTone
 import build.raft.app.components.RaftSectionHeader
 import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.RaftAppSelectTrigger
-import build.raft.app.components.RaftMenuItemRow
-import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.RaftSelectionPopover
 import build.raft.app.components.RaftSelectionPopoverOption
 import build.raft.app.components.RaftAppSkeleton
@@ -459,45 +457,6 @@ internal fun UiSelectionPopoverVisualContent() {
                     RaftSelectionPopoverOption("none", "No channel", italic = true, reserveLeadingSlot = true)
                 )
         )
-    }
-}
-
-@Composable
-internal fun UiMenuItemVisualContent() {
-    // Mirrors the web case: four slock `MenuItem` rows (36dp, px-2.5, callout medium, mono
-    // hint shortcut) stacked flush inside a `rounded-container border border-line-seam
-    // bg-layer-popover shadow-float` card -- no popup inset -- with the last row
-    // carrying its own `border-t border-line-hairline` inside its 36dp box. 342 x 178dp =
-    // 16 + 1 + 4 x 36 + 1 + 16.
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(178.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftLookOverlaySurface()
-                    .padding(RaftAppStroke.Thin)
-        ) {
-            RaftMenuItemRow(label = "Open Channel", trailing = "⌘K")
-            RaftMenuItemRow(label = "Mark as Read")
-            RaftMenuItemRow(label = "Archive unavailable", enabled = false)
-            Box(modifier = Modifier.fillMaxWidth()) {
-                RaftMenuItemRow(label = "Delete Message")
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(RaftAppStroke.Thin)
-                            .background(RaftColor.BorderHairline)
-                )
-            }
-        }
     }
 }
 
