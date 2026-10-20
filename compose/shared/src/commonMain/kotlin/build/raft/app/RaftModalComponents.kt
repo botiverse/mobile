@@ -951,7 +951,6 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     RaftAvatarWithStatus(
         statusColor = statusColor,
             avatarSize = avatarSize,
-            statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp,
             statusPulsing = statusPulsing
         ) {
             RaftAppAvatar(

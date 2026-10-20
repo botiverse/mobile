@@ -8,16 +8,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -37,10 +35,7 @@ internal object RaftStatusIndicatorTokens {
     // shape/edge follow [RaftAppThemeState]; brutal-only previews pass their own.
     val Shape: RaftStatusIndicatorShape
         get() = if (RaftAppThemeState.theme.isAmbient) RaftStatusIndicatorShape.Square else RaftStatusIndicatorShape.Circle
-    // #90 React parity: bump avatar overlay size 9dp → 11dp to match React
-    // `StatusDot size="lg"` (`size-[11px]`). Inline / server-unread sizes
-    // match React `size="md"` (10dp ≈ 10px) and stay unchanged.
-    val AvatarSize: Dp = 11.dp
+    // Avatar presence lights size per avatar step: see [RaftAvatarStep] / [RaftAvatarWithStatus].
     // raft `md` presence / attention pixel is 9px.
     val InlineSize: Dp
         get() = if (RaftAppThemeState.theme.isAmbient) 9.dp else 10.dp
@@ -50,15 +45,6 @@ internal object RaftStatusIndicatorTokens {
         get() = if (RaftAppThemeState.theme.isAmbient) RaftAppStroke.Control else RaftAppStroke.Thin
     val BorderColor: Color
         get() = if (RaftAppThemeState.theme.isAmbient) RaftColor.StickerInk else RaftColor.BorderBlack
-
-    // raft-ui 0.8.0 AvatarBadge: the 7px light on xs/2xs avatars takes a 1px ink edge and a
-    // 1px canvas cut-out; larger lights keep the default edge and a 2px cut-out.
-    private val SmallLightMax: Dp = 7.dp
-
-    fun cutoutWidth(statusSize: Dp): Dp = if (statusSize <= SmallLightMax) 1.dp else 2.dp
-
-    fun avatarBorderWidth(statusSize: Dp): Dp =
-        if (statusSize <= SmallLightMax) RaftAppStroke.Thin else BorderWidth
 }
 
 @Composable
@@ -69,7 +55,9 @@ internal fun RaftStatusIndicator(
     shape: RaftStatusIndicatorShape = RaftStatusIndicatorTokens.Shape,
     borderColor: Color = RaftStatusIndicatorTokens.BorderColor,
     borderWidth: Dp = RaftStatusIndicatorTokens.BorderWidth,
-    pulsing: Boolean = false
+    pulsing: Boolean = false,
+    // raft-ui status pixel: `rounded-[2px]`; the 6px Status xs takes `rounded-[1px]`.
+    cornerRadius: Dp = if (size <= 6.dp) 1.dp else 2.dp
 ) {
     val pulseAlphaState: State<Float>? =
         if (pulsing) {
@@ -107,22 +95,25 @@ internal fun RaftStatusIndicator(
                 }
             }
             RaftStatusIndicatorShape.Square -> {
+                val radius = cornerRadius.toPx()
                 val fillSize =
                     Size(
                         width = (this.size.width - stroke).coerceAtLeast(0f),
                         height = (this.size.height - stroke).coerceAtLeast(0f)
                     )
-                drawRect(
+                drawRoundRect(
                     color = fillColor,
                     topLeft = Offset(halfStroke, halfStroke),
                     size = fillSize,
+                    cornerRadius = CornerRadius((radius - halfStroke).coerceAtLeast(0f)),
                     style = Fill
                 )
                 if (stroke > 0f) {
-                    drawRect(
+                    drawRoundRect(
                         color = outlineColor,
                         topLeft = Offset(halfStroke, halfStroke),
                         size = fillSize,
+                        cornerRadius = CornerRadius((radius - halfStroke).coerceAtLeast(0f)),
                         style = Stroke(width = stroke)
                     )
                 }
@@ -131,54 +122,60 @@ internal fun RaftStatusIndicator(
     }
 }
 
+/**
+ * raft-ui 0.8.0 Avatar + AvatarBadge: [avatar] in an [avatarSize] box with the presence
+ * light in its bottom-right corner. The light's size, ink edge, canvas cut-out and overhang
+ * follow the raft-ui step nearest [avatarSize] ([RaftAvatarStep]): 11dp on md, 9dp on sm,
+ * 7dp with a 1dp edge and 1dp cut-out on xs/2xs, 14dp on lg, 20dp on xl. [statusSize]
+ * overrides the light's size only. [cutoutColor] is the surface the avatar sits on, so the
+ * light reads as cut out of it. Takes exactly [avatarSize]; the light overhangs it.
+ */
 @Composable
 internal fun RaftAvatarWithStatus(
     statusColor: Color?,
     modifier: Modifier = Modifier,
     avatarSize: Dp,
-    statusSize: Dp = RaftStatusIndicatorTokens.AvatarSize,
+    statusSize: Dp? = null,
     shape: RaftStatusIndicatorShape = RaftStatusIndicatorTokens.Shape,
     statusPulsing: Boolean = false,
+    cutoutColor: Color = RaftColor.Canvas,
     avatar: @Composable BoxScope.() -> Unit
 ) {
-    // #90 React parity: React `StatusDot` avatar overlay uses
-    // `className="absolute -bottom-0.5 -right-0.5"` — the dot is offset by
-    // -0.5 units so it overflows the avatar corner. Mirror that here by
-    // wrapping the dot in a Box that extends `statusSize / 2` past the
-    // avatar bounds and aligning the dot to its BottomEnd.
-    val statusOffset = statusSize / 2
+    val step = RaftAvatarStep.nearest(avatarSize)
+    val lightSize = statusSize ?: step.badgeSize
+    val square = shape == RaftStatusIndicatorShape.Square
     Box(modifier = modifier.size(avatarSize)) {
         Box(modifier = Modifier.align(Alignment.Center), content = avatar)
         statusColor?.let {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 0.dp, bottom = 0.dp)
-                    .offset(x = statusOffset / 2, y = statusOffset / 2)
-                    .size(statusSize + statusOffset)
-            ) {
-                // raft-ui AvatarBadge cuts the light out of the avatar with a canvas-coloured
-                // outline (`outline-2 outline-layer-canvas`; 1px on the xs/2xs/3xs avatars).
-                val cutout = RaftStatusIndicatorTokens.cutoutWidth(statusSize)
-                Box(
-                    modifier = Modifier
+            val cutout = step.badgeCutout
+            val radius = step.badgeRadius
+            RaftStatusIndicator(
+                color = it,
+                size = lightSize,
+                shape = shape,
+                borderWidth = if (square) step.badgeBorder else RaftStatusIndicatorTokens.BorderWidth,
+                pulsing = statusPulsing,
+                cornerRadius = radius,
+                modifier =
+                    Modifier
                         .align(Alignment.BottomEnd)
-                        .offset(x = cutout, y = cutout)
-                        .size(statusSize + cutout * 2)
-                        .background(
-                            RaftColor.Canvas,
-                            if (shape == RaftStatusIndicatorShape.Circle) CircleShape else RoundedCornerShape(cutout)
-                        )
+                        .offset(x = step.badgeOverhang, y = step.badgeOverhang)
+                        // `outline-2 outline-layer-canvas` (1px on xs/2xs/3xs): the outline
+                        // follows the light's corners, so its outer radius is radius + width.
+                        .drawBehind {
+                            val c = cutout.toPx()
+                            if (square) {
+                                drawRoundRect(
+                                    color = cutoutColor,
+                                    topLeft = Offset(-c, -c),
+                                    size = Size(size.width + c * 2, size.height + c * 2),
+                                    cornerRadius = CornerRadius(radius.toPx() + c)
+                                )
+                            } else {
+                                drawCircle(color = cutoutColor, radius = size.minDimension / 2f + c)
+                            }
+                        }
                 )
-                RaftStatusIndicator(
-                    color = it,
-                    size = statusSize,
-                    shape = shape,
-                    borderWidth = RaftStatusIndicatorTokens.avatarBorderWidth(statusSize),
-                    pulsing = statusPulsing,
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                )
-            }
         }
     }
 }

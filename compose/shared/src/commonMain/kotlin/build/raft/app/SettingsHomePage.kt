@@ -901,7 +901,6 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                 RaftAvatarWithStatus(
                     statusColor = status?.color,
                     avatarSize = 32.dp,
-                    statusSize = 8.dp,
                     statusPulsing = status?.pulsing == true
                 ) {
                     RaftAppAvatar(
@@ -20417,7 +20416,6 @@ private fun SharedCreateChannelMemberRow(
         RaftAvatarWithStatus(
             statusColor = statusIndicatorState?.color,
             avatarSize = 28.dp,
-            statusSize = 7.dp,
             statusPulsing = statusIndicatorState?.pulsing == true
         ) {
             RaftAppAvatar(

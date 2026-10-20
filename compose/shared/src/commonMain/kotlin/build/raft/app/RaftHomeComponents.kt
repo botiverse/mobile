@@ -7083,9 +7083,7 @@ private fun DirectMessageStatusDot(state: RaftAgentStatusIndicatorState) {
 private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: RaftAppPresence? = null, showPresence: Boolean = true) {
     RaftAvatarWithStatus(
         statusColor = if (showPresence) presence?.homeRowColor else null,
-        avatarSize = ChannelAvatarSize,
-        // raft-ui 2xs avatar light: 7px.
-        statusSize = 7.dp
+        avatarSize = ChannelAvatarSize
     ) {
         RaftAppAvatar(avatarWireValue, label)
     }

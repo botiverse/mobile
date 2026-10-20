@@ -29250,9 +29250,6 @@ private fun ThreadMessageAvatar(
         RaftAvatarWithStatus(
             statusColor = if (muted) null else status?.color,
             avatarSize = 36.dp,
-            // #90 React parity: bump chat thread avatar overlay status dot
-            // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
-            statusSize = 11.dp,
             statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -29322,9 +29319,6 @@ private fun ThreadMessageStaticAvatar(
         RaftAvatarWithStatus(
             statusColor = status?.color,
             avatarSize = 36.dp,
-            // #90 React parity: bump chat thread avatar overlay status dot
-            // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
-            statusSize = 11.dp,
             statusPulsing = status?.pulsing == true && statusPulsing
         ) {
             RaftAppAvatar(

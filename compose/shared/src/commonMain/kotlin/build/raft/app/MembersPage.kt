@@ -6468,7 +6468,6 @@ private fun MembersDetailHeader(
             MembersAvatar(
                 member = member,
                 avatarSize = 36.dp,
-                statusSize = 10.dp,
                 statusDisplayState = agentStatusDisplayState,
                 statusIndicatorState = agentStatusIndicatorState,
                 memberAvatarResolver = memberAvatarResolver,
@@ -6586,7 +6585,6 @@ private fun MembersDetailSummary(
         MembersAvatar(
             member = member,
             avatarSize = 58.dp,
-            statusSize = 12.dp,
             statusDisplayState =
                 agentStatusIndicatorState?.toMembersAgentStatusDisplayState()
                     ?: unknownMembersAgentStatusIndicatorState().toMembersAgentStatusDisplayState(),
@@ -7958,7 +7956,6 @@ private fun MembersHumanProfileSummary(
         MembersAvatar(
             member = member,
             avatarSize = 74.dp,
-            statusSize = 0.dp,
             memberAvatarResolver = memberAvatarResolver,
             showStatusOverlay = false
         )
@@ -8529,7 +8526,6 @@ private fun MembersHumanCreatedAgentRow(
         MembersAvatar(
             member = profile,
             avatarSize = 32.dp,
-            statusSize = 0.dp,
             memberAvatarResolver = memberAvatarResolver,
             showStatusOverlay = false
         )
@@ -9750,7 +9746,6 @@ private fun MembersAgentInfoSection(
                         MembersAvatar(
                             member = creatorProfile,
                             avatarSize = 22.dp,
-                            statusSize = 0.dp,
                             memberAvatarResolver = memberAvatarResolver,
                             showStatusOverlay = false
                         )
@@ -12146,7 +12141,6 @@ private fun MembersAgentCreatedAgentRow(
         MembersAvatar(
             member = profile,
             avatarSize = 32.dp,
-            statusSize = 0.dp,
             memberAvatarResolver = memberAvatarResolver,
             showStatusOverlay = false
         )
@@ -13960,7 +13954,6 @@ private fun MembersListRow(
 private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MembersListAvatarSize,
-    statusSize: Dp = MemberStatusDotSize,
     statusDisplayState: MembersAgentStatusDisplayState = MembersUnknownAgentStatusDisplayState,
     statusIndicatorState: RaftAgentStatusIndicatorState? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -13981,7 +13974,6 @@ private fun MembersAvatar(
                 null
             },
         avatarSize = avatarSize,
-        statusSize = statusSize,
         statusPulsing = statusIndicatorState?.pulsing ?: statusDisplayState.pulsing
     ) {
         RaftAppAvatar(
