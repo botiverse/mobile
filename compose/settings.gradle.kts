@@ -1,10 +1,6 @@
 pluginManagement {
-    // D8 8.13.19 (bundled by AGP 8.13.2) truncates a high argument register
-    // in MembersAgentProfileTab. Keep AGP; use the last verified stable dexer.
-    buildscript {
-        repositories { google(); mavenCentral() }
-        dependencies { classpath("com.android.tools:r8:8.10.24") }
-    }
+    // The D8 8.10.24 pin (D8 8.13.19 from AGP 8.13.2 truncated a high argument register in
+    // MembersAgentProfileTab) is gone: AGP 9.1 cannot dex with an 8.x R8. AGP 9.1.1 ships R8 9.1.
 
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {

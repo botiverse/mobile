@@ -353,10 +353,10 @@ tasks.matching { task ->
 }
 
 // The MR generator adds build/generated/tmm-res/androidMain to the Android source sets without a
-// task dependency; Gradle 9 rejects every variant resource/asset task reading it undeclared.
+// task dependency; Gradle 9 rejects every Android variant task (resources, assets, source-set
+// path maps, ...) that reads it undeclared.
 tasks.matching { task ->
-    (task.name.contains("Debug") || task.name.contains("Release")) &&
-        (task.name.endsWith("Resources") || task.name.endsWith("Assets"))
+    task.name.contains("Debug") || task.name.contains("Release")
 }.configureEach {
     dependsOn("generateMRandroidMain")
 }
