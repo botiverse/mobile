@@ -382,7 +382,8 @@ internal fun RaftBrutalActionSheetRow(
 
 /**
  * raft action-sheet row: a menu-item row (control radius, pressed wash, no ink box) with
- * a soft icon tile. Destructive rows switch to the danger soft tile and danger-strong ink.
+ * a soft icon tile. A destructive row is drawn like any other (raft-ui: no red menu or list
+ * rows; the confirm dialog carries the deletion).
  */
 @Composable
 private fun RaftLookActionSheetRow(
@@ -393,7 +394,7 @@ private fun RaftLookActionSheetRow(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(RaftAppRadius.Control)
-    val titleColor = if (model.destructive) RaftColor.DangerStrong else RaftColor.TextBlack
+    val titleColor = RaftColor.TextBlack
     RaftAnchorButton(
         onClick = onClick,
         pressOffset = 0.dp,
@@ -416,13 +417,13 @@ private fun RaftLookActionSheetRow(
                 modifier =
                     Modifier
                         .size(32.dp)
-                        .background(if (model.destructive) RaftColor.DangerSoft else RaftColor.FillMuted, shape),
+                        .background(RaftColor.FillMuted, shape),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(
                     model.icon,
                     modifier = Modifier.size(18.dp),
-                    color = raftArgbHex(if (model.destructive) RaftColor.DangerStrong else RaftColor.TextMuted)
+                    color = raftArgbHex(RaftColor.TextMuted)
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

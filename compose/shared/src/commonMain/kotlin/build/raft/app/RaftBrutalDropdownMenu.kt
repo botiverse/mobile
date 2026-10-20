@@ -43,8 +43,8 @@ private const val RaftBrutalDropdownMenuRowHeightValue = 40f
 
 /**
  * Single-action menu item rendered by [RaftBrutalDropdownMenu]. `id` is the stable
- * identity returned via `onSelect`; `destructive` switches the row tint to a red wash
- * (used for "Delete" style actions).
+ * identity returned via `onSelect`. `destructive` marks a "Delete" style action; it is drawn
+ * like any other item (raft-ui: no red menu items, the confirm dialog carries the deletion).
  */
 internal data class RaftBrutalDropdownMenuItem(
     val id: String,
@@ -238,9 +238,9 @@ internal fun RaftBrutalDropdownMenuRow(
     onClick: () -> Unit
 ) {
     // The design-system menu item (brand-soft highlight, bold + check for the current value,
-    // mono shortcut). It has no destructive ink and no trailing icon other than the check yet,
-    // so those rows keep the raft-look row below.
-    if (!item.destructive && (item.trailingIcon == null || item.trailingIcon == RaftLucideIconName.Check)) {
+    // mono shortcut). It has no trailing icon other than the check, so those rows keep the
+    // raft-look row below.
+    if (item.trailingIcon == null || item.trailingIcon == RaftLucideIconName.Check) {
         RaftMenuItem(
             text = item.label,
             onClick = onClick,
@@ -253,7 +253,7 @@ internal fun RaftBrutalDropdownMenuRow(
     }
     // Press feedback mirrors web MenuItem `hover:bg-palette-yellow/30` (artin,
     // #proj-uiux task #7): the row washes brand yellow while the finger is
-    // down. Destructive rows keep their red wash.
+    // down.
     var pressed by remember(item.id) { mutableStateOf(false) }
     val gestureOwner =
         rememberRaftGestureOwner(
@@ -299,8 +299,8 @@ internal fun RaftBrutalDropdownMenuRow(
 
 /**
  * raft-ui menu item: min 36dp, control radius, px-2.5, 10dp gap, callout 14/20 medium;
- * pressed/highlighted = `--brand-soft`; 16dp icons in icon ink; destructive items take
- * the `--danger-strong` ink (no red wash); shortcut / trailing text is mono 12/16 hint.
+ * pressed/highlighted = `--brand-soft`; 16dp icons in icon ink; shortcut / trailing text is
+ * mono 12/16 hint.
  */
 @Composable
 private fun RaftDropdownMenuRow(
@@ -314,13 +314,11 @@ private fun RaftDropdownMenuRow(
     val ink =
         when {
             !item.enabled -> RaftColor.ForegroundDisabled
-            item.destructive -> RaftColor.DangerStrong
             else -> RaftColor.TextBlack
         }
     val iconInk =
         when {
             !item.enabled -> RaftColor.ForegroundDisabled
-            item.destructive -> RaftColor.DangerStrong
             else -> RaftColor.TextMuted
         }
     Row(
