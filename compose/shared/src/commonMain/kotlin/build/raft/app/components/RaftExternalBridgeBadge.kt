@@ -44,7 +44,7 @@ internal fun RaftExternalBridgeBadge(
     Box(
         modifier =
             modifier
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RectangleShape)
+                .border(RaftAppStroke.Thin, RaftColor.StickerInk, RectangleShape)
                 .background(RaftColor.AccentLavender, RectangleShape)
                 .raftSquareCorners()
                 .padding(horizontal = 4.dp, vertical = 1.dp),
@@ -61,7 +61,7 @@ internal fun RaftExternalBridgeBadge(
                         letterSpacing = 0.4.sp
                     )
                     .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextBlack,
+            color = RaftColor.StickerInk,
             maxLines = 1
         )
     }

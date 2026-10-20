@@ -354,7 +354,7 @@ internal fun RaftLongMessageCollapsibleBody(
                                 drawRect(
                                     brush =
                                         Brush.verticalGradient(
-                                            0f to Color.Black,
+                                            0f to Color.Black, // raft-color: DstIn alpha mask, not a visible colour
                                             1f to Color.Transparent,
                                             startY = height - fade,
                                             endY = height

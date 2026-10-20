@@ -4,7 +4,7 @@
     <style name="Theme.Raft" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
-        <item name="android:windowBackground">@color/raft_surface_cream</item>
+        <item name="android:windowBackground">@color/raft_window_background</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">@color/raft_accent_pink</item>
         <item name="android:textColorHighlight">@color/raft_accent_pink</item>
@@ -18,8 +18,8 @@
     </style>
 
     <style name="Theme.Raft.Starting" parent="Theme.SplashScreen">
-        <item name="android:windowBackground">@color/raft_surface_cream</item>
-        <item name="windowSplashScreenBackground">@color/raft_surface_cream</item>
+        <item name="android:windowBackground">@color/raft_window_background</item>
+        <item name="windowSplashScreenBackground">@color/raft_window_background</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="postSplashScreenTheme">@style/Theme.Raft</item>
     </style>

@@ -13,6 +13,7 @@ import build.raft.app.Modal
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
+import build.raft.app.raftArgbHex
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
@@ -166,7 +167,8 @@ internal fun RaftMermaidCard(
         if (view == RaftMermaidView.Code) {
             codeContent()
         } else {
-            BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            // Mermaid scene colours are light-theme ink, so the diagram keeps a paper panel.
+            BoxWithConstraints(Modifier.fillMaxWidth().background(RaftColor.StickerPaper).padding(horizontal = 8.dp)) {
                 val fittedScale = raftMermaidCardInlineScale(diagramWidth, maxWidth.value, scale)
                 val backSwipeRowState = rememberLazyListState()
                 val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
@@ -252,6 +254,7 @@ private fun RaftMermaidFullscreen(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .background(RaftColor.StickerPaper)
                         .padding(bottom = bottomSafeArea)
                         .clipToBounds()
                         // Panning the diagram keeps every drag from the host back swipe.
@@ -290,16 +293,20 @@ private fun RaftMermaidViewTab(
         modifier =
             Modifier
                 .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite)
-                .border(1.dp, RaftColor.BorderBlack)
+                .border(1.dp, if (selected) RaftColor.StickerInk else RaftColor.BorderBlack)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftLucideIcon(name = icon, modifier = Modifier.size(13.dp))
+        RaftLucideIcon(
+            name = icon,
+            modifier = Modifier.size(13.dp),
+            color = if (selected) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb
+        )
         Spacer(Modifier.width(4.dp))
         Text(
             text = label,
-            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = RaftColor.TextBlack)
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack)
         )
     }
 }

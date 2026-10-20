@@ -1,5 +1,6 @@
 package build.raft.app.compat.pager
 
+import build.raft.app.data.RaftAppAppearanceRuntime
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.displayCutout
@@ -60,6 +61,8 @@ object RaftPageRegistry {
     /** The page body for [pageName], or null if no page has that name. */
     fun content(pageName: String): (@Composable () -> Unit)? {
         val factory = factories[pageName] ?: return null
+        // Hosts load the stored theme at startup; this covers a host that did not (idempotent).
+        RaftAppAppearanceRuntime.ensureLoaded()
         return { RaftPagerHost(factory) }
     }
 

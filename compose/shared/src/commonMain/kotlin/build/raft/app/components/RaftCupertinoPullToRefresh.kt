@@ -182,4 +182,4 @@ internal const val RaftCupertinoSpokeCount = 8
 private const val RaftCupertinoSpinPeriodMillis = 800
 private val RaftCupertinoRefreshThreshold = 64.dp
 private val RaftCupertinoSpinnerSize = 22.dp
-private val RaftCupertinoSpinnerColor = Color(0xFF8E8E93)
+private val RaftCupertinoSpinnerColor = Color(0xFF8E8E93) // raft-color: iOS systemGray spinner, same in light and dark

@@ -355,7 +355,7 @@ private fun RaftAppShellNetworkBanner() {
         Text(
             text = stringResource(MR.strings.app_shell_offline_banner),
             style = RaftType.ButtonBold,
-            color = RaftColor.TextBlack,
+            color = RaftColor.StickerInk,
             maxLines = 1
         )
     }

@@ -136,9 +136,9 @@ private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
 private val ThreadComposerAttachmentTileSize = 64.dp
 private val ThreadComposerAttachmentCloseSize = 22.dp
-private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
-private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
-private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
+private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
+private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
+private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 // raft-ui 0.6.0 `ComposerSuggestionList` geometry: `max-h-60` root with `p-1.5`, opening
 // `mb-2` above the composer; `min-h-9 px-2.5 py-1 gap-2.5` options with a `gap-1.5`
@@ -183,9 +183,9 @@ private const val ThreadComposerMentionBatchPartialNoticeVisualMarker =
     "__visual_pending_mention_batch_partial_notice__"
 private const val ThreadComposerMentionBatchPartialNoticeTitleVisualMarker =
     "__visual_pending_mention_batch_partial_notice_title__"
-private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE)
-private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444)
-private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E)
+private val ThreadComposerSuggestionScrollOracleUnderlay = Color(0xFF22D3EE) // raft-color: visual-test oracle colour
+private val ThreadComposerSuggestionScrollOracleLeak = Color(0xFFEF4444) // raft-color: visual-test oracle colour
+private val ThreadComposerSuggestionInteractionOracleSuccess = Color(0xFF22C55E) // raft-color: visual-test oracle colour
 private const val ThreadComposerSuggestionInteractionOracleMarker = "ATTACH_IMAGE_RECEIVED"
 internal val ThreadComposerSuggestionOutsidePointerMode =
     RaftFloatingOverlayOutsidePointerMode.PassThrough
@@ -4660,14 +4660,14 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
         Text(
             text = stringResource(MR.strings.thread_composer_attachment_upload_failed),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = RaftColor.TextBlack,
+            color = RaftColor.StickerInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = stringResource(MR.strings.thread_composer_attachment_tap_retry),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = RaftColor.TextBlack,
+            color = RaftColor.StickerInk,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -4682,11 +4682,11 @@ private fun BoxScope.ComposerAttachmentRemoveButton(onRemove: () -> Unit) {
                 .size(ThreadComposerAttachmentCloseSize)
                 .align(Alignment.TopEnd)
                 .offset(x = 5f, y = -5f)
-                .background(RaftColor.ShadowBlack, RoundedCornerShape(ThreadComposerAttachmentCloseSize / 2))
+                .background(RaftColor.StickerInk, RoundedCornerShape(ThreadComposerAttachmentCloseSize / 2))
                 .clickable(onClick = onRemove),
         contentAlignment = Alignment.Center
     ) {
-        RaftLucideIcon(RaftLucideIconName.X, modifier = Modifier.size(12.dp), color = "#FFFFFFFF")
+        RaftLucideIcon(RaftLucideIconName.X, modifier = Modifier.size(12.dp), color = raftArgbHex(RaftColor.StickerPaper))
     }
 }
 

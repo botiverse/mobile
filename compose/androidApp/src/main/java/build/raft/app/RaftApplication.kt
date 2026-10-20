@@ -21,6 +21,8 @@ import build.raft.app.shared.RaftAndroidWebViewWarmup
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.data.RaftAppAppearanceRuntime
+import android.content.res.Configuration
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
 import build.raft.app.network.installAndroidNetworkKmmAppIdentity
@@ -102,6 +104,11 @@ class RaftApplication : Application() {
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
+        // Settings > Appearance > Theme, applied before any page composes.
+        RaftAppAppearanceRuntime.onSystemDarkChanged(
+            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        )
+        RaftAppAppearanceRuntime.ensureLoaded()
         // The font picker is gone (the design system fixes the faces); drop its stored choice.
         raftClearLegacyFontPreference()
         installAndroidAppScopePlatformFileResolver(this)

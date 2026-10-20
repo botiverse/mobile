@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- raft-design dark `layer-canvas`: the window and splash behind the first frame when the
+         OS is dark. RaftCmpActivity repaints it from the app's own theme choice in onCreate. -->
+    <color name="raft_window_background">#FF1B1B19</color>
+</resources>

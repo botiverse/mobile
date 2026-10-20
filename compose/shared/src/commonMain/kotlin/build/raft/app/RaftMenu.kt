@@ -72,7 +72,7 @@ private val RaftBaseMenuRowHeight = 34.dp
 private val RaftBaseMenuHorizontalOffset = (-8).dp
 private val RaftBaseMenuVerticalOffset = 8.dp
 private val RaftBaseMenuViewportGap = 8.dp
-private val RaftBaseMenuForegroundColor = Color(0xFF000000)
+private val RaftBaseMenuForegroundColor = Color(0xFF000000) // raft-color: unused legacy parameter default
 private const val RaftBaseMenuChromeWidthValue = 84
 
 // Status editors can be opened from a card near either viewport edge. React measures
@@ -436,14 +436,14 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                     RaftLucideIcon(
                                         RaftLucideIconName.UserMinus,
                                         modifier = Modifier.size(15.dp),
-                                        color = "#FF000000"
+                                        color = raftLegacyIconInk(onSticker = selectedId == TasksUnassignedAssigneeFilterId)
                                     )
                                 }
                                 Text(
                                     text = unassignedLabel,
                                     style = RaftType.Body.withRaftFontWeight(FontWeight.Medium)
                                         .copy(fontSize = 14.sp, lineHeight = 18.sp),
-                                    color = RaftColor.TextBlack,
+                                    color = if (selectedId == TasksUnassignedAssigneeFilterId) RaftColor.StickerInk else RaftColor.TextBlack,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false)
@@ -452,7 +452,7 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                     RaftLucideIcon(
                                         RaftLucideIconName.Check,
                                         modifier = Modifier.size(15.dp),
-                                        color = "#FF000000"
+                                        color = raftLegacyIconInk(onSticker = true)
                                     )
                                 } else {
                                     Spacer(modifier = Modifier.size(15.dp))

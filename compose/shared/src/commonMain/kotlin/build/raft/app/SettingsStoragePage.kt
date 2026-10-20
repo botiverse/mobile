@@ -218,11 +218,11 @@ private fun SettingsStorageSummary(
     onRefresh: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.StickerInk).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(title.raftDisplayUppercase(), style = RaftType.SectionLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
-        Text(size, style = RaftType.PageTitle.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+        Text(title.raftDisplayUppercase(), style = RaftType.SectionLabel.copy(color = RaftColor.StickerInk), color = RaftColor.StickerInk)
+        Text(size, style = RaftType.PageTitle.copy(color = RaftColor.StickerInk), color = RaftColor.StickerInk)
         SettingsStorageButton(refreshLabel, iconName = RaftLucideIconName.RefreshCw, enabled = true, loading = false, onClick = onRefresh)
     }
 }
@@ -288,13 +288,13 @@ private fun SettingsStorageFeedback(text: String) {
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.AccentCyan)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Default, RaftColor.StickerInk)
                 .padding(14.dp)
     ) {
         Text(
             text,
-            style = RaftType.Body.copy(color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack
+            style = RaftType.Body.copy(color = RaftColor.StickerInk),
+            color = RaftColor.StickerInk
         )
     }
 }

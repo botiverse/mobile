@@ -5034,7 +5034,7 @@ internal fun ThreadMembersPageContent(
                 Spacer(Modifier.weight(1f))
             },
             iconName = RaftLucideIconName.Users,
-            backgroundColor = RaftColor.BrandYellow,
+            backgroundColor = RaftColor.Frame,
             refreshing = refreshing,
             leadingContent = {
                 RaftTopPageHeaderAction(
@@ -5490,7 +5490,7 @@ internal fun ThreadReactionAtlasVisualScreen() {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFF7F4EA), RoundedCornerShape(RaftAppRadius.Sm))
+                            .background(Color(0xFFF7F4EA), RoundedCornerShape(RaftAppRadius.Sm)) // raft-color: visual fixture backdrop
                             .border(RaftAppStroke.Default, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sm))
                             .padding(vertical = RaftAppSpacing.Xs)
                 ) {
@@ -5531,12 +5531,16 @@ internal fun ThreadReactionAtlasVisualScreen() {
                         label = "#88 @Nathan",
                         iconName = RaftLucideIconName.CircleDashed,
                         color = RaftColor.AccentCyan,
+                        contentColor = RaftColor.StickerInk,
+                        iconColorArgb = raftArgbHex(RaftColor.StickerInk),
                         onClick = {}
                     )
                     RaftAnchoredMetaChip(
                         label = "#88 @Nathan",
                         iconName = RaftLucideIconName.CircleCheck,
                         color = RaftColor.AccentLime,
+                        contentColor = RaftColor.StickerInk,
+                        iconColorArgb = raftArgbHex(RaftColor.StickerInk),
                         onClick = {}
                     )
                 }
@@ -13058,6 +13062,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                     iconSize = statusMeta.iconSize,
                     color = statusMeta.color,
                     contentColor = statusMeta.foregroundColor,
+                    iconColorArgb = raftArgbHex(statusMeta.foregroundColor),
                     modifier = Modifier.widthIn(max = 112.dp),
                     onClick = null
                 )
@@ -13067,6 +13072,8 @@ private fun ThreadMarkdownTaskCandidateRow(
                         iconName = RaftLucideIconName.Hash,
                         iconSize = 10.dp,
                         color = RaftColor.BrandYellow,
+                        contentColor = RaftColor.StickerInk,
+                        iconColorArgb = raftArgbHex(RaftColor.StickerInk),
                         modifier = Modifier.widthIn(max = 112.dp),
                         onClick = null
                     )
@@ -13736,7 +13743,7 @@ private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(34.dp), color = "#FF000000")
+        RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(34.dp), color = ThreadLegacyBlackIconArgb)
         Text(
             text = title,
             style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack),
@@ -13819,7 +13826,7 @@ private fun ThreadImagePreviewInlineNavButton(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        RaftLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+        RaftLucideIcon(icon, modifier = Modifier.size(16.dp), color = ThreadLegacyBlackIconArgb)
     }
 }
 
@@ -13855,7 +13862,7 @@ private fun ThreadImagePreviewThumbnail(
                     contentScale = RaftImageThumbnailContentScale
                 )
             } else {
-                RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
+                RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = ThreadLegacyBlackIconArgb)
             }
         }
     }
@@ -23995,7 +24002,7 @@ private fun ThreadBackToBottomButton(
             RaftLucideIcon(
                 "chevron-down",
                 modifier = Modifier.size(14.dp),
-                color = "#FF000000"
+                color = ThreadLegacyBlackIconArgb
             )
         }
     )
@@ -25634,6 +25641,12 @@ private fun ThreadNewMessageMenuToolButton(
     }
 }
 
+// Legacy pure-black icon strings on themed surfaces: unchanged in light, foreground ink in dark.
+private val ThreadLegacyBlackIconArgb: String
+    get() = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#FF000000"
+private val ThreadLegacyChevronIconArgb: String
+    get() = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#FF111111"
+
 internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
     val normalizedAlpha = focusAlpha.coerceIn(0f, 1f)
     return if (normalizedAlpha > 0f) {
@@ -26110,7 +26123,7 @@ private fun ThreadActionCardDoneBadge() {
         Text(
             text = stringResource(MR.strings.common_done),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = RaftColor.TextBlack,
+            color = RaftColor.StickerInk,
             maxLines = 1
         )
     }
@@ -26937,7 +26950,8 @@ private fun BoxScope.ThreadMessagePressRipple(
         val minRadius = ThreadMessageRippleMinRadius.toPx()
         val radius = threadMessageRippleRadius(minRadius, coverRadius, expansion)
         drawCircle(
-            color = Color.Black.copy(alpha = washAlpha),
+            // Dark mode presses with a light ink wash so the ripple stays visible on dark rows.
+            color = (if (RaftAppThemeState.isDark) RaftColor.ShadowBlack else Color.Black).copy(alpha = washAlpha), // raft-color: light-mode ripple stays pure black
             radius = radius,
             center = rippleOrigin
         )
@@ -29774,7 +29788,7 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
         RaftLucideIcon(
             RaftLucideIconName.Link,
             modifier = Modifier.size(20.dp).alpha(if (muted) 0.62f else 1f),
-            color = RaftColor.TextBlackArgb
+            color = raftArgbHex(RaftColor.StickerInk)
         )
     }
 }
@@ -29897,17 +29911,17 @@ private const val ThreadPixelAvatarDefaultKey = "robot"
 
 private val ThreadPixelAvatarPalette = mapOf(
     '_' to Color.Transparent,
-    'K' to Color(0xFF141111),
-    'W' to Color(0xFFFFFFFF),
-    'P' to Color(0xFFFE7DA8),
-    'O' to Color(0xFFF8A16F),
-    'Y' to Color(0xFFFFD440),
-    'L' to Color(0xFFA9D877),
-    'C' to Color(0xFF27CCF3),
-    'V' to Color(0xFFBBAFE6),
-    'B' to Color(0xFF576574),
-    'R' to Color(0xFFF97264),
-    'G' to Color(0xFF9DCAAA)
+    'K' to Color(0xFF141111), // raft-color: pixel-art avatar palette
+    'W' to Color(0xFFFFFFFF), // raft-color: pixel-art avatar palette
+    'P' to Color(0xFFFE7DA8), // raft-color: pixel-art avatar palette
+    'O' to Color(0xFFF8A16F), // raft-color: pixel-art avatar palette
+    'Y' to Color(0xFFFFD440), // raft-color: pixel-art avatar palette
+    'L' to Color(0xFFA9D877), // raft-color: pixel-art avatar palette
+    'C' to Color(0xFF27CCF3), // raft-color: pixel-art avatar palette
+    'V' to Color(0xFFBBAFE6), // raft-color: pixel-art avatar palette
+    'B' to Color(0xFF576574), // raft-color: pixel-art avatar palette
+    'R' to Color(0xFFF97264), // raft-color: pixel-art avatar palette
+    'G' to Color(0xFF9DCAAA) // raft-color: pixel-art avatar palette
 )
 
 private val ThreadPixelAvatarFixedSpecs = mapOf(
@@ -29935,11 +29949,11 @@ private val ThreadPixelAvatarRandomOptions = listOf(
     ThreadPixelAvatarPalette.getValue('L') to 'K',
     ThreadPixelAvatarPalette.getValue('P') to 'W',
     ThreadPixelAvatarPalette.getValue('V') to 'K',
-    Color(0xFF1E1E1C) to 'C',
-    Color(0xFF1E1E1C) to 'G',
-    Color(0xFF1E1E1C) to 'P',
-    Color(0xFF1E1E1C) to 'Y',
-    Color(0xFF1E1E1C) to 'V',
+    Color(0xFF1E1E1C) to 'C', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'G', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'P', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'Y', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'V', // raft-color: pixel-art avatar palette
     ThreadPixelAvatarPalette.getValue('O') to 'K',
     ThreadPixelAvatarPalette.getValue('C') to 'W'
 )
@@ -30352,7 +30366,7 @@ private fun ThreadMessageAttachments(
                     if (RaftAppThemeState.isDark) {
                         build.raft.designsystem.tokens.RaftUiThemeColors.RaftDark
                     } else {
-                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftLight
+                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftLight // raft-color: light branch of the theme switch
                     }
             ) {
                 RaftMessageImageGallery(
@@ -32422,7 +32436,7 @@ private fun <T> ThreadForwardTargetRow(
                     )
                 }
             }
-            RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF111111")
+            RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = ThreadLegacyChevronIconArgb)
         }
     }
 }
@@ -33730,7 +33744,7 @@ private fun ThreadChannelActionWarning(
         RaftLucideIcon(
             name = RaftLucideIconName.TriangleAlert,
             modifier = Modifier.size(26.dp),
-            color = "#FF000000"
+            color = ThreadLegacyBlackIconArgb
         )
         Text(
             text = warningText,
@@ -33985,6 +33999,7 @@ private fun ThreadTaskDetailDialog(
                             label = task.status.localizedLabel(),
                             iconName = null,
                             color = task.status.sharedTaskStatusChipMeta().color,
+                            contentColor = task.status.sharedTaskStatusChipMeta().foregroundColor,
                             onClick = { anchor -> statusMenuAnchor = anchor },
                             anchorOwnerIdentity = threadTaskDetailMenuOwnerIdentity(task.id, "status"),
                             modifier = Modifier.padding(start = 6.dp),

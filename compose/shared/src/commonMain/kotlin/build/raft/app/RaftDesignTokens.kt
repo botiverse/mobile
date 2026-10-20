@@ -33,18 +33,26 @@ internal object RaftColor {
     val AccentStone = RaftUiPalette.paletteStone
     // raft-ui `--warning` (#FF6900): the warning badge/banner fill. Distinct from AccentOrange.
     val StateWarningBase = RaftUiPalette.warning
-    val SurfaceWhite = RaftUiPalette.white
-    val SurfaceCream = RaftUiPalette.paletteCream
-    val AppBgLightBlue = Color(0xFFE6F8FF)
-    val EmptyStateGray = Color(0xFFE7E7E7)
+    // Legacy light-only names, themed so every screen built on them follows dark mode. Light
+    // keeps the original value byte for byte; dark takes the raft-design role the light value
+    // stood in for (foundations/dark-mode: surfaces, ink, lines and tints change, stickers don't).
+    // Paper: white in light, `layer-canvas` in dark. Also the ink on an ink fill (inverse), which
+    // `layer-canvas` is in dark too. Text on a fixed sticker / photo / video stays [StickerPaper].
+    val SurfaceWhite: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.layerCanvas else RaftUiPalette.white
+    // Cream is light `layer-sidebar` (#FFFAEF); dark `layer-sidebar` is the darkest surface.
+    val SurfaceCream: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.layerSidebar else RaftUiPalette.paletteCream
+    // Pale cyan wash: dark `info-soft`.
+    val AppBgLightBlue: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.infoSoft else Color(0xFFE6F8FF)
+    // Neutral tile / disabled fill: dark `fill-strong`.
+    val EmptyStateGray: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.fillStrong else Color(0xFFE7E7E7)
     // Tailwind gray-400 (#99A1AF): the neutral / offline status-dot fill.
     // Not the same gray as EmptyStateGray (#E7E7E7).
     val StatusNeutralGray = RaftUiPalette.gray400
     // Themed tokens below read [RaftAppThemeState], so they follow light/dark at runtime.
     // Web raft `--foreground` (body text; light #141111, a warm near-black).
     val TextBlack: Color get() = RaftAppThemeState.colors.foreground
-    // Tailwind neutral-500.
-    val TextMutedGray = RaftUiPalette.neutral500
+    // Tailwind neutral-500 in light; dark `foreground-muted`.
+    val TextMutedGray: Color get() = if (RaftAppThemeState.isDark) RaftAppThemeState.colors.foregroundMuted else RaftUiPalette.neutral500
     // Web raft `--line-strong` (control ink).
     val BorderBlack: Color get() = RaftAppThemeState.colors.lineStrong
     // Web raft `--line-hairline` (ink at 15%): quiet separators.
@@ -123,10 +131,10 @@ internal object RaftColor {
             }
 
     const val BrandYellowArgb = "#FFFFD440"
-    const val SurfaceWhiteArgb = "#FFFFFFFF"
+    val SurfaceWhiteArgb: String get() = raftArgbHex(SurfaceWhite)
     // Kuikly string-colour callsites; themed ones derive from their Color token.
     val TextBlackArgb: String get() = raftArgbHex(TextBlack)
-    const val TextMutedGrayArgb = "#FF737373"
+    val TextMutedGrayArgb: String get() = raftArgbHex(TextMutedGray)
     val BorderBlackArgb: String get() = raftArgbHex(BorderBlack)
     val ShadowBlackArgb: String get() = raftArgbHex(ShadowBlack)
     const val AccentOrangeArgb = "#FFF8A16F"

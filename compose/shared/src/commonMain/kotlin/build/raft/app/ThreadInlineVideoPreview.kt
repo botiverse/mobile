@@ -153,7 +153,7 @@ private fun ThreadInlineVideoSurface(
     val nativeController = raftPlatformUsesNativeVideoController()
 
     Box(
-        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF000000)),
+        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF000000)), // raft-color: video letterbox black
         contentAlignment = Alignment.Center
     ) {
         if (renderMode == ThreadInlineVideoRenderMode.Ready) {
@@ -244,20 +244,20 @@ private fun ThreadInlineVideoOverlay(
     onSecondaryAction: () -> Unit = {}
 ) {
     Column(
-        modifier = Modifier.background(Color(0xCC000000)).padding(RaftAppSpacing.Sm),
+        modifier = Modifier.background(Color(0xCC000000)).padding(RaftAppSpacing.Sm), // raft-color: video scrim
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         RaftLucideIcon(
             iconName,
             modifier = Modifier.size(28.dp),
-            color = "#FFFFFFFF",
+            color = raftArgbHex(RaftColor.StickerPaper),
             spinning = spinning
         )
         Text(
             text = label,
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.SurfaceWhite,
+            color = RaftColor.StickerPaper,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )

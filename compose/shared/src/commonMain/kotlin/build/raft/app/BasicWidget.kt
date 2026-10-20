@@ -125,7 +125,7 @@ fun Modifier.backgroundColor(color: Color): Modifier {
 }
 
 /** Neutral fallback shown before or around image preview content. */
-internal val RaftImagePreviewLetterboxColor: Color = RaftColor.SurfaceWhite
+internal val RaftImagePreviewLetterboxColor: Color get() = RaftColor.SurfaceWhite
 
 /** Thumbnail contract: preserve ratio while filling the fixed preview frame. */
 internal val RaftImageThumbnailContentScale: ContentScale = ContentScale.Crop
@@ -1791,7 +1791,7 @@ internal fun TextField(
     readOnly: Boolean = false,
     textStyle: TextStyle = TextStyle.Default,
     placeholderColor: Color? = null,
-    cursorBrush: Brush = SolidColor(Color.Black),
+    cursorBrush: Brush = SolidColor(if (RaftAppThemeState.isDark) RaftColor.TextBlack else Color.Black), // raft-color: light legacy cursor
     maxLines: Int = Int.MAX_VALUE,
     onTextLayout: (TextLayoutResult) -> Unit = {},
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
@@ -1924,7 +1924,7 @@ internal fun TextField(
     readOnly: Boolean = false,
     textStyle: TextStyle = TextStyle.Default,
     placeholderColor: Color? = null,
-    cursorBrush: Brush = SolidColor(Color.Black),
+    cursorBrush: Brush = SolidColor(if (RaftAppThemeState.isDark) RaftColor.TextBlack else Color.Black), // raft-color: light legacy cursor
     maxLines: Int = Int.MAX_VALUE,
     onTextLayout: (TextLayoutResult) -> Unit = {},
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
@@ -2127,7 +2127,7 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
                     .copy(fontSize = 22.sp, lineHeight = 28.sp)
                     .withRaftFontWeight(FontWeight.SemiBold),
                 textAlign = TextAlign.Center,
-                color = Color(0xFF333333),
+                color = if (RaftAppThemeState.isDark) RaftColor.TextBlack else Color(0xFF333333), // raft-color: light legacy title ink
                 modifier = Modifier
                     .padding(vertical = 12.dp, horizontal = 12.dp)
                     .fillMaxWidth(),

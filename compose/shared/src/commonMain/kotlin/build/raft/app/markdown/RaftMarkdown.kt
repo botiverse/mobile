@@ -1274,12 +1274,15 @@ private object RaftMarkdownTextProvider : TextProvider {
             LocalRaftMarkdownRenderConfig.current.renderMessagePermalinksAsTag
         val permalinkUriHandler = LocalUriHandler.current
         val permalinkCoroutineScope = rememberCoroutineScope()
+        // The permalink chip box and link styles carry theme colours, so the theme is a key.
+        val permalinkDark = RaftAppThemeState.isDark
         val permalinkContent =
             remember(
                 text,
                 permalinkLabelResolver,
                 permalinkUriHandler,
                 renderMessagePermalinksAsTag,
+                permalinkDark,
             ) {
                 text.withRaftMessagePermalinkRenderConfig(
                     config =
@@ -1461,7 +1464,8 @@ internal fun AnnotatedString.filteredRaftMarkdownInlineContent(
 
 private const val RaftMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val RaftMarkdownTagAnnotationTag = "raft.build.markdown.tag"
-private val RaftMessagePermalinkChipBackground = Color(0xFFFCEFBD)
+private val RaftMessagePermalinkChipBackground: Color
+    get() = if (RaftAppThemeState.isDark) RaftColor.BrandSoft else Color(0xFFFCEFBD) // raft-color: light legacy permalink chip fill
 // Chrome-related fields are platform-derived (task #441): declaring
 // consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
 // whose native renderer doesn't draw the chip chrome (it was hardcoded true
@@ -1750,7 +1754,7 @@ private fun raftMessagePermalinkChipLinkStyles(): TextLinkStyles {
     // cannot reach the annotation, so the pressed state paints a span background instead.
     return TextLinkStyles(
         style = base,
-        pressedStyle = base.copy(background = RaftColor.BrandYellow)
+        pressedStyle = base.copy(color = RaftColor.StickerInk, background = RaftColor.BrandYellow)
     )
 }
 
@@ -3118,7 +3122,8 @@ private fun RaftRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle {
     val inlineBoxStyle = toInlineBoxSpanStyle()
     return raftMarkdownTagBaseSpanStyle()
         .copy(
-            color = foreground.toRaftMarkdownColor(),
+            // Ink type on an opaque sticker chip (self mention / active) stays dark in dark mode.
+            color = if ((chipFill ?: background).isRaftStickerFill()) RaftColor.StickerInk else foreground.toRaftMarkdownColor(),
             textDecoration = null,
             // The box paints the chip fill; a span background would cover its border.
             background =
@@ -3193,7 +3198,7 @@ private fun RaftRichTextChromeStyleToken.toInlineBoxSpanStyle(): RaftInlineBoxSt
     val inkEdge = !isInlineCode && chipFill == background
     return RaftInlineBoxStyle(
         backgroundColor = fill.toRaftMarkdownColor(),
-        borderColor = if (inkEdge) RaftColor.BorderBlack else Color.Transparent,
+        borderColor = if (inkEdge) RaftColor.StickerInk else Color.Transparent,
         borderWidth = if (inkEdge) RaftRichTextInlineBoxBorderWidthDp.dp else 0.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
@@ -3218,6 +3223,9 @@ internal fun raftMarkdownSectionHeadingGapClearsInlineCodeChrome(gap: Dp): Boole
     raftMarkdownInlineBoxStyle(RaftRichTextChromeKind.InlineCode).let { style ->
         gap.value >= style.paddingBottom.value + style.borderWidth.value
     }
+
+private fun RaftRichTextColorToken?.isRaftStickerFill(): Boolean =
+    this == RaftRichTextColorToken.SoftSignal || this == RaftRichTextColorToken.BrandYellow
 
 private fun RaftRichTextColorToken?.toRaftMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }

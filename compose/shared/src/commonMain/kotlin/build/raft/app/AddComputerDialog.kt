@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.raftOptionSurface
+import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTextField
@@ -273,29 +274,30 @@ private fun AddComputerConnectedStep(
         Row(
             modifier = Modifier.fillMaxWidth()
                 .background(RaftColor.AccentLime)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Default, RaftColor.StickerInk)
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            RaftLucideIcon(RaftLucideIconName.CircleCheckBig, modifier = Modifier.size(22.dp))
+            RaftLucideIcon(RaftLucideIconName.CircleCheckBig, modifier = Modifier.size(22.dp), color = raftArgbHex(RaftColor.StickerInk))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     stringResource(MR.strings.settings_computers_connected_success),
-                    style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.TextBlack)
+                    style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.StickerInk)
                         .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack
+                    color = RaftColor.StickerInk
                 )
                 state.connectedDetail?.takeIf { it.isNotBlank() }?.let {
+                    // Muted type on the lime sticker stays the light neutral-500 in both modes.
                     Text(
                         it,
                         style = RaftType.Input.copy(
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
                             fontFamily = RaftMonoFamily,
-                            color = RaftColor.TextMutedGray
+                            color = RaftUiPalette.neutral500
                         ),
-                        color = RaftColor.TextMutedGray,
+                        color = RaftUiPalette.neutral500,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -394,8 +396,8 @@ private fun AddComputerCommandRow(
     ) {
         Box(
             modifier = Modifier.weight(1f)
-                .background(RaftColor.TextBlack)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .background(RaftColor.StickerInk)
+                .border(RaftAppStroke.Default, RaftColor.StickerInk)
                 .padding(10.dp)
         ) {
             Text(

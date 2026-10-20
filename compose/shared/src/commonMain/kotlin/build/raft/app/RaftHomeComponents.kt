@@ -4928,7 +4928,7 @@ private fun TiltedBadgeChrome(modifier: Modifier = Modifier) {
             shadowOffsetPx = HomeSmallShadowOffset.toPx()
         )
         drawPath(path = homeServerBadgePath(layers.shadowCorners), color = RaftColor.ShadowBlack)
-        drawPath(path = homeServerBadgePath(layers.mainCorners), color = RaftColor.TextBlack)
+        drawPath(path = homeServerBadgePath(layers.mainCorners), color = RaftColor.StickerInk)
     }
 }
 
@@ -5182,7 +5182,7 @@ private fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView: 
     val body = if (notification.title.isBlank()) "" else notification.body
     androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(RaftAppSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor(), RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)), contentAlignment = Alignment.Center) {
-            RaftLucideIcon(notification.icon.notificationIconName(notification.kind), Modifier.size(16.dp))
+            RaftLucideIcon(notification.icon.notificationIconName(notification.kind), Modifier.size(16.dp), color = raftArgbHex(RaftColor.StickerInk))
         }
         Column(modifier = Modifier.width(HomeNotificationTextWidth), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
             Text(title, style = RaftType.Button, color = RaftColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
@@ -5327,7 +5327,7 @@ private fun HomeServerDrawerPanel(
     val density = LocalDensity.current
     val swipeThresholdPx = with(density) { HomeServerDrawerSwipeDismissThreshold.toPx() }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(RaftColor.TextBlack.copy(alpha = 0.28f)))
+        Box(Modifier.fillMaxSize().background(if (RaftAppThemeState.isDark) RaftColor.Backdrop else RaftColor.TextBlack.copy(alpha = 0.28f)))
         val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         var horizontalDragPx by remember { mutableStateOf(0f) }
         Column(
@@ -6157,8 +6157,8 @@ private fun ServerSwitcherRow(
     ) {
         Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
             when {
-                pending -> Text("...", style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(lineHeight = 14.sp), color = RaftColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
-                selected -> RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(14.dp))
+                pending -> Text("...", style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(lineHeight = 14.sp), color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
+                selected -> RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
                 else -> Spacer(Modifier.size(14.dp))
             }
         }
@@ -6168,7 +6168,7 @@ private fun ServerSwitcherRow(
                 Text(
                     server.name,
                     style = RaftType.Button,
-                    color = RaftColor.TextBlack,
+                    color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -6181,7 +6181,7 @@ private fun ServerSwitcherRow(
             Text(
                 "/${server.slug}",
                 style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
-                color = RaftColor.TextBlack.copy(alpha = 0.4f),
+                color = (if (selected) RaftColor.StickerInk else RaftColor.TextBlack).copy(alpha = 0.4f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -6498,7 +6498,7 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
                     if (badge != null) {
                         CountPill(badge, RaftColor.AccentPink)
                     } else if (trailingText != null) {
-                        SidebarTrailingNumberText(trailingText, color = RaftColor.TextBlack)
+                        SidebarTrailingNumberText(trailingText, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack)
                     }
                 }
             }
@@ -6795,7 +6795,7 @@ private fun ChannelRow(
                         color = when { selected -> raftArgbHex(RaftColor.StickerInk); content.joined -> RaftColor.TextBlackArgb; else -> raftArgbHex(RaftColor.ForegroundHint) }
                     )
                 } else {
-                    Text(content.symbol, style = RaftType.Button, color = RaftColor.TextBlack.copy(alpha = if (content.joined) 1f else 0.46f), textAlign = TextAlign.Center)
+                    Text(content.symbol, style = RaftType.Button, color = (if (selected) RaftColor.StickerInk else RaftColor.TextBlack).copy(alpha = if (content.joined) 1f else 0.46f), textAlign = TextAlign.Center)
                 }
             }
             Row(
@@ -6837,7 +6837,7 @@ private fun ChannelRow(
                 if (content.hasDraft) Spacer(Modifier.width(RaftAppSpacing.Xs))
                 when (content.badgeTone) {
                     HomeSidebarBadgeTone.Loud -> CountPill(content.badge, RaftColor.AccentPink)
-                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(content.badge)
+                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(content.badge, ink = if (selected) RaftColor.StickerInk else RaftColor.TextBlack)
                 }
             }
             if (drag.enabled) {
@@ -7166,12 +7166,12 @@ private fun RaftSidebarSortOverlay(
 }
 
 @Composable
-private fun DimmedUnreadCount(text: String) {
+private fun DimmedUnreadCount(text: String, ink: Color = RaftColor.TextBlack) {
     Box(modifier = Modifier.height(CountPillHeight).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
         Text(
             text,
             style = RaftType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = RaftMonoFamily),
-            color = RaftColor.TextBlack.copy(alpha = 0.5f),
+            color = ink.copy(alpha = 0.5f),
             maxLines = 1,
             textAlign = TextAlign.Center
         )
@@ -7371,7 +7371,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                                 Spacer(Modifier.width(leadingGap))
                                 when (badgeTone) {
                                     HomeSidebarBadgeTone.Loud -> CountPill(badge.orEmpty(), RaftColor.AccentPink)
-                                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge.orEmpty())
+                                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge.orEmpty(), ink = if (selected) RaftColor.StickerInk else RaftColor.TextBlack)
                                 }
                             }
                             RaftHomeDmTrailingSlot.Draft -> {
@@ -7753,7 +7753,7 @@ internal data class PixelAvatarSpec(
                             startColumnIndex = spanStart,
                             columnCount = spanLength,
                             color = color,
-                            colorArgb = spanColorArgb ?: RaftColor.TextBlackArgb
+                            colorArgb = spanColorArgb ?: raftArgbHex(RaftColor.StickerInk)
                         )
                     )
                     spanColor = null
@@ -7872,11 +7872,11 @@ private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('L') to 'K',
     PixelAvatarPalette.getValue('P') to 'W',
     PixelAvatarPalette.getValue('V') to 'K',
-    Color(0xFF1E1E1C) to 'C',
-    Color(0xFF1E1E1C) to 'G',
-    Color(0xFF1E1E1C) to 'P',
-    Color(0xFF1E1E1C) to 'Y',
-    Color(0xFF1E1E1C) to 'V',
+    Color(0xFF1E1E1C) to 'C', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'G', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'P', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'Y', // raft-color: pixel-art avatar palette
+    Color(0xFF1E1E1C) to 'V', // raft-color: pixel-art avatar palette
     PixelAvatarPalette.getValue('O') to 'K',
     PixelAvatarPalette.getValue('C') to 'W'
 )

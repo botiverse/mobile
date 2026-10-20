@@ -47,13 +47,13 @@ internal object RaftLucideImageVectors {
         name: RaftLucideIconName,
         filled: Boolean = false,
         strokeWidthOverride: Float? = null,
-        currentColor: Color = Color.Black
+        currentColor: Color = Color.Black // raft-color: Lucide currentColor placeholder, tinted by callers
     ): ImageVector {
         val override = strokeWidthOverride?.takeIf { it > 0f }
         val spec = spec(name, filled)
         if (!isTintable(spec)) return build(spec, override, currentColor)
         val key = Key(name, filled, override)
-        return cache.getOrPut(key) { build(spec, override, Color.Black) }
+        return cache.getOrPut(key) { build(spec, override, Color.Black) } // raft-color: tintable vector, tinted at draw time
     }
 
     fun build(spec: RaftLucideIconSpec, strokeWidthOverride: Float?, currentColor: Color): ImageVector =
@@ -102,7 +102,7 @@ internal object RaftLucideImageVectors {
         val hex = paint.removePrefix("#")
         val expanded = if (hex.length == 3) hex.map { "$it$it" }.joinToString("") else hex
         val rgb = expanded.toLongOrNull(16) ?: return currentColor
-        return Color(0xFF000000L or rgb)
+        return Color(0xFF000000L or rgb) // raft-color: fixed paint baked into the icon source
     }
 
     /** Lucide/SVG names are kebab-case; also accept camelCase and snake_case like the old renderers. */

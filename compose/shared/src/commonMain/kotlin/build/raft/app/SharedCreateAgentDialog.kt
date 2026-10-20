@@ -2574,7 +2574,7 @@ internal fun CreateAgentSectionLabelWithAction(
                 RaftLucideIcon(
                     actionIcon,
                     modifier = Modifier.size(13.dp),
-                    color = if (actionEnabled) RaftColor.TextMutedGrayArgb else "#33000000"
+                    color = if (actionEnabled) RaftColor.TextMutedGrayArgb else if (RaftAppThemeState.isDark) raftArgbHex(RaftColor.ForegroundDisabled) else "#33000000"
                 )
             }
         }

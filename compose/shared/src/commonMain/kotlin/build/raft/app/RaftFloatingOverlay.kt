@@ -248,7 +248,8 @@ internal fun RaftModalDismissBarrier(
         if (overlayAlpha >= 0.5f) {
             RaftColor.Backdrop
         } else {
-            RaftColor.TextBlack.copy(alpha = overlayAlpha)
+            // Fixed ink: a dimming veil stays dark in dark mode.
+            RaftColor.StickerInk.copy(alpha = overlayAlpha)
         }
     Box(
         modifier =

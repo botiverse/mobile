@@ -191,7 +191,12 @@
     <string name="settings_appearance_activity_sender_avatars_detail">在每条动态旁显示最近发送者的头像。</string>
     <string name="settings_appearance_activity_sender_avatars_enabled">显示</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">隐藏</string>
-    <string name="settings_appearance_subtitle">消息字号和阅读密度</string>
+    <string name="settings_appearance_subtitle">主题、消息字号和阅读密度</string>
+    <string name="settings_appearance_theme_title">主题</string>
+    <string name="settings_appearance_theme_description">选择浅色、深色或跟随设备。选择会保存在此设备上。</string>
+    <string name="settings_appearance_mode_light">浅色</string>
+    <string name="settings_appearance_mode_dark">深色</string>
+    <string name="settings_appearance_mode_system">系统</string>
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">推送状态和工作空间静音</string>
     <string name="settings_language_title">语言</string>

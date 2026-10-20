@@ -76,14 +76,14 @@ internal fun pixelAvatarKnownBackgroundArgb(
         literalBackgroundArgb +
         mapOf(
             // Dark random-avatar background — mobile-only, not in pixelAvatars.json.
-            Color(0xFF1E1E1C) to "#FF1E1E1C"
+            Color(0xFF1E1E1C) to "#FF1E1E1C" // raft-color: pixel-art avatar palette
         )
 
 private val PixelAvatarHexColorRegex = Regex("^#[0-9a-fA-F]{6}$")
 
 private fun parsePixelAvatarHexColor(value: String): Color? {
     if (!PixelAvatarHexColorRegex.matches(value)) return null
-    return Color(0xFF000000L or value.substring(1).toLong(16))
+    return Color(0xFF000000L or value.substring(1).toLong(16)) // raft-color: pixel-art avatar palette hex parse
 }
 
 private fun pixelAvatarArgbString(hexValue: String): String = "#FF${hexValue.substring(1).uppercase()}"

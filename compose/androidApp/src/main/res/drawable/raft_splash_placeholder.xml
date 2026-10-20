@@ -4,5 +4,5 @@
     <size
         android:width="1dp"
         android:height="1dp" />
-    <solid android:color="@color/raft_surface_cream" />
+    <solid android:color="@color/raft_window_background" />
 </shape>

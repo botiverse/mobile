@@ -9186,7 +9186,7 @@ private fun MembersAgentAvatarChoiceGrid(
                 RaftLucideIcon(
                     if (uploading) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Upload,
                     modifier = Modifier.size(16.dp),
-                    color = "#99000000",
+                    color = if (RaftAppThemeState.isDark) RaftColor.TextMutedGrayArgb else "#99000000",
                     spinning = uploading
                 )
             }
@@ -9860,7 +9860,7 @@ private fun MembersAgentProfileFieldsSection(
                         enabled = !savingDisplayName,
                         autoFocus = true,
                         borderColor = if (displayNameError != null) RaftColor.AccentRed else RaftColor.BorderBlack,
-                        enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else RaftColor.SurfaceWhite
+                        enabledBackgroundColor = if (displayNameError != null) (if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFF4F4)) else RaftColor.SurfaceWhite // raft-color: light legacy error wash
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
@@ -9949,7 +9949,7 @@ private fun MembersAgentProfileFieldsSection(
                         maxLines = 4,
                         fieldMinHeight = 86.dp,
                         borderColor = if (roleError != null) RaftColor.AccentRed else RaftColor.BorderBlack,
-                        enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else RaftColor.SurfaceWhite
+                        enabledBackgroundColor = if (roleError != null) (if (RaftAppThemeState.isDark) RaftColor.DangerSoft else Color(0xFFFFF4F4)) else RaftColor.SurfaceWhite // raft-color: light legacy error wash
                     )
                 }
                 Row(

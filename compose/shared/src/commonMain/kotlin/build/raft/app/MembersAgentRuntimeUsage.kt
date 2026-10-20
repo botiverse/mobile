@@ -417,15 +417,17 @@ private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
             RuntimeAccountUsageHealth.Unknown ->
                 stringResource(MR.strings.member_runtime_usage_health_unknown) to RaftColor.SurfaceCream
         }
+    // Accent fills are stickers (fixed ink); the cream fill is a themed surface.
+    val sticker = color != RaftColor.SurfaceCream
     Text(
         text = label,
         style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
-        color = RaftColor.TextBlack,
+        color = if (sticker) RaftColor.StickerInk else RaftColor.TextBlack,
         maxLines = 1,
         modifier =
             Modifier
                 .background(color)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Thin, if (sticker) RaftColor.StickerInk else RaftColor.BorderBlack)
                 .padding(horizontal = 6.dp, vertical = 2.dp)
     )
 }
@@ -435,12 +437,12 @@ private fun MembersRuntimeUsageBanner(text: String) {
     Text(
         text = text,
         style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
-        color = RaftColor.TextBlack,
+        color = RaftColor.StickerInk,
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.AccentOrange)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Thin, RaftColor.StickerInk)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
     )
 }

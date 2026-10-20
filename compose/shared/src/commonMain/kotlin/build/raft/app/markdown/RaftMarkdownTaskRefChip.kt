@@ -239,7 +239,7 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
 }
 
 private val RaftMarkdownTaskChipInlineContentLight: Map<String, InlineTextContent> by lazy {
-    raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftLight)
+    raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftLight) // raft-color: light half of the per-theme cache (dark sibling below)
 }
 private val RaftMarkdownTaskChipInlineContentDark: Map<String, InlineTextContent> by lazy {
     raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftDark)
