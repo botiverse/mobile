@@ -292,6 +292,13 @@ class RealSettingsRepository(
     private val warningLogger: (String) -> Unit = {},
     private val channelRepository: ChannelRepository? = null,
     private val onAppearanceSnapshot: suspend (ownerId: String, snapshot: SettingsAppearanceSnapshot) -> Unit = { _, _ -> },
+    /**
+     * Per-device preview preference, optional so existing construction sites need no change. Only the
+     * settings screen passes it, because only there is the choice written. Everything that *reads* it
+     * (push registration, notification poster, no-GMS path) reads the store directly instead of going
+     * through this repository, so a null here is never observed as "the user chose full".
+     */
+    private val pushPreviewModeStore: PushPreviewModePreferenceStore? = null,
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
 
@@ -1445,10 +1452,9 @@ class RealSettingsRepository(
         setServerNotificationMode(if (enabled) ServerPushMode.None else ServerPushMode.All)
 
     override suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> {
-        // The preview choice is per device: it is persisted locally and reported through the push
-        // registration's previewMode field, not through the server notification-settings route.
-        // TODO(preview-mode): persist locally and re-register push; returns current settings until
-        // the local store and registration upload land in the follow-up commit.
+        // Per-device choice: stored locally, then reported through the push registration's
+        // previewMode field. It deliberately does not touch the server notification-settings route.
+        pushPreviewModeStore?.savePushPreviewMode(mode.wireName)
         selectedServerId() ?: return serverRequired()
         return getMobileSettings()
     }
