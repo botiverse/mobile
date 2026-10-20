@@ -46,6 +46,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import build.raft.designsystem.components.RaftSeparator
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -1292,7 +1293,7 @@ private object RaftMarkdownTextProvider : TextProvider {
                 }
             }
         val styledText = remember(permalinkContent.text, resolvedStyle) {
-            permalinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle)
+            permalinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
         }
         val resolvedText =
             remember(styledText, bodyClick) {
@@ -2343,6 +2344,10 @@ fun RaftMarkdownBody(
     val padding = remember {
         markdownPadding(
             block = 0.dp,
+            // web `ul pl-5` / `li mb-0.5`: the marker column (RaftMarkdownListMarkerWidth)
+            // carries the whole indent, so the list adds none of its own.
+            listIndent = 0.dp,
+            listItemBottom = RaftMarkdownListItemBottom,
             paragraphVerPadding = PaddingValues(vertical = 0.dp),
             codeBlock = PaddingValues(RaftAppSpacing.Sm),
             // Blockquote rail must span EXACTLY the quoted content's height
@@ -2445,8 +2450,10 @@ fun RaftMarkdownBody(
             },
             checkbox = { model ->
                 RaftMarkdownTaskCheckbox(model)
-            }
-        )
+            },
+            unorderedList = RaftMarkdownUnorderedList,
+            orderedList = RaftMarkdownOrderedList
+        ).withRaftWebBlockSpacing()
     }
     val uriHandler =
         remember {
@@ -2677,8 +2684,6 @@ private val RaftMarkdownCodeBlockForeground: Color get() = RaftAppThemeState.col
 internal val RaftMarkdownTableCellPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
 private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
 private val RaftMarkdownMinimumInlineLineHeight = 22.sp
-private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderBlack.copy(alpha = 0.22f)
-private val RaftMarkdownDividerThickness = 2.dp
 private val RaftMarkdownDividerVerticalPadding = RaftAppSpacing.Sm
 
 // task #66: persistent transparent copy affordance on code blocks — the old
@@ -2770,28 +2775,45 @@ private fun RaftMarkdownCodeSurface(code: String, style: TextStyle) {
 
 @Composable
 private fun RaftMarkdownHorizontalRule() {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = RaftMarkdownDividerVerticalPadding)
-    ) {
-        Spacer(
-            Modifier
-                .fillMaxWidth()
-                .height(RaftMarkdownDividerThickness)
-                .background(RaftMarkdownDividerColor)
-        )
-    }
+    // web `hr`: the DS Separator (1px line-hairline) with `my-2`.
+    RaftSeparator(Modifier.padding(vertical = RaftMarkdownDividerVerticalPadding))
 }
 
 internal fun raftMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
         color = RaftMarkdownLinkBlue,
-        // TODO(cmp-switch): upstream SpanStyle has no underline thickness/offset; Kuikly drew
-        // RAFT_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP / _OFFSET_SP here.
-        textDecoration = TextDecoration.Underline,
+        // The underline is painted by raftInlineDecorations (see withRaftMarkdownLinkUnderlines):
+        // upstream SpanStyle has no underline colour, thickness or offset.
+        textDecoration = null,
     )
+
+/**
+ * raft-ui `MarkdownLink`: `underline decoration-2 underline-offset-2
+ * decoration-foreground-link/40` — a 2px underline 2px below the baseline in the link colour
+ * at 40%. Ordinary Markdown links are the link-coloured URL annotations; chips and permalinks
+ * carry their own styles and are left alone.
+ */
+internal fun AnnotatedString.withRaftMarkdownLinkUnderlines(): AnnotatedString {
+    val linkColor = RaftMarkdownLinkBlue
+    val links =
+        getLinkAnnotations(0, length).filter { range ->
+            (range.item as? LinkAnnotation.Url)?.styles?.style?.color == linkColor
+        }
+    if (links.isEmpty()) return this
+    val underline =
+        RaftInlineUnderlineStyle(
+            color = linkColor.copy(alpha = RaftMarkdownLinkUnderlineAlpha),
+            thickness = RAFT_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP.sp,
+            offset = RAFT_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP.sp,
+        ).encode()
+    val builder = AnnotatedString.Builder(this)
+    links.forEach { range ->
+        builder.addStringAnnotation(RAFT_INLINE_UNDERLINE_ANNOTATION_TAG, underline, range.start, range.end)
+    }
+    return builder.toAnnotatedString()
+}
+
+private const val RaftMarkdownLinkUnderlineAlpha = 0.4f
 
 // A getter, not a val: text/line colours follow RaftAppThemeState.
 internal val RaftMarkdownColorsDefault: DefaultMarkdownColors
@@ -2868,10 +2890,7 @@ internal fun raftMarkdownTypography(base: TextStyle): DefaultMarkdownTypography 
         ordered = resolvedBase,
         bullet = resolvedBase,
         list = resolvedBase,
-        link = resolvedBase.copy(
-            color = RaftMarkdownLinkBlue,
-            textDecoration = TextDecoration.Underline
-        ),
+        link = resolvedBase.copy(color = RaftMarkdownLinkBlue),
         textLink = TextLinkStyles(style = raftMarkdownLinkSpanStyle(resolvedBase)),
         table = resolvedBase
     )
@@ -3160,19 +3179,23 @@ internal fun raftMarkdownInlineCodeEdgeStyle(
         borderWidth = 0.dp,
         paddingStart = if (leading) 4.dp else 0.dp,
         paddingEnd = if (trailing) 4.dp else 0.dp,
-        paddingTop = RaftRichTextInlineCodeVerticalPaddingDp.dp,
-        paddingBottom = RaftRichTextInlineCodeVerticalPaddingDp.dp,
+        paddingTop = RaftRichTextInlineCodeTopPaddingDp.dp,
+        paddingBottom = RaftRichTextInlineCodeBottomPaddingDp.dp,
         marginStart = 0.dp,
         marginEnd = 0.dp,
-        cornerRadius = 0.dp,
+        // raft-ui InlineCode: `rounded-sticker`.
+        cornerRadius = RaftAppRadius.Sticker,
     )
 
 private fun RaftRichTextChromeStyleToken.toInlineBoxSpanStyle(): RaftInlineBoxStyle? {
     if (id == RaftRichTextChromeStyleTokens.OrdinaryMention.id) return null
     val fill = chipFill ?: return null
     val isInlineCode = id == RaftRichTextChromeStyleTokens.InlineCode.id
-    val verticalPadding =
-        if (isInlineCode) RaftRichTextInlineCodeVerticalPaddingDp
+    val topPadding =
+        if (isInlineCode) RaftRichTextInlineCodeTopPaddingDp
+        else RaftRichTextInlineBoxVerticalPaddingDp
+    val bottomPadding =
+        if (isInlineCode) RaftRichTextInlineCodeBottomPaddingDp
         else RaftRichTextInlineBoxVerticalPaddingDp
     // raft-ui reference chips (channel / thread / task) are soft fills on the
     // sticker radius with no ink edge; only the self-mention / active sticker
@@ -3184,16 +3207,22 @@ private fun RaftRichTextChromeStyleToken.toInlineBoxSpanStyle(): RaftInlineBoxSt
         borderWidth = if (inkEdge) RaftRichTextInlineBoxBorderWidthDp.dp else 0.dp,
         paddingStart = 4.dp,
         paddingEnd = 4.dp,
-        paddingTop = verticalPadding.dp,
-        paddingBottom = verticalPadding.dp,
+        paddingTop = topPadding.dp,
+        paddingBottom = bottomPadding.dp,
         marginStart = if (isInlineCode) 0.dp else 2.dp,
         marginEnd = if (isInlineCode) 0.dp else 2.dp,
-        cornerRadius = if (isInlineCode) 0.dp else RaftAppRadius.Sticker
+        cornerRadius = RaftAppRadius.Sticker
     )
 }
 
 private const val RaftRichTextInlineBoxBorderWidthDp = 1f
-private const val RaftRichTextInlineCodeVerticalPaddingDp = 1f
+// raft-ui InlineCode (message): 0.875em Space Mono, `leading-[1.3em]`, ~1px top/bottom padding.
+// The browser paints that fill over Space Mono's whole content area (ascent 1.12em, descent
+// 0.36em), measured on the web capture at baseline-16.2 .. baseline+5.8 for 14px code. The
+// shared painter places the box from the UI-font estimate (0.92em / 0.26em), so the inline-code
+// padding carries the difference.
+private const val RaftRichTextInlineCodeTopPaddingDp = 3.3f
+private const val RaftRichTextInlineCodeBottomPaddingDp = 2.4f
 private const val RaftRichTextInlineBoxVerticalPaddingDp = 2f
 
 /**

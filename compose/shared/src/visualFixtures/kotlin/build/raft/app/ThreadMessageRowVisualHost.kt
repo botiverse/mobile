@@ -892,6 +892,7 @@ internal fun ThreadMessageVisualScreenContent() {
                 ) {
                 ThreadMessageCard(
                     memberAvatarResolver = ThreadVisualMemberAvatarResolver,
+                    memberModelLabelResolver = ThreadVisualMemberModelLabelResolver,
                     message = message,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,

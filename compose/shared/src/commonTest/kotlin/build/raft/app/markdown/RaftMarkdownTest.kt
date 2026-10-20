@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.RaftAppRadius
 import build.raft.app.RaftColor
 import build.raft.app.RaftType
 import build.raft.app.raftFontFamilyForWeight
@@ -643,7 +644,8 @@ class RaftMarkdownTest {
 
         assertTrue(annotated.text.contains(shortCode))
         assertTrue(annotated.text.contains(longCode))
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        // Only the code boxes' side-padding gaps; no Raft placeholders.
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertEquals(
             listOf(
                 inlineCodeSegment(shortCode),
@@ -670,7 +672,8 @@ class RaftMarkdownTest {
                 annotator = raftMarkdownAnnotator(body)
             )
 
-        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.text)
+        // The 4dp side padding of the code box is reserved as gap placeholders outside the code.
+        assertEquals("Run ${inlineCodeSegment(command)} before review", annotated.raftTextWithoutInlineGaps())
         assertEquals(
             listOf(inlineCodeSegment(command)),
             annotated.raftInlineCodeMarkerTextSegments()
@@ -1254,19 +1257,19 @@ class RaftMarkdownTest {
         assertEquals(0.dp, inlineBox.borderWidth)
         assertEquals(4.dp, inlineBox.paddingStart)
         assertEquals(4.dp, inlineBox.paddingEnd)
-        assertEquals(1.dp, inlineBox.paddingTop)
-        assertEquals(1.dp, inlineBox.paddingBottom)
+        assertEquals(3.3.dp, inlineBox.paddingTop)
+        assertEquals(2.4.dp, inlineBox.paddingBottom)
         assertEquals(0.dp, inlineBox.marginStart)
         assertEquals(0.dp, inlineBox.marginEnd)
-        assertEquals(0.dp, inlineBox.cornerRadius)
+        assertEquals(RaftAppRadius.Sticker, inlineBox.cornerRadius)
         assertEquals(4.dp, leadingEdge.paddingStart)
         assertEquals(0.dp, leadingEdge.paddingEnd)
         assertEquals(0.dp, trailingEdge.paddingStart)
         assertEquals(4.dp, trailingEdge.paddingEnd)
-        assertEquals(1.dp, leadingEdge.paddingTop)
-        assertEquals(1.dp, leadingEdge.paddingBottom)
-        assertEquals(1.dp, trailingEdge.paddingTop)
-        assertEquals(1.dp, trailingEdge.paddingBottom)
+        assertEquals(3.3.dp, leadingEdge.paddingTop)
+        assertEquals(2.4.dp, leadingEdge.paddingBottom)
+        assertEquals(3.3.dp, trailingEdge.paddingTop)
+        assertEquals(2.4.dp, trailingEdge.paddingBottom)
         assertEquals(RaftColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
         assertEquals(RaftColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
 
@@ -1364,10 +1367,11 @@ class RaftMarkdownTest {
         assertEquals(RaftType.Body.fontFamily, typography.paragraph.fontFamily)
         assertEquals(RaftType.Body.fontFamily, typography.textLink.style?.fontFamily)
         assertEquals(expectedLinkBlue, typography.textLink.style?.color)
-        assertEquals(TextDecoration.Underline, typography.textLink.style?.textDecoration)
+        // The link underline is painted (2dp, 40% link colour), not a text decoration.
+        assertEquals(null, typography.textLink.style?.textDecoration)
         assertEquals(RaftType.Body.fontWeight, typography.textLink.style?.fontWeight)
         assertEquals(expectedLinkBlue, typography.link.color)
-        assertEquals(TextDecoration.Underline, typography.link.textDecoration)
+        assertEquals(null, typography.link.textDecoration)
         assertEquals(RaftType.Body.fontWeight, typography.link.fontWeight)
         // web pre `font-mono [font-size:inherit]`: bundled Space Mono at the body size.
         assertEquals(raftMonoFamilyForWeight(FontWeight.Normal), typography.code.fontFamily)
@@ -1389,8 +1393,13 @@ class RaftMarkdownTest {
         assertEquals("Open Raft now", annotated.text)
         assertEquals("https://raft.build", link.url)
         assertEquals(expectedLinkBlue, linkStyle?.color)
-        assertEquals(TextDecoration.Underline, linkStyle?.textDecoration)
+        assertEquals(null, linkStyle?.textDecoration)
         assertEquals(RaftType.Body.fontWeight, linkStyle?.fontWeight)
+        val underline = annotated.withRaftMarkdownLinkUnderlines().raftInlineUnderlineRanges().single()
+        assertEquals("Raft", annotated.text.substring(underline.start, underline.end))
+        assertEquals(expectedLinkBlue.copy(alpha = 0.4f), underline.item.color)
+        assertEquals(2.sp, underline.item.thickness)
+        assertEquals(2.sp, underline.item.offset)
     }
 
     @Ignore // TODO(cmp-switch): markdown links lost the 2sp underline thickness/offset (upstream
@@ -2313,18 +2322,20 @@ class RaftMarkdownTest {
                 range.item.background != Color.Unspecified &&
                     range.start < annotated.length && range.end > 0
             }
-        val firstClusterBoundary = code.indexOf(expectedLeading) + expectedLeading.length
+        // The code box sits between its side-padding gap placeholders.
+        val boxStart = boxRanges.single().start
+        val firstClusterBoundary = boxStart + code.indexOf(expectedLeading) + expectedLeading.length
         val splitRange =
             annotated.spanStyles.first { range ->
-                range.start == 0 && range.end == firstClusterBoundary
+                range.start == boxStart && range.end == firstClusterBoundary
             }
 
-        assertEquals(code, annotated.text)
+        assertEquals(code, annotated.raftTextWithoutInlineGaps())
         assertEquals(1, boxRanges.size)
         assertTrue(glyphBackgroundRanges.isEmpty())
         assertEquals(code, annotated.text.substring(boxRanges.single().start, boxRanges.single().end))
         assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
-        assertTrue(annotated.text.endsWith(expectedTrailing))
+        assertTrue(annotated.raftTextWithoutInlineGaps().endsWith(expectedTrailing))
         assertEquals(
             RaftColor.TextBlack.copy(alpha = 0.05f),
             boxRanges.single().item.backgroundColor,

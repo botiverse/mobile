@@ -39,6 +39,7 @@ import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.raftMarkdownInlineCodeEdgeStyle
+import build.raft.app.markdown.withRaftInlineChipGaps
 import build.raft.app.raftFirstComposedCharacterEnd
 import build.raft.app.raftInlineCodeCharWrapBridgeThreshold
 import build.raft.app.raftInlineCodeUsesEdgePaddingBridge
@@ -475,7 +476,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         pop()
                     }
 
-                    MarkdownElementTypes.CODE_SPAN -> {
+                    MarkdownElementTypes.CODE_SPAN -> raftWithInlineCodeSideGaps {
                         val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
                         val charWrapThreshold = raftInlineCodeCharWrapBridgeThreshold()
@@ -687,4 +688,20 @@ internal fun AnnotatedString.Builder.appendRaftInlineCodeWithEdgeBoxes(
     pop()
     append(codeText.substring(firstEnd))
     pop()
+}
+
+/**
+ * raft-ui InlineCode `px-1`: the 4dp side padding takes advance width. Reserve it as gap
+ * placeholders just outside the code range (the painter draws the box padding into them), so
+ * the fill no longer runs under the neighbouring glyphs. Only platforms that paint the edge
+ * boxes reserve it.
+ */
+private inline fun AnnotatedString.Builder.raftWithInlineCodeSideGaps(block: AnnotatedString.Builder.() -> Unit) {
+    val style =
+        if (raftInlineCodeUsesEdgePaddingBridge()) {
+            raftMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
+        } else {
+            null
+        }
+    withRaftInlineChipGaps(style) { block() }
 }
