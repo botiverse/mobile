@@ -94,7 +94,7 @@ class RaftMarkdownTaskRefChipTest {
             boxes.map { it.item }
         )
         boxes.zip(listOf("#92", "#209", "#7")).forEach { (box, label) ->
-            assertEquals("￼$label￼", annotated.text.substring(box.start, box.end))
+            assertEquals("\uFFFC\u2060$label\u2060\uFFFC", annotated.text.substring(box.start, box.end))
         }
         val inlineIds = annotated.raftMarkdownInlineContentIds()
         assertEquals(

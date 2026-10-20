@@ -75,6 +75,7 @@ internal data class RaftMarkdownTaskChipStyle(
     val trailingGap: Dp,
 )
 
+internal const val RaftMarkdownTaskChipWordJoiner = "\u2060"
 internal val RaftMarkdownTaskChipPixelSize = 9.dp
 private val RaftMarkdownTaskChipPixelStroke = 1.5.dp
 private val RaftMarkdownTaskChipPixelRadius = 1.25.dp
@@ -178,11 +179,15 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
     label: String,
     trailing: AnnotatedString.Builder.() -> Unit = {},
 ) {
+    // Word joiners keep the pixel, label and trailing pad on one line: a chip
+    // never wraps between its status pixel and its number.
     withRaftInlineBox(style.box) {
-        appendInlineContent(style.leadingInlineId(), "￼")
+        appendInlineContent(style.leadingInlineId(), "\uFFFC")
+        append(RaftMarkdownTaskChipWordJoiner)
         withStyle(style.textSpanStyle()) { append(label) }
         trailing()
-        appendInlineContent(style.trailingInlineId(), "￼")
+        append(RaftMarkdownTaskChipWordJoiner)
+        appendInlineContent(style.trailingInlineId(), "\uFFFC")
     }
 }
 
