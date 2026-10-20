@@ -40,7 +40,6 @@ private data class WireInboxItem(
     // discriminator (optional on thread-list endpoints; defaulted by callers)
     val kind: String? = null,
     // channel | dm
-    val id: String? = null,
     val channelId: String? = null,
     val channelName: String? = null,
     val channelType: String? = null,
@@ -82,11 +81,6 @@ private data class WireInboxItem(
     // thread follow state; only an explicit false means Unfollowed
     val isFollowing: Boolean? = null,
     val unfollowedAt: String? = null,
-    // mention_action
-    val messageId: String? = null,
-    val messagePreview: String? = null,
-    val createdAt: String? = null,
-    val pendingMentionActions: List<WireInboxPendingMentionAction> = emptyList(),
     // common
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
@@ -127,21 +121,6 @@ private data class WireThreadReplyPreview(
     val senderDisplayName: String? = null,
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
-)
-
-@Serializable
-private data class WireInboxPendingMentionAction(
-    val resolutionId: String? = null,
-    val id: String? = null,
-    val messageId: String? = null,
-    val channelId: String? = null,
-    val channelName: String? = null,
-    val targetType: String = "unknown",
-    val targetHandle: String = "",
-    val targetAvatarUrl: String? = null,
-    val reason: String = "Mention target was not notified at send time.",
-    val availableActions: List<String> = emptyList(),
-    val expiresAt: String? = null,
 )
 
 @Serializable
@@ -283,7 +262,6 @@ fun parseSharedInboxSnapshot(
 private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = when (kind) {
     "channel", "dm" -> toChannelOrDmDomain(diagnostics)
     "thread" -> toThreadDomain(diagnostics)
-    "mention_action" -> toMentionActionDomain()
     else -> null
 }
 
@@ -393,50 +371,6 @@ private fun WireThreadReplyPreview.toDomain(): ReplyPreview? {
         senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
-    )
-}
-
-private fun WireInboxItem.toMentionActionDomain(): InboxItem? {
-    val actionId = id?.takeIf { it.isNotBlank() }
-        ?: pendingMentionActions.firstNotNullOfOrNull { action -> action.resolutionId ?: action.id }?.takeIf { it.isNotBlank() }
-        ?: return null
-    val targetChannelId = channelId?.takeIf { it.isNotBlank() }
-        ?: pendingMentionActions.firstNotNullOfOrNull { action -> action.channelId }?.takeIf { it.isNotBlank() }
-        ?: return null
-    val targetMessageId = messageId?.takeIf { it.isNotBlank() }
-        ?: pendingMentionActions.firstNotNullOfOrNull { action -> action.messageId }?.takeIf { it.isNotBlank() }
-    val mappedActions = pendingMentionActions.mapNotNull { it.toDomain() }
-    return InboxItem(
-        key = "mention_action:$actionId",
-        kind = InboxItemKind.MentionAction,
-        channelId = ChannelId(targetChannelId),
-        channelName = channelName?.takeIf { it.isNotBlank() }
-            ?: mappedActions.firstNotNullOfOrNull { action -> action.channelName?.takeIf { it.isNotBlank() } }
-            ?: targetChannelId,
-        channelKind = parseConversationKindOrNull(channelType),
-        unreadCount = 0,
-        hasMention = false,
-        lastMessageId = targetMessageId?.let(::MessageId),
-        lastMessagePreview = messagePreview,
-        lastMessageAt = createdAt,
-        mentionActionId = actionId,
-        pendingMentionActions = mappedActions,
-    )
-}
-
-private fun WireInboxPendingMentionAction.toDomain(): PendingMentionAction? {
-    val resolvedId = resolutionId?.takeIf { it.isNotBlank() } ?: id?.takeIf { it.isNotBlank() } ?: return null
-    return PendingMentionAction(
-        resolutionId = resolvedId,
-        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        channelId = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
-        channelName = channelName,
-        targetType = targetType,
-        targetHandle = targetHandle,
-        targetAvatarUrl = targetAvatarUrl.normalizedPendingMentionAvatarUrl(),
-        reason = reason,
-        availableActions = availableActions,
-        expiresAt = expiresAt,
     )
 }
 
