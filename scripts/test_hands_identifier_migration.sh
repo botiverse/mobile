@@ -90,10 +90,42 @@ misplaced["env"]["HANDS_BEARER_TOKEN"] = expression
 end
 RUBY
 
-[[ "$(grep -Fc "secrets.${old_upper}_IOS_BEARER_TOKEN" .github/workflows/ios-release.yml)" == "2" ]] || {
-  echo "FAIL: iOS external secret allowlist drifted" >&2
-  exit 1
+# iOS: the same location-aware freeze. The opt-in testflight_internal job
+# (#3242) is the third allowed consumer; any other job or env must fail.
+ruby - "$old_upper" <<'RUBY'
+require "yaml"
+
+def secret_references(node, token, path = [], result = {})
+  case node
+  when Hash
+    node.each { |key, value| secret_references(value, token, path + [key], result) }
+  when Array
+    node.each_with_index do |value, index|
+      name = value.is_a?(Hash) ? (value["id"] || value["name"] || index) : index
+      secret_references(value, token, path + [name], result)
+    end
+  when String
+    result[path] = node if node.include?(token)
+  end
+  result
+end
+
+token = "secrets.#{ARGV.fetch(0)}_IOS_BEARER_TOKEN"
+expression = "${{ " + token + " }}"
+expected = {
+  ["jobs", "create_hands_draft", "env", "HANDS_BEARER_TOKEN"] => expression,
+  ["jobs", "create_hands_draft", "env", "HANDS_AUTH_TOKEN"] => expression,
+  ["jobs", "testflight_internal", "env", "HANDS_AUTH_TOKEN"] => expression,
 }
+workflow = YAML.load_file(".github/workflows/ios-release.yml")
+actual = secret_references(workflow, token)
+abort "FAIL: iOS external secret consumer allowlist drifted" unless actual == expected
+
+extra = Marshal.load(Marshal.dump(workflow))
+extra["env"] ||= {}
+extra["env"]["HANDS_AUTH_TOKEN"] = expression
+abort "FAIL: iOS secret allowlist admitted an invalid consumer" if secret_references(extra, token) == expected
+RUBY
 
 for path in \
   "scripts/release_android_${old_lower}_github.sh" \

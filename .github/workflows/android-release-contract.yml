@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/android-release.yml"
+      - ".github/workflows/ios-release.yml"
+      - "scripts/test_hands_identifier_migration.sh"
       - ".github/workflows/android-update-qa.yml"
       - ".github/workflows/android-release-contract.yml"
       - "compose/androidApp/build.gradle.kts"
@@ -30,6 +32,8 @@ on:
       - main
     paths:
       - ".github/workflows/android-release.yml"
+      - ".github/workflows/ios-release.yml"
+      - "scripts/test_hands_identifier_migration.sh"
       - ".github/workflows/android-update-qa.yml"
       - ".github/workflows/android-release-contract.yml"
       - "compose/androidApp/build.gradle.kts"
