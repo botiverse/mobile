@@ -25,6 +25,8 @@ import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.AgentActivityOverviewIntent
+import build.raft.app.data.ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportRepository
 import build.raft.app.data.AgentIssueReportResult
@@ -134,6 +136,7 @@ import build.raft.app.model.getModelLabel
 import build.raft.app.model.getDefaultModel
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.MemberId
+import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
@@ -2618,11 +2621,123 @@ internal fun memberDetailFailureResolution(
     }
 }
 
+/** Flag on and allowed: the overview binding for the Activity tab; otherwise the raw log only. */
+private fun membersAgentActivityOverviewBindingOrNull(
+    store: build.raft.app.data.SharedAgentActivityOverviewStore?,
+    state: build.raft.app.data.AgentActivityOverviewState?,
+    enabled: Boolean
+): MembersAgentActivityOverviewBinding? {
+    if (!enabled || store == null || state == null) return null
+    return MembersAgentActivityOverviewBinding(state = state, onIntent = store::dispatch)
+}
+
 private data class MemberDetailVisualSeed(
     val member: MemberProfile,
     val agentDetailState: MembersAgentDetailLoadState,
-    val agentScopeSet: AgentScopeSet? = null
+    val agentScopeSet: AgentScopeSet? = null,
+    /** Activity tab Overview fixture (flag on); null keeps the raw log only. */
+    val activityOverview: build.raft.app.data.AgentActivityOverviewState? = null
 )
+
+/**
+ * `screens.members.agent-detail.activity.overview`: the default agent with the Activity
+ * Overview on. Turns mirror slock packages/web/tests/agentActivityOverview.behavior.test.tsx
+ * (reply, failing checks, a hidden private-channel trigger with an error ending, a DM with a held
+ * send), moved onto the visual fixture day; replies are preloaded so the capture needs no network.
+ */
+private const val MembersAgentActivityOverviewVisualId = "agent-activity-overview"
+
+private val membersAgentActivityOverviewVisualState: build.raft.app.data.AgentActivityOverviewState =
+    build.raft.app.data.AgentActivityOverviewState(
+        agentId = MemberId(MembersAgentActivityOverviewVisualId),
+        status = build.raft.app.data.AgentActivityOverviewStatus.Loaded,
+        next = "1781869209000:00000000-0000-4000-8000-000000000003",
+        turns = listOf(
+            build.raft.app.data.AgentActivityTurn(
+                id = "00000000-0000-4000-8000-000000000001",
+                startedAtEpochMillis = 1781870400000L,
+                endedAtEpochMillis = 1781870501000L,
+                outcome = build.raft.app.data.AgentActivityTurnOutcome.Completed,
+                trigger = build.raft.app.data.AgentActivityTurnTrigger.Visible(
+                    target = "#proj-runtime:9b526607",
+                    channelId = "c1",
+                    sender = "Tenny",
+                    messageId = "m1"
+                ),
+                actions = listOf(
+                    build.raft.app.data.AgentActivityActionCount(build.raft.app.data.AgentActivityActionKind.Search, 3),
+                    build.raft.app.data.AgentActivityActionCount(build.raft.app.data.AgentActivityActionKind.RunChecks, 1)
+                ),
+                toolCalls = 4,
+                problems = listOf(
+                    build.raft.app.data.AgentActivityTurnProblem(
+                        kind = build.raft.app.data.AgentActivityActionKind.RunChecks,
+                        reason = build.raft.app.data.AgentActivityProblemReason.ExitNonzero,
+                        exitCode = 1,
+                        atEpochMillis = 1781870420000L
+                    )
+                ),
+                problemCount = 1,
+                messagesSent = 2,
+                lastReplyMessageId = MessageId("reply-1")
+            ),
+            build.raft.app.data.AgentActivityTurn(
+                id = "00000000-0000-4000-8000-000000000002",
+                startedAtEpochMillis = 1781869800000L,
+                endedAtEpochMillis = 1781869805000L,
+                outcome = build.raft.app.data.AgentActivityTurnOutcome.Failed,
+                trigger = build.raft.app.data.AgentActivityTurnTrigger.Hidden(
+                    build.raft.app.data.AgentActivityTurnTrigger.HiddenPlace.PrivateChannel
+                ),
+                actions = emptyList(),
+                toolCalls = 0,
+                problems = listOf(
+                    build.raft.app.data.AgentActivityTurnProblem(
+                        kind = build.raft.app.data.AgentActivityActionKind.EditFile,
+                        reason = build.raft.app.data.AgentActivityProblemReason.CallFailed,
+                        exitCode = null,
+                        atEpochMillis = 1781869804000L
+                    )
+                ),
+                problemCount = 1,
+                messagesSent = 0,
+                lastReplyMessageId = null
+            ),
+            build.raft.app.data.AgentActivityTurn(
+                id = "00000000-0000-4000-8000-000000000003",
+                startedAtEpochMillis = 1781869200000L,
+                endedAtEpochMillis = 1781869209000L,
+                outcome = build.raft.app.data.AgentActivityTurnOutcome.Completed,
+                trigger = build.raft.app.data.AgentActivityTurnTrigger.Visible(
+                    target = "dm:@richard",
+                    channelId = "d1",
+                    sender = "richard",
+                    messageId = null
+                ),
+                actions = emptyList(),
+                toolCalls = 0,
+                problems = listOf(
+                    build.raft.app.data.AgentActivityTurnProblem(
+                        kind = build.raft.app.data.AgentActivityActionKind.SendMessage,
+                        reason = build.raft.app.data.AgentActivityProblemReason.SendHeld,
+                        exitCode = null,
+                        atEpochMillis = 1781869208000L
+                    )
+                ),
+                problemCount = 1,
+                messagesSent = 0,
+                lastReplyMessageId = null
+            )
+        ),
+        replies = mapOf(
+            MessageId("reply-1") to build.raft.app.data.AgentActivityReplyState.Ready(
+                build.raft.app.data.AgentActivityTurnReply.Loaded(
+                    content = "Fixed it: tests pass now.",
+                    createdAtEpochMillis = 1781870490000L
+                )
+            )
+        )
+    )
 
 internal fun memberDetailInitialRouteState(
     identity: MemberDetailIdentity?,
@@ -2738,7 +2853,9 @@ private class MemberDetailRouteProvider(
     val storeScope: RaftShellStoreScope,
     val agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     val runtimeAccountUsageStore: SharedRuntimeAccountUsageStore? = null,
-    val computersOwner: suspend () -> SharedComputersOwner? = { null }
+    val computersOwner: suspend () -> SharedComputersOwner? = { null },
+    val serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags? = null,
+    val activityOverviewRepository: build.raft.app.data.AgentActivityOverviewRepository? = null
 ) {
     /** The identity the shared network client currently authenticates as (task #137 usage reads). */
     suspend fun currentRuntimeAccountUsageOwner(): SharedComputersOwner? = computersOwner()
@@ -3384,6 +3501,12 @@ private fun rememberMemberDetailRouteProvider(
             }
         )
     }
+    val activityOverviewRepository = remember(networkClient) {
+        build.raft.app.data.RealAgentActivityOverviewRepository(
+            networkClient = networkClient,
+            logger = { message -> bridge.log("member_detail_$message") }
+        )
+    }
     val avatarNativeCache =
         remember(bridge, scope) {
             BridgeRaftAvatarNativeCache(
@@ -3412,7 +3535,8 @@ private fun rememberMemberDetailRouteProvider(
         sharedStores.sharedHomeStore(storeScope),
         storeScope,
         agentsApiClient,
-        runtimeAccountUsageStore
+        runtimeAccountUsageStore,
+        activityOverviewRepository
     ) {
         MemberDetailRouteProvider(
             computersOwner = { sharedStores.computersOwner(storeScope) },
@@ -3437,7 +3561,9 @@ private fun rememberMemberDetailRouteProvider(
             sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
             storeScope = storeScope,
             agentsApiClient = agentsApiClient,
-            runtimeAccountUsageStore = runtimeAccountUsageStore
+            runtimeAccountUsageStore = runtimeAccountUsageStore,
+            serverFeatureFlags = sharedStores.serverFeatureFlags,
+            activityOverviewRepository = activityOverviewRepository
         )
     }
 }
@@ -3496,6 +3622,17 @@ internal fun MemberDetailPageContent(
         mutableStateOf<MembersAgentActivityLoadState>(MembersAgentActivityLoadState.Idle)
     }
     var agentActivityRequestGeneration by remember { mutableStateOf(0L) }
+    val activityOverviewStore =
+        remember(provider, memberIdentity) {
+            provider.activityOverviewRepository?.let { repository ->
+                build.raft.app.data.SharedAgentActivityOverviewStore(
+                    repository = repository,
+                    scope = routeScope,
+                    logger = { message -> bridge.log("member_detail_$message") }
+                )
+            }
+        }
+    val activityOverviewState = activityOverviewStore?.state?.collectAsState()?.value
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
     val serverMembersState by provider.serverMembersStore.state.collectAsState()
@@ -4018,6 +4155,19 @@ internal fun MemberDetailPageContent(
                         serverMembersState = serverMembersState,
                         agentDetailState = agentDetailState,
                         agentActivityLoadState = agentActivityLoadState,
+                        activityOverview =
+                            membersAgentActivityOverviewBindingOrNull(
+                                store = activityOverviewStore,
+                                state = activityOverviewState,
+                                enabled =
+                                    current.accessMode.allowsPrivateAgentSurfaces &&
+                                        (current.server.permissions.canManageSettings ||
+                                            selectedAgentDetail?.summary?.creatorId == current.currentUserId) &&
+                                        provider.serverFeatureFlags?.isEnabled(
+                                            current.server.id,
+                                            ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
+                                        ) == true
+                            ),
                         runtimeModels = MembersAgentRuntimeModelInputs(
                             agentMachineRuntimes =
                                 membersAgentMachineRuntimeIds(
@@ -4295,6 +4445,20 @@ private fun RaftMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDeta
                 agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
                 agentScopeSet = membersAgentDetailVisualScopeSet
             )
+        MembersAgentActivityOverviewVisualId -> {
+            val member = membersAgentDetailVisualMember.copy(id = MemberId(MembersAgentActivityOverviewVisualId))
+            MemberDetailVisualSeed(
+                member = member,
+                agentDetailState = MembersAgentDetailLoadState.Content(
+                    membersAgentDetailVisualSnapshot.copy(
+                        agentId = member.id,
+                        summary = membersAgentDetailVisualSnapshot.summary?.copy(id = member.id.value)
+                    )
+                ),
+                agentScopeSet = membersAgentDetailVisualScopeSet.copy(agentId = member.id),
+                activityOverview = membersAgentActivityOverviewVisualState
+            )
+        }
         membersHumanDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersHumanDetailVisualMember,
@@ -4323,6 +4487,7 @@ private fun MemberDetailVisualSeedContent(
         currentUserId = "visual-owner",
         currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
+        activityOverview = seed.activityOverview?.let { MembersAgentActivityOverviewBinding(state = it, onIntent = {}) },
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
         machineStatusRow = membersVisualFixtureMachineStatusRow,
@@ -5414,6 +5579,8 @@ private fun MembersDetailContent(
     serverMembersState: SharedServerMembersState = SharedServerMembersState(),
     agentDetailState: MembersAgentDetailLoadState,
     agentActivityLoadState: MembersAgentActivityLoadState = MembersAgentActivityLoadState.Idle,
+    /** Activity tab per-turn Overview; null (flag off or no access) keeps the raw log only. */
+    activityOverview: MembersAgentActivityOverviewBinding? = null,
     runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
@@ -6008,6 +6175,8 @@ private fun MembersDetailContent(
                         MembersAgentActivityTab(
                             detail = detail,
                             loadState = agentActivityLoadState,
+                            overview = activityOverview,
+                            onOpenComputer = onOpenComputer,
                             diagnosticActionState = effectiveDiagnosticActionState,
                             onCopyDiagnostics = { copyDiagnostics() },
                             timeContext = timeContext,
@@ -12832,6 +13001,8 @@ private fun MembersAgentAppLoginScopeChip(scope: String) {
 private fun MembersAgentActivityTab(
     detail: AgentDetailSnapshot?,
     loadState: MembersAgentActivityLoadState,
+    overview: MembersAgentActivityOverviewBinding? = null,
+    onOpenComputer: (() -> Unit)? = null,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
     timeContext: RaftTimeContext,
@@ -12842,6 +13013,21 @@ private fun MembersAgentActivityTab(
     val errorStrings = localizedErrorPresentationStrings()
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
+    var activityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
+    if (overview != null && detail != null) {
+        val agentId = detail.agentId
+        LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
+        // A finished turn arrives with the agent's live status change (web reloads on the
+        // agent:activity push); the store debounces and coalesces.
+        val liveActivity = detail.summary?.activity
+        var seenLiveActivity by remember(agentId) { mutableStateOf(liveActivity) }
+        LaunchedEffect(agentId, liveActivity) {
+            if (seenLiveActivity != liveActivity) {
+                seenLiveActivity = liveActivity
+                overview.onIntent(AgentActivityOverviewIntent.LiveActivityChanged)
+            }
+        }
+    }
     // raft-ui agent page Activity tab: the activity log as a Timeline under a section head
     // with Copy Info.
     Column(
@@ -12860,10 +13046,16 @@ private fun MembersAgentActivityTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
-            MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_activity_diagnostics),
-                modifier = Modifier.weight(1f)
-            )
+            if (overview != null) {
+                // Web AgentActivityLog behind activity_overview_web_v0: Overview / Raw Log.
+                MembersAgentActivityViewSwitch(view = activityView, onViewChange = { activityView = it })
+                Spacer(Modifier.weight(1f))
+            } else {
+                MembersDetailSectionTitle(
+                    stringResource(MR.strings.member_section_activity_diagnostics),
+                    modifier = Modifier.weight(1f)
+                )
+            }
             RaftButton(
                 text = if (copySucceeded) stringResource(MR.strings.common_done) else stringResource(MR.strings.member_action_copy_info),
                 onClick = onCopyDiagnostics,
@@ -12874,6 +13066,30 @@ private fun MembersAgentActivityTab(
             )
         }
         MembersDetailSectionDivider()
+        if (overview != null && activityView == MembersAgentActivityView.Overview) {
+            val summary = detail?.summary
+            MembersAgentActivityOverview(
+                binding = overview,
+                now = MembersAgentActivityNow(
+                    label = membersLiveAgentStatusLabel(
+                        indicatorState = null,
+                        summaryStatus = summary?.status,
+                        summaryActivity = summary?.activity,
+                        summaryActivityDetail = summary?.activityDetail,
+                        fallback = MembersUnknownAgentStatusLabel
+                    ),
+                    presence = membersAgentActivityNowPresence(summary?.activity)
+                ),
+                hasRawActivity = detail?.activity?.isNotEmpty() == true,
+                hasComputer = !summary?.machineId.isNullOrBlank(),
+                timeContext = timeContext,
+                onShowRaw = { activityView = MembersAgentActivityView.Raw },
+                onOpenComputer = onOpenComputer,
+                onOpenUrl = onOpenUrl,
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+            return@Column
+        }
         val rows =
             remember(detail?.agentId, detail?.activity) {
                 detail?.activity.orEmpty()

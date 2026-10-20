@@ -3583,6 +3583,17 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // slock task #17: the Activity tab with `activity_overview_web_v0` on opens on the per-turn
+    // Overview (web AgentActivityOverview). The seed mirrors the web behaviour-test turns.
+    @Test
+    fun captureMembersAgentDetailActivityOverviewScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.activity.overview",
+            tab = "activity",
+            memberId = "agent-activity-overview"
+        )
+    }
+
     @Test
     fun captureMembersHumanDetailProfileScreen() {
         captureKmpComponentCase(
