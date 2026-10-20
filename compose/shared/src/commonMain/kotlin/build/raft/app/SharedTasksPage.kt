@@ -7,6 +7,11 @@ import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftAnchoredMetaChip
+import build.raft.app.designtokens.RaftUiPalette
+import build.raft.app.markdown.RaftTaskStatusPixel
+import build.raft.app.markdown.RaftTaskStatusPixelStyle
+import build.raft.app.markdown.raftTaskStatusColor
+import build.raft.app.markdown.raftTaskStatusSoft
 import build.raft.app.components.RaftAnchoredToolbarChip
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftToolbarChip
@@ -808,11 +813,16 @@ private fun SharedTasksLoadedBodyContent(
                                         end = RaftAppSpacing.Md,
                                         bottom = bottomContentPadding
                                     ),
-                                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                             ) {
-                                listColumns.forEach { column ->
+                                listColumns.forEachIndexed { columnIndex, column ->
                                     item(key = "list-header-${column.status.name}") {
+                                        // web TasksPanel list: sections `stack-y-6`, each section
+                                        // `stack-y-2.5` (header, then cards 10dp apart).
                                         BoardSectionHeader(
+                                            modifier =
+                                                Modifier.padding(
+                                                    top = if (columnIndex == 0) 0.dp else SharedTasksListSectionGap
+                                                ),
                                             status = column.status,
                                             count = column.totalCount,
                                             collapsed = column.status in collapsedStatuses,
@@ -831,6 +841,7 @@ private fun SharedTasksLoadedBodyContent(
                                         ) { index ->
                                             val task = column.tasks[index]
                                             SharedTaskCard(
+                                                modifier = Modifier.padding(top = SharedTasksListItemGap),
                                                 task = task,
                                                 hasDraft = draftProjection.hasDraftForTask(task),
                                                 captureLongPressAnchor = !listModeListState.isScrollInProgress,
@@ -1354,37 +1365,59 @@ private fun localizedTasksEmptyStatus(status: TaskStatus): String =
         }
     )
 
+/**
+ * raft-ui TaskSectionTrigger (web TasksPanel `TaskSection`): a 32dp row, `px-2 gap-2`, the
+ * status pixel, the label in callout bold hint ink and the count in mono-meta hint ink. The
+ * whole row toggles the section; web's chevron is not drawn on the phone.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun BoardSectionHeader(
     status: TaskStatus,
     count: Int,
     collapsed: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val colors = RaftAppThemeState.colors
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .height(32.dp)
+                .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SharedTasksStatusLabel(status)
+        RaftTaskStatusPixel(
+            style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk)
+        )
+        Text(
+            text = status.localizedLabel(),
+            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.ForegroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Text(
             text = count.toString(),
-            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
-            color = RaftColor.TextBlack.copy(alpha = 0.5f),
+            style = SharedTaskMonoMetaStyle,
+            color = RaftColor.ForegroundHint,
             maxLines = 1
-        )
-        Spacer(Modifier.weight(1f))
-        RaftLucideIcon(
-            "chevron-down",
-            modifier = Modifier.size(14.dp).rotate(if (collapsed) -90f else 0f),
-            color = "#FF000000"
         )
     }
 }
 
-/** React's TaskCard equivalent: brutalist shadow, source label, title, status badge. */
+/**
+ * raft-ui TaskCard (web `task/TaskCard.tsx`): card surface, mono-meta source + number,
+ * body-semibold title, callout-muted description, and the status chip in the foot. Android
+ * keeps its declared extras (platformDivergences.json): the relative timestamp at the top
+ * right and the assignee chip after the status chip.
+ */
 @Composable
 private fun SharedTaskCard(
+    modifier: Modifier = Modifier,
     task: TaskSummary,
     hasDraft: Boolean,
     captureLongPressAnchor: Boolean = true,
@@ -1410,7 +1443,7 @@ private fun SharedTaskCard(
         )
     val description = task.description?.takeIf { it.isNotBlank() }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .then(
                 if (captureLongPressAnchor) {
@@ -1448,19 +1481,20 @@ private fun SharedTaskCard(
                         }
                     )
                 }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                // web card: 1dp hairline + `p-3`; the meta row sits 4dp lower (measured
+                // 17dp from the card's top edge to the meta line box).
+                .padding(start = 13.dp, end = 13.dp, top = 17.dp, bottom = 14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 task.tasksSourceLabel()?.takeIf { it.isNotBlank() }?.let { source ->
                     Text(
                         text = source,
-                        style = RaftType.TabLabel.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.65f),
+                        style = SharedTaskMonoMetaStyle,
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1468,8 +1502,8 @@ private fun SharedTaskCard(
                 task.taskNumber?.let { taskNumber ->
                     Text(
                         text = "#$taskNumber",
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.35f),
+                        style = SharedTaskMonoMetaStyle,
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1
                     )
                 }
@@ -1485,45 +1519,50 @@ private fun SharedTaskCard(
                     RaftRelativeTimestampText(
                         value = updatedAt,
                         timeContext = timeContext,
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.35f),
+                        style = SharedTaskMonoMetaStyle,
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1
                     )
                 }
             }
+            Spacer(Modifier.height(9.dp))
             Text(
                 text = task.tasksMeaningfulDisplayTitle(),
-                style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                // `text-body` 16/24 at 600 (task titles).
+                style = RaftType.ListItem,
                 color = RaftColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
             description?.let { desc ->
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = desc,
-                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.TextBlack.copy(alpha = 0.65f),
+                    style = RaftType.Button.withRaftFontWeight(FontWeight.Normal),
+                    color = RaftColor.TextMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            // web foot: `mt-2` + the chip's `mt-0.5`.
+            Spacer(Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                // Task #251 (artin msg=c06b26d3): right-align the badge row so the
-                // shrink-wrapped assignee + status pills pack against the card's
-                // trailing edge instead of hugging the title.
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, alignment = Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Status first, at the card's leading edge like web's TaskCard foot; the menu
+                // opens from the chip's bottom-left (`dropdownAlign="left"`).
+                RaftTaskStatusChip(
+                    status = task.status,
+                    onClick = onStatusBadgeClick,
+                    clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
+                    anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value)
+                )
+                // Android-only assignee chip (declared divergence). Task #251: it
+                // shrink-wraps its label like Web's InlineBadgeEditor; long display names
+                // are capped and ellipsized.
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
-                // Assignee pill with trailing pencil mirrors React's card assignee
-                // InlineBadgeEditor (searchable popover reuse per stdrc msg=4c357cb1;
-                // uppercase=false like the @assignee label). Same anchored Button model
-                // as the status chip so the tap wins over the parent card gesture.
-                // Task #251: the pill must shrink-wrap its label like Web's
-                // InlineBadgeEditor does — never stretch to the leftover card width
-                // (artin 2026-08-27 verify-session screenshot). Long display names are
-                // capped and ellipsized so the status pill keeps its slot.
                 RaftAnchoredMetaChip(
                     label = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
@@ -1534,40 +1573,70 @@ private fun SharedTaskCard(
                     anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
                     modifier = Modifier.widthIn(max = SharedTaskCardAssigneeChipMaxWidth),
                     trailingIconName = RaftLucideIconName.Pencil,
-                    minHeight = 24.dp,
-                    horizontalPadding = 8.dp,
+                    minHeight = 22.dp,
+                    horizontalPadding = 6.dp,
+                    verticalPadding = 0.dp,
                     labelFontSize = 12.sp,
                     labelLineHeight = 16.sp,
-                    borderWidth = RaftAppStroke.Default,
-                    anchorPlacement = RaftAnchorPlacement.BottomEnd
-                )
-                // Use the same anchored Button(onClick2) model as thread meta chips so the
-                // status pill reliably wins the tap instead of the parent card gesture.
-                // Sentence-case label + trailing pencil mirror React's editable status
-                // badge (InlineBadgeEditor with uppercase={false}).
-                RaftAnchoredMetaChip(
-                    label = task.status.localizedLabel(),
-                    iconName = null,
-                    color = task.status.color,
-                    onClick = onStatusBadgeClick,
-                    clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
-                    anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
-                    modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
-                    trailingIconName = RaftLucideIconName.Pencil,
-                    // react's card status badge (InlineBadgeEditor, text-xs/leading-4 +
-                    // py-0.5 + border-2) measures a 24dp box / 20dp fill; 22dp min + 14sp
-                    // line rendered ~22dp box / 18dp fill. 24dp min + 16sp line matches (#373).
-                    minHeight = 24.dp,
-                    horizontalPadding = 8.dp,
-                    labelFontSize = 12.sp,
-                    labelLineHeight = 16.sp,
-                    borderWidth = RaftAppStroke.Default,
+                    labelFontWeight = FontWeight.SemiBold,
+                    borderWidth = RaftAppStroke.Thin,
                     anchorPlacement = RaftAnchorPlacement.BottomEnd
                 )
             }
         }
     }
 }
+
+/**
+ * raft-ui TaskStatusBadge as an editable trigger (web InlineBadgeEditor with `badgeStatus`):
+ * a 22dp soft chip in the status `-soft` wash, `px-1.5`, the 9dp status pixel, the label in
+ * callout semibold foreground ink and a 12dp chevron. Tapping hands the chip's bottom-left
+ * anchor to [onClick] so the status menu drops below it, left-aligned.
+ */
+@Composable
+internal fun RaftTaskStatusChip(
+    status: TaskStatus,
+    onClick: ((RaftPopoverAnchor) -> Unit)?,
+    modifier: Modifier = Modifier,
+    clickIdentity: Any? = null,
+    anchorOwnerIdentity: Any? = null
+) {
+    val colors = RaftAppThemeState.colors
+    RaftAnchoredMetaChip(
+        label = status.localizedLabel(),
+        iconName = null,
+        color = status.raftTaskStatusSoft(colors),
+        onClick = onClick,
+        clickIdentity = clickIdentity,
+        anchorOwnerIdentity = anchorOwnerIdentity,
+        modifier = modifier,
+        trailingIconName = RaftLucideIconName.ChevronDown,
+        trailingIconSize = 12.dp,
+        trailingIconColorArgb = RaftColor.TextBlackArgb,
+        borderWidth = 0.dp,
+        minHeight = 22.dp,
+        horizontalPadding = 6.dp,
+        verticalPadding = 0.dp,
+        labelFontSize = 14.sp,
+        labelLineHeight = 20.sp,
+        labelFontWeight = FontWeight.SemiBold,
+        contentSpacing = 4.dp,
+        leadingContent = {
+            RaftTaskStatusPixel(
+                style = RaftTaskStatusPixelStyle(fill = status.raftTaskStatusColor(colors), stroke = RaftUiPalette.stickerInk),
+                modifier = Modifier.padding(end = 1.dp)
+            )
+        },
+        anchorPlacement = RaftAnchorPlacement.BottomStart
+    )
+}
+
+/** `text-mono-meta` 12/16 Space Mono: card meta, timestamps and section counts. */
+private val SharedTaskMonoMetaStyle: androidx.compose.ui.text.TextStyle
+    get() = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp)
+
+private val SharedTasksListSectionGap = 24.dp
+private val SharedTasksListItemGap = 10.dp
 
 private data class SharedTaskCardGestureCallbacks(
     val onClick: () -> Unit,
@@ -1582,34 +1651,6 @@ internal fun tasksAssigneeChipClickIdentity(taskId: String): String =
     "tasks-assignee:$taskId"
 
 internal fun tasksStatusMenuOwnerIdentity(taskId: String): String = "task:$taskId"
-
-@Composable
-private fun SharedTasksStatusLabel(
-    status: TaskStatus,
-    label: String? = null,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = Modifier
-            .then(modifier)
-            .background(status.color)
-            // React's section-header status pill uses a 1px border; android's 2dp
-            // read as "too black / heavier" vs react's thinner (lighter-looking)
-            // line. Same black color, just match the 1px stroke (task #384).
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-            .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Text(
-            text = (label ?: status.localizedLabel()).raftDisplayUppercase(),
-            style = RaftType.TabLabel,
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
 
 @Composable
 private fun SharedTasksSegmentedControl(
@@ -1687,17 +1728,6 @@ internal fun TaskStatus.localizedLabel(): String =
         }
     )
 
-private val TaskStatus.color: androidx.compose.ui.graphics.Color
-    get() =
-        when (this) {
-            TaskStatus.Todo -> RaftColor.AccentOrange
-            TaskStatus.InProgress -> RaftColor.AccentCyan
-            TaskStatus.InReview -> RaftColor.AccentLavender
-            TaskStatus.Done -> RaftColor.AccentLime
-            TaskStatus.Closed -> RaftColor.EmptyStateGray
-        }
-
-private val SharedTaskCardStatusChipMinWidth = 78.dp
 private val SharedTaskCardAssigneeChipMaxWidth = 160.dp
 
 private val TaskStatus.iconName: RaftLucideIconName

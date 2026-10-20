@@ -1,7 +1,5 @@
 package build.raft.app
 
-import build.raft.app.components.RaftAnchorPlacement
-import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.data.AppLocale
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.TaskWireDto
@@ -23,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -223,14 +223,12 @@ internal fun TasksPanelVisualContent(fixture: String = "") {
 
 @Composable
 internal fun TasksStatusMenuVisualContent() {
-    // No container padding: RaftAnchoredPopover clamps content to an 8dp viewport
-    // gap inside its host, so a padded host used to shove the menu to the host's
-    // top-left (+24px/-66px vs react @3x). The chip is offset instead and the menu
-    // anchor is the chip's bottom-left in root PIXELS (RaftFloatingOverlay works in
-    // px; react's chip box is x 16dp, y 18..42dp and the menu opens 4dp below it at
-    // (16, 46)dp — task #370).
-    val anchorRef = remember { RaftLiveRootAnchorRef(identity = "tasks_status_menu_fixture") }
-    var anchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    // web: InlineBadgeEditor held open with in_progress selected — the TaskCard status chip
+    // at (16, 18)dp (the case wrapper's 16dp padding + the chip's `mt-0.5`), and its
+    // menu portalled `top: trigger.bottom + 4`, left-aligned with the trigger
+    // (`dropdownAlign="left"`). The menu panel is pinned in place here instead of floating
+    // in RaftTaskStatusMenuOverlay's modal window, so the capture does not depend on where
+    // the harness composites dialog windows; it is the same panel that overlay draws.
     Box(
         modifier =
             Modifier
@@ -238,45 +236,15 @@ internal fun TasksStatusMenuVisualContent() {
                 .height(260.dp)
                 .background(RaftColor.SurfaceWhite)
     ) {
-        // Same trigger chip + RaftTaskStatusMenuOverlay call SharedTasksPage opens on a
-        // status chip tap, held statically open with in_progress selected. Text
-        // params mirror the product status chip (SharedTasksPage task card) and the
-        // box is pinned to react's measured chip border-box, 98x24dp at (16,18)dp —
-        // the 10sp/20dp-min defaults rendered an 80x20dp chip (task #370).
-        Box(
-            modifier =
-                Modifier
-                    .offset(x = 16.dp, y = 18.dp)
-                    .width(98.dp)
-                    .height(24.dp)
-                    .raftCaptureLiveRootAnchor(anchorRef) {
-                        anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
-                    }
-        ) {
-            RaftAnchoredMetaChip(
-                label = TaskStatus.InProgress.localizedLabel(),
-                iconName = null,
-                color = RaftColor.AccentCyan,
-                onClick = {},
-                modifier = Modifier.fillMaxSize(),
-                trailingIconName = RaftLucideIconName.Pencil,
-                minHeight = 22.dp,
-                horizontalPadding = 8.dp,
-                labelFontSize = 12.sp,
-                labelLineHeight = 14.sp,
-                borderWidth = RaftAppStroke.Default,
-                anchorPlacement = RaftAnchorPlacement.BottomEnd
-            )
-        }
-        anchor?.let { resolvedAnchor ->
-            RaftTaskStatusMenuOverlay(
-                anchor = resolvedAnchor,
+        Column(modifier = Modifier.offset(x = 16.dp, y = 18.dp)) {
+            RaftTaskStatusChip(status = TaskStatus.InProgress, onClick = {})
+            Spacer(Modifier.height(4.dp))
+            RaftTaskStatusMenuPanel(
                 items =
                     TaskStatus.entries.map { status ->
                         RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                     },
                 selectedId = TaskStatus.InProgress.name,
-                onDismiss = {},
                 onSelect = {}
             )
         }

@@ -358,8 +358,9 @@ private fun RaftDropdownMenuRow(
         }
         Text(
             text = item.label,
-            // callout 14/20 medium = the shared content size.
-            style = RaftType.Body.withRaftFontWeight(if (emphasized) FontWeight.Bold else FontWeight.Medium),
+            // raft-ui MenuItem: `text-callout` 14/20 at 500 (web measures 14px rows; the
+            // 16/24 content size is for message text, not menu items).
+            style = RaftType.Button.withRaftFontWeight(if (emphasized) FontWeight.Bold else FontWeight.Medium),
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
