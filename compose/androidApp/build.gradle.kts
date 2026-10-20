@@ -604,7 +604,7 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
 android {
     namespace = "build.raft.app"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
     testBuildType = "connectedTest"
 
@@ -707,12 +707,19 @@ android {
         }
     }
     sourceSets {
-        getByName("main") {
-            assets.srcDir(layout.buildDirectory.dir("generated/assets/ossLicenses/main"))
-        }
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
         }
+    }
+}
+
+// AGP 9 rejects Provider-backed directories in android.sourceSets; the generated licence asset
+// directory is added through the variant API instead (preBuild still runs the generator).
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addStaticSourceDirectory(
+            layout.buildDirectory.dir("generated/assets/ossLicenses/main").get().asFile.absolutePath
+        )
     }
 }
 
@@ -822,7 +829,7 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    // Pinned to the AndroidX Compose runtime line CMP 1.11.x is built against.
+    // Pinned to the AndroidX Compose runtime line CMP 1.12.x is built against.
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

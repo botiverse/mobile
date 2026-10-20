@@ -151,8 +151,7 @@ kotlin {
                 implementation(libs.cmp.ui.backhandler)
                 implementation(libs.cmp.lifecycle.viewmodel.compose)
                 implementation(libs.cmp.lifecycle.runtime.compose)
-                // Coil 3.5.x is built against Kotlin 2.4 / CMP foundation 1.11 (3.6+ needs foundation 1.12, i.e.
-                // compileSdk 37 + AGP 9.1).
+                // Coil 3.6.x is built against Kotlin 2.4 / CMP foundation 1.12 (compileSdk 37 + AGP 9.1).
                 implementation(libs.coil.compose)
                 // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
                 // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
@@ -353,6 +352,15 @@ tasks.matching { task ->
     dependsOn("generateMRandroidMain")
 }
 
+// The MR generator adds build/generated/tmm-res/androidMain to the Android source sets without a
+// task dependency; Gradle 9 rejects every variant resource/asset task reading it undeclared.
+tasks.matching { task ->
+    (task.name.contains("Debug") || task.name.contains("Release")) &&
+        (task.name.endsWith("Resources") || task.name.endsWith("Assets"))
+}.configureEach {
+    dependsOn("generateMRandroidMain")
+}
+
 gradle.taskGraph.whenReady {
     tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
         // The bundled TMM resource plugin attaches PackResourcesToKLibAction after task
@@ -366,17 +374,20 @@ gradle.taskGraph.whenReady {
 
 android {
     namespace = "build.raft.app.shared"
-    // Upstream Compose 1.8 (CMP 1.8.2) requires compileSdk 35, same as :ui-cmp.
-    compileSdk = 35
+    // AndroidX Compose 1.12 (CMP 1.12.x) requires compileSdk 37 (and AGP 9.1).
+    compileSdk = 37
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     defaultConfig {
         minSdk = 21
-        targetSdk = 34
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+    // AGP 9 removed the library-level defaultConfig.targetSdk; it only ever applied to this
+    // module's tests and lint, which keep 34.
+    testOptions { targetSdk = 34 }
+    lint { targetSdk = 34 }
     sourceSets {
         named("main") {
             assets.srcDirs("src/commonMain/assets")

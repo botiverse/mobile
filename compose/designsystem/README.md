@@ -1,7 +1,7 @@
 # Raft design system (Compose Multiplatform)
 
 `:designsystem` is the Raft design system (raft-ui 0.8.0 docs and components), written on official
-JetBrains Compose Multiplatform (1.11.1, Kotlin 2.4.21). It is the base for screens that
+JetBrains Compose Multiplatform (1.12.2, Kotlin 2.4.21). It is the base for screens that
 move off Kuikly (see the CMP migration assessment, §3.2 `:ui-cmp`).
 
 - Depends only on `compose.runtime`, `compose.foundation`, `compose.ui`,

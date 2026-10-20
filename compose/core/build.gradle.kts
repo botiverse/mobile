@@ -67,7 +67,7 @@ kotlin {
 
 android {
     namespace = "build.raft.app.core"
-    compileSdk = 34
+    compileSdk = 37
     defaultConfig {
         minSdk = 21
     }
