@@ -2463,6 +2463,7 @@
     <string name="channel_settings_mute_description">静音此频道的普通活动，只影响你。</string>
     <string name="channel_settings_actions_title">频道操作</string>
     <string name="channel_settings_actions_description">成员资格、可见性、转换、归档和破坏性操作。</string>
+    <string name="channel_settings_sheet_preferences">偏好</string>
     <string name="channel_settings_save">保存</string>
     <string name="channel_settings_close">关闭频道设置</string>
 </resources>

@@ -192,6 +192,10 @@ internal fun raftBottomSafeAreaPadding(): Dp {
     // Host that already consumed the navigation bar reserves nothing here —
     // unchanged original contract.
     if (params.optBoolean("slockHostExcludesNavigationBar", false)) return 0.dp
+    // Visual-testing captures hide the navigation bar like they hide the status bar (React
+    // baselines have neither), but the host still reports the bar's height; the same
+    // harness opt-out as the top inset drops it unless the case sets a bottom inset.
+    if (params.optBoolean("slockVisualZeroSafeArea", false) && !params.has("safeAreaBottom")) return 0.dp
     val live = RaftHostWindowInsets.current(windowId)
     val hostInsetPx =
         live?.second

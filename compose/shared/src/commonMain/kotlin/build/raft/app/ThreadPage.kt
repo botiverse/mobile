@@ -5646,6 +5646,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
             addMemberStatus = "idle",
             addMemberErrorCode = null,
             channelName = "design",
+            canCreateAgents = true,
             onDismiss = {},
             onSubmit = {}
         )
@@ -33355,6 +33356,8 @@ private fun ThreadAddMemberModalBody(
 ) {
     val colors = build.raft.designsystem.theme.RaftTheme.colors
     val typography = build.raft.designsystem.theme.RaftTheme.typography
+    val agentsLabel = stringResource(MR.strings.thread_members_agents)
+    val humansLabel = stringResource(MR.strings.thread_members_humans)
     Column(modifier = Modifier.fillMaxWidth()) {
         if (!errorText.isNullOrBlank()) {
             Text(
@@ -33455,8 +33458,8 @@ private fun ThreadAddMemberModalBody(
                         }
                     }
                 }
-                section("agents", agentCandidates)
-                section("humans", humanCandidates)
+                section(agentsLabel, agentCandidates)
+                section(humansLabel, humanCandidates)
             }
             ThreadAddMemberCreateAgentEntry(
                 title =
@@ -33807,6 +33810,7 @@ private fun ThreadChannelSettingsSheet(
     onSave: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    // Read before entering the Modal: its window does not carry the page's inset locals.
     val topInset = raftTopSafeAreaPadding()
     val bottomInset = raftBottomSafeAreaPadding()
     Modal(onWillDismiss = { onDismiss() }) {
@@ -33826,7 +33830,7 @@ private fun ThreadChannelSettingsSheet(
                         .fillMaxWidth()
                         .padding(top = topInset)
                         .height(55.dp)
-                        .padding(start = 16.dp, end = 8.dp),
+                        .padding(start = 16.dp, end = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -33901,7 +33905,7 @@ private fun ThreadChannelSettingsSheet(
                 Spacer(Modifier.height(20.dp))
                 if (conversationPinState != null || activityMuteState != null) {
                     build.raft.designsystem.components.RaftFormSection(
-                        title = stringResource(MR.strings.channel_settings_preferences)
+                        title = stringResource(MR.strings.channel_settings_sheet_preferences)
                     ) {
                         Column {
                             conversationPinState?.let { pin ->

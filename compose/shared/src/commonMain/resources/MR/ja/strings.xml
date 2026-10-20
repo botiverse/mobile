@@ -2463,6 +2463,7 @@
     <string name="channel_settings_mute_description">このチャンネルの通常のアクティビティをミュートします。自分にのみ適用されます。</string>
     <string name="channel_settings_actions_title">チャンネルの操作</string>
     <string name="channel_settings_actions_description">メンバーシップ、公開範囲、変換、アーカイブ、危険な操作を管理します。</string>
+    <string name="channel_settings_sheet_preferences">個人設定</string>
     <string name="channel_settings_save">保存</string>
     <string name="channel_settings_close">チャンネル設定を閉じる</string>
 </resources>

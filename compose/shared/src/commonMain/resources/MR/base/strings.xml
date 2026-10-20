@@ -2463,6 +2463,7 @@
     <string name="channel_settings_mute_description">Mute ordinary activity from this channel. Only affects you.</string>
     <string name="channel_settings_actions_title">Channel actions</string>
     <string name="channel_settings_actions_description">Membership, visibility, conversion, archive, and destructive controls.</string>
+    <string name="channel_settings_sheet_preferences">Preferences</string>
     <string name="channel_settings_save">Save</string>
     <string name="channel_settings_close">Close channel settings</string>
 </resources>

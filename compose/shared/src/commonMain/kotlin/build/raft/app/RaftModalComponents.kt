@@ -651,15 +651,31 @@ private fun RaftUnifiedDialogSurface(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    RaftBrutalIconButton(
-                        enabled = dismissEnabled,
-                        iconName = RaftLucideIconName.X,
-                        onClick = onDismiss,
-                        backgroundColor = Color.Transparent,
-                        size = 32.dp,
-                        iconSize = 18.dp,
-                        shadowOffset = 3.dp
-                    )
+                    // DialogCard close: `size="icon-sm" -my-1.5 -mr-1.5`, so the 32dp button
+                    // neither makes the header taller nor pushes its glyph off the body's edge.
+                    Box(
+                        modifier =
+                            Modifier.layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                                val bleed = 6.dp.roundToPx()
+                                layout(
+                                    (placeable.width - bleed).coerceAtLeast(0),
+                                    (placeable.height - 2 * bleed).coerceAtLeast(0)
+                                ) {
+                                    placeable.place(0, -bleed)
+                                }
+                            }
+                    ) {
+                        RaftBrutalIconButton(
+                            enabled = dismissEnabled,
+                            iconName = RaftLucideIconName.X,
+                            onClick = onDismiss,
+                            backgroundColor = Color.Transparent,
+                            size = 32.dp,
+                            iconSize = 18.dp,
+                            shadowOffset = 3.dp
+                        )
+                    }
                 }
                 CompositionLocalProvider(
                     LocalRaftDialogKeyboardHeightChange provides { params: KeyboardParams ->
