@@ -968,6 +968,8 @@ data class AgentActivityEntry(
     val toolInput: String? = null,
     val statusActivity: String? = null,
     val statusDetail: String? = null,
+    /** Server `detailKind` of a status entry ("starting", "compacting_context", ...). */
+    val statusDetailKind: String? = null,
     val isSubagent: Boolean = false,
     val subagentType: String? = null,
     val expandable: Boolean = false,

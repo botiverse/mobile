@@ -2277,6 +2277,17 @@
     <string name="member_row_status_thinking">思考中</string>
     <string name="home_dm_agent_activity_thinking">思考中…</string>
     <string name="home_dm_agent_activity_working">工作中…</string>
+    <string name="agent_activity_starting">启动中…</string>
+    <string name="agent_activity_compacting_context">正在压缩上下文…</string>
+    <string name="agent_activity_tool_read_file">正在读取文件…</string>
+    <string name="agent_activity_tool_write_file">正在写入文件…</string>
+    <string name="agent_activity_tool_upload_file">正在上传文件…</string>
+    <string name="agent_activity_tool_view_file">正在查看文件…</string>
+    <string name="agent_activity_tool_schedule_reminder">正在设置提醒…</string>
+    <string name="agent_activity_tool_list_reminders">正在列出提醒…</string>
+    <string name="agent_activity_tool_cancel_reminder">正在取消提醒…</string>
+    <string name="agent_activity_tool_run_command">正在运行命令…</string>
+    <string name="agent_activity_tool_using">正在使用 %1$s…</string>
     <string name="search_error_sort_recent">按最新排序</string>
     <string name="search_error_too_broad">搜索范围过大</string>
     <string name="search_error_too_broad_detail">请添加频道、发送者或时间筛选，或按最新排序。</string>

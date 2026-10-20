@@ -143,6 +143,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -198,10 +199,10 @@ private val ChannelRowMutedIconSize = 12.dp
 private val ChannelRowMutedIconGap = 4.dp
 /** Web sidebar `AvatarBadge` is StatusDot `sm` (8px). */
 private val DirectMessageAvatarStatusSize = 8.dp
-/** raft-ui `SidebarItem` trailing column `gap-1.5`. */
-private val DirectMessageLiveActivityGap = 6.dp
+/** Web `SIDEBAR_ROW_TRAILING_CLASS` `gap-1.5`. */
+private val DirectMessageTrailingGap = 6.dp
 /** Web `SIDEBAR_ROW_TRAILING_CLASS` `max-w-[58%]`. */
-private const val DirectMessageLiveActivityMaxWidthFraction = 0.58f
+private const val DirectMessageTrailingMaxWidthFraction = 0.58f
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
@@ -6946,17 +6947,9 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
+    // The agent's status is read only inside the avatar-dot and trailing-meta leaves below, so
+    // an agent:activity push recomposes those two leaves, not the whole row.
     val agentMemberId = memberId?.takeIf { isAgent && it.isNotBlank() }
-    // A missing resolver value means presence is still Unknown/not ready. Do not manufacture
-    // Offline: that falsely renders a gray dot while the authoritative member/presence
-    // projection is loading or recovering.
-    val agentStatusState =
-        projectHomeAgentStatusIndicatorState(
-            showPresence = agentMemberId != null,
-            memberId = agentMemberId,
-            canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agentMemberId)
-        )
-    val liveActivity = raftHomeDmAgentLiveActivity(agentStatusState)
     val titleColor = homeConversationTitleColor(muted = muted)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(muted)
     val effectiveInteractionState = when {
@@ -7071,21 +7064,14 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`: the agent's status pixel
-            // (`sm`, 8px) sits on the avatar's corner, so it stays visible beside an unread count.
-            RaftAvatarWithStatus(
-                statusColor = agentStatusState?.color,
-                avatarSize = ChannelAvatarSize,
-                statusSize = DirectMessageAvatarStatusSize,
-                statusPulsing = agentStatusState?.pulsing == true
-            ) {
-                RaftAppAvatar(
-                    avatarWireValue = avatarWireValue,
-                    label = avatarLabel,
-                    cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
-                    cacheServerId = cacheServerId
-                )
-            }
+            DirectMessageAvatar(
+                agentMemberId = agentMemberId,
+                agentStatusResolver = agentStatusResolver,
+                avatarWireValue = avatarWireValue,
+                avatarLabel = avatarLabel,
+                cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
+                cacheServerId = cacheServerId
+            )
             androidx.compose.foundation.layout.Row(
                 modifier =
                     Modifier
@@ -7126,27 +7112,38 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     )
                 }
             }
-            // Web `SidebarPeerRowBody` trailing column: the unread count alone, otherwise the
-            // draft mark and then the agent's live activity (`SidebarAgentMeta`).
-            val trailingDraft = hasDraft && badge == null
-            val trailingLiveActivity = liveActivity?.takeIf { badge == null }
-            if (trailingDraft || trailingLiveActivity != null || badge != null) {
-                Spacer(Modifier.width(RaftAppSpacing.Sm))
-            }
-            if (trailingDraft) {
-                RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(14.dp), color = RaftColor.TextMutedGrayArgb)
-            }
-            if (trailingLiveActivity != null) {
-                if (trailingDraft) Spacer(Modifier.width(DirectMessageLiveActivityGap))
-                DirectMessageAgentLiveActivity(
-                    text = trailingLiveActivity.localizedText(),
-                    selected = selected
-                )
-            }
-            if (badge != null) {
-                when (badgeTone) {
-                    HomeSidebarBadgeTone.Loud -> CountPill(badge, RaftColor.AccentPink)
-                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge)
+            // Web `SidebarPeerRowBody` trailing column (`SIDEBAR_ROW_TRAILING_CLASS`): the unread
+            // count alone, otherwise the draft mark and then the agent's meta; the whole column is
+            // capped at 58% of the row so a long activity sentence never pushes the name out.
+            val trailingSlots = raftHomeDmTrailingSlots(badge = badge, hasDraft = hasDraft, isAgent = agentMemberId != null)
+            if (trailingSlots.isNotEmpty()) {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.raftHomeDmTrailingColumnCap(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    trailingSlots.forEachIndexed { index, slot ->
+                        val leadingGap = if (index == 0) RaftAppSpacing.Sm else DirectMessageTrailingGap
+                        when (slot) {
+                            RaftHomeDmTrailingSlot.UnreadBadge -> {
+                                Spacer(Modifier.width(leadingGap))
+                                when (badgeTone) {
+                                    HomeSidebarBadgeTone.Loud -> CountPill(badge.orEmpty(), RaftColor.AccentPink)
+                                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge.orEmpty())
+                                }
+                            }
+                            RaftHomeDmTrailingSlot.Draft -> {
+                                Spacer(Modifier.width(leadingGap))
+                                RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(14.dp), color = RaftColor.TextMutedGrayArgb)
+                            }
+                            RaftHomeDmTrailingSlot.AgentMeta ->
+                                DirectMessageAgentMeta(
+                                    agentMemberId = agentMemberId,
+                                    agentStatusResolver = agentStatusResolver,
+                                    selected = selected,
+                                    modifier = Modifier.weight(1f, fill = false).padding(start = leadingGap)
+                                )
+                        }
+                    }
                 }
             }
         }
@@ -7154,28 +7151,100 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     }
 }
 
+/** Web `SIDEBAR_ROW_TRAILING_CLASS` `max-w-[58%]`, applied to the whole trailing column. */
+private fun Modifier.raftHomeDmTrailingColumnCap(): Modifier =
+    layout { measurable, constraints ->
+        val cap =
+            if (constraints.hasBoundedWidth) {
+                (constraints.maxWidth * DirectMessageTrailingMaxWidthFraction).toInt()
+            } else {
+                constraints.maxWidth
+            }
+        val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = cap))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+@Composable
+private fun rememberDirectMessageAgentStatus(
+    agentStatusResolver: RaftAgentStatusResolver,
+    agentMemberId: String?
+): RaftAgentStatusIndicatorState? =
+    // A missing resolver value means presence is still Unknown/not ready. Do not manufacture
+    // Offline: that falsely renders a gray dot while the authoritative member/presence
+    // projection is loading or recovering.
+    projectHomeAgentStatusIndicatorState(
+        showPresence = agentMemberId != null,
+        memberId = agentMemberId,
+        canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agentMemberId)
+    )
+
 /**
- * Web `SidebarAgentMeta` live branch (`rf-srow__meta--live`): Grotesk 13/18 regular in
- * foreground-muted (sticker ink on the selected row), one line with an ellipsis, capped at
- * 58% of the row so a long activity sentence never pushes the name out.
+ * Web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`: the agent's status pixel (`sm`, 8px)
+ * on the avatar's corner, so it stays visible beside an unread count. Static, never pulsing
+ * (web `activityPresence`: "an ambient state never loops"). A leaf: it alone reads the status.
  */
 @Composable
-private fun DirectMessageAgentLiveActivity(text: String, selected: Boolean) {
+private fun DirectMessageAvatar(
+    agentMemberId: String?,
+    agentStatusResolver: RaftAgentStatusResolver,
+    avatarWireValue: String?,
+    avatarLabel: String,
+    cacheSubject: RaftAvatarCacheSubject.Member?,
+    cacheServerId: String?
+) {
+    val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    RaftAvatarWithStatus(
+        statusColor = status?.color,
+        avatarSize = ChannelAvatarSize,
+        statusSize = DirectMessageAvatarStatusSize,
+        statusPulsing = false
+    ) {
+        RaftAppAvatar(
+            avatarWireValue = avatarWireValue,
+            label = avatarLabel,
+            cacheSubject = cacheSubject,
+            cacheServerId = cacheServerId
+        )
+    }
+}
+
+/**
+ * Web `SidebarAgentMeta`: while the agent works, what it is doing (`rf-srow__meta--live`,
+ * Grotesk 13/18 regular, foreground-muted); otherwise its runtime name (`SidebarItemMeta`,
+ * Space Mono 12/16, foreground-hint). Sticker ink on the selected row. One line with an
+ * ellipsis. Visual only (web `aria-hidden`): the row's accessible name stays the agent's name
+ * and a sentence that changes every few seconds is not announced. A leaf: it alone reads the
+ * status, so an agent:activity push recomposes only this text.
+ */
+@Composable
+private fun DirectMessageAgentMeta(
+    agentMemberId: String?,
+    agentStatusResolver: RaftAgentStatusResolver,
+    selected: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val meta = raftHomeDmAgentMeta(status) ?: return
+    val (text, style, color) =
+        when (meta) {
+            is RaftHomeDmAgentMeta.Live ->
+                Triple(
+                    meta.activity.localizedText(),
+                    RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    RaftColor.TextMuted
+                )
+            is RaftHomeDmAgentMeta.Runtime ->
+                Triple(
+                    meta.label,
+                    RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+                    RaftColor.ForegroundHint
+                )
+        }
     Text(
         text,
-        style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
-        color = if (selected) RaftColor.StickerInk else RaftColor.TextMuted,
-        modifier =
-            Modifier.layout { measurable, constraints ->
-                val cap =
-                    if (constraints.hasBoundedWidth) {
-                        (constraints.maxWidth * DirectMessageLiveActivityMaxWidthFraction).toInt()
-                    } else {
-                        constraints.maxWidth
-                    }
-                val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = cap))
-                layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-            },
+        style = style,
+        color = if (selected) RaftColor.StickerInk else color,
+        modifier = modifier.clearAndSetSemantics {},
         maxLines = 1,
         overflow = TextOverflow.Ellipsis
     )

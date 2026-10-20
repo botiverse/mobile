@@ -2277,6 +2277,17 @@
     <string name="member_row_status_thinking">Thinking</string>
     <string name="home_dm_agent_activity_thinking">Thinking…</string>
     <string name="home_dm_agent_activity_working">Working…</string>
+    <string name="agent_activity_starting">Starting…</string>
+    <string name="agent_activity_compacting_context">Compacting context…</string>
+    <string name="agent_activity_tool_read_file">Reading file…</string>
+    <string name="agent_activity_tool_write_file">Writing file…</string>
+    <string name="agent_activity_tool_upload_file">Uploading file…</string>
+    <string name="agent_activity_tool_view_file">Viewing file…</string>
+    <string name="agent_activity_tool_schedule_reminder">Scheduling reminder…</string>
+    <string name="agent_activity_tool_list_reminders">Listing reminders…</string>
+    <string name="agent_activity_tool_cancel_reminder">Canceling reminder…</string>
+    <string name="agent_activity_tool_run_command">Running command…</string>
+    <string name="agent_activity_tool_using">Using %1$s…</string>
     <string name="search_error_sort_recent">Sort by newest</string>
     <string name="search_error_too_broad">Search is too broad</string>
     <string name="search_error_too_broad_detail">Add a channel, sender, or time filter, or sort by newest.</string>
