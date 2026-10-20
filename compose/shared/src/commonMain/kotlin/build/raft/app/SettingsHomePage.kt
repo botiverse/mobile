@@ -1238,6 +1238,10 @@ internal fun appShellBottomTabs(
  * task #94: builds bottom-tab payloads from the resolved ordered tab keys (legacy or
  * Slack-aligned) with per-key labels and icons. Icons follow the Slack-aligned preview:
  * Home=house, DMs=message circle, Activity=bell, More=ellipsis.
+ *
+ * This list is the single source of truth for every bottom-bar renderer, including the
+ * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
+ * appears there with its label, icon and badge count (Activity: [activityBadgeCount]).
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
