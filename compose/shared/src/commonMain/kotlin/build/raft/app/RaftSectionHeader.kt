@@ -204,6 +204,98 @@ internal fun RaftTopPageHeader(
     }
 }
 
+/**
+ * raft-ui PanelHeader as a phone column head (web `PanelHeader` with `onMobileBack`): a 56dp
+ * canvas row with a 1dp seam, 16dp start edge; the 44dp ghost Back (22dp glyph) is pulled 13dp
+ * into that edge (`-ml-[13px]`), then an 8dp gap, the `text-headline` title over the
+ * `text-caption` hint meta line.
+ */
+@Composable
+internal fun RaftPanelBackHeader(
+    title: String,
+    subtitle: String?,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    topSafeArea: Dp = 0.dp,
+    refreshing: Boolean = false,
+    onTitleClick: (() -> Unit)? = null,
+) {
+    val safeTop = topSafeArea.coerceAtLeast(0.dp)
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(safeTop + RaftPanelHeaderHeight)
+                .background(RaftColor.Canvas)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = safeTop)
+                    .height(RaftPanelHeaderHeight - RaftAppStroke.Thin)
+                    .padding(start = if (onBack != null) 3.dp else 16.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (onBack != null) {
+                RaftPanelAction(onClick = onBack, modifier = Modifier.size(44.dp)) {
+                    Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                        RaftLucideIcon(
+                            name = RaftLucideIconName.ArrowLeft,
+                            modifier = Modifier.size(22.dp),
+                            color = raftArgbHex(RaftColor.TextBlack)
+                        )
+                    }
+                }
+            }
+            Column(
+                // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                modifier =
+                    Modifier.weight(1f).clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = onTitleClick != null
+                    ) { onTitleClick?.invoke() },
+            ) {
+                Text(
+                    text = title,
+                    style = RaftPanelHeaderTitleStyle,
+                    color = RaftColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                subtitle?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = RaftType.Caption,
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (refreshing) {
+                RaftHeaderRefreshIndicator()
+            }
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(RaftAppStroke.Thin)
+                    .background(RaftColor.BorderSeam)
+                    .align(Alignment.BottomCenter)
+        )
+    }
+}
+
+private val RaftPanelHeaderHeight = 56.dp
+
+// raft-ui `text-headline`: 17/22 700, no tracking.
+private val RaftPanelHeaderTitleStyle: TextStyle
+    get() = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = 0.sp)
+
 @Composable
 internal fun RaftTopPageHeaderFrame(
     modifier: Modifier = Modifier,

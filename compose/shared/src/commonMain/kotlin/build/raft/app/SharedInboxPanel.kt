@@ -1,14 +1,10 @@
 package build.raft.app
 
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import build.raft.app.components.raftCardSurface
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalBadge
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTone
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
@@ -92,7 +88,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -123,6 +118,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.designsystem.components.RaftToast
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButton
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.key
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -1083,34 +1092,39 @@ private fun SharedActivityHeader(
         )
         return
     }
-    RaftTopPageHeader(
+    // web ThreadsInbox head: raft-ui PanelHeader with the phone Back.
+    RaftPanelBackHeader(
         title = stringResource(MR.strings.home_nav_activity),
         subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
-        backgroundColor = RaftColor.SurfaceWhite,
-        topSafeAreaOverride = topSafeAreaPadding,
+        onBack = onClose,
+        topSafeArea = topSafeAreaPadding,
         refreshing = refreshing,
-        leadingContent =
-            onClose?.let { close ->
-                {
-                    RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = close)
-                }
-            },
         onTitleClick = onTitleClick,
-        showBodyTopBanner = false,
     )
 }
 
+/**
+ * web Mark all read: a ghost `sm` button; when the toolbar is narrower than 22rem (352dp) it
+ * keeps only its CheckCheck icon (`@max-[22rem]:size-8`), so the filters keep their width.
+ */
 @Composable
-private fun SharedActivityMarkAllReadButton(onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = stringResource(MR.strings.inbox_action_mark_all_read),
-        minHeight = 28.dp,
-        minWidth = 0.dp,
-        shadowOffset = 2.dp,
-        backgroundColor = RaftColor.SurfaceWhite,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-        onClick = onClick
-    )
+private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Unit) {
+    val label = stringResource(MR.strings.inbox_action_mark_all_read)
+    if (iconOnly) {
+        RaftIconButton(
+            onClick = onClick,
+            tooltip = label,
+            variant = RaftButtonVariant.Ghost,
+        ) {
+            RaftContentLucideIcon(RaftLucideIconName.CheckCheck, size = 16.dp)
+        }
+    } else {
+        RaftButton(
+            text = label,
+            onClick = onClick,
+            variant = RaftButtonVariant.Ghost,
+        )
+    }
 }
 
 @Composable
@@ -1128,13 +1142,15 @@ private fun SharedActivityFilterBar(
     onFilterSelected: (InboxFilter) -> Unit,
     onMarkAllRead: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
+    // web inbox toolbar: 54dp with a 1dp seam inside it, 16dp edges, the 38dp tray 8dp down.
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
+        val markAllReadIconOnly = maxWidth < 352.dp
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
-                    .padding(horizontal = 16.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                    .height(38.dp),
             verticalAlignment = Alignment.CenterVertically,
             // raft-ui SegmentedControl: the tray hugs its segments; Mark all read sits at the
             // row's end (xxchan: the tray must not stretch into an empty grey band).
@@ -1153,10 +1169,17 @@ private fun SharedActivityFilterBar(
                 modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)
             )
             if (totalUnreadCount > 0) {
-                SharedActivityMarkAllReadButton(onClick = onMarkAllRead)
+                SharedActivityMarkAllReadButton(iconOnly = markAllReadIconOnly, onClick = onMarkAllRead)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(RaftAppStroke.Thin)
+                    .background(RaftColor.BorderSeam)
+                    .align(Alignment.BottomCenter)
+        )
     }
 }
 
@@ -1550,8 +1573,8 @@ private fun SharedActivityList(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .padding(top = if (conversationList != null) 4.dp else 16.dp),
-                verticalArrangement = Arrangement.spacedBy(if (conversationList != null) 0.dp else 8.dp)
+                        // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
+                        .padding(top = 4.dp)
             ) {
                 raftPullToRefreshItem()
                 if (conversationListEntries != null) {
@@ -1600,13 +1623,13 @@ private fun SharedActivityList(
                         }
                     }
                 } else {
-                items(items = renderedItems, key = { item -> item.key }) { item ->
+                itemsIndexed(items = renderedItems, key = { _, item -> item.key }) { index, item ->
                     SharedActivityRow(
                         item = item,
                         senderProfiles = senderProfiles,
                         dmPeerNames = dmPeerNames,
                         selected = selectedItemKey == item.key,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        divider = index > 0,
                         timeContext = timeContext,
                         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                         activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
@@ -1845,31 +1868,20 @@ internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityRep
 }
 
 /**
- * An Activity row's surface: the raft-ui card row (container radius, `layer-card`, 1dp
- * hairline); the selected row takes the `info-soft` wash. No ink frame, no offset shadow.
+ * raft-ui InboxItem at its card density, as web ThreadsInbox draws an Activity row: edge to
+ * edge on the canvas, 16/12dp padding, a hairline from 16dp above every row but the first,
+ * the `info-soft` wash while selected. Its grid is content | trailing: a thread's context line
+ * and title (a channel or DM row's title and body) sit beside the trailing timestamp; the rest
+ * of the content runs the full width. On touch the Done button rests at the trailing top
+ * (raft-ui `pointer-coarse`), and the timestamp steps 44dp aside for it.
  */
-@Composable
-private fun SharedActivitySelectedRowSurface(
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    content: @Composable (Modifier) -> Unit
-) {
-    Box(modifier = modifier.fillMaxWidth()) {
-        content(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(RaftAppRadius.Container))
-                .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
-        )
-    }
-}
-
 @Composable
 private fun SharedActivityRow(
     item: InboxItem,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
     dmPeerNames: Map<String, String> = emptyMap(),
     selected: Boolean,
+    divider: Boolean = false,
     modifier: Modifier = Modifier,
     timeContext: RaftTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
@@ -1888,182 +1900,226 @@ private fun SharedActivityRow(
                 presentationOwnerIdentity = presentationOwnerIdentity,
             )
         }
-    val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     val avatarPresentation = activitySenderAvatarPresentation(activitySenderAvatarsEnabled)
     val openLabel = stringResource(MR.strings.common_open)
-    SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
-        Column(modifier = surfaceModifier) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Optional latest-activity sender avatar: 32dp frame, 2dp
-                // black border, 12dp gap to the content column, and a 2dp top
-                // nudge. Pure presentation —
-                // it shares the row open/long-press gesture and never changes
-                // the Done button's independent click. The frame is a fixed
-                // 32dp regardless of sender kind / missing avatar URL so the
-                // row height never drifts.
-                if (avatarPresentation.visible) {
-                    SharedActivitySenderAvatar(
-                        item = item,
-                        senderProfiles = senderProfiles,
-                        modifier =
-                            Modifier
-                                .activityRowGestures(
-                                    openGestureKey,
-                                    captureMenuAnchor,
-                                    onOpen,
-                                    onOpenMenu
-                                )
-                                .padding(start = 12.dp, top = 12.dp)
-                                .offset(y = 2.dp)
-                    )
-                }
-                Column(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .activityRowGestures(
-                                openGestureKey,
-                                captureMenuAnchor,
-                                onOpen,
-                                onOpenMenu
-                            )
-                            // The card's content reads as one button; the accessibility click opens it
-                            // like a tap. The avatar and bottom strip stay pointer-only so a screen reader
-                            // meets each card once.
-                            .semantics(mergeDescendants = true) {
-                                role = Role.Button
-                                onClick(label = openLabel) {
-                                    onOpen()
-                                    true
-                                }
-                            }
-                            .padding(start = avatarPresentation.contentStartPadding, top = 12.dp)
-                ) {
-                // Tag + timestamp share the top row — artin's ruling on #1039
-                // (#wg-nightly-visual-fix:4670869d, 2026-07-17): react's
-                // timestamp-beside-title placement steals width from the real
-                // message content; the android layout is the desired product
-                // behavior and react should adopt it (declared react-adopts-later).
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Channel tag fills the row so the timestamp is pushed to the
-                    // right edge (artin #1171, 2026-07-17): timestamp right-aligned
-                    // on the tag row; the title and the rows below do not move.
-                    Text(
-                        text = item.channelLabel(dmPeerNames),
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.52f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(end = 10.dp)
-                    )
-                    RaftRelativeTimestampText(
-                        value = item.latestActivityAt ?: item.lastMessageAt,
-                        timeContext = timeContext,
-                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
-                        color = RaftColor.TextBlack.copy(alpha = 0.4f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (item.kind == InboxItemKind.Thread) {
-                        RaftLucideIcon(
-                            RaftLucideIconName.MessageSquare,
-                            modifier = Modifier.size(13.dp),
-                            // react title icon is text-black/45 in EVERY state
-                            // (#1039); only the title text dims when read.
-                            color = "#73000000",
-                            verticalOffsetDp = 2f
-                        )
-                    }
-                    val primaryPreview = item.primaryActivityPreviewText(
-                        senderProfiles = senderProfiles,
-                        dmPeerNames = dmPeerNames,
-                        threadFallback = threadFallback,
-                        actionFallback = actionFallback,
-                        conversationFallback = conversationFallback
-                    )
-                    Text(
-                        text = primaryPreview.toAnnotatedString(),
-                        style =
-                            if (item.unreadCount > 0) {
-                                RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
-                            } else {
-                                RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
-                            }.withRaftUserContentLocale(),
-                        color = if (mutedPrimaryContent) RaftColor.TextBlack.copy(alpha = 0.5f) else RaftColor.TextBlack,
-                        maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                item.secondaryActivityPreviewText(
-                    senderProfiles = senderProfiles,
-                    threadFallback = threadFallback,
-                    actionFallback = actionFallback,
-                    conversationFallback = conversationFallback
-                )?.let { secondary ->
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = secondary.toAnnotatedString(),
-                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftUserContentLocale(),
-                        color = if (item.unreadCount > 0) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.45f),
-                        // react body is line-clamp-2 (#1039): the preview gets
-                        // two lines before ellipsis, not one.
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                SharedActivityFooter(
-                    item = item,
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
-                )
-                }
-                if (item.activityShowsDoneAction()) {
-                    Row(
-                        modifier = Modifier.padding(top = 12.dp, end = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        SharedActivitySmallIconButton(
-                            iconName = RaftLucideIconName.Check,
-                            clickIdentity =
-                                item.activityDoneClickIdentity(
-                                    presentationGeneration = presentationGeneration,
-                                    presentationOwnerIdentity = presentationOwnerIdentity,
-                                ),
-                            onClick = onDone
-                        )
-                    }
-                }
-            }
-            // This padding is visually part of the card, so keep it in the
-            // row's open/long-press target instead of leaving a dead strip
-            // below the content. The Done button above remains independent.
-            Spacer(
+    val card = remember(item, senderProfiles, dmPeerNames, threadFallback, actionFallback, conversationFallback) {
+        item.activityCardModel(
+            senderProfiles = senderProfiles,
+            dmPeerNames = dmPeerNames,
+            threadFallback = threadFallback,
+            actionFallback = actionFallback,
+            conversationFallback = conversationFallback
+        )
+    }
+    val showDone = item.activityShowsDoneAction()
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(if (selected) RaftColor.InfoSoft else Color.Transparent)
+    ) {
+        Column(
+            modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(12.dp)
                     .activityRowGestures(
                         openGestureKey,
                         captureMenuAnchor,
                         onOpen,
                         onOpenMenu
                     )
+                    // The row reads as one button; the accessibility click opens it like a tap.
+                    // The Done button stays its own control.
+                    .semantics(mergeDescendants = true) {
+                        role = Role.Button
+                        onClick(label = openLabel) {
+                            onOpen()
+                            true
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                // Optional latest-activity sender avatar (Mobile-only appearance experiment).
+                if (avatarPresentation.visible) {
+                    SharedActivitySenderAvatar(
+                        item = item,
+                        senderProfiles = senderProfiles,
+                        modifier = Modifier.padding(end = 12.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    card.context?.let { context ->
+                        Text(
+                            text = context,
+                            style = RaftType.Caption,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+                    }
+                    SharedActivityCardTitle(card = card, unread = item.unreadCount > 0)
+                    if (card.context == null) {
+                        SharedActivityCardBody(card = card, unread = item.unreadCount > 0)
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                RaftRelativeTimestampText(
+                    value = item.latestActivityAt ?: item.lastMessageAt,
+                    timeContext = timeContext,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
+                    color = RaftColor.ForegroundHint,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(top = 1.dp, end = if (showDone) 44.dp else 0.dp)
+                )
+            }
+            if (card.context != null) {
+                SharedActivityCardBody(card = card, unread = item.unreadCount > 0)
+            }
+            SharedActivityFooter(
+                item = item,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
             )
+        }
+        if (divider) {
+            Box(
+                modifier =
+                    Modifier
+                        .padding(start = 16.dp)
+                        .fillMaxWidth()
+                        .height(RaftAppStroke.Thin)
+                        .background(RaftColor.BorderHairline)
+            )
+        }
+        if (showDone) {
+            Box(modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 16.dp)) {
+                SharedActivityDoneButton(
+                    clickIdentity =
+                        item.activityDoneClickIdentity(
+                            presentationGeneration = presentationGeneration,
+                            presentationOwnerIdentity = presentationOwnerIdentity,
+                        ),
+                    onClick = onDone
+                )
+            }
+        }
+    }
+}
+
+internal enum class ActivityCardTitleGlyph { Thread, DirectMessage, Channel }
+
+/** What one Activity card says, per web `InboxRow` (card layout). Pure. */
+internal data class ActivityCardModel(
+    /** Thread rows: the parent conversation ("#design" / "@peer"); null otherwise. */
+    val context: String?,
+    val titleGlyph: ActivityCardTitleGlyph,
+    /** Thread: the root message preview; else the place name without its `#`/`@`. */
+    val title: String,
+    /** "sender: preview": the sender is drawn in full ink. */
+    val body: ActivityPreviewText
+)
+
+internal fun InboxItem.activityCardModel(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    dmPeerNames: Map<String, String> = emptyMap(),
+    threadFallback: String = "Thread update",
+    actionFallback: String = "Action required",
+    conversationFallback: String = "Conversation update"
+): ActivityCardModel {
+    val thread = kind == InboxItemKind.Thread
+    val directMessage =
+        kind == InboxItemKind.DirectMessage ||
+            (kind == InboxItemKind.MentionAction && channelKind == ConversationKind.DirectMessage)
+    val title =
+        when {
+            thread -> parentMessagePreview?.takeIf { it.isNotBlank() } ?: threadFallback
+            kind == InboxItemKind.DirectMessage ->
+                (dmPeerNames[channelId.value] ?: channelName.ifBlank { channelId.value }).trimStart('@', '#')
+            else -> channelName.ifBlank { channelId.value }.trimStart('@', '#')
+        }
+    val preview =
+        when (kind) {
+            InboxItemKind.Thread -> latestActivityPreview ?: lastMessagePreview ?: threadFallback
+            InboxItemKind.MentionAction -> lastMessagePreview ?: latestActivityPreview ?: actionFallback
+            else -> lastMessagePreview ?: latestActivityPreview ?: conversationFallback
+        }
+    return ActivityCardModel(
+        context = if (thread) channelLabel(dmPeerNames) else null,
+        titleGlyph =
+            when {
+                thread -> ActivityCardTitleGlyph.Thread
+                directMessage -> ActivityCardTitleGlyph.DirectMessage
+                else -> ActivityCardTitleGlyph.Channel
+            },
+        title = title,
+        body = ActivityPreviewText(senderName = senderDisplayName(senderProfiles), body = preview)
+    )
+}
+
+/** raft-ui InboxItemTitle: `text-subhead`, two lines, an 18dp hanging indent for the 14dp kind glyph. */
+@Composable
+private fun SharedActivityCardTitle(card: ActivityCardModel, unread: Boolean) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        val glyphModifier = Modifier.padding(top = 3.dp).size(14.dp)
+        when (card.titleGlyph) {
+            ActivityCardTitleGlyph.Thread ->
+                RaftConversationKindIcon(RaftConversationKindGlyph.Thread, modifier = glyphModifier, color = RaftColor.ForegroundHint)
+            ActivityCardTitleGlyph.DirectMessage ->
+                RaftConversationKindIcon(RaftConversationKindGlyph.DirectMessage, modifier = glyphModifier, color = RaftColor.ForegroundHint)
+            ActivityCardTitleGlyph.Channel ->
+                RaftLucideIcon(RaftLucideIconName.Hash, modifier = glyphModifier, color = raftArgbHex(RaftColor.ForegroundHint))
+        }
+        Text(
+            text = card.title,
+            style = RaftType.ButtonBold.withRaftFontWeight(if (unread) FontWeight.Bold else FontWeight.SemiBold).withRaftUserContentLocale(),
+            color = if (unread) RaftColor.TextBlack else RaftColor.TextMuted,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 18.dp)
+        )
+    }
+}
+
+/** raft-ui InboxItemBody: `text-callout`, two lines, muted unless the row is unread; the sender in full ink. */
+@Composable
+private fun SharedActivityCardBody(card: ActivityCardModel, unread: Boolean) {
+    val body = card.body
+    Text(
+        text =
+            buildAnnotatedString {
+                if (!body.senderName.isNullOrBlank()) {
+                    withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
+                        append(body.senderName)
+                        append(": ")
+                    }
+                }
+                append(body.body)
+            },
+        style = RaftType.Button.withRaftFontWeight(FontWeight.Normal).withRaftUserContentLocale(),
+        color = if (unread) RaftColor.TextBlack else RaftColor.TextMuted,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+    )
+}
+
+/**
+ * web Done: an outline `icon-md` button (32dp) with an 18dp check. Keyed by the row's click
+ * identity so a recycled lazy slot never fires the previous row's Done.
+ */
+@Composable
+private fun SharedActivityDoneButton(clickIdentity: Any, onClick: () -> Unit) {
+    key(clickIdentity) {
+        RaftIconButton(
+            onClick = onClick,
+            tooltip = stringResource(MR.strings.thread_action_mark_done),
+        ) {
+            RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
         }
     }
 }
@@ -2281,28 +2337,28 @@ internal fun InboxItem.activityOpenGestureKey(
     // change may cancel a DOWN→UP gesture that started on this slot.
     "activity-open:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
+/**
+ * raft-ui InboxItemMetadata: 8dp under the body, a wrapping run (6dp gaps, 20dp minimum) of
+ * raft-ui Badges as web ThreadsInbox draws them: the task StatusBadge, "N replies" (outline),
+ * Unfollowed (outline), "@ you" (primary sticker), "N new" (accent sticker), the draft pencil
+ * (outline).
+ */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun SharedActivityFooter(
     item: InboxItem,
     activityTaskStatusBadgesEnabled: Boolean
 ) {
+    val slots = item.activityFooterSlots(activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled)
+    if (slots.isEmpty()) return
     FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        item.activityFooterSlots(activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled).forEach { slot ->
+        slots.forEach { slot ->
+            val centered = Modifier.align(Alignment.CenterVertically)
             when (slot) {
-                SharedActivityFooterSlot.Replies ->
-                    SharedActivityFooterBadge(
-                        label = stringResource(
-                            if (item.replyCount == 1) MR.strings.activity_replies_one else MR.strings.activity_replies_many,
-                            item.replyCount
-                        ),
-                        slot = slot,
-                        modifier = Modifier.align(Alignment.CenterVertically)
-                    )
                 SharedActivityFooterSlot.Task ->
                     SharedActivityFooterBadge(
                         label = item.activityTaskBadgeText(),
@@ -2310,49 +2366,48 @@ private fun SharedActivityFooter(
                         taskStatus = item.taskStatus,
                         modifier = Modifier.widthIn(max = 260.dp).align(Alignment.CenterVertically)
                     )
+                SharedActivityFooterSlot.Replies ->
+                    RaftBadge(
+                        text =
+                            stringResource(
+                                if (item.replyCount == 1) MR.strings.activity_replies_one else MR.strings.activity_replies_many,
+                                item.replyCount
+                            ),
+                        appearance = RaftBadgeAppearance.Outline,
+                        variant = RaftBadgeVariant.Muted,
+                        modifier = centered
+                    )
                 SharedActivityFooterSlot.Mention ->
-                    SharedActivityFooterBadge(
-                        label = stringResource(MR.strings.activity_mention_you),
-                        slot = slot,
-                        modifier = Modifier.align(Alignment.CenterVertically)
+                    RaftBadge(
+                        text = stringResource(MR.strings.activity_mention_you),
+                        variant = RaftBadgeVariant.Primary,
+                        icon = { RaftGlyphIcon(RaftGlyph.AtSign, size = 13.dp) },
+                        modifier = centered
                     )
                 SharedActivityFooterSlot.New ->
-                    SharedActivityFooterBadge(
-                        label = stringResource(MR.strings.activity_new_count, item.unreadCount),
-                        slot = slot,
-                        modifier = Modifier.align(Alignment.CenterVertically)
+                    RaftBadge(
+                        text = stringResource(MR.strings.activity_new_count, item.unreadCount),
+                        variant = RaftBadgeVariant.Accent,
+                        modifier = centered
                     )
                 SharedActivityFooterSlot.Unfollowed ->
-                    SharedActivityFooterBadge(
-                        label = stringResource(MR.strings.thread_row_unfollowed),
-                        slot = slot,
-                        modifier = Modifier.align(Alignment.CenterVertically)
+                    RaftBadge(
+                        text = stringResource(MR.strings.thread_row_unfollowed),
+                        appearance = RaftBadgeAppearance.Outline,
+                        variant = RaftBadgeVariant.Muted,
+                        icon = { RaftContentLucideIcon(RaftLucideIconName.BellOff, size = 10.dp) },
+                        modifier = centered
                     )
                 SharedActivityFooterSlot.Draft ->
-                    SharedActivityFooterDraftBadge(
-                        modifier = Modifier.align(Alignment.CenterVertically)
+                    RaftBadge(
+                        text = "",
+                        appearance = RaftBadgeAppearance.Outline,
+                        variant = RaftBadgeVariant.Muted,
+                        icon = { RaftContentLucideIcon(RaftLucideIconName.Pencil, size = 12.dp) },
+                        modifier = centered
                     )
             }
         }
-    }
-}
-
-@Composable
-private fun SharedActivityFooterDraftBadge(modifier: Modifier = Modifier) {
-    Box(
-        modifier =
-            modifier
-                .size(20.dp)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .background(RaftColor.SurfaceWhite)
-                .raftSquareCorners(),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(
-            name = RaftLucideIconName.Pencil,
-            modifier = Modifier.size(10.dp),
-            color = "#FF000000"
-        )
     }
 }
 
@@ -2379,23 +2434,6 @@ internal fun InboxItem.activityTaskBadgeText(): String =
         ?.takeIf { it.isNotBlank() }
         ?.let { " @$it" }
         .orEmpty()
-
-@Composable
-private fun SharedActivitySmallIconButton(
-    iconName: RaftLucideIconName,
-    modifier: Modifier = Modifier,
-    clickIdentity: Any? = null,
-    onClick: () -> Unit
-) {
-    RaftBrutalIconButton(
-        iconName = iconName,
-        modifier = modifier,
-        clickIdentity = clickIdentity,
-        onClick = onClick,
-        size = 28.dp,
-        shadowOffset = 2.dp
-    )
-}
 
 @Composable
 private fun SharedActivitySmallButton(

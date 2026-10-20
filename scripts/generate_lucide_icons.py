@@ -80,6 +80,7 @@ LUCIDE_ICONS = [
     "camera",
     "chart-bar",
     "check",
+    "check-check",
     "chevron-down",
     "chevron-left",
     "chevron-right",
