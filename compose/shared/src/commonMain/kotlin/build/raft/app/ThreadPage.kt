@@ -329,6 +329,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -412,7 +413,6 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.resume
-import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.time.TimeMark
@@ -26849,11 +26849,9 @@ private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifie
 // never flashes it: a drag steals the pointer and cancels the press scope
 // before the delay elapses.
 private const val ThreadMessagePressIndicationDelayMs = 120L
-private const val ThreadMessageRippleExpandMs = 260
-private const val ThreadMessageRippleFadeMs = 240
+private const val ThreadMessagePressFadeInMs = 120
+private const val ThreadMessageRippleFadeMs = 160
 private const val ThreadMessageRippleResetMarginMs = 60L
-private const val ThreadMessageRippleAlpha = 0.10f
-private val ThreadMessageRippleMinRadius = 24.dp
 
 internal fun threadMessageUsesFullRowLongPressActions(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive
@@ -26903,48 +26901,39 @@ internal fun threadMessageBodyTapEligible(
 internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String): Boolean =
     surfaceKind == RaftThreadSurfaceKind.ReplyThread
 
+/**
+ * The message row's pressed state (raft-ui States > Pressed on touch): the `fill-pressed` wash
+ * over the row's own bounds, fading in while the finger is down and out on release or once the
+ * action menu opens. It is drawn inside the row and clipped to it, so it never spills behind
+ * the menu or onto neighbouring rows (task #51: the old circular ripple grew to the row's
+ * diagonal from the touch point and was not clipped).
+ */
 @Composable
 private fun BoxScope.ThreadMessagePressRipple(
     pressed: Boolean,
     origin: Offset?
 ) {
-    val expansion by animateFloatAsState(
-        targetValue = if (origin != null) 1f else 0f,
-        animationSpec = tween(durationMillis = if (origin != null) ThreadMessageRippleExpandMs else 0),
-        label = "thread-message-ripple-expansion"
-    )
-    val washAlpha by animateFloatAsState(
-        targetValue = if (pressed && origin != null) ThreadMessageRippleAlpha else 0f,
+    val washFraction by animateFloatAsState(
+        targetValue = if (pressed && origin != null) 1f else 0f,
         animationSpec =
-            tween(durationMillis = if (pressed) ThreadMessageRippleExpandMs else ThreadMessageRippleFadeMs),
-        label = "thread-message-ripple-alpha"
+            tween(durationMillis = if (pressed) ThreadMessagePressFadeInMs else ThreadMessageRippleFadeMs),
+        label = "thread-message-press-wash"
     )
-    if (!shouldDrawThreadMessagePressRipple(origin != null, washAlpha, expansion)) return
-    val rippleOrigin = origin ?: return
-    Canvas(modifier = Modifier.matchParentSize()) {
-        val coverRadius = hypot(size.width, size.height)
-        val minRadius = ThreadMessageRippleMinRadius.toPx()
-        val radius = threadMessageRippleRadius(minRadius, coverRadius, expansion)
-        drawCircle(
-            // Dark mode presses with a light ink wash so the ripple stays visible on dark rows.
-            color = (if (RaftAppThemeState.isDark) RaftColor.ShadowBlack else Color.Black).copy(alpha = washAlpha), // raft-color: light-mode ripple stays pure black
-            radius = radius,
-            center = rippleOrigin
-        )
-    }
+    if (!shouldDrawThreadMessagePressWash(origin != null, washFraction)) return
+    val wash = RaftColor.FillPressed
+    Box(
+        modifier =
+            Modifier
+                .matchParentSize()
+                .clipToBounds()
+                .background(wash.copy(alpha = wash.alpha * washFraction))
+    )
 }
 
-internal fun shouldDrawThreadMessagePressRipple(
+internal fun shouldDrawThreadMessagePressWash(
     hasOrigin: Boolean,
-    washAlpha: Float,
-    expansion: Float
-): Boolean = hasOrigin && washAlpha > 0f && expansion > 0f
-
-internal fun threadMessageRippleRadius(
-    minRadius: Float,
-    coverRadius: Float,
-    expansion: Float
-): Float = minRadius + (coverRadius - minRadius) * expansion
+    washFraction: Float
+): Boolean = hasOrigin && washFraction > 0f
 
 internal fun Modifier.threadMessagePointerInput(
     role: String,
@@ -27133,6 +27122,9 @@ internal fun Modifier.threadMessageLongPressActions(
                         "thread_message_long_press_menu_emit messageId=$messageId " +
                             "scrollInProgress=${dispatchDecision.scrollInProgress}"
                     )
+                    // The pressed wash belongs to the touch, not to the open menu: clear it
+                    // as the menu appears instead of waiting for the finger to lift.
+                    gestureOwner.hidePressFeedback(compositionLease)
                     callbacks.onShowActions(anchor)
                 }
             )
