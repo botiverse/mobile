@@ -166,6 +166,17 @@ val LocalRaftDialogRespectsSafeArea = staticCompositionLocalOf { true }
 /** The platform dialog's own dim (Android and desktop): about 60% black. */
 private const val RaftPlatformDialogDim = 0.6f
 
+/**
+ * How a host app sets up a [RaftDialog]'s platform window: the [properties] to open it with
+ * and an [effect] composed inside it that adjusts the window (for example edge to edge, over
+ * the display cutout). The [effect] must take the platform's dim off the window: [RaftDialog]
+ * then draws the whole raft `layer-backdrop` itself.
+ */
+class RaftDialogWindow(
+    val properties: DialogProperties,
+    val effect: @Composable () -> Unit,
+)
+
 @Composable
 fun RaftDialog(
     onDismissRequest: () -> Unit,
@@ -177,24 +188,31 @@ fun RaftDialog(
     showClose: Boolean = true,
     closeLabel: String = "Close",
     footer: (@Composable RowScope.() -> Unit)? = null,
+    window: RaftDialogWindow? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
     val respectsSafeArea = LocalRaftDialogRespectsSafeArea.current
-    // raft `layer-backdrop` (65% black in light, 60% in dark) over the platform's ~60% dim:
-    // the extra layer makes up the difference, so the page behind reads as dark as on web.
+    // raft `layer-backdrop` (65% black in light, 60% in dark). With the platform's ~60% dim
+    // still on the window, the extra layer only makes up the difference.
     val backdrop = RaftTheme.colors.layerBackdrop
-    val extraDim = (1f - (1f - backdrop.alpha) / (1f - RaftPlatformDialogDim)).coerceIn(0f, 1f)
+    val veil =
+        if (window != null) {
+            backdrop
+        } else {
+            Color.Black.copy(alpha = (1f - (1f - backdrop.alpha) / (1f - RaftPlatformDialogDim)).coerceIn(0f, 1f))
+        }
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
+        properties = window?.properties ?: DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
     ) {
+        window?.effect?.invoke()
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = extraDim))
+                .background(veil)
                 .pointerInput(dismissOnClickOutside) { detectTapGestures { if (dismissOnClickOutside) dismiss() } }
                 // Clear of the system bars, the cutout and the keyboard, then 16dp.
                 .then(if (respectsSafeArea) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)

@@ -271,7 +271,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
+import build.raft.designsystem.components.RaftDescriptionListScope
+import androidx.compose.foundation.layout.RowScope
 import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogWindow
 import build.raft.designsystem.components.RaftIconTile
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -8594,7 +8597,7 @@ private fun MembersHumanInfoSection(
     val roleHelpLabel = stringResource(MR.strings.member_title_human_roles)
     val editRoleLabel = stringResource(MR.strings.member_action_edit_role)
     MembersHumanSection(title = stringResource(MR.strings.member_section_info)) {
-        RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+        MembersHumanKeyValueList {
             Item(
                 term = if (departure != null) {
                     stringResource(MR.strings.member_label_status)
@@ -8605,27 +8608,31 @@ private fun MembersHumanInfoSection(
                     null
                 } else {
                     {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RaftIconButton(
-                                onClick = { roleHelpOpen = true },
-                                tooltip = roleHelpLabel,
-                                variant = RaftButtonVariant.Ghost
-                            ) {
-                                RaftGlyphIcon(RaftGlyph.CircleHelp, size = 14.dp)
-                            }
+                        // web HumanDetailPanel: 24dp INLINE_ICON_ACTION buttons (14dp glyphs, hint ink), `gap-2`.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MembersProfileInfoIconButton(
+                                glyph = MembersProfileInfoIcon.Help,
+                                label = roleHelpLabel,
+                                boxSize = 24.dp,
+                                ink = RaftTheme.colors.foregroundHint,
+                                onClick = { roleHelpOpen = true }
+                            )
                             if (canEditRole && !editingRole) {
-                                RaftIconButton(
+                                MembersProfileInfoIconButton(
+                                    glyph = MembersProfileInfoIcon.Pencil,
+                                    label = editRoleLabel,
+                                    boxSize = 24.dp,
+                                    ink = RaftTheme.colors.foregroundHint,
                                     onClick = {
                                         draftRole = editableRoles.first()
                                         roleError = null
                                         roleMenuExpanded = true
                                         editingRole = true
-                                    },
-                                    tooltip = editRoleLabel,
-                                    variant = RaftButtonVariant.Ghost
-                                ) {
-                                    MembersHumanGlyph(RaftLucideIconName.Pencil, 14.dp)
-                                }
+                                    }
+                                )
                             }
                         }
                     }
@@ -8731,6 +8738,42 @@ private fun MembersHumanInfoSection(
     }
     if (roleHelpOpen) {
         MembersHumanRoleHelpDialog(onDismiss = { roleHelpOpen = false })
+    }
+}
+
+/**
+ * web HumanDetailPanel Info rows (`stack-y-3` of KeyValueRow): the label (footnote medium
+ * hint, `mb-1`, its icon actions `gap-2` after it), then the value.
+ */
+@Composable
+private fun MembersHumanKeyValueList(content: @Composable RaftDescriptionListScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { MembersHumanKeyValueScope.content() }
+}
+
+private object MembersHumanKeyValueScope : RaftDescriptionListScope {
+    @Composable
+    override fun Item(
+        term: String,
+        termAccessory: (@Composable () -> Unit)?,
+        details: @Composable RowScope.() -> Unit
+    ) {
+        Column(Modifier.semantics(mergeDescendants = true) {}) {
+            Row(
+                modifier = Modifier.padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RaftText(
+                    text = term,
+                    style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                    color = RaftTheme.colors.foregroundHint
+                )
+                termAccessory?.invoke()
+            }
+            CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foreground) {
+                Row(verticalAlignment = Alignment.CenterVertically, content = details)
+            }
+        }
     }
 }
 
@@ -9447,12 +9490,13 @@ private enum class MembersProfileInfoIcon { Pencil, Help }
 private fun MembersProfileInfoIconButton(
     glyph: MembersProfileInfoIcon,
     label: String,
+    boxSize: Dp = 14.dp,
+    ink: Color = RaftTheme.colors.foregroundMuted,
     onClick: () -> Unit
 ) {
-    val ink = RaftTheme.colors.foregroundMuted
     Box(
         modifier = Modifier
-            .size(14.dp)
+            .size(boxSize)
             .semantics { contentDescription = label }
             .clickable(onClickLabel = label, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center
@@ -9505,6 +9549,9 @@ private fun MembersAgentAvatarDialog(
         onDismissRequest = onDismiss,
         title = stringResource(MR.strings.member_action_change_avatar),
         closeLabel = stringResource(MR.strings.common_close),
+        // The app's modal window: edge to edge over the cutout like the host activity, its
+        // dim replaced by the raft backdrop (RaftModalWindow).
+        window = remember { RaftDialogWindow(raftModalDialogProperties()) { RaftModalDialogWindowEffect() } },
         footer = {
             RaftButton(
                 text = stringResource(MR.strings.common_cancel),
