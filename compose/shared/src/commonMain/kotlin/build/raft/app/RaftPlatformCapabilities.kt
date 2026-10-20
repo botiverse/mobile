@@ -74,8 +74,12 @@ internal expect fun raftPlatformSupportsPublicAttachmentDownloadReadback(): Bool
 // action exports that committed private copy through the system document picker.
 internal expect fun raftPlatformSupportsPrivateAttachmentExport(): Boolean
 
-// OHOS needs the semantic weight alongside the physical Space Grotesk face so
-// ArkUI applies the same weight to system-font fallback glyphs such as CJK.
+// Keep the semantic weight alongside the physical Space Grotesk face so the platform's
+// system-font fallback (CJK: PingFang / Noto Sans CJK) renders at the same weight, like the web's
+// `"Space Grotesk", "PingFang SC", …` stack. With Compose Multiplatform every platform needs it:
+// Skia (iOS) and Android pick the fallback face from the TextStyle weight, so a Normal weight
+// drew every semibold/bold Chinese label at regular weight. The per-weight family holds one face
+// at exactly that weight, so Latin text still matches it with no synthetic bolding.
 internal expect fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean
 
 // task #90: each platform is a separate Hands app with its own release
