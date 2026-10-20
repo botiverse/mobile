@@ -67,6 +67,16 @@ class AgentNameGeneratorTest {
         assertNull(validateAgentName(name))
     }
 
+    @Test
+    fun wordListsMatchWebChecksum() {
+        // botiverse/slock agentNameGenerator.test.ts pins the same checksum of
+        // `names|adjectives`; editing either list fails until both repos change.
+        val text = AGENT_CLASSIC_NAMES.joinToString(",") + "|" + AGENT_NAME_ADJECTIVES.joinToString(",")
+        var hash = 0
+        for (char in text) hash = 31 * hash + char.code
+        assertEquals("5de9b463", hash.toUInt().toString(16))
+    }
+
     private companion object {
         val LIST_SIZES = 136 to 90
     }
