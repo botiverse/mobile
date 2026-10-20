@@ -1724,6 +1724,12 @@
     <string name="settings_notifications_message_detail">Raft がバックグラウンドにあるとき、新しい未読メッセージのシステム通知を表示します。</string>
     <string name="settings_notifications_background_realtime_title">バックグラウンドのリアルタイム接続</string>
     <string name="settings_notifications_background_realtime_detail">バックグラウンドでもリアルタイム接続を維持します。%1$s が長時間のセッションを一時停止する場合があります。</string>
+    <string name="settings_notifications_keep_connection_title">バックグラウンドで接続を維持</string>
+    <string name="settings_notifications_keep_connection_detail">このデバイスには Google Play 開発者サービスがないため、Raft はプッシュ通知を受信できません。Raft をバックグラウンドで接続したままにすると、メッセージ通知を引き続き受け取れます。「Raft がメッセージを受信中」という常駐通知が表示され、バッテリー消費が増えます。</string>
+    <string name="settings_notifications_battery_optimization_title">バックグラウンド実行を許可</string>
+    <string name="settings_notifications_battery_optimization_detail">Raft の電池の最適化をオフにして、システムがバックグラウンド接続を停止しないようにします。機種によっては、アプリ起動やバックグラウンド動作の設定で Raft を許可する必要もあります。</string>
+    <string name="settings_notifications_battery_optimization_allowed">許可済み</string>
+    <string name="settings_notifications_battery_optimization_request">許可</string>
     <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
     <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>

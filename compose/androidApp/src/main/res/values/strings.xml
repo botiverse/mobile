@@ -497,4 +497,8 @@
     <string name="attachment_save_as_cancel">Cancel</string>
     <string name="attachment_save_as_saved_toast">File saved</string>
     <string name="attachment_save_as_failed_toast">Raft couldn’t save this file. Try again.</string>
+    <string name="raft_background_connection_channel_name">Background connection</string>
+    <string name="raft_background_connection_channel_description">Shown while Raft keeps its connection open in the background to deliver message notifications without Google Play services.</string>
+    <string name="raft_background_connection_notification_title">Raft is receiving messages</string>
+    <string name="raft_background_connection_notification_text">Keeping the connection open for message notifications.</string>
 </resources>

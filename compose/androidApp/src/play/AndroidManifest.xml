@@ -5,4 +5,20 @@
     <uses-permission
         android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:node="remove" />
+    <!--
+        The no-Play-services background connection only runs where FCM is impossible, i.e. never on a device
+        that installs from Google Play. Keep its remoteMessaging foreground service and the battery-optimization
+        prompt out of the Play build (both need Play Console declarations).
+    -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:node="remove" />
+    <application>
+        <service
+            android:name="build.raft.app.shared.RaftBackgroundConnectionService"
+            tools:node="remove" />
+    </application>
 </manifest>

@@ -95,6 +95,8 @@ import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
 import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
+import build.raft.app.data.RaftBackgroundConnectionControls
+import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import build.raft.app.data.MOBILE_ACTION_PERMISSION
@@ -10956,13 +10958,35 @@ private fun SettingsPushStatusCard(
                 onCheckedChange = onNotificationPreferenceChange
             )
             SettingsNotificationDivider()
-            SettingsNotificationToggleRow(
-                title = stringResource(MR.strings.settings_notifications_background_realtime_title),
-                detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, slockPlatformProductName()),
-                checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
-                enabled = !foregroundKeepAliveBusy,
-                onCheckedChange = onForegroundKeepAlivePreferenceChange
-            )
+            val backgroundConnection = remember { RaftBackgroundConnectionControlsRegistry.offeredControls() }
+            if (backgroundConnection != null) {
+                // Android without Google Play services: the same preference keeps the realtime connection
+                // alive from a foreground service, the only notification path such a device has.
+                SettingsNotificationToggleRow(
+                    title = stringResource(MR.strings.settings_notifications_keep_connection_title),
+                    detail = stringResource(MR.strings.settings_notifications_keep_connection_detail),
+                    checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
+                    enabled = !foregroundKeepAliveBusy,
+                    onCheckedChange = { enabled ->
+                        onForegroundKeepAlivePreferenceChange(enabled)
+                        if (enabled && !backgroundConnection.isBatteryOptimizationExempt()) {
+                            backgroundConnection.requestBatteryOptimizationExemption()
+                        }
+                    }
+                )
+                if (notificationPreferenceSnapshot.foregroundKeepAliveEnabled) {
+                    SettingsNotificationDivider()
+                    RaftBackgroundConnectionBatteryRow(backgroundConnection)
+                }
+            } else {
+                SettingsNotificationToggleRow(
+                    title = stringResource(MR.strings.settings_notifications_background_realtime_title),
+                    detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, slockPlatformProductName()),
+                    checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
+                    enabled = !foregroundKeepAliveBusy,
+                    onCheckedChange = onForegroundKeepAlivePreferenceChange
+                )
+            }
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
                 title = stringResource(MR.strings.settings_notifications_offline_computers_title),
@@ -11210,6 +11234,34 @@ private fun SettingsNotificationActionRow(
         )
         SlockLucideIcon(SlockLucideIconName.Send, modifier = Modifier.size(18.dp))
     }
+}
+
+/**
+ * Battery-optimization row for the Android no-Play-services background connection. The exemption is only
+ * ever requested from a tap here or on the switch above; the status is re-read while the row is shown
+ * because the system prompt returns without a callback.
+ */
+@Composable
+private fun RaftBackgroundConnectionBatteryRow(controls: RaftBackgroundConnectionControls) {
+    var exempt by remember { mutableStateOf(controls.isBatteryOptimizationExempt()) }
+    LaunchedEffect(controls) {
+        while (true) {
+            exempt = controls.isBatteryOptimizationExempt()
+            delay(1_500L)
+        }
+    }
+    SettingsNotificationActionRow(
+        title = stringResource(MR.strings.settings_notifications_battery_optimization_title),
+        detail = stringResource(MR.strings.settings_notifications_battery_optimization_detail),
+        status =
+            if (exempt) {
+                stringResource(MR.strings.settings_notifications_battery_optimization_allowed)
+            } else {
+                stringResource(MR.strings.settings_notifications_battery_optimization_request)
+            },
+        enabled = !exempt,
+        onClick = { controls.requestBatteryOptimizationExemption() }
+    )
 }
 
 @Composable
