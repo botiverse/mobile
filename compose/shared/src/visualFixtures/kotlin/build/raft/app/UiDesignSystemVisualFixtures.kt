@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.text.RaftText
@@ -78,5 +80,28 @@ private fun UiCheckMarkerRow(label: String, checked: Boolean, shape: RaftCheckbo
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftCheckboxIndicator(checked = checked, shape = shape)
         RaftText(label, style = UiCalloutBold, color = RaftTheme.colors.foreground)
+    }
+}
+
+@Composable
+internal fun UiButtonVisualContent() {
+    // web `ui-button` (342x150 canvas frame): two rows of `size="sm"` raft-ui <Button>s 12px
+    // apart. raft-ui 0.8.0 (components/button.md, Variants) renders `accent` as `primary`,
+    // and `outline`, `information`, `muted` and `success` as `default`: so Save, Add and
+    // Continue are the ink-bordered default button and Sync / Delete the pink sticker;
+    // there is no cyan or lime button. `sm` is an old name of the 32dp md size.
+    UiDesignSystemFrame(height = 150.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftButton("Save", onClick = {}, variant = RaftButtonVariant.Default)
+                RaftButton("Sync", onClick = {}, variant = RaftButtonVariant.Primary)
+                RaftButton("Delete", onClick = {}, variant = RaftButtonVariant.Primary)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftButton("Add", onClick = {}, variant = RaftButtonVariant.Default)
+                RaftButton("Continue", onClick = {}, variant = RaftButtonVariant.Default)
+                RaftButton("Disabled", onClick = {}, variant = RaftButtonVariant.Default, enabled = false)
+            }
+        }
     }
 }

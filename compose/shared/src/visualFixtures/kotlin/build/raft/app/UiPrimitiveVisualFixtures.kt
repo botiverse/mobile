@@ -83,38 +83,6 @@ internal fun UiSegmentedControlVisualContent() {
 }
 
 @Composable
-internal fun UiButtonVisualContent(rowSpacing: Dp = 12.dp) {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(150.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // Mirrors web VisualTestingCases `ui-button` (342x150 canvas frame): two rows of
-        // `size="sm"` buttons 12px apart — outline Save / primary Sync / accent Delete,
-        // information Add / success Continue / muted disabled Disabled. Every button takes the
-        // same sm parameters (web has one size); the brutal fills map onto those variants and
-        // every minHeight below 38dp lands on raft's 32dp `md` size.
-        // Raft buttons cast no shadow and reserve none, so the gap is the full 12dp.
-        Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
-                RaftBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                RaftBrutalActionButton(label = "Sync", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                RaftBrutalActionButton(label = "Delete", onClick = {}, backgroundColor = RaftColor.AccentPink, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
-                RaftBrutalActionButton(label = "Add", onClick = {}, backgroundColor = RaftColor.AccentCyan, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                RaftBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = RaftColor.AccentLime, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                // Disabled is raft's opaque fill-muted / line-muted / disabled-ink chrome.
-                RaftBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = RaftColor.AccentStone, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-            }
-        }
-    }
-}
-
-@Composable
 internal fun UiButtonThemeVisualContent() {
     // Phase 1 theme-axis proof: the SAME RaftBrutalActionButton rendered under each
     // register via RaftThemeProvider. Top row = brutalTheme (default, byte-identical
