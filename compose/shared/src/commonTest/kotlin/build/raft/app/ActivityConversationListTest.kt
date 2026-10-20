@@ -201,13 +201,34 @@ class ActivityConversationListTest {
 
     @Test
     fun mutedConversationShowsNoCountAndStaysQuietButKeepsTheMention() {
-        // A thread is muted through its parent channel.
-        val model = thread.activityConversationRowModel(context, InboxFilter.All)
-        assertTrue(model.muted)
-        assertFalse(model.strong)
-        assertFalse(model.showUnreadCount)
-        assertNull(model.unreadCountLabel())
-        assertTrue(model.showMentionMarker)
+        // web: channels by `channels.find(...).activityMuted`, DMs by their `dmChannels` row; a thread
+        // follows its parent channel only (a DM parent's mute is not a channel mute).
+        val mutedPeerContext =
+            context.copy(dmPeersByChannelId = mapOf("dm-fable" to fablePeer.copy(activityMuted = true)))
+        val threadInDm =
+            thread.copy(
+                parentChannelId = ChannelId("dm-fable"),
+                parentChannelName = "Fable",
+                parentChannelKind = ConversationKind.DirectMessage,
+            )
+        data class Case(val name: String, val item: InboxItem, val context: ActivityConversationListContext, val muted: Boolean)
+        val cases =
+            listOf(
+                Case("thread in a muted channel", thread, context, muted = true),
+                Case("muted channel", channel("channel:random", "random", unread = 1, mention = true), context, muted = true),
+                Case("muted DM peer", dm("dm:fable", "dm-fable", senderId = "agent-fable", unread = 1).copy(hasMention = true), mutedPeerContext, muted = true),
+                Case("thread whose parent is a muted DM", threadInDm, mutedPeerContext, muted = false),
+                Case("unmuted channel", channel("channel:android", "android", unread = 1, mention = true), context, muted = false),
+            )
+        for (case in cases) {
+            val model = case.item.activityConversationRowModel(case.context, InboxFilter.All)
+            assertEquals(case.muted, model.muted, case.name)
+            assertEquals(!case.muted, model.strong, case.name)
+            assertEquals(!case.muted, model.showUnreadCount, case.name)
+            assertEquals(!case.muted, model.unreadCountLabel() != null, case.name)
+            // The mention marker survives the mute.
+            assertTrue(model.showMentionMarker, case.name)
+        }
     }
 
     @Test
@@ -249,7 +270,7 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun systemSendersUseTheLocalizedSystemLabel() {
+    fun systemSendersProjectToTheSystemSenderNotTheirWireName() {
         val mention =
             InboxItem(
                 key = "mention:1",
@@ -260,9 +281,17 @@ class ActivityConversationListTest {
                 lastMessagePreview = "@quill was not notified",
                 lastMessageSenderName = "System",
             )
-        assertEquals(ActivityConversationSender.System, mention.activityConversationRowModel(context, InboxFilter.All).sender)
-        val broadcast = channel("channel:a", "a").copy(lastMessageSenderId = "system", lastMessageSenderKind = MemberKind.Human)
-        assertEquals(ActivityConversationSender.System, broadcast.activityConversationRowModel(context, InboxFilter.All).sender)
+        // The model carries the System marker, never the wire name ("System" / "system"); the row
+        // resolves it to the localized activity_list_system_sender string when it renders.
+        val cases =
+            listOf(
+                "mention action" to mention,
+                "system sender id" to channel("channel:a", "a").copy(lastMessageSenderId = "system", lastMessageSenderKind = MemberKind.Human),
+                "system sender kind" to channel("channel:b", "b").copy(lastMessageSenderName = "Raft", lastMessageSenderKind = MemberKind.System),
+            )
+        for ((name, item) in cases) {
+            assertEquals(ActivityConversationSender.System, item.activityConversationRowModel(context, InboxFilter.All).sender, name)
+        }
     }
 
     @Test
