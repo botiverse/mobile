@@ -33203,7 +33203,7 @@ private enum class ThreadSettingsDangerAction(
 ) {
     Visibility("visibility", "MAKE CHANNEL PRIVATE", RaftLucideIconName.Lock, "Make Private", RaftColor.AccentOrange),
     Archive("archive", "ARCHIVE CHANNEL", RaftLucideIconName.Archive, "Archive Channel", RaftColor.AccentOrange),
-    Delete("delete", "DELETE CHANNEL", RaftLucideIconName.Trash, "Delete Channel", RaftColor.AccentRed)
+    Delete("delete", "DELETE CHANNEL", RaftLucideIconName.Trash2, "Delete Channel", RaftColor.AccentRed)
 }
 
 internal enum class ThreadSettingsDangerConfirmationMode {
@@ -33247,7 +33247,7 @@ private fun defaultThreadSettingsChannelActions(): List<ThreadSettingsActionUi> 
             id = "delete",
             title = "Delete Channel",
             subtitle = "Permanently remove this channel",
-            icon = RaftLucideIconName.Trash,
+            icon = RaftLucideIconName.Trash2,
             destructive = true
         )
     )

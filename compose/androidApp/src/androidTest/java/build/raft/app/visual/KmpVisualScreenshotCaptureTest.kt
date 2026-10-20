@@ -7097,7 +7097,17 @@ class KmpVisualScreenshotCaptureTest {
             // exception under the capture tag before the default handler runs.
             val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                Log.e(VISUAL_LOG_TAG, "FATAL in thread ${thread.name}", throwable)
+                // Log from a fresh thread: a StackOverflowError leaves no stack to log on.
+                val logger =
+                    Thread {
+                        Log.e(
+                            VISUAL_LOG_TAG,
+                            "FATAL in thread ${thread.name}: " +
+                                Log.getStackTraceString(throwable).lineSequence().take(80).joinToString("\n")
+                        )
+                    }
+                logger.start()
+                logger.join(2_000)
                 previousHandler?.uncaughtException(thread, throwable)
             }
             // Targeted capture normally runs one case per instrumentation
