@@ -267,6 +267,7 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.data.RaftAuthApi
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftDatabaseLaunchAttempt

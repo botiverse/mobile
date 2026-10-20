@@ -1811,7 +1811,7 @@ fun PushPreviewMode.toSettingsMobileSelectionSnapshot(
         statusLabel = wireName,
         detail = "",
         options =
-            entries.map { mode ->
+            PushPreviewMode.entries.map { mode ->
                 SettingsMobileSelectionOptionSnapshot(key = mode.wireName, label = mode.wireName)
             },
         available = available
