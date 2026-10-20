@@ -1325,12 +1325,10 @@ class RealSettingsRepository(
                         detail = "Choose all messages, only direct mentions, or no push notifications for this workspace."
                     ),
                 pushPreviewMode =
-                    (pushPreviewMode ?: PushPreviewMode.Full).toSettingsMobileSelectionSnapshot(
-                        available =
-                            (serverNotificationPreferences as? DataResult.Content)
-                                ?.data
-                                ?.pushPreviewModeSupported == true,
-                    ),
+                    // Per-device setting stored locally, so it is always available; the server
+                    // notification-settings response no longer gates it.
+                    (pushPreviewMode ?: PushPreviewMode.Full)
+                        .toSettingsMobileSelectionSnapshot(available = true),
                 sendTestEnabled = true
             )
         )
