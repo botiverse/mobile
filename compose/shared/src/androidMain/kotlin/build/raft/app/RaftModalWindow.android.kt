@@ -30,6 +30,19 @@ internal actual fun RaftModalDialogWindowEffect() {
             // No dialog-owned bar backgrounds: they painted a gray strip over the navigation bar.
             window.statusBarColor = Color.TRANSPARENT
             window.navigationBarColor = Color.TRANSPARENT
+            // Cover the display cutout like the (edge-to-edge) host activity. A dialog window
+            // keeps the DEFAULT cutout mode, which drops it below the cutout whenever the status
+            // bar is hidden, so the veil started under a bare strip at the top of the screen.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val attributes = window.attributes
+                if (attributes.layoutInDisplayCutoutMode !=
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                ) {
+                    attributes.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    window.attributes = attributes
+                }
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 window.isStatusBarContrastEnforced = false
                 window.isNavigationBarContrastEnforced = false

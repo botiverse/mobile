@@ -7092,6 +7092,14 @@ class KmpVisualScreenshotCaptureTest {
         @JvmStatic
         fun clearVisualOutputDirectory() {
             val instrumentation = InstrumentationRegistry.getInstrumentation()
+            // The harness keeps only VisualCapture/TestRunner logcat lines, so a
+            // "Process crashed." case left no stack behind. Log the fatal
+            // exception under the capture tag before the default handler runs.
+            val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                Log.e(VISUAL_LOG_TAG, "FATAL in thread ${thread.name}", throwable)
+                previousHandler?.uncaughtException(thread, throwable)
+            }
             // Targeted capture normally runs one case per instrumentation
             // process. Every process executes @BeforeClass, but all processes
             // share one public artifact directory that the host pulls only
