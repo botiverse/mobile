@@ -81,6 +81,7 @@ import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -807,9 +808,9 @@ internal fun RaftBrutalInputField(
             enabled = enabled,
             readOnly = readOnly,
             invalid = borderColor == RaftColor.AccentRed,
-            trailing =
+            trailingAction =
                 if (showClearWhenNotEmpty && value.isNotEmpty() && focusPolicy.acceptsFocus) {
-                    { RaftFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange("") }) }
+                    { RaftTextFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange("") }) }
                 } else {
                     null
                 },
@@ -974,9 +975,9 @@ internal fun RaftBrutalInputField(
             enabled = enabled,
             readOnly = readOnly,
             invalid = borderColor == RaftColor.AccentRed,
-            trailing =
+            trailingAction =
                 if (showClearWhenNotEmpty && value.text.isNotEmpty() && focusPolicy.acceptsFocus) {
-                    { RaftFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) }) }
+                    { RaftTextFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) }) }
                 } else {
                     null
                 },
@@ -1141,19 +1142,6 @@ internal fun rememberRaftDesignSystemEditor(
     return RaftDesignSystemEditor(modifier, resolvedKeyboardOptions)
 }
 
-/** The clear (×) addon at the end of a design-system field: the addon ink, tappable. */
-@Composable
-private fun RaftFieldClearAction(onClear: () -> Unit) {
-    val clearLabel = stringResource(MR.strings.common_clear)
-    RaftSlotIcon(
-        RaftLucideIconName.X,
-        modifier =
-            Modifier
-                .clickable(onClick = onClear)
-                .semantics { contentDescription = clearLabel }
-    )
-}
-
 /** The brutal field type (14/18); raft swaps a field still on it for `text-field` 16/24. */
 internal val RaftBrutalInputDefaultTextStyle: TextStyle
     get() = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
@@ -1229,7 +1217,7 @@ internal fun RaftBrutalReadOnlyField(
 
 /**
  * Legacy-named search field; renders the design-system [RaftTextField] input group with a
- * leading search addon and the clear addon, with the app editor behaviour
+ * leading search addon and the clear button addon ([RaftTextFieldClearAction]), with the app editor behaviour
  * ([rememberRaftDesignSystemEditor]). [textStyle] is ignored: fields use the `field` type.
  */
 @Suppress("UNUSED_PARAMETER")
@@ -1255,7 +1243,7 @@ internal fun RaftBrutalSearchField(
         placeholder = placeholder.ifEmpty { null },
         enabled = enabled,
         leading = { RaftSlotIcon(leadingIcon) },
-        trailing = if (showClearWhenNotEmpty && value.isNotEmpty()) ({ RaftFieldClearAction(onClear) }) else null,
+        trailingAction = if (showClearWhenNotEmpty && value.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
         keyboardOptions = editor.keyboardOptions
     )
 }
@@ -1283,7 +1271,7 @@ internal fun RaftBrutalSearchField(
         placeholder = placeholder.ifEmpty { null },
         enabled = enabled,
         leading = { RaftSlotIcon(leadingIcon) },
-        trailing = if (showClearWhenNotEmpty && value.text.isNotEmpty()) ({ RaftFieldClearAction(onClear) }) else null,
+        trailingAction = if (showClearWhenNotEmpty && value.text.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
         keyboardOptions = editor.keyboardOptions
     )
 }
