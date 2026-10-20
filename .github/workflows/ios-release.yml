@@ -52,6 +52,15 @@ on:
           - ad-hoc
           - enterprise
           - development
+      macos_runner:
+        description: "macOS runner for Build + sign IPA. blacksmith (default) | macos-latest-xlarge (GitHub larger runner, ~30GB, billed) | macos-latest (GitHub standard, 7GB; Kotlin/Native release link may OOM)"
+        required: false
+        type: choice
+        default: "blacksmith-12vcpu-macos-latest"
+        options:
+          - blacksmith-12vcpu-macos-latest
+          - macos-latest-xlarge
+          - macos-latest
       testflight_internal:
         description: "After the Hands draft, upload to TestFlight and distribute to the internal group (Botiverse) only; never external, App Store, or Hands activation"
         required: false
@@ -141,8 +150,9 @@ jobs:
 
   build_ios_release:
     name: Build + sign IPA
-    runs-on: blacksmith-12vcpu-macos-latest
-    timeout-minutes: 60
+    runs-on: ${{ inputs.macos_runner || 'blacksmith-12vcpu-macos-latest' }}
+    # GitHub-hosted Macs are slower than the Blacksmith 12-vCPU pool; give them headroom.
+    timeout-minutes: ${{ (inputs.macos_runner || 'blacksmith-12vcpu-macos-latest') == 'blacksmith-12vcpu-macos-latest' && 60 || 120 }}
     needs: resolve
     outputs:
       ipa_sha256: ${{ steps.validate.outputs.ipa_sha256 }}
@@ -187,6 +197,8 @@ jobs:
 
       - name: Raise Gradle/Kotlin heap for the iOS archive (this runner only)
         shell: bash
+        env:
+          RAFT_MACOS_RUNNER: ${{ inputs.macos_runner || 'blacksmith-12vcpu-macos-latest' }}
         run: |
           set -euo pipefail
           # compose/gradle.properties caps the build JVM and Kotlin daemon at
@@ -197,9 +209,17 @@ jobs:
           # Two release archives exhausted the former 8g heap in Kotlin/Native's
           # devirtualization analysis. The runner has ~30GB RAM, so 12g still
           # leaves room for Xcode/clang while keeping Gradle at one worker.
+          # GitHub's standard macos-latest has only 7GB RAM: 12g would swap/kill, so
+          # cap at 5g there and warn — the release devirtualization pass may OOM.
+          HEAP=12g
+          if [ "${RAFT_MACOS_RUNNER}" = "macos-latest" ]; then
+            HEAP=5g
+            echo "::warning::macos-latest has ~7GB RAM; Kotlin/Native release archive runs with a 5g heap and may OOM. Prefer blacksmith-12vcpu-macos-latest or macos-latest-xlarge."
+          fi
           GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
           mkdir -p "$GUH"
-          printf '%s\n' 'org.gradle.jvmargs=-Xmx12g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx12g,-Xss4m"' >> "$GUH/gradle.properties"
+          printf '%s\n' "org.gradle.jvmargs=-Xmx${HEAP} -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\\=\"-Xmx${HEAP},-Xss4m\"" >> "$GUH/gradle.properties"
+          echo "Kotlin/Gradle heap for ${RAFT_MACOS_RUNNER}: ${HEAP}"
       - name: Ensure shared framework placeholder
         working-directory: compose
         shell: bash
