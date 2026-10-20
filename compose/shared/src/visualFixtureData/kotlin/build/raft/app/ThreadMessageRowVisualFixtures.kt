@@ -395,6 +395,8 @@ internal fun threadVisualFixtureTaskStatuses(fixture: String): Map<Int, TaskStat
     when (fixture) {
         // React resolves #42 from its linked task (in review); #43 is not in its task store.
         THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE -> mapOf(42 to TaskStatus.InReview)
+        // React THREAD_MESSAGE_RICH_FIXTURE.linkedTask: #222 in progress.
+        THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> mapOf(222 to TaskStatus.InProgress)
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS ->
             mapOf(
                 92 to TaskStatus.InReview,
@@ -481,6 +483,8 @@ internal fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW -> 260.dp
+        // React renders the rich row in a 342px column.
+        THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> 342.dp
         // Narrow 260dp column forces a channel/task chip to wrap to the next
         // line (the inline-box line-wrap bug these cases reproduce).
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 -> 260.dp
@@ -675,34 +679,34 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
+                        // React THREAD_MESSAGE_DELETED_HUMAN: a guest who was removed from the
+                        // server, no avatar, the viewer's 👍.
                         RaftThreadMessageItem(
                             id = "msg-deleted-human",
-                            authorId = "visual-human-designer",
-                            authorName = "Designer",
-                            authorHandle = "designer",
+                            authorId = "visual-human-deleted",
+                            authorName = "Former Teammate",
+                            authorDescription = "Guest",
                             authorKind = "user",
-                            avatarLabel = "DE",
-                            avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue,
-                            senderMembershipStatus = "deleted",
-                            timestampLabel = "06/26 17:15",
+                            avatarLabel = "FT",
+                            senderMembershipStatus = "removed",
+                            timestampLabel = "06/22 11:10",
                             messageType = "Chat",
-                            body = "Deleted human author fixture keeps the avatar muted and the sender tag aligned with React.",
+                            body = "Captured the previous visual baseline before leaving the workspace.",
                             threadChannelId = "thread-msg-deleted-human",
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👀", count = 1, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 1, selected = true)
                                 )
                         )
                     ),
                 members =
                     listOf(
                         RaftThreadMemberItem(
-                            id = "visual-human-designer",
-                            displayName = "Designer",
-                            handle = "designer",
+                            id = "visual-human-deleted",
+                            displayName = "Former Teammate",
+                            handle = "former-teammate",
                             kind = "human",
-                            avatarUrl = AvatarReference.Random("visual-human-designer").wireValue,
-                            avatarLabel = "DE"
+                            avatarLabel = "FT"
                         )
                     ),
                 showComposer = false,
@@ -819,7 +823,7 @@ internal fun threadVisualFixture(
                             taskAssigneeName = "Cindy",
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = true)
                                 ),
                             attachments =
                                 listOf(
@@ -828,13 +832,15 @@ internal fun threadVisualFixture(
                                         name = "visual-parity-notes.pdf",
                                         mimeType = "application/pdf",
                                         sizeLabel = "184 KB",
+                                        sizeBytes = 188416,
                                         commentCount = 3
                                     ),
                                     RaftThreadAttachmentItem(
                                         id = "att-thread-preview",
                                         name = "thread-screen-preview.html",
                                         mimeType = "text/html",
-                                        sizeLabel = "32 KB"
+                                        sizeLabel = "32 KB",
+                                        sizeBytes = 32768
                                     )
                                 )
                         )

@@ -1197,6 +1197,8 @@
     <string name="file_preview_audio">音频预览</string>
     <string name="file_preview_video">视频预览</string>
     <string name="file_preview_document">文档预览</string>
+    <string name="attachment_meta_document">文档</string>
+    <string name="attachment_meta_file">文件</string>
     <string name="file_preview_fallback_file">文件</string>
     <string name="file_preview_fallback_attachment">附件</string>
     <string name="file_preview_fallback_markdown">Markdown</string>

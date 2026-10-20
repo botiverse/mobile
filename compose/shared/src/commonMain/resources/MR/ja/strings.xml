@@ -1205,6 +1205,8 @@
     <string name="file_preview_audio">音声プレビュー</string>
     <string name="file_preview_video">動画プレビュー</string>
     <string name="file_preview_document">ドキュメントプレビュー</string>
+    <string name="attachment_meta_document">ドキュメント</string>
+    <string name="attachment_meta_file">ファイル</string>
     <string name="file_preview_fallback_file">ファイル</string>
     <string name="file_preview_fallback_attachment">添付ファイル</string>
     <string name="file_preview_fallback_markdown">Markdown</string>

@@ -1199,6 +1199,8 @@
     <string name="file_preview_audio">Audio preview</string>
     <string name="file_preview_video">Video preview</string>
     <string name="file_preview_document">Document preview</string>
+    <string name="attachment_meta_document">document</string>
+    <string name="attachment_meta_file">file</string>
     <string name="file_preview_fallback_file">File</string>
     <string name="file_preview_fallback_attachment">Attachment</string>
     <string name="file_preview_fallback_markdown">Markdown</string>

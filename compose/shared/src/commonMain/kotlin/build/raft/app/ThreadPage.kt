@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.components.raftWebFileSizeLabel
+import build.raft.app.components.raftAttachmentBadgeLabel
 import androidx.compose.ui.graphics.compositeOver
 import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.markdown.raftTaskStatusColor
@@ -30168,6 +30170,20 @@ internal fun RaftThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc?
         else -> null
     }
 
+internal enum class ThreadAttachmentCardMetaKind { Html, Document, File }
+
+/** Web AttachmentCard meta label: "HTML preview" for HTML, else the mime type (document / file). */
+internal fun RaftThreadAttachmentItem.threadAttachmentCardMetaKind(): ThreadAttachmentCardMetaKind =
+    when {
+        isHtmlAttachment() -> ThreadAttachmentCardMetaKind.Html
+        isPreviewableDocumentAttachment() -> ThreadAttachmentCardMetaKind.Document
+        else -> ThreadAttachmentCardMetaKind.File
+    }
+
+/** Web AttachmentCard summary: only previewable documents carry one ("Document preview"). */
+internal fun RaftThreadAttachmentItem.threadAttachmentCardSummary(): StringDesc? =
+    if (!isHtmlAttachment() && isPreviewableDocumentAttachment()) MR.strings.file_preview_document.desc() else null
+
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
     sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
@@ -30455,9 +30471,18 @@ private fun ThreadAttachmentChip(
         return
     }
     val isOpening = openState.threadAttachmentIsOpening()
-    val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
     val statusLabel = openState.localizedThreadAttachmentStatusLabel()
-    val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
+    val summaryLabel = statusLabel ?: attachment.threadAttachmentCardSummary()?.localized()
+    val metaLabel =
+        when (attachment.threadAttachmentCardMetaKind()) {
+            ThreadAttachmentCardMetaKind.Html -> stringResource(MR.strings.file_preview_html)
+            ThreadAttachmentCardMetaKind.Document ->
+                attachment.mimeType.ifBlank { stringResource(MR.strings.attachment_meta_document) }
+            ThreadAttachmentCardMetaKind.File ->
+                attachment.mimeType.ifBlank { stringResource(MR.strings.attachment_meta_file) }
+        }
+    val sizeLabel =
+        attachment.sizeBytes.takeIf { it > 0L }?.let(::raftWebFileSizeLabel) ?: attachment.sizeLabel
     val affordanceIcon =
         if (attachment.threadAttachmentUsesPreviewAffordance()) RaftLucideIconName.Eye else RaftLucideIconName.Download
     Column(
@@ -30466,7 +30491,9 @@ private fun ThreadAttachmentChip(
     ) {
         RaftAttachmentPreviewCard(
             title = attachment.name,
-            meta = meta,
+            typeBadge = raftAttachmentBadgeLabel(attachment.name),
+            metaLabel = metaLabel,
+            sizeLabel = sizeLabel,
             summary = summaryLabel,
             affordanceIcon = affordanceIcon,
             loading = isOpening,

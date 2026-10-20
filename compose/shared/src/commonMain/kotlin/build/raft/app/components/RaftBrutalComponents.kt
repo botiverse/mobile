@@ -194,7 +194,8 @@ internal fun RaftAnchoredMetaChip(
     val chipModifier =
         modifier
             .heightIn(min = minHeight)
-            .border(borderWidth, RaftColor.BorderBlack, chipShape)
+            // A 0dp border still draws a hairline in Compose; edgeless chips skip it.
+            .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, RaftColor.BorderBlack, chipShape) else Modifier)
             .background(color, chipShape)
             .padding(start = startPadding, end = horizontalPadding, top = verticalPadding, bottom = verticalPadding)
             .let { base ->

@@ -1826,6 +1826,16 @@ private fun CreateAgentNeedsComputerDialog(onDismiss: () -> Unit, onConnectCompu
         onDismiss = onDismiss,
         hostRoute = SharedCreateAgentDialogHostRoute
     ) {
+        // Designsystem components read RaftTheme typography, which this dialog host does not provide.
+        build.raft.app.components.RaftDesignSystemTheme {
+            CreateAgentNeedsComputerBody(onDismiss = onDismiss, onConnectComputer = onConnectComputer)
+        }
+    }
+}
+
+@Composable
+private fun CreateAgentNeedsComputerBody(onDismiss: () -> Unit, onConnectComputer: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         RaftBanner(
             title = stringResource(MR.strings.agent_create_connect_computer_first),
             description = stringResource(MR.strings.agent_create_needs_computer_description),
@@ -1833,7 +1843,7 @@ private fun CreateAgentNeedsComputerDialog(onDismiss: () -> Unit, onConnectCompu
             showIcon = false
         )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
