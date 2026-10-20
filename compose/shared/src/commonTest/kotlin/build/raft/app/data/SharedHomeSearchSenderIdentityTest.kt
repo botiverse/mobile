@@ -43,7 +43,7 @@ class SharedHomeSearchSenderIdentityTest {
     @Test
     fun accountAndServerSwitchDiscardsCompletionFromOldOwnerWithoutASecondLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(sessionFixture("user-a", "server-a"))
+        val authStore = InMemoryRaftAuthSessionStore(sessionFixture("user-a", "server-a"))
         val members = DeferredMemberRepository()
         val store = store(scope, authStore, members)
 
@@ -61,7 +61,7 @@ class SharedHomeSearchSenderIdentityTest {
     @Test
     fun successorLoadWinsWhenSameHandleExistsOnTwoServersAndOldProducerIgnoresCancellation() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(sessionFixture("user-a", "server-a"))
+        val authStore = InMemoryRaftAuthSessionStore(sessionFixture("user-a", "server-a"))
         val members = DeferredMemberRepository()
         val store = store(scope, authStore, members)
 
@@ -83,7 +83,7 @@ class SharedHomeSearchSenderIdentityTest {
 
     private fun store(
         scope: CoroutineScope,
-        authStore: SlockAuthSessionStore,
+        authStore: RaftAuthSessionStore,
         members: MemberRepository,
     ): SharedHomeSearchSavedStore =
         SharedHomeSearchSavedStore(
@@ -162,7 +162,7 @@ class SharedHomeSearchSenderIdentityTest {
         override suspend fun startAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun stopAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
-        override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
+        override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId, workspaceChoice: AgentArchiveWorkspaceChoice): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun assignAgentMachine(priority: DataRequestPriority, request: AgentMachineAssignmentRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> = error("unused")
         override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")

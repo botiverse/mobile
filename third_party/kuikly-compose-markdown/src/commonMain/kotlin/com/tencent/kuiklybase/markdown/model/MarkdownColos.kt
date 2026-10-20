@@ -2,7 +2,7 @@ package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 import com.tencent.kuiklybase.markdown.compose.Markdown
 
 

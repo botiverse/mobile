@@ -2,8 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsPageContentOwner
-import build.raft.app.data.SlockShellStoreScope
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
 
 class SettingsNativeDetailPageTest {
     private val storeScope =
-        SlockShellStoreScope.create(
+        RaftShellStoreScope.create(
             shellInstanceId = "shell-settings-detail",
             initialServerId = "server-settings-detail",
         )
@@ -26,8 +26,8 @@ class SettingsNativeDetailPageTest {
         listOf(SETTINGS_ACCOUNT_PAGE, SETTINGS_STORAGE_PAGE).forEach { pageName ->
             val pageData = settingsStandalonePageData(pageName, storeScope)
             assertEquals(pageName, pageData.optString("pageName"))
-            assertEquals("shell-settings-detail", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-            assertEquals("server-settings-detail", pageData.optString(SLOCK_SHELL_SERVER_ID))
+            assertEquals("shell-settings-detail", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+            assertEquals("server-settings-detail", pageData.optString(RAFT_SHELL_SERVER_ID))
             assertFalse(pageData.has("payload"))
             assertFalse(pageData.has("session"))
             assertFalse(pageData.has("state"))
@@ -72,8 +72,8 @@ class SettingsNativeDetailPageTest {
 
         assertEquals(SETTINGS_NATIVE_DETAIL_PAGE, pageData.optString("pageName"))
         assertEquals("diagnostics", pageData.optString(SETTINGS_NATIVE_DETAIL_PAGE_KEY))
-        assertEquals("shell-settings-detail", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("server-settings-detail", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("shell-settings-detail", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+        assertEquals("server-settings-detail", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals(2_500L, pageData.optLong(SETTINGS_NATIVE_DETAIL_AUTO_CLOSE_MS, 0L))
         listOf("session", "account", "profile", "state", "snapshot", "payload", "callback")
             .forEach { forbidden -> assertFalse(pageData.has(forbidden), forbidden) }

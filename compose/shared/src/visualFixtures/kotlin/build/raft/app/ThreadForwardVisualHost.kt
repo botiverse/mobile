@@ -10,11 +10,11 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
 
 // Stable visual fixtures for the two-step forward flow.
 @Page("compose_thread_forward_modal_visual", supportInLocal = true)
@@ -34,69 +34,68 @@ internal fun ThreadForwardModalVisualScreen() {
         remember(scrollProbe) {
             if (scrollProbe) {
                 List(ThreadForwardScrollProbeTargetCount) { index ->
-                    SlockForwardTargetPickerItem(
+                    RaftForwardTargetPickerItem(
                         stableKey = "forward-scroll-probe-$index",
                         title = "Forward target ${index + 1}",
                         subtitle = "Recent DM",
-                        visualKind = SlockForwardTargetVisualKind.DirectMessage,
+                        visualKind = RaftForwardTargetVisualKind.DirectMessage,
                         payload = null
                     )
                 }
             } else {
                 listOf(
-                    SlockForwardTargetPickerItem(
+                    RaftForwardTargetPickerItem(
                         stableKey = "channel-design",
                         title = "design",
                         subtitle = "Product and UI decisions",
-                        visualKind = SlockForwardTargetVisualKind.PublicChannel,
+                        visualKind = RaftForwardTargetVisualKind.PublicChannel,
                         payload = null
                     ),
-                    SlockForwardTargetPickerItem(
+                    RaftForwardTargetPickerItem(
                         stableKey = "dm-artin",
                         title = "artin",
                         subtitle = "Direct message",
-                        visualKind = SlockForwardTargetVisualKind.DirectMessage,
+                        visualKind = RaftForwardTargetVisualKind.DirectMessage,
                         avatarWireValue = AvatarReference.Random("artin").wireValue,
                         avatarLabel = "A",
                         payload = null
                     ),
-                    SlockForwardTargetPickerItem(
+                    RaftForwardTargetPickerItem(
                         stableKey = "channel-android",
                         title = "android-artifacts",
                         subtitle = "Public channel",
-                        visualKind = SlockForwardTargetVisualKind.PrivateChannel,
+                        visualKind = RaftForwardTargetVisualKind.PrivateChannel,
                         payload = null
                     ),
-                    SlockForwardTargetPickerItem(
+                    RaftForwardTargetPickerItem(
                         stableKey = "joint-release",
                         title = "release-joint",
                         subtitle = "Joint channel",
-                        visualKind = SlockForwardTargetVisualKind.JointChannel,
+                        visualKind = RaftForwardTargetVisualKind.JointChannel,
                         payload = null
                     ),
-                    SlockForwardTargetPickerItem(
+                    RaftForwardTargetPickerItem(
                         stableKey = "member-cindy",
                         title = "Cindy",
                         subtitle = "Keeps visual testing release notes aligned",
-                        visualKind = SlockForwardTargetVisualKind.DirectMessage,
+                        visualKind = RaftForwardTargetVisualKind.DirectMessage,
                         payload = null
                     )
                 )
             }
         }
-    SlockForwardTargetPicker(
+    RaftForwardTargetPicker(
         messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
-        taskLinkedCount = 0,
         state =
-            SlockForwardTargetPickerUiState(
-                sessionKey = SlockForwardPickerSessionKey("visual", "server-visual", 1),
+            RaftForwardTargetPickerUiState(
+                sessionKey = RaftForwardPickerSessionKey("visual", "server-visual", 1),
                 items = if (selectedProbeTargetId == null) fixtureTargets else emptyList(),
-                loadState = SlockForwardPickerLoadState.Loaded
+                loadState = RaftForwardPickerLoadState.Loaded
             ),
         onIntent = { intent ->
-            if (scrollProbe && intent is SlockForwardTargetPickerIntent.TargetSelected) {
+            if (scrollProbe && intent is RaftForwardTargetPickerIntent.TargetSelected) {
                 selectedProbeTargetId = intent.item.stableKey
             }
         }

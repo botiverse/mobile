@@ -8,7 +8,7 @@ class AndroidOnboardingBridgeUrlCodecTest {
     fun decoderRestoresEncodedCompletionPayloadCharacters() {
         assertEquals(
             "{\"contractVersion\":\"raft-onboarding-v1\",\"generation\":\"native:1\"}",
-            slockAndroidBridgeUrlDecode(
+            raftAndroidBridgeUrlDecode(
                 "%7B%22contractVersion%22%3A%22raft-onboarding-v1%22%2C%22generation%22%3A%22native%3A1%22%7D"
             ),
         )
@@ -17,6 +17,6 @@ class AndroidOnboardingBridgeUrlCodecTest {
     @Test
     fun encoderUsesUtf8AndDecoderRoundTripsSpacesAndUnicode() {
         val source = "server name / 筏"
-        assertEquals(source, slockAndroidBridgeUrlDecode(slockAndroidBridgeUrlEncode(source)))
+        assertEquals(source, raftAndroidBridgeUrlDecode(raftAndroidBridgeUrlEncode(source)))
     }
 }

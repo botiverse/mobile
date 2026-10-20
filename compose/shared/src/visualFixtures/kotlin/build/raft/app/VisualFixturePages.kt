@@ -22,21 +22,20 @@ import build.raft.app.data.SharedAgentCreateVisibilityRule
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.data.slockSharedPreferenceStore
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
+import build.raft.app.data.raftSharedPreferenceStore
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
@@ -52,7 +51,7 @@ internal class ComposeHomeTitlebarPreferenceVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         val enabled =
-            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                 .readHomeServerAvatarEnabledSync()
         setContent { HomeTitlebarPreferenceVisualScreen(enabled) }
     }
@@ -108,12 +107,12 @@ internal class ComposeHomeLoadingVisualPage : BasePager() {
 
 @Composable
 private fun HomeLoadingVisualContent() {
-    SlockStructuralHomeShell(
+    RaftStructuralHomeShell(
         currentServerName = VisualFixtureData.Server.NAME,
         currentServerId = VisualFixtureData.Server.ID,
         servers =
             listOf(
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = VisualFixtureData.Server.ID,
                     name = VisualFixtureData.Server.NAME,
                     slug = VisualFixtureData.Server.SLUG
@@ -290,34 +289,42 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
         val bottomSafeArea = pageData.params.optInt("bottomSafeAreaDp").dp
         setContent {
             var selectedKey by remember { mutableStateOf(initialSelectedKey) }
-            SlockAppBottomTabBarHost(
+            RaftAppBottomTabBarHost(
                 items =
                     listOf(
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "home",
                             "Home",
-                            SlockLucideIconName.House,
+                            RaftLucideIconName.House,
                             selected = selectedKey == "home",
                             enabled = disabledKey != "home"
                         ),
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
+                            "activity",
+                            "Activity",
+                            RaftLucideIconName.Activity,
+                            selected = selectedKey == "activity",
+                            enabled = disabledKey != "activity",
+                            badgeCount = 12
+                        ),
+                        RaftBottomTabItemPayload(
                             "tasks",
                             "Tasks",
-                            SlockLucideIconName.SquareCheckBig,
+                            RaftLucideIconName.SquareCheckBig,
                             selected = selectedKey == "tasks",
                             enabled = disabledKey != "tasks"
                         ),
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "members",
                             "Members",
-                            SlockLucideIconName.Users,
+                            RaftLucideIconName.Users,
                             selected = selectedKey == "members",
                             enabled = disabledKey != "members"
                         ),
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "settings",
                             "Settings",
-                            SlockLucideIconName.Settings,
+                            RaftLucideIconName.Settings,
                             selected = selectedKey == "settings",
                             enabled = disabledKey != "settings"
                         )
@@ -326,6 +333,38 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
                 modifier = Modifier.width(390.dp),
                 bottomSafeArea = bottomSafeArea
             )
+        }
+    }
+}
+
+/**
+ * The approved activity-tab mockup A bottom bar: 首页 · 动态 · 任务 · 成员 · 设置, rendered by the
+ * shared Compose bar at 390dp. Top: 动态 selected with its count on the pill corner; bottom: 任务
+ * selected with the count on the unselected 动态 tab.
+ */
+@Page("compose_bottom_tabbar_mockup_visual", supportInLocal = true)
+internal class ComposeBottomTabBarMockupVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Column(
+                modifier = Modifier.background(RaftColor.Canvas).padding(vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                listOf("activity" to 51, "tasks" to 16).forEach { (selectedKey, count) ->
+                    RaftBottomTabBar(
+                        items = listOf(
+                            RaftBottomTabItemPayload("home", "首页", RaftLucideIconName.House, selected = selectedKey == "home"),
+                            RaftBottomTabItemPayload("activity", "动态", RaftLucideIconName.Activity, selected = selectedKey == "activity", badgeCount = count),
+                            RaftBottomTabItemPayload("tasks", "任务", RaftLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
+                            RaftBottomTabItemPayload("members", "成员", RaftLucideIconName.Users, selected = selectedKey == "members"),
+                            RaftBottomTabItemPayload("settings", "设置", RaftLucideIconName.Settings, selected = selectedKey == "settings")
+                        ),
+                        onSelect = {},
+                        modifier = Modifier.width(390.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -340,9 +379,9 @@ internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
                     Modifier
                         .width(390.dp)
                         .height(798.dp)
-                        .background(SlockColor.SurfaceWhite),
+                        .background(RaftColor.SurfaceWhite),
             ) {
-                SlockLucideIcons.Names.chunked(10).forEach { rowNames ->
+                RaftLucideIcons.Names.chunked(10).forEach { rowNames ->
                     Row(
                         modifier = Modifier.width(390.dp).height(42.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -353,7 +392,7 @@ internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
                                 modifier = Modifier.width(39.dp).height(42.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                SlockLucideIcon(name = name, modifier = Modifier.size(24.dp))
+                                RaftLucideIcon(name = name, modifier = Modifier.size(24.dp))
                             }
                         }
                     }
@@ -373,40 +412,40 @@ internal class ComposeLucideStateAtlasVisualPage : BasePager() {
                     Modifier
                         .width(390.dp)
                         .height(84.dp)
-                        .background(SlockColor.SurfaceWhite),
+                        .background(RaftColor.SurfaceWhite),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LucideStateAtlasCell { SlockLucideIcon(SlockLucideIconName.Bookmark, Modifier.size(24.dp)) }
+                LucideStateAtlasCell { RaftLucideIcon(RaftLucideIconName.Bookmark, Modifier.size(24.dp)) }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(
-                        SlockLucideIconName.Bookmark,
+                    RaftLucideIcon(
+                        RaftLucideIconName.Bookmark,
                         Modifier.size(24.dp),
-                        fill = SlockColor.TextBlackArgb,
+                        fill = RaftColor.TextBlackArgb,
                     )
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 2f)
+                    RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 2f)
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 4f)
+                    RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 4f)
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 6f)
+                    RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 6f)
                 }
                 listOf(0f, 90f, 180f, 270f).forEach { rotation ->
                     LucideStateAtlasCell {
-                        SlockLucideIcon(
-                            SlockLucideIconName.ArrowLeft,
+                        RaftLucideIcon(
+                            RaftLucideIconName.ArrowLeft,
                             Modifier.size(24.dp),
-                            color = if (rotation == 0f) SlockColor.AccentRedArgb else SlockColor.TextBlackArgb,
+                            color = if (rotation == 0f) RaftColor.AccentRedArgb else RaftColor.TextBlackArgb,
                             rotationDegrees = rotation,
                         )
                     }
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(
-                        SlockLucideIconName.CircleArrowUp,
+                    RaftLucideIcon(
+                        RaftLucideIconName.CircleArrowUp,
                         Modifier.size(24.dp),
                         verticalOffsetDp = 4f,
                     )
@@ -574,6 +613,15 @@ internal class ComposeHomeSavedVisualPage : BasePager() {
     }
 }
 
+// Activity as the second bottom tab: head, three segments (pageData `segment`), 5-tab bar + badge.
+@Page("compose_activity_tab_visual", supportInLocal = true)
+internal class ComposeRaftActivityTabVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftActivityTabVisualContent() }
+    }
+}
+
 @Page("compose_home_activity_visual", supportInLocal = true)
 internal class ComposeHomeActivityVisualPage : BasePager() {
     override fun willInit() {
@@ -709,7 +757,7 @@ internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
     }
 }
 
-private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
+internal fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
     val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
     val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
     val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
@@ -805,7 +853,7 @@ internal class TokenPaletteVisualPage : BasePager() {
 internal class ComposeUiSegmentedControlVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSegmentedControlVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSegmentedControlVisualContent() } }
     }
 }
 
@@ -813,7 +861,7 @@ internal class ComposeUiSegmentedControlVisualPage : BasePager() {
 internal class ComposeUiButtonVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiButtonVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
     }
 }
 
@@ -825,15 +873,14 @@ internal class ComposeUiButtonThemeVisualPage : BasePager() {
     }
 }
 
-// Elegant-register capture of the SAME button content as compose_ui_button_visual,
-// wrapped in SlockThemeProvider(elegantTheme). Paired against the React elegant
-// render (data-theme="elegant") as components.ui.button.states.elegant so the
-// react-elegant <-> android-elegant parity is visible in the baseline.
+// raft-ui 0.6.0 removed the elegant register: web renders the raft look for both the
+// base and the ".elegant" case ids (slock #10148), so both pages pin raftLightTheme and
+// render the same primitives. The ".elegant" page id is kept for the case manifest.
 @Page("compose_ui_button_elegant_visual", supportInLocal = true)
 internal class ComposeUiButtonElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiButtonVisualContent(rowSpacing = 12.dp) } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
     }
 }
 
@@ -841,18 +888,16 @@ internal class ComposeUiButtonElegantVisualPage : BasePager() {
 internal class ComposeUiCardVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiCardVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME card content, wrapped in
-// SlockThemeProvider(elegantTheme). Paired against the React elegant render as
-// components.ui.card.states.elegant (react-elegant <-> android-elegant parity).
+// Same raft card as compose_ui_card_visual (the ".elegant" case id is kept; see button).
 @Page("compose_ui_card_elegant_visual", supportInLocal = true)
 internal class ComposeUiCardElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiCardVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
     }
 }
 
@@ -860,18 +905,16 @@ internal class ComposeUiCardElegantVisualPage : BasePager() {
 internal class ComposeUiFormFieldVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiFormFieldVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME form-field content, wrapped in
-// SlockThemeProvider(elegantTheme). Paired against the React elegant render as
-// components.ui.form-field.states.elegant (react-elegant <-> android-elegant parity).
+// Same raft form fields as compose_ui_form_field_visual (".elegant" case id kept).
 @Page("compose_ui_form_field_elegant_visual", supportInLocal = true)
 internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiFormFieldVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
     }
 }
 
@@ -879,20 +922,16 @@ internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
 internal class ComposeUiTextareaVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiTextareaVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME textarea content, wrapped in
-// SlockThemeProvider(elegantTheme). The textarea renders via SlockBrutalInputField, so it
-// inherits the elegant flat-field register (8dp rounded + #CACACE hairline + no offset
-// shadow) with no component change. Paired against the React elegant render as
-// components.ui.textarea.states.elegant (react-elegant <-> android-elegant parity).
+// Same raft textarea as compose_ui_textarea_visual (".elegant" case id kept).
 @Page("compose_ui_textarea_elegant_visual", supportInLocal = true)
 internal class ComposeUiTextareaElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiTextareaVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
     }
 }
 
@@ -900,18 +939,16 @@ internal class ComposeUiTextareaElegantVisualPage : BasePager() {
 internal class ComposeUiCheckboxVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiCheckboxVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
     }
 }
 
-// Elegant-register capture of the SAME checkbox content, wrapped in
-// SlockThemeProvider(elegantTheme): softly-rounded 4dp box + #CACACE hairline + #0A0A0A ink
-// fill. Paired against the React elegant render as components.ui.checkbox.states.elegant.
+// Same raft checkbox as compose_ui_checkbox_visual (".elegant" case id kept).
 @Page("compose_ui_checkbox_elegant_visual", supportInLocal = true)
 internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = elegantTheme) { UiCheckboxVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
     }
 }
 
@@ -919,7 +956,7 @@ internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
 internal class ComposeUiCheckMarkerVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiCheckMarkerVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckMarkerVisualContent() } }
     }
 }
 
@@ -927,7 +964,7 @@ internal class ComposeUiCheckMarkerVisualPage : BasePager() {
 internal class ComposeUiAttentionDotVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiAttentionDotVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiAttentionDotVisualContent() } }
     }
 }
 
@@ -935,7 +972,7 @@ internal class ComposeUiAttentionDotVisualPage : BasePager() {
 internal class ComposeUiStatusDotVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiStatusDotVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiStatusDotVisualContent() } }
     }
 }
 
@@ -943,7 +980,7 @@ internal class ComposeUiStatusDotVisualPage : BasePager() {
 internal class ComposeUiProgressBarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiProgressBarVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiProgressBarVisualContent() } }
     }
 }
 
@@ -951,7 +988,7 @@ internal class ComposeUiProgressBarVisualPage : BasePager() {
 internal class ComposeUiSkeletonVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSkeletonVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSkeletonVisualContent() } }
     }
 }
 
@@ -959,7 +996,7 @@ internal class ComposeUiSkeletonVisualPage : BasePager() {
 internal class ComposeUiSpinnerVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSpinnerVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSpinnerVisualContent() } }
     }
 }
 
@@ -967,7 +1004,7 @@ internal class ComposeUiSpinnerVisualPage : BasePager() {
 internal class ComposeUiSlugInputVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSlugInputVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSlugInputVisualContent() } }
     }
 }
 
@@ -975,7 +1012,7 @@ internal class ComposeUiSlugInputVisualPage : BasePager() {
 internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSectionEyebrowVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSectionEyebrowVisualContent() } }
     }
 }
 
@@ -983,7 +1020,7 @@ internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
 internal class ComposeUiSelectionPopoverVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSelectionPopoverVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSelectionPopoverVisualContent() } }
     }
 }
 
@@ -991,7 +1028,7 @@ internal class ComposeUiSelectionPopoverVisualPage : BasePager() {
 internal class ComposeUiMenuItemVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiMenuItemVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiMenuItemVisualContent() } }
     }
 }
 
@@ -999,7 +1036,7 @@ internal class ComposeUiMenuItemVisualPage : BasePager() {
 internal class ComposeUiSelectVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSelectVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSelectVisualContent() } }
     }
 }
 
@@ -1007,7 +1044,7 @@ internal class ComposeUiSelectVisualPage : BasePager() {
 internal class ComposeUiBadgeVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiBadgeVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiBadgeVisualContent() } }
     }
 }
 
@@ -1015,7 +1052,7 @@ internal class ComposeUiBadgeVisualPage : BasePager() {
 internal class ComposeUiSectionHeaderVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSectionHeaderVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSectionHeaderVisualContent() } }
     }
 }
 
@@ -1023,7 +1060,7 @@ internal class ComposeUiSectionHeaderVisualPage : BasePager() {
 internal class ComposeUiSurfaceListItemVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSurfaceListItemVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSurfaceListItemVisualContent() } }
     }
 }
 
@@ -1031,7 +1068,7 @@ internal class ComposeUiSurfaceListItemVisualPage : BasePager() {
 internal class ComposeUiAvatarListRowVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiAvatarListRowVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiAvatarListRowVisualContent() } }
     }
 }
 
@@ -1294,8 +1331,8 @@ internal class ComposeThreadInlineAudioControlsVisualPage : BasePager() {
         super.willInit()
         setContent {
             Column(
-                modifier = com.tencent.kuikly.compose.ui.Modifier.padding(16.dp),
-                verticalArrangement = com.tencent.kuikly.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+                modifier = androidx.compose.ui.Modifier.padding(16.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
             ) {
                 // Paused at the start, playing mid-way, and finished.
                 ThreadInlineAudioControls(false, true, 0, 135_000, {}, {})

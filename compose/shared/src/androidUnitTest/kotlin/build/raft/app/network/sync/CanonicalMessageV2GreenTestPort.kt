@@ -2,7 +2,7 @@ package build.raft.app.network.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalConversationContextWire
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -574,11 +574,11 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
     private fun acceptedEnvelope(input: JsonElement): CanonicalMessageEnvelopeV2? =
         (decodeCanonicalMessageV2(input, "server-a") as? CanonicalMessageV2DecodeResult.Accepted)?.envelope
 
-    private fun <T> withFreshDatabase(block: (SlockSqlDatabase) -> T): T {
+    private fun <T> withFreshDatabase(block: (RaftSqlDatabase) -> T): T {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         return try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

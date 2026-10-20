@@ -38,18 +38,18 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.delay
 
 private val homeSearchVisualMember: MemberProfile
@@ -336,7 +336,7 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     // margin painted with the window background (cream), which the react↔android diff
     // flagged as a spurious "empty beige area" drift. White backing keeps any residual gap
     // aligned with the react baseline. (visual case components.home.search.*-dropdown)
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState,
             homeState = homeSearchVisualHomeState,
@@ -359,7 +359,7 @@ internal fun HomeSearchHomeVisualContent(
     editing: Boolean = false,
     visualTextScale: Float = 1f,
 ) {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchHomeVisualSearchState,
             homeState = homeSearchVisualHomeState,
@@ -388,7 +388,7 @@ internal fun HomeSearchPinVisualContent(query: String = "android") {
             togglePinCount = 0
         }
     }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState.copy(query = query),
             homeState = homeSearchPinVisualHomeState,
@@ -410,7 +410,7 @@ internal fun HomeSearchPinVisualContent(query: String = "android") {
             modifier = Modifier.fillMaxSize()
         )
         if (openedEntityCount > 0) {
-            Box(modifier = Modifier.size(24.dp).background(SlockColor.BrandYellow))
+            Box(modifier = Modifier.size(24.dp).background(RaftColor.BrandYellow))
         }
         if (togglePinCount > 0) {
             Box(

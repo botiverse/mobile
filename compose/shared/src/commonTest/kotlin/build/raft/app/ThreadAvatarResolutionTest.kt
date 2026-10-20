@@ -10,7 +10,7 @@ class ThreadAvatarResolutionTest {
     @Test
     fun agentThreadAvatarUsesAppAvatarThenRobotFallback() {
         val uploadedAgent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "agent-1",
                 authorName = "Build Bot",
@@ -40,7 +40,7 @@ class ThreadAvatarResolutionTest {
     fun messageRowsReadOnlyTheCanonicalMemberAvatar() {
         val canonicalAvatar = "https://cdn.slock.ai/avatars/agents/agent-1.webp"
         val fullHistoryRow =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "history-message",
                 authorId = "agent-1",
                 authorName = "Build Bot",
@@ -57,7 +57,7 @@ class ThreadAvatarResolutionTest {
         assertEquals("pixel:robot", sparseRealtimeRow.resolvedThreadAvatarWireValue())
         val canonicalByAuthor = mapOf("agent-1" to canonicalAvatar)
         val resolver =
-            SlockMemberAvatarResolver(
+            RaftMemberAvatarResolver(
                 currentAvatar = canonicalByAuthor::get,
                 avatarFlow = { authorId -> flowOf(canonicalByAuthor[authorId]) }
             )
@@ -69,7 +69,7 @@ class ThreadAvatarResolutionTest {
     @Test
     fun shareSelectionSuppressesAuthorProfileNavigation() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "user-1",
                 authorName = "User 1"

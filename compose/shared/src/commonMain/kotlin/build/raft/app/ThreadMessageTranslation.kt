@@ -8,21 +8,21 @@ import build.raft.app.data.SharedMessageTranslationStatus
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.material3.Text
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.ui.unit.sp
 
 /**
  * Per-message translation render model, aligned with the React `MessageItem`
@@ -55,7 +55,7 @@ internal data class ThreadMessageTranslationUi(
     val indicator: ThreadMessageTranslationIndicatorUi? = null,
 )
 
-internal fun KuiklyThreadMessageItem.toTranslationCandidate(): SharedMessageTranslationCandidate =
+internal fun RaftThreadMessageItem.toTranslationCandidate(): SharedMessageTranslationCandidate =
     SharedMessageTranslationCandidate(
         messageId = id,
         body = body,
@@ -63,7 +63,7 @@ internal fun KuiklyThreadMessageItem.toTranslationCandidate(): SharedMessageTran
         isSystem = isSystemMessage(),
     )
 
-internal fun KuiklyThreadMessageItem.isTranslationEligible(settings: SharedMessageTranslationSettings): Boolean =
+internal fun RaftThreadMessageItem.isTranslationEligible(settings: SharedMessageTranslationSettings): Boolean =
     settings.available &&
         settings.translationMode != TranslationModePreference.Original &&
         settings.effectiveLanguage != null &&
@@ -72,8 +72,45 @@ internal fun KuiklyThreadMessageItem.isTranslationEligible(settings: SharedMessa
         !hasLocalSendState() &&
         body.isNotBlank()
 
+/** The long-press menu's Translate entry (web MessageItem `showManualTranslationAction`). */
+internal enum class ThreadMessageMenuTranslateState {
+    Hidden,
+    Available,
+    /** Web renders the entry disabled with "Translating…" while the request is in flight. */
+    Pending
+}
+
+/**
+ * Web parity: the entry needs an eligible, non-empty, non-action-card message and disappears once
+ * the message already has a usable translation or the translation failed. A stale entry (the
+ * message was edited after it was produced) is ignored, as on web.
+ */
+internal fun threadMessageMenuTranslateState(
+    message: RaftThreadMessageItem,
+    translationState: SharedMessageTranslationState,
+    translationAvailable: Boolean
+): ThreadMessageMenuTranslateState {
+    if (!translationAvailable) return ThreadMessageMenuTranslateState.Hidden
+    if (!message.isTranslationEligible(translationState.settings)) return ThreadMessageMenuTranslateState.Hidden
+    if (message.body.isBlank() || message.isThreadActionCardMessage()) return ThreadMessageMenuTranslateState.Hidden
+    val entry =
+        translationState.entries[message.id]
+            ?.takeIf { it.originalContent.isEmpty() || it.originalContent == message.body }
+    return when (entry?.status) {
+        SharedMessageTranslationStatus.Pending -> ThreadMessageMenuTranslateState.Pending
+        SharedMessageTranslationStatus.Translated ->
+            if (entry.translatedContent.isNullOrBlank()) {
+                ThreadMessageMenuTranslateState.Available
+            } else {
+                ThreadMessageMenuTranslateState.Hidden
+            }
+        SharedMessageTranslationStatus.Failed -> ThreadMessageMenuTranslateState.Hidden
+        else -> ThreadMessageMenuTranslateState.Available
+    }
+}
+
 internal fun resolveThreadMessageTranslationUi(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     translationState: SharedMessageTranslationState,
 ): ThreadMessageTranslationUi? {
     if (!message.isTranslationEligible(translationState.settings)) return null
@@ -136,8 +173,8 @@ internal fun ThreadMessageTranslationIndicator(
     onToggleOriginal: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    val tint = if (indicator.failed) SlockColor.AccentOrange else SlockColor.TextMutedGray
-    val tintArgb = if (indicator.failed) SlockColor.AccentOrangeArgb else SlockColor.TextMutedGrayArgb
+    val tint = if (indicator.failed) RaftColor.AccentOrange else RaftColor.TextMutedGray
+    val tintArgb = if (indicator.failed) RaftColor.AccentOrangeArgb else RaftColor.TextMutedGrayArgb
     val localizedMessage =
         when {
             indicator.pending -> stringResource(MR.strings.translation_state_in_progress)
@@ -159,8 +196,8 @@ internal fun ThreadMessageTranslationIndicator(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        SlockLucideIcon(
-            name = if (indicator.failed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Languages,
+        RaftLucideIcon(
+            name = if (indicator.failed) RaftLucideIconName.TriangleAlert else RaftLucideIconName.Languages,
             modifier = Modifier.size(12.dp),
             color = tintArgb,
             spinning = indicator.pending
@@ -168,7 +205,7 @@ internal fun ThreadMessageTranslationIndicator(
         if (localizedMessage.isNotBlank()) {
             Text(
                 text = localizedMessage,
-                style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
+                style = RaftType.Caption.copy(fontSize = 11.sp, color = tint),
                 color = tint
             )
         }
@@ -181,7 +218,7 @@ internal fun ThreadMessageTranslationIndicator(
                 }
             Text(
                 text = localizedActionLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
+                style = RaftType.Caption.copy(fontSize = 11.sp, color = tint),
                 color = tint,
                 modifier =
                     if (onAction != null) {
@@ -201,6 +238,6 @@ internal fun ThreadMessageTranslationPendingPlaceholder() {
             Modifier
                 .width(176.dp)
                 .height(16.dp)
-                .background(SlockColor.AccentStone)
+                .background(RaftColor.AccentStone)
     )
 }

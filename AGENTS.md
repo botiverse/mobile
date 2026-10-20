@@ -8,6 +8,21 @@
   changes, enable visible touches/pointer overlay and follow
   `docs/android-review-recording.md` before attaching evidence to a task thread.
 
+## Code Naming: Raft, not Slock
+
+- The product is Raft. New types, files and functions use the `Raft` prefix;
+  never introduce `Slock*` (or Kuikly-era `Kuikly*` model) names in code.
+- `scripts/rename_slock_to_raft.py` performs the Slock -> Raft identifier and
+  file rename. After a rebase that brings in old names, run it with `--apply`;
+  `--check` exits non-zero while anything is left to rename.
+- Persisted / contract strings intentionally keep their old spelling: storage
+  keys, MMKV namespaces, SharedPreferences names, wire fields, log tags used by
+  scripts, page/route names, `slock*` pageData keys, env vars and the
+  `slockVisualFixtures` Gradle property. The manifest keeps the old activity
+  component names as `<activity-alias>` entries, and the AppWidget provider
+  classes (`SlockActivityWidgetProvider`, `SlockAgentStatusWidgetProvider`)
+  keep their names because placed widgets persist the provider component.
+
 ## Slock server/source contract
 
 - The TypeScript server and React source are maintained in the separate private
@@ -82,7 +97,7 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
 - Request bodies that represent server API contracts must likewise use named
   shared DTOs/builders. Avoid drifting ad hoc maps in app code for API shapes.
 - Shared repositories should own reusable API orchestration and consume the
-  shared `SlockNetworkClient` request boundary. Do not duplicate real
+  shared `RaftNetworkClient` request boundary. Do not duplicate real
   repositories per platform, and do not add feature-specific platform transport
   ports such as `SlockXxxApi` when a path/query/body request through the shared
   network client is enough.
@@ -90,7 +105,7 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   do that. Do not leave an Android "thin wrapper" whose only job is to delegate
   to shared; use typealiases or direct shared imports while the old Android
   package names are being retired.
-- Platform code (Android, OHOS/Kuikly, future targets) should adapt only the
+- Platform code (Android, iOS, future targets) should adapt only the
   single bottom network layer: auth, refresh, priority, headers, and raw HTTP
   request/response. Server DTO parsing and request-body construction remain in
   shared.
@@ -139,17 +154,17 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
 - For Slock Kuikly Compose floating overlays, dropdowns, context menus, and
   anchored popovers, keep anchor and overlay geometry in pixels. Do not convert
   `positionInRoot()` or `coords.size` through `LocalDensity`, `toDp()`, `.dp`,
-  or `toSlockDpOffset()` before passing an anchor to `SlockAnchoredPopover`.
+  or `toSlockDpOffset()` before passing an anchor to `RaftAnchoredPopover`.
 - Use dp only for visual dimensions and spacing passed into Compose layout
   modifiers or parameters explicitly named `*Dp`.
 - See `docs/kuikly-overlay-coordinate-contract.md` before changing
-  `SlockAnchoredPopover`, `SlockFloatingOverlayLayout`, or trigger components
-  such as `SlockAnchoredToolbarChip`.
+  `RaftAnchoredPopover`, `RaftFloatingOverlayLayout`, or trigger components
+  such as `RaftAnchoredToolbarChip`.
 
 ## Kuikly Back Handling Rule
 
 - Any cancelable transient UI state in shared Kuikly Compose must register
-  `SlockBackHandler(enabled = stateIsActive, label = "...")` while active.
+  `RaftBackHandler(enabled = stateIsActive, label = "...")` while active.
   Examples include non-modal selection modes, inline search bars, full-screen
   previews, custom panels, and popovers that are not already wrapped by the
   shared overlay/dialog primitives.
@@ -157,10 +172,10 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   enabled handler owns system Back first, and disposal automatically removes it
   from the stack. Do not hand-roll per-page native back dispatch or platform
   key-event interception for ordinary cancelable UI states.
-- Prefer existing primitives when possible. `SlockFloatingOverlayHost`,
-  `SlockAnchoredPopover`, `SlockUnifiedDialog`, and `Modal(onWillDismiss = ...)`
+- Prefer existing primitives when possible. `RaftFloatingOverlayHost`,
+  `RaftAnchoredPopover`, `RaftUnifiedDialog`, and `Modal(onWillDismiss = ...)`
   already participate in Back dismissal; page code should add a local
-  `SlockBackHandler` only for transient states outside those primitives.
+  `RaftBackHandler` only for transient states outside those primitives.
 - When multiple transient states can overlap, keep Back priority explicit:
   modal/popover first, then nested temporary state, then page navigation.
   Add a focused policy test when that priority is not obvious from structure.
@@ -392,7 +407,7 @@ A mock whose only purpose is to make a happy-path test pass is a contract drift
 waiting to happen: the real server returns a different shape, and the field
 that was guessed silently decodes to `null` (or default) at runtime, with no
 test failure. This is exactly how the
-`SlockAgentsApi.AgentActivityWireDto(val id: String)` drift (D1 of #50) was
+`RaftAgentsApi.AgentActivityWireDto(val id: String)` drift (D1 of #50) was
 introduced — the mock used `[{"id":"a1",...}]` instead of the upstream
 `[{timestamp, entry: {kind, activity, detail}}]`.
 
@@ -517,160 +532,72 @@ or helper scripts as a workaround for branch protection.
 
 ## Shared UI Component Discipline
 
-- Product/page code must prefer the existing shared brutal components for
-  common controls: `SlockBrutalActionButton`, `SlockBrutalIconButton`,
-  `SlockBrutalTextField`, `SlockBrutalSearchField`, section labels, chips, and
-  modal/action helpers. Do not hand-roll local back buttons, icon buttons,
-  primary/secondary buttons, text fields, or search controls with ad hoc
-  `Box`/`Row`/`clickable` styling when a shared component already covers the
-  behavior.
-- Local wrappers are acceptable only as semantic adapters, and should preserve
-  shared component defaults for border, hard shadow, padding, typography,
-  disabled behavior, and icon treatment unless the product spec explicitly
-  calls out a variant. If a repeated variant is needed, promote it to a shared
-  component instead of copying per-page styling.
-- Iron rule: when React parity or Product feedback identifies a reusable
-  control pattern (select/dropdown, textarea counter, clear action, refresh
-  affordance, section label accessory, etc.), first add or extend a shared
-  component under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
-  and then wire pages to that component. Do not fix the same visual primitive
-  separately inside each page; page-local UI is only allowed for one-off layout
-  composition around shared controls.
-- Members/detail pages in particular should use the shared brutal buttons for
-  top-left back navigation and all action buttons. Do not reintroduce bespoke
-  members-only button metrics such as custom 30dp icon buttons, 1dp shadows, or
-  caption-sized action text for ordinary page actions.
+- Product/page code uses the raft-ui components from `compose/designsystem`
+  (package `build.raft.designsystem`: `RaftButton`, `RaftIconButton`,
+  `RaftTextField`, `RaftField`, `RaftSelectTrigger`, `RaftDropdownMenu`, `RaftTabs`,
+  `RaftListRow`, `RaftCard`, `RaftBadge`, `RaftDialog`, `RaftBanner`, ...) and
+  its tokens/typography for every common control. Do not hand-roll back
+  buttons, icon buttons, primary/secondary buttons, text fields, search
+  controls, menu rows or tabs with ad hoc `Box`/`Row`/`clickable` styling.
+- The source of truth is raft-ui (raft-design / the web). When a page needs a
+  control or variant `compose/designsystem` does not have yet, first add it to
+  `compose/designsystem`, aligned with the raft-ui recipe (sizes, radii,
+  strokes, states, type), with screenshot tests, then use it. Do not fix the
+  same visual primitive separately inside each page; page-local UI is only for
+  one-off layout composition around design-system controls.
+- The older `RaftBrutal*` components (`RaftBrutalActionButton`,
+  `RaftBrutalIconButton`, `RaftBrutalTextField`, `RaftBrutalSearchField`, ...)
+  and the helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
+  are pending migration: add no new usages, and replace them with the
+  design-system component when you touch that UI.
+- Local wrappers are acceptable only as semantic adapters and keep the
+  design-system defaults (stroke, radius, padding, type, disabled and focus
+  states, icon treatment) unless the raft-ui spec defines a variant. A repeated
+  variant belongs in `compose/designsystem`, not in per-page styling.
+- Metrics come from the design system, not from page code: control heights,
+  icon-button sizes (44dp touch target), menu-row heights, radii and stroke
+  widths use `compose/designsystem` tokens. raft-ui controls cast no shadow;
+  only stickers keep the hard offset.
 
-## Kuikly References And Skills
+## Kuikly Status
 
-- Workspace-level Kuikly guidance lives under `.agents/`:
-  - `.agents/skills/kuikly-*` contains the vendored skills from
-    `Tencent-TDS/KuiklyUI-AI`.
-  - `.agents/skills/slock-*` contains Slock-specific workflow guidance
-    (currently `slock-android-adb-audit`, `slock-android-packaging`,
-    `slock-launch-contract`).
-  - `.agents/rules/kuiklyComposeDSL.mdc` and `.agents/rules/kuiklyDSL.mdc` contain
-    the Kuikly Compose / Kuikly DSL rules.
-  - `.agents/kuikly-ui-ai-source.txt` records the upstream source and commit.
-- For Kuikly, OHOS, shared shell, navigation, assets, native bridge, or
-  recomposition work, read the relevant workspace skill/rule first instead of
-  relying on Android-native assumptions.
-- The local Tencent KuiklyUI upstream reference lives at
-  `.agents/skills/kuikly-ui-framework/references/KuiklyUI/`. Keep KuiklyUI
-  reference/demo/source lookup there instead of adding another copy under
-  `third_party/`.
-- Useful KuiklyUI reference paths:
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/demo/src/commonMain/kotlin/com/tencent/kuikly/demo/pages/compose/`
-    for Compose DSL demos such as popups, gestures, Canvas, dialogs, lazy lists,
-    and text/input behavior.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/ohosApp/` for the
-    HarmonyOS host shell.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/androidApp/` for the
-    Android host shell.
-  - `.agents/skills/kuikly-ui-framework/references/KuiklyUI/core-render-ohos/`
-    and `.agents/skills/kuikly-ui-framework/references/KuiklyUI/compose/` for
-    render/runtime implementation details.
-- Treat the KuiklyUI reference tree as vendor/reference source. Do not modify it
-  unless explicitly asked; for Slock product fixes, change Slock shared/app code.
-- Cross-platform visual states must not rely on parent/view opacity when the
-  intended result is a specific token color. Kuikly Compose emits
-  `Modifier.alpha(...)` as an `opacity` prop; Android applies that through
-  `View.alpha`, while OHOS applies it through ArkUI `NODE_OPACITY`. The final
-  subtree blending can differ, especially for disabled buttons/icons on light
-  backgrounds. Prefer explicit ARGB colors such as
-  `AccentPink.copy(alpha = 0.3f)` and matching icon colors (`#4D000000`) for
-  disabled/pressed states instead of wrapping the whole component in
-  `Modifier.alpha(0.3f)`.
-- To refresh the `.agents/` Kuikly AI skill/rule bundle from upstream, run:
+- The mobile UI runs on JetBrains Compose Multiplatform; Kuikly UI was removed
+  (see `compose/designsystem` for the design-system module). The vendored
+  Kuikly AI skills, rules and the KuiklyUI reference tree were removed too; do
+  not re-add them. New UI is Compose Multiplatform.
+- `.agents/skills/slock-*` contains Slock-specific workflow guidance
+  (currently `slock-android-adb-audit`, `slock-android-packaging`,
+  `slock-launch-contract`).
 
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock
-scripts/sync_kuikly_ai_skills.sh
-```
+## KuiklyUI Release (retired)
 
-## KuiklyUI Release
+- Since the Compose Multiplatform switch neither the Gradle build nor the iOS
+  Podfile consumes Kuikly UI (`com.tencent.kuikly-open` / OpenKuiklyIOSRender).
+  The immutable release closure, manifest gate and artifact fetcher were
+  removed; `scripts/ci/test_kuikly_raft_consumer_contract.py` now fails if a
+  Kuikly UI consumer comes back. KuiklyBase libraries that are not Kuikly UI
+  (NetworkKMM `com.tencent.kuiklybase:network`, `resource-core`) stay.
 
-- Mobile consumes the immutable Raft release pinned in
-  `compose/gradle/kuikly-release-closure.json`; it does not carry a Kuikly
-  source gitlink or build Kuikly into Maven Local.
-- `scripts/ci/verify_kuikly_release_manifest.sh` is the fail-closed version
-  admission gate. Android/KMP/OHOS then resolve exact coordinates from the
-  exclusive Raft repository, while iOS and the OHOS renderer are fetched from
-  the same manifest with byte verification. Set `KUIKLY_FULL_READBACK=1` only
-  for an explicit audit/recovery run that must re-read the full release set.
-- Fork development and publication happen in the KuiklyUI repository. To
-  upgrade Mobile, publish a complete immutable successor first, then update
-  the closure, exact Gradle versions, CocoaPods lock, and OHOS lock together.
-- The `.agents/skills/kuikly-ui-framework/references/KuiklyUI` tree remains a
-  vendor reference for API and implementation research; it is not a build
-  input or consumer fallback.
+## HarmonyOS (OHOS) Status
 
-## OHOS Kuikly Workflow
+- OHOS support is frozen. `1.14.x` is the last OHOS release line and is built
+  only from the `release/1.14.x` branch; `main` carries no OHOS app, bridge,
+  build scripts, CI lanes, or device tooling. Do not add OHOS targets, docs, or
+  release steps on `main`. OHOS-only fixes, if any are explicitly requested,
+  go to `release/1.14.x`.
 
-- For local HarmonyOS virtual-device lifecycle, HDC connection, signed-HAP
-  install, screenshots/layout dumps, and repeatable input smoke, read
-  `docs/ohos-emulator-setup.md` before starting an emulator.
+## Local Preferences
 
-- The Slock OHOS app bundle/module/ability is `build.raft.mobile` / `entry` /
-  `EntryAbility`.
-- `hdc` may not be on `PATH`; the default DevEco path in this workspace is
-  `/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`.
-- Do not assume global `hvigor` or `hvigorw` commands exist on this machine.
-  Command-line OHOS builds should use DevEco Studio's bundled Node +
-  `hvigorw.js` and bundled `ohpm`.
-- The default DevEco installation path used by this project is
-  `/Applications/DevEco-Studio.app/Contents`. Override it in scripts with
-  `DEVECO_STUDIO_HOME` only when DevEco is installed elsewhere.
-- To sync and assemble a HAP without relying on global `hvigorw`, run:
-
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock/compose/ohosApp
-/Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm install --all
-/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
-  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
-  --sync -p product=default --analyze=normal --parallel
-/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
-  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
-  --mode module -p module=entry@default -p product=default \
-  -p requiredDeviceType=phone assembleHap --analyze=normal --parallel
-```
-
-- To build, install, and launch the OHOS app, run the wrapper from the Compose
-  project. It applies the same bundled DevEco toolchain path above, then installs
-  the signed HAP on a connected target. The script is not guaranteed to have its
-  executable bit set, so prefer invoking it through `sh`:
-
-```bash
-cd /Users/artin/AndroidStudioProjects/Slock/compose
-sh ohosApp/runOhosApp.sh
-```
-
-- `scripts/capture_ohos_screenshot.sh` uses `snapshot_display`; on some current
-  OHOS emulator images, `snapshot_display` rejects `.png` output names and only
-  accepts `.jpeg`. If screenshot capture fails with a suffix error, use a remote
-  `.jpeg` path and pull that file with `hdc file recv`.
-
-## OHOS Kuikly SharedPreferences
-
-- Kuikly OHOS has two SharedPreferences implementations:
-  `KRSharedPreferencesModule` uses XML files and is compatible with all API
-  versions; `KROhSharedPreferencesModule` uses the native OpenHarmony
-  `oh_preferences` C API / GSKV format and requires OpenHarmony API >= 13.
-- Prefer `KROhSharedPreferencesModule` on API 13+ by enabling it through the
-  Kuikly entry config, for example `Kuikly({ useOhSharedPreferences: true, ... })`.
-- When business code builds a platform Preference instance on OHOS, never set
-  `fileName` to `KROhSharedPreferencesModule`; that name is reserved by the
-  module implementation and will conflict with its cache path.
-- In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
-  key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
-  platform Preference file names.
 - Local product preferences must be represented as shared repositories over
   `SharedPreferenceStore` in `compose/shared`. Business code must not create
-  platform `SharedPreferences` / OHOS `Preference` instances, choose file names,
-  or hand-roll preference keys in feature pages.
+  platform `SharedPreferences` instances, choose file names, or hand-roll
+  preference keys in feature pages.
+- In shared code, `KuiklySharedPreferencesKeyValueStore` namespaces are only
+  key prefixes such as `tasks:viewMode`; do not reinterpret those namespaces as
+  platform preference file names.
 - Platform hosts only adapt the bottom store: Android provides
   `AndroidSharedPreferencesKeyValueStore` using the shared
-  `SlockLocalPreferenceStore.AndroidPreferencesName`; Kuikly/OHOS provides
+  `RaftLocalPreferenceStore.AndroidPreferencesName`; Kuikly hosts provide
   `KuiklySharedPreferencesKeyValueStore` through `kuiklySharedPreferenceStore(...)`.
   Business repositories for locale, chat layout, notifications, tasks view mode,
   and future local settings stay in shared.
@@ -713,12 +640,12 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 ## Network Priority Workflow
 
 - Every Android request that reaches `build.raft.app.network.SlockApiClient`
-  must run inside `withSlockRequestPriority(...)`; missing priority is a bug.
+  must run inside `withRaftRequestPriority(...)`; missing priority is a bug.
 - New product API routes live in `compose/shared` behind shared
-  `@Serializable` request/response DTOs and `SlockNetworkClient`. Do not add
+  `@Serializable` request/response DTOs and `RaftNetworkClient`. Do not add
   parallel Android endpoint facades, app-local JSON parsers, `mapOf` request
   bodies, ad hoc `JsonObject`, or route-local anonymous body shapes.
-- Shared `SlockNetworkClient` APIs must require explicit `DataRequestPriority`
+- Shared `RaftNetworkClient` APIs must require explicit `DataRequestPriority`
   with no no-priority overloads/defaults, so new API/fake call sites fail to
   compile until they choose `Foreground`, `Visible`, or `Background`.
 - Priority choice: `Foreground` is only for user-blocking opens/mutations;
@@ -831,21 +758,15 @@ After any shared-layer change, validate all target platforms before handoff:
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :shared:compileDebugKotlinAndroid
 
-# 2. Shared OHOS compile (Kotlin/Native cross-check)
+# 2. Shared iOS compile (Kotlin/Native cross-check; macOS host)
 cd /Users/artin/AndroidStudioProjects/Slock/compose
-./gradlew -c settings.ohos.gradle.kts \
-  :shared:compileKotlinOhosArm64 \
-  :ohosBridge:compileKotlinOhosArm64
+./gradlew :shared:compileKotlinIosSimulatorArm64
 
 # 3. Android app compile + assemble
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :androidApp:compileDebugKotlin :androidApp:assembleDebug
 
-# 4. OHOS HAP (requires DevEco Studio; uses bundled hvigorw.js, not a global CLI)
-cd /Users/artin/AndroidStudioProjects/Slock/compose
-sh ohosApp/runOhosApp.sh
-
-# 5. Focused unit tests
+# 4. Focused unit tests
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :androidApp:testDebugUnitTest \
   --tests "build.raft.app.core.data.quality.NetworkPriorityCallSiteTest*" \
@@ -856,24 +777,15 @@ Key invariants:
 - If step 1 fails, fix shared before validating the app. The Android app now sees
   shared changes directly through the project dependency.
 - Step 2 must pass even if you only changed commonMain; Kotlin/Native catches
-  expect/actual mismatches, missing `ohosArm64` source sets, and
+  expect/actual mismatches, missing native source sets, and
   platform-incompatible dependencies. It is also what catches JVM-only APIs in
   commonMain (e.g. `Map.putIfAbsent`/`Map.merge`) that compile fine for
-  Android but break the iOS and OHOS builds — never push a commonMain change
-  that has only been validated by step 1. Do not count on CI to catch this
-  after push: the CI-side OHOS shared compile is a non-blocking lane (red
-  does not stop a merge; failures are fixed forward), so this local step is
-  the real gate until the pre-merge JVM-only-Map grep gate lands on main.
-- The `ohosBridge` module is the intentionally narrow C ABI for
-  `libshared.so`. Keep its public API primitive and minimal; realtime calls
-  cross the existing KNOI bridge. Building the binary directly from `:shared`
-  exports the full shared API and creates an impractically large C adapter.
-- Step 4 may emit warnings from `@kuikly-open/render` `.d.ets` strict-typing
-  comments; treat them as warnings unless Hvigor reports a hard compile error.
+  Android but break the iOS build — never push a commonMain change
+  that has only been validated by step 1.
 
 ## Visual Testing (Cross-Provider Parity)
 
-React web is the visual baseline; Android/iOS/OHOS captures are compared
+React web is the visual baseline; Android/iOS captures are compared
 against it (and against each other) by
 `.github/workflows/visual-testing.yml`. The data model, CLI, and report site
 live in the React repo under `packages/visual-testing/` — read its README and
@@ -885,7 +797,7 @@ Pipeline contracts:
 
 - Comparisons are provider pairs (`--pairs react__android,react__ios,android__ios`
   when iOS capture runs; `react__android` otherwise). Pair keys normalize by
-  provider precedence react > android > ios > ohos.
+  provider precedence react > android > ios.
 - The report job publishes images first with analysis seeded from the previous
   gh-pages state; AI analysis runs as a separate job with a cancel-in-progress
   concurrency group and a generation guard (it republishes only if the
@@ -923,7 +835,8 @@ not complete without its own changeset in that version directory.
 
 The release lane aggregates those changesets separately for each shipped
 platform under `change-logs/<version>/<platform>/{zh-CN,en}.md`, where
-`<platform>` is `android`, `ios`, or `ohos`. A platform aggregate contains only
+`<platform>` is `android` or `ios` (historical versions up to 1.14.x may also
+carry `ohos`). A platform aggregate contains only
 behavior shipped on that platform and does not repeat the platform name in
 each bullet. Historical root-level `change-logs/<version>/{zh-CN,en}.md` files
 remain supported as workflow fallbacks, but new versions must use the

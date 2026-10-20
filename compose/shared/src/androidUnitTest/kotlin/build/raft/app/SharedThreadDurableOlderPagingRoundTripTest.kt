@@ -3,9 +3,9 @@ package build.raft.app
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.data.CanonicalMessageV2EnteredScopeLoader
 import build.raft.app.data.CanonicalMessageV2RestSnapshotFetcher
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RecordingNetworkClient
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -46,7 +46,7 @@ class SharedThreadDurableOlderPagingRoundTripTest {
             val dataSource =
                 SharedThreadDataSource(
                     networkApi = api,
-                    sessionStore = InMemorySlockAuthSessionStore(owner.session),
+                    sessionStore = InMemoryRaftAuthSessionStore(owner.session),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     replyCacheIdentityAuthority = { owner },
                     durableLastKnownReader = CanonicalMessageV2DurableLastKnownReader(sqlStore, isEnabledForServer = { flagOn }),
@@ -114,8 +114,8 @@ class SharedThreadDurableOlderPagingRoundTripTest {
             selectionGeneration = 1L,
         )
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
             title = "general",
             sourceThreadId = "channel-1",
@@ -133,11 +133,11 @@ class SharedThreadDurableOlderPagingRoundTripTest {
                 """"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,"actionMetadata":null}"""
         }
 
-    private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

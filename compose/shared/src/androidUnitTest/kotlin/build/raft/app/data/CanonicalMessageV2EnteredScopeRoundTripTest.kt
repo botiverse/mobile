@@ -123,11 +123,11 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
 
     private val partition = canonicalV2TestGrant().durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
 
-    private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

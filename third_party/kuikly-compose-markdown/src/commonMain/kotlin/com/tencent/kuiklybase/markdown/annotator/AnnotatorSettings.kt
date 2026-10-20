@@ -5,16 +5,16 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
-import com.tencent.kuikly.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.SpanStyle
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.LocalReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.utils.codeSpanStyle
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextLinkStyles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

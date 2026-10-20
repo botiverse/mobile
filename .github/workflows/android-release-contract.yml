@@ -9,7 +9,7 @@ on:
       - "compose/androidApp/build.gradle.kts"
       - "compose/androidApp/src/main/AndroidManifest.xml"
       - "compose/androidApp/src/play/**"
-      - "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+      - "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"
       - "compose/androidApp/src/main/java/build/raft/app/shared/HandsDeltaUpdateGate.kt"
       - "compose/androidApp/src/test/java/build/raft/app/shared/HandsDeltaUpdateGateTest.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt"
@@ -18,11 +18,6 @@ on:
       - "scripts/*android*aab*"
       - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
-      - "scripts/ci/kuikly_release_manifest_gate.py"
-      - "scripts/ci/verify_kuikly_release_manifest.sh"
-      - "compose/gradle/kuikly-release-closure.json"
-      - "scripts/check_ohos_hands_dependency.py"
-      - "scripts/test_check_ohos_hands_dependency.py"
       - "scripts/verify_android_dex_packaging.py"
       - "scripts/test_verify_android_dex_packaging.py"
       - "scripts/verify_android_elf_alignment.py"
@@ -40,7 +35,7 @@ on:
       - "compose/androidApp/build.gradle.kts"
       - "compose/androidApp/src/main/AndroidManifest.xml"
       - "compose/androidApp/src/play/**"
-      - "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
+      - "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"
       - "compose/androidApp/src/main/java/build/raft/app/shared/HandsDeltaUpdateGate.kt"
       - "compose/androidApp/src/test/java/build/raft/app/shared/HandsDeltaUpdateGateTest.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt"
@@ -49,11 +44,6 @@ on:
       - "scripts/*android*aab*"
       - "scripts/VerifyAndroidAab.java"
       - "scripts/release_android_preflight.sh"
-      - "scripts/ci/kuikly_release_manifest_gate.py"
-      - "scripts/ci/verify_kuikly_release_manifest.sh"
-      - "compose/gradle/kuikly-release-closure.json"
-      - "scripts/check_ohos_hands_dependency.py"
-      - "scripts/test_check_ohos_hands_dependency.py"
       - "scripts/verify_android_dex_packaging.py"
       - "scripts/test_verify_android_dex_packaging.py"
       - "scripts/verify_android_elf_alignment.py"
@@ -91,6 +81,3 @@ jobs:
 
       - name: Validate Hands identifier migration
         run: scripts/test_hands_identifier_migration.sh
-
-      - name: Validate OHOS Hands dependency admission
-        run: python3 scripts/test_check_ohos_hands_dependency.py

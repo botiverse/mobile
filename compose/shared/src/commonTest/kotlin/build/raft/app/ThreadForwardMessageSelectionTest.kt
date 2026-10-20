@@ -16,7 +16,6 @@ class ThreadForwardMessageSelectionTest {
         assertEquals(listOf("message-1", "message-2"), selection.forwardableMessages.map { it.id })
         assertEquals(0, selection.skippedCount)
         assertEquals(0, selection.nestedForwardCount)
-        assertEquals(0, selection.taskLinkedCount)
     }
 
     @Test
@@ -34,16 +33,27 @@ class ThreadForwardMessageSelectionTest {
     }
 
     @Test
-    fun taskLinkedChatMessageUsesExplicitServerPolicyGuidance() {
+    fun taskLinkedChatMessagesAreForwardableLikeWeb() {
+        // Web getForwardableMessages and the server forward route accept task-linked chat rows.
         val selection =
             listOf(
-                message("task-1", taskStatus = "todo")
+                message("task-1", taskStatus = "todo"),
+                message("task-2", taskId = "task-id-2", taskNumber = 7)
+            ).threadForwardMessageSelection()
+
+        assertEquals(listOf("task-1", "task-2"), selection.forwardableMessages.map { it.id })
+        assertEquals(0, selection.skippedCount)
+    }
+
+    @Test
+    fun projectedActionCardMetadataIsNotForwardable() {
+        val selection =
+            listOf(
+                message("message-1").copy(metadata = mapOf("actionCard.kind" to "action-card", "actionCard.type" to "channel:create"))
             ).threadForwardMessageSelection()
 
         assertEquals(emptyList(), selection.forwardableMessages)
-        assertEquals(1, selection.skippedCount)
-        assertEquals(1, selection.taskLinkedCount)
-        assertEquals(ThreadTaskLinkedForwardUnsupportedMessage, selection.threadForwardSelectionFailureMessage())
+        assertEquals(ThreadUnsupportedSourceMessage, selection.threadForwardSelectionFailureMessage())
     }
 
     @Test
@@ -57,7 +67,6 @@ class ThreadForwardMessageSelectionTest {
         assertEquals(emptyList(), selection.forwardableMessages)
         assertEquals(2, selection.skippedCount)
         assertEquals(0, selection.nestedForwardCount)
-        assertEquals(0, selection.taskLinkedCount)
         assertEquals(ThreadUnsupportedSourceMessage, selection.threadForwardSelectionFailureMessage())
     }
 
@@ -72,10 +81,9 @@ class ThreadForwardMessageSelectionTest {
                 message("message-2")
             ).threadForwardMessageSelection()
 
-        assertEquals(listOf("message-1", "message-2"), selection.forwardableMessages.map { it.id })
-        assertEquals(3, selection.skippedCount)
+        assertEquals(listOf("message-1", "task-1", "message-2"), selection.forwardableMessages.map { it.id })
+        assertEquals(2, selection.skippedCount)
         assertEquals(1, selection.nestedForwardCount)
-        assertEquals(1, selection.taskLinkedCount)
     }
 
     @Test
@@ -109,12 +117,8 @@ class ThreadForwardMessageSelectionTest {
             threadForwardSkippedWarning(skippedCount = 2, nestedForwardCount = 2)
         )
         assertEquals(
-            "1 selected message was skipped because task-linked messages can't be forwarded yet.",
-            threadForwardSkippedWarning(skippedCount = 1, nestedForwardCount = 0, taskLinkedCount = 1)
-        )
-        assertEquals(
-            "3 selected messages were skipped. Forwarded bundles, task-linked messages, system messages, and action messages can't be forwarded.",
-            threadForwardSkippedWarning(skippedCount = 3, nestedForwardCount = 1, taskLinkedCount = 1)
+            "3 selected messages were skipped. Forwarded bundles, system messages, and action messages can't be forwarded.",
+            threadForwardSkippedWarning(skippedCount = 3, nestedForwardCount = 1)
         )
         assertEquals(null, threadForwardSkippedWarning(skippedCount = 0, nestedForwardCount = 0))
     }
@@ -123,15 +127,19 @@ class ThreadForwardMessageSelectionTest {
         id: String,
         forwardedBundle: Boolean = false,
         taskStatus: String? = null,
+        taskId: String? = null,
+        taskNumber: Int? = null,
         actionCard: Boolean = false,
         messageType: String = "Chat"
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "member-1",
             authorName = "Member",
             metadata = if (actionCard) mapOf("kind" to "action-card") else emptyMap(),
             taskStatus = taskStatus,
+            taskId = taskId,
+            taskNumber = taskNumber,
             messageType = messageType,
             forwardBundle = ForwardMessageBundle(id = "bundle-$id").takeIf { forwardedBundle }
         )

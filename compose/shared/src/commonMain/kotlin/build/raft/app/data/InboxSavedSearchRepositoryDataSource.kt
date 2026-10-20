@@ -5,6 +5,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -14,7 +15,17 @@ private val inboxSavedSearchRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private suspend fun SlockNetworkClient.inbox(
+/** Done bodies omit absent frontier fields instead of encoding JSON null. */
+internal val inboxDoneRequestJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    explicitNulls = false
+}
+
+/** The only `frontierSpace` the server accepts (routes/channels.ts:1497, 2014). */
+internal const val InboxDoneFrontierSpaceStorage = "storage"
+
+private suspend fun RaftNetworkClient.inbox(
     priority: DataRequestPriority,
     filter: InboxFilter,
     limit: Int,
@@ -32,13 +43,62 @@ private suspend fun SlockNetworkClient.inbox(
         serverIdOverride = serverId
     )
 
-private suspend fun SlockNetworkClient.markInboxDone(
+/**
+ * `GET /channels/inbox` with web's single RisingWave-overload retry
+ * (botiverse/slock 1bb70cbeb, packages/web/src/api/overloadRetry.ts): a
+ * `503 {code:"rw_overloaded", retryable:true}` is retried once after
+ * `Retry-After` (default 2s, capped at 10s). One retry only: more would add
+ * load while RisingWave is behind.
+ */
+private suspend fun RaftNetworkClient.inboxWithRwOverloadRetry(
+    priority: DataRequestPriority,
+    filter: InboxFilter,
+    limit: Int,
+    offset: Int,
+    serverId: ServerId
+): HomeNetworkResponse {
+    val first = inbox(priority, filter, limit, offset, serverId)
+    val retryDelayMillis = first.rwOverloadRetryDelayMillis() ?: return first
+    delay(retryDelayMillis)
+    return inbox(priority, filter, limit, offset, serverId)
+}
+
+private const val RwOverloadDefaultRetryAfterMillis = 2_000L
+private const val RwOverloadMaxRetryAfterMillis = 10_000L
+
+/** Server overload body (routes/errorResponse.ts): `{error, code:"rw_overloaded", retryable:true}`. */
+@Serializable
+private data class RwOverloadedErrorDto(
+    val code: String? = null,
+    val retryable: Boolean? = null
+)
+
+internal fun HomeNetworkResponse.rwOverloadRetryDelayMillis(): Long? {
+    if (code != 503) return null
+    val payload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText?.takeIf { it.isNotBlank() } ?: return null
+    val error =
+        runCatching { inboxSavedSearchRepositoryJson.decodeFromString(RwOverloadedErrorDto.serializer(), payload) }
+            .getOrNull() ?: return null
+    if (error.code != "rw_overloaded" || error.retryable != true) return null
+    val seconds =
+        responseHeaders.entries
+            .firstOrNull { (name, _) -> name.equals("retry-after", ignoreCase = true) }
+            ?.value
+            ?.firstOrNull()
+            ?.trim()
+            ?.toDoubleOrNull()
+            ?.takeIf { it.isFinite() && it >= 0.0 }
+            ?: return RwOverloadDefaultRetryAfterMillis
+    return minOf((seconds * 1_000.0).toLong(), RwOverloadMaxRetryAfterMillis)
+}
+
+private suspend fun RaftNetworkClient.markInboxDone(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/inbox/done", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.saved(
+private suspend fun RaftNetworkClient.saved(
     priority: DataRequestPriority,
     limit: Int,
     offset: Int,
@@ -51,28 +111,28 @@ private suspend fun SlockNetworkClient.saved(
         serverIdOverride = serverId
     )
 
-private suspend fun SlockNetworkClient.saveMessage(
+private suspend fun RaftNetworkClient.saveMessage(
     priority: DataRequestPriority,
     bodyText: String,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/saved", method = "POST", bodyText = bodyText, serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.unsaveMessage(
+private suspend fun RaftNetworkClient.unsaveMessage(
     priority: DataRequestPriority,
     messageId: MessageId,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/saved/${messageId.value}", method = "DELETE", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.checkSavedMessages(
+private suspend fun RaftNetworkClient.checkSavedMessages(
     priority: DataRequestPriority,
     bodyText: String,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/saved/check", method = "POST", bodyText = bodyText, serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.searchMessages(
+private suspend fun RaftNetworkClient.searchMessages(
     priority: DataRequestPriority,
     query: String,
     limit: Int,
@@ -105,8 +165,8 @@ private suspend fun SlockNetworkClient.searchMessages(
     )
 
 class RealInboxRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : InboxRepository {
@@ -123,14 +183,14 @@ class RealInboxRepository(
         limit: Int
     ): DataResult<InboxSnapshot> = load(serverId, filter, limit, offset)
 
-    override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> {
+    override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> {
         sessionStore.readSession() ?: return authRequired()
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
             block = {
                 networkClient.markInboxDone(
                     DataRequestPriority.Foreground,
-                    buildSharedInboxDoneBody(channelId)
+                    buildSharedInboxDoneBody(channelId, frontier)
                 )
             },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
@@ -149,7 +209,7 @@ class RealInboxRepository(
         val context = sessionStore.serverContext(serverId) ?: return authRequired()
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset, serverId) },
+            block = { networkClient.inboxWithRwOverloadRetry(DataRequestPriority.Visible, filter, limit, offset, serverId) },
             // A defensive attention-filter projection may remove every row in
             // a malformed/lagging page while later pages still exist. Keep
             // that page Content so the Activity store can advance the raw
@@ -176,6 +236,7 @@ class RealInboxRepository(
                     totalCount = parsed.totalCount,
                     totalUnreadCount = parsed.totalUnreadCount,
                     hasMore = parsed.hasMore,
+                    activeUnreadCount = parsed.activeUnreadCount,
                     // Keep page advancement based on raw server rows. The
                     // client may project every row out of an attention filter
                     // when a lagging/older server includes an unfollowed
@@ -190,8 +251,8 @@ class RealInboxRepository(
 }
 
 internal class ProcessActivityUnreadRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) {
@@ -206,7 +267,7 @@ internal class ProcessActivityUnreadRepository(
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
             block = {
-                networkClient.inbox(
+                networkClient.inboxWithRwOverloadRetry(
                     priority = priority,
                     filter = InboxFilter.All,
                     limit = 1,
@@ -232,8 +293,8 @@ internal class ProcessActivityUnreadRepository(
 }
 
 class RealSavedRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {}
 ) : SavedRepository, SavedStatusRepository {
     override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
@@ -338,8 +399,8 @@ class RealSavedRepository(
 }
 
 class RealSearchRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {}
 ) : SearchRepository {
     override suspend fun search(
@@ -392,13 +453,31 @@ private data class SavedMessageCheckRequestBody(
     val messageIds: List<String>
 )
 
+/**
+ * `POST /channels/inbox/done` body (botiverse/slock 1bb70cbeb,
+ * routes/channels.ts:1497). Null fields are omitted, never sent as JSON null:
+ * the server treats a present `throughActivitySeq` without `frontierSpace` as
+ * 412 DONE_FRONTIER_SPACE_REQUIRED.
+ */
 @Serializable
 private data class InboxDoneRequestBody(
-    val channelId: String
+    val channelId: String,
+    val throughActivitySeq: String? = null,
+    val frontierSpace: String? = null
 )
 
-private fun buildSharedInboxDoneBody(channelId: ChannelId): String =
-    inboxSavedSearchRepositoryJson.encodeToString(InboxDoneRequestBody(channelId = channelId.value))
+private fun buildSharedInboxDoneBody(channelId: ChannelId, frontier: InboxDoneFrontier): String =
+    inboxDoneRequestJson.encodeToString(
+        when (frontier) {
+            InboxDoneFrontier.Legacy -> InboxDoneRequestBody(channelId = channelId.value)
+            is InboxDoneFrontier.Storage ->
+                InboxDoneRequestBody(
+                    channelId = channelId.value,
+                    throughActivitySeq = frontier.throughActivitySeq,
+                    frontierSpace = InboxDoneFrontierSpaceStorage
+                )
+        }
+    )
 
 private fun buildSharedSavedMessageCheckBody(messageIds: List<String>): String =
     inboxSavedSearchRepositoryJson.encodeToString(SavedMessageCheckRequestBody(messageIds = messageIds))
@@ -411,7 +490,7 @@ fun buildSharedSaveMessageBody(messageId: MessageId): String =
 
 private data class InboxLikeServerContext(val server: ServerSummary)
 
-private suspend fun SlockAuthSessionStore.serverContext(serverId: ServerId): InboxLikeServerContext? {
+private suspend fun RaftAuthSessionStore.serverContext(serverId: ServerId): InboxLikeServerContext? {
     val session = readSession() ?: return null
     val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
     val server = session.servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null

@@ -4,7 +4,7 @@ import build.raft.app.MemberDetailIdentity
 import build.raft.app.MemberDetailIdentitySource
 import build.raft.app.memberDetailIdentityFromWire
 import build.raft.app.resolveThreadRouteIdentity
-import build.raft.app.toKuiklySurfaceKind
+import build.raft.app.toRaftSurfaceKind
 import build.raft.app.toWireChannelKindOrNull
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelCapabilities
@@ -434,7 +434,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         canonicalChannelId = canonicalChannelId,
         aliases = aliases(canonicalChannelId).map { it.id }.filter { it.isNotBlank() }.toSet() + canonicalChannelId,
         conversationKind = kind,
-        surfaceKind = kind.toKuiklySurfaceKind(),
+        surfaceKind = kind.toRaftSurfaceKind(),
         channelKind = toDirectoryChannelType(),
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
@@ -509,7 +509,7 @@ private fun InboxItem.parentChannelProjection(
         // be claimed as a parent alias.
         aliases = setOf(parentId),
         conversationKind = conversationKind,
-        surfaceKind = conversationKind.toKuiklySurfaceKind(),
+        surfaceKind = conversationKind.toRaftSurfaceKind(),
         channelKind = channelType,
         title = title,
         subtitle = null,
@@ -562,7 +562,7 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
                 latestActivityMessageId?.value?.takeIf { it.isNotBlank() }?.let(::add)
             },
         conversationKind = conversationKind,
-        surfaceKind = conversationKind.toKuiklySurfaceKind(),
+        surfaceKind = conversationKind.toRaftSurfaceKind(),
         channelKind =
             when (kind) {
                 InboxItemKind.Thread -> "thread"
@@ -653,7 +653,7 @@ private data class ConversationDirectoryAlias(
 private fun HomeConversationRow.aliases(canonicalChannelId: String): Set<ConversationDirectoryAlias> =
     buildSet {
         val routeIdentity = resolveThreadRouteIdentity(
-            surfaceKind = toDirectoryConversationKind().toKuiklySurfaceKind(),
+            surfaceKind = toDirectoryConversationKind().toRaftSurfaceKind(),
             channelKind = toDirectoryChannelType(),
             instanceId = null,
             sourceThreadId = threadId.value,

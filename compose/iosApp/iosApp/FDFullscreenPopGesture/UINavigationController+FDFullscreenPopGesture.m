@@ -21,9 +21,9 @@
 // SOFTWARE.
 
 #import "UINavigationController+FDFullscreenPopGesture.h"
-#import "KuiklyRenderViewController.h"
-#import "SlockConversationForwardGestureAdmission.h"
-#import "SlockInteractivePopGestureAdmission.h"
+#import "RaftPageViewController.h"
+#import "RaftConversationForwardGestureAdmission.h"
+#import "RaftInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
 
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
@@ -31,6 +31,9 @@
 @property (nonatomic, weak) UINavigationController *navigationController;
 @property (nonatomic, assign) BOOL touchBeganInEdgeZone;
 @property (nonatomic, weak) UIView *touchView;
+/// The page the touch began on and the start point in its view (content-consumption probe).
+@property (nonatomic, weak) UIViewController *touchPage;
+@property (nonatomic, assign) CGPoint touchLocationInPage;
 
 @end
 
@@ -47,7 +50,7 @@
 
 @end
 
-static BOOL SlockConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
+static BOOL RaftConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
 {
     UIView *candidate = view;
     while (candidate && candidate != rootView) {
@@ -68,7 +71,7 @@ static BOOL SlockConversationForwardChildGestureConflict(UIView *view, UIView *r
     return NO;
 }
 
-static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
+static BOOL RaftInteractivePopTextInputConflict(UIView *view, UIView *rootView)
 {
     UIView *candidate = view;
     while (candidate && candidate != rootView) {
@@ -78,7 +81,7 @@ static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
     return NO;
 }
 
-static BOOL SlockInteractivePopHorizontalScrollCanConsumeDirection(
+static BOOL RaftInteractivePopHorizontalScrollCanConsumeDirection(
     UIView *view,
     UIView *rootView,
     BOOL movingRight
@@ -105,13 +108,13 @@ static BOOL SlockInteractivePopHorizontalScrollCanConsumeDirection(
     return NO;
 }
 
-static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
+static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
 {
     if (view.isFirstResponder && [view conformsToProtocol:@protocol(UITextInput)]) {
         return YES;
     }
     for (UIView *subview in view.subviews) {
-        if (SlockConversationForwardHasActiveTextInput(subview)) {
+        if (RaftConversationForwardHasActiveTextInput(subview)) {
             return YES;
         }
     }
@@ -122,15 +125,15 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-    return !SlockConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view);
+    return !RaftConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view);
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
 {
     UINavigationController *navigationController = self.navigationController;
-    KuiklyRenderViewController *topViewController =
-        [navigationController.topViewController isKindOfClass:KuiklyRenderViewController.class]
-            ? (KuiklyRenderViewController *)navigationController.topViewController
+    RaftPageViewController *topViewController =
+        [navigationController.topViewController isKindOfClass:RaftPageViewController.class]
+            ? (RaftPageViewController *)navigationController.topViewController
             : nil;
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
     CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
@@ -138,21 +141,21 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     UIGestureRecognizerState popState = navigationController.fd_fullscreenPopGestureRecognizer.state;
     BOOL interactivePopActive =
         popState == UIGestureRecognizerStateBegan || popState == UIGestureRecognizerStateChanged;
-    SlockConversationForwardGestureAdmission admission = {
-        .enabled = topViewController.slockConversationForwardGestureEnabled,
-        .appShellIsTop = topViewController.slockIsAppShellPage,
+    RaftConversationForwardGestureAdmission admission = {
+        .enabled = topViewController.raftConversationForwardGestureEnabled,
+        .appShellIsTop = topViewController.raftIsAppShellPage,
         .navigationStackAtRoot = navigationController.viewControllers.count == 1,
         .transitioning = transitioning,
         .modalPresented = topViewController.presentedViewController != nil || navigationController.presentedViewController != nil,
         .interactivePopActive = interactivePopActive,
         .childGestureConflict = NO,
-        .textInputActive = SlockConversationForwardHasActiveTextInput(navigationController.view),
+        .textInputActive = RaftConversationForwardHasActiveTextInput(navigationController.view),
         .translationX = translation.x,
         .translationY = translation.y,
         .velocityX = velocity.x,
         .velocityY = velocity.y,
     };
-    return SlockConversationForwardGestureShouldBegin(admission);
+    return RaftConversationForwardGestureShouldBegin(admission);
 }
 
 @end
@@ -166,14 +169,16 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     // to either accept the back direction or yield to consumable scrolling.
     if (gestureRecognizer.numberOfTouches > 0) return YES;
     self.touchView = touch.view;
-    if (SlockInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
+    if (RaftInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
         self.touchBeganInEdgeZone = NO;
         return NO;
     }
     UINavigationController *navigationController = self.navigationController;
     UIViewController *topViewController = navigationController.viewControllers.lastObject;
     CGPoint location = [touch locationInView:gestureRecognizer.view];
-    SlockInteractivePopTouchAdmission admission = {
+    self.touchPage = topViewController;
+    self.touchLocationInPage = [touch locationInView:topViewController.view];
+    RaftInteractivePopTouchAdmission admission = {
         .navigationStackCount = navigationController.viewControllers.count,
         .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
         .allowsFullScreen = topViewController.fd_interactivePopAllowsFullScreen,
@@ -183,7 +188,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .viewWidth = CGRectGetWidth(gestureRecognizer.view.bounds),
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
-    self.touchBeganInEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
+    self.touchBeganInEdgeZone = RaftInteractivePopTouchBeginsInEdgeZone(admission);
     return YES;
 }
 
@@ -191,22 +196,27 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 {
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
     CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
-    SlockInteractivePopGestureAdmission admission = {
+    // Compose scrollers are not UIScrollViews: the page reports whether its content at the touch
+    // start can still scroll in the back direction (TabPager past page 0, a row away from its start).
+    BOOL (^contentProbe)(CGPoint) = self.touchPage.fd_interactivePopContentConsumesBackSwipe;
+    RaftInteractivePopGestureAdmission admission = {
         .touchBeganInEdgeZone = self.touchBeganInEdgeZone,
         .transitioning = [[self.navigationController valueForKey:@"_isTransitioning"] boolValue],
+        .contentConsumesBackSwipe =
+            self.touchBeganInEdgeZone && contentProbe != nil && contentProbe(self.touchLocationInPage),
         .translationX = translation.x,
         .translationY = translation.y,
         .velocityX = velocity.x,
         .velocityY = velocity.y,
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
-    if (!SlockInteractivePopGestureShouldBegin(admission)) {
+    if (!RaftInteractivePopGestureShouldBegin(admission)) {
         return NO;
     }
     // Admission has established the back direction: physically right in LTR,
     // left in RTL. Scroll consumption is expressed in physical coordinates.
     BOOL movingRight = admission.isLeftToRight;
-    if (SlockInteractivePopHorizontalScrollCanConsumeDirection(
+    if (RaftInteractivePopHorizontalScrollCanConsumeDirection(
             self.touchView,
             gestureRecognizer.view,
             movingRight
@@ -232,7 +242,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     // can otherwise prevent admitted pop; when direction/consumption rejects
     // pop, the waiting scroll pan proceeds. Custom gestures keep their existing
     // arbitration rather than being forced to wait for navigation.
-    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentScrollPan);
+    return RaftInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentScrollPan);
 }
 
 @end
@@ -338,18 +348,20 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         self.interactivePopGestureRecognizer.enabled = NO;
     }
 
-    KuiklyRenderViewController *renderViewController =
-        [viewController isKindOfClass:KuiklyRenderViewController.class]
-            ? (KuiklyRenderViewController *)viewController
+    RaftPageViewController *renderViewController =
+        [viewController isKindOfClass:RaftPageViewController.class]
+            ? (RaftPageViewController *)viewController
             : nil;
     if (renderViewController) {
-        // Every pushed Kuikly page can be returned from. The admission policy
-        // still requires a navigation stack above root; text-input and native
-        // horizontal-scroll conflicts are rejected by the gesture delegate.
+        // Every pushed page can be swiped back from anywhere, like a native page. CMP content has
+        // no UIScrollView: its horizontal scrollers report back-direction consumption through
+        // fd_interactivePopContentConsumesBackSwipe (shared rememberRaftBackSwipeScroll), and at
+        // their start they leave back drags unconsumed so the Compose touch recogniser does not
+        // claim them first.
         renderViewController.fd_interactivePopAllowsFullScreen = YES;
     }
     [self fd_setConversationForwardGestureEnabled:
-        renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
+        renderViewController.raftConversationForwardGestureEnabled && renderViewController.raftIsAppShellPage];
 
     // Handle perferred navigation bar appearance.
     [self fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:viewController];
@@ -372,11 +384,11 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     if (progress < 0.12 && velocity.x > -300.0) {
         return;
     }
-    KuiklyRenderViewController *topViewController =
-        [self.topViewController isKindOfClass:KuiklyRenderViewController.class]
-            ? (KuiklyRenderViewController *)self.topViewController
+    RaftPageViewController *topViewController =
+        [self.topViewController isKindOfClass:RaftPageViewController.class]
+            ? (RaftPageViewController *)self.topViewController
             : nil;
-    [topViewController slockRequestConversationForward];
+    [topViewController raftRequestConversationForward];
 }
 
 - (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled
@@ -525,6 +537,16 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
 - (void)setFd_prefersNavigationBarHidden:(BOOL)hidden
 {
     objc_setAssociatedObject(self, @selector(fd_prefersNavigationBarHidden), @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (BOOL (^)(CGPoint))fd_interactivePopContentConsumesBackSwipe
+{
+    return objc_getAssociatedObject(self, _cmd);
+}
+
+- (void)setFd_interactivePopContentConsumesBackSwipe:(BOOL (^)(CGPoint))probe
+{
+    objc_setAssociatedObject(self, @selector(fd_interactivePopContentConsumesBackSwipe), probe, OBJC_ASSOCIATION_COPY_NONATOMIC);
 }
 
 - (CGFloat)fd_interactivePopMaxAllowedInitialDistanceToLeftEdge

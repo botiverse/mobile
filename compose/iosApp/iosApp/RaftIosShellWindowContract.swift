@@ -9,7 +9,7 @@ import UIKit
 // authenticated route-owner triple (environmentId, accountId, serverId) and its
 // shell instance id is the canonical URI `slock://shell/<enc>/<enc>/<enc>`,
 // stable across process death. The single-window app path keeps the legacy
-// shell id "legacy-app-shell" — identical to SlockShellStoreScope.Legacy in
+// shell id "legacy-app-shell" — identical to RaftShellStoreScope.Legacy in
 // shared — so a scene with no explicit identity resolves to the same store
 // scope as before (shared also maps a blank id to Legacy, so always-injecting
 // it is byte-equivalent).
@@ -164,7 +164,7 @@ internal enum RaftIosShellWindowRegistry {
 /// Entry points shared by the scene delegate (inbound userActivity) and host
 /// code that wants to open/retarget a shell window (outbound activation).
 internal enum RaftIosShellWindowContract {
-    /// Matches the shared-side `SlockShellStoreScope.Legacy` id exactly.
+    /// Matches the shared-side `RaftShellStoreScope.Legacy` id exactly.
     static let legacyShellInstanceId = "legacy-app-shell"
     /// NSUserActivity type carrying document-shell identity between scenes.
     static let shellUserActivityType = "build.raft.app.shell.window"
@@ -239,7 +239,7 @@ internal enum RaftIosShellWindowContract {
             owner = parseShellUri(identifier)
         }
         guard let routeOwner = owner else {
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "warn",
                 "RaftIosShellWindow",
                 "shell_user_activity_rejected reason=missing_route_owner"
@@ -260,7 +260,7 @@ internal enum RaftIosShellWindowContract {
     /// server-switch seam; keeping it here preserves the single entry point.
     static func activateShell(for owner: RaftIosShellRouteOwner, source: String) {
         guard let normalized = owner.normalizedOrNull() else {
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "warn",
                 "RaftIosShellWindow",
                 "activate_shell_rejected reason=invalid_owner source=\(source)"
@@ -273,13 +273,13 @@ internal enum RaftIosShellWindowContract {
                 userActivity: nil,
                 options: nil
             ) { error in
-                SlockIosDiagnosticsRecord(
+                RaftIosDiagnosticsRecord(
                     "warn",
                     "RaftIosShellWindow",
                     "scene_activation_failed errorType=\(String(describing: type(of: error))) source=\(source)"
                 )
             }
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "info",
                 "RaftIosShellWindow",
                 "scene_reactivated reason=owner_reuse source=\(source)"
@@ -291,13 +291,13 @@ internal enum RaftIosShellWindowContract {
             userActivity: shellUserActivity(owner: normalized),
             options: nil
         ) { error in
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "warn",
                 "RaftIosShellWindow",
                 "scene_request_failed errorType=\(String(describing: type(of: error))) source=\(source)"
             )
         }
-        SlockIosDiagnosticsRecord(
+        RaftIosDiagnosticsRecord(
             "info",
             "RaftIosShellWindow",
             "scene_requested source=\(source)"
@@ -328,7 +328,7 @@ final class RaftIosShellWindowBridge: NSObject {
             accountId: accountId ?? "",
             serverId: serverId ?? ""
         ).normalizedOrNull() else {
-            SlockIosDiagnosticsRecord(
+            RaftIosDiagnosticsRecord(
                 "warn",
                 "RaftIosShellWindow",
                 "document_shell_rejected reason=invalid_owner source=\(source)"

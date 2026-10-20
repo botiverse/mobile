@@ -1,7 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -201,7 +201,7 @@ internal fun threadSendExceptionErrorCode(throwable: Throwable): String {
     val type = throwable::class.simpleName.orEmpty()
     val message = throwable.message.orEmpty()
     return when {
-        throwable is SlockRequestTimeoutException -> "thread_send_timeout"
+        throwable is RaftRequestTimeoutException -> "thread_send_timeout"
         type.contains("Timeout", ignoreCase = true) -> "thread_send_timeout"
         type.contains("Cancel", ignoreCase = true) ||
             message.contains("cancel", ignoreCase = true) ->

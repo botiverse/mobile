@@ -2,6 +2,9 @@
 
 Date: 2026-05-20
 
+> **OHOS note:** HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed
+> from `main`; OHOS rows below are historical and describe `release/1.14.x`.
+
 `HRBridgeModule` is Slock's host capability bridge for shared Kuikly pages. Shared code may call the same module name on Android and OHOS; each host implements the platform-specific storage, network, routing, and diagnostics work.
 
 This document fixes the method surface that shared code is allowed to depend on while the app moves toward one `compose_slock_app_shell` container.
@@ -43,7 +46,7 @@ Parity:
 
 | Host | Status |
 | --- | --- |
-| Android | Implemented by `SlockKuiklyBridgeModule.authRequest` using `HttpURLConnection`. |
+| Android | Implemented by `RaftBridgeModule.authRequest` using `HttpURLConnection`. |
 | OHOS | Implemented by `KRBridgeModule.authRequest` using ArkTS `http`. |
 
 ### `relationalStore`
@@ -106,7 +109,7 @@ These methods exist because Slock still has migration-era Android islands or dem
 | `openPage` | Demo-style page open | Not implemented in Slock Android bridge | Stub | Use Kuikly `RouterModule` or shared `NavHost` for app routes. |
 | `toast` | User-visible host toast | Implemented | Stub | Optional until product decides shared toast behavior. |
 | `copyToPasteboard` | Clipboard capability | Not implemented | Stub | Promote when shared copy actions must work on OHOS. |
-| `localServeTime` / `dateFormatter` | Demo/time helpers | Not implemented or unused in Android Slock bridge | Partial/stub | Avoid for Slock business time; use shared `SlockTime`. |
+| `localServeTime` / `dateFormatter` | Demo/time helpers | Not implemented or unused in Android Slock bridge | Partial/stub | Avoid for Slock business time; use shared `RaftTime`. |
 | `showAlert`, `reportDT`, `reportRealTime`, `readAssetFile` | Demo or platform helper | Not part of Android Slock bridge | Partial | Keep out of new shared Slock flows unless documented separately. |
 
 ## Production Host Registration

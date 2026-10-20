@@ -1,8 +1,8 @@
 package build.raft.app.network.sync
 
-import build.raft.app.KuiklyThreadAttachmentItem
-import build.raft.app.KuiklyThreadMessageItem
-import build.raft.app.KuiklyThreadReactionItem
+import build.raft.app.RaftThreadAttachmentItem
+import build.raft.app.RaftThreadMessageItem
+import build.raft.app.RaftThreadReactionItem
 import build.raft.app.MemberKindWireContract
 import build.raft.app.ThreadMessageDeliverySent
 import build.raft.app.data.WireActionCardMetadata
@@ -17,7 +17,7 @@ import build.raft.app.data.toThreadActionCard
 import build.raft.app.memberKindWireValue
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageType
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictMessageTypeOrNull
 import build.raft.app.strictProjectionDiagnosticsLogger
@@ -31,7 +31,7 @@ private val canonicalV2ThreadProjectionJson = Json {
 /**
  * Lossy thread-screen projection of one durable V2 message fact (the "last known" offline frame).
  *
- * Mirrors the REST `WireMessage` → [KuiklyThreadMessageItem] mapping for the fields the shared V2
+ * Mirrors the REST `WireMessage` → [RaftThreadMessageItem] mapping for the fields the shared V2
  * fact carries, and is deliberately narrower where the fact is narrower by design:
  * - reactions are emoji + count only; the reactor roster (and therefore `selected`) is a
  *   receiver-private read cache that arrives with the next network refresh, never from this frame;
@@ -43,7 +43,7 @@ private val canonicalV2ThreadProjectionJson = Json {
 internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
     currentUserId: String?,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
-): KuiklyThreadMessageItem? {
+): RaftThreadMessageItem? {
     val resolvedMessageType =
         fact.messageType.strictMessageTypeOrNull("canonical_v2_message_type", diagnostics) ?: return null
     val senderKind =
@@ -55,7 +55,7 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val resolvedName = fact.senderName.takeIf { it.isNotBlank() } ?: "Unknown"
     val wireAction = fact.actionMetadata?.toWireActionCardMetadata()
-    return KuiklyThreadMessageItem(
+    return RaftThreadMessageItem(
         id = fact.id,
         authorId = fact.senderId.ifBlank { "unknown" },
         authorName = resolvedName,
@@ -66,7 +66,7 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
         avatarWireValue = null,
         senderMembershipStatus = fact.senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = fact.createdAt,
-        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(fact.createdAt),
+        createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(fact.createdAt),
         seq = fact.seq,
         messageType = resolvedMessageType.name,
         systemEventType = null,
@@ -84,14 +84,14 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
 }
 
 /** Count-only reaction chip. The roster is not part of the shared fact; `selected` is unknown here. */
-private fun ReactionFact.toReactionItem(): KuiklyThreadReactionItem? {
+private fun ReactionFact.toReactionItem(): RaftThreadReactionItem? {
     val validEmoji = emoji.takeIf { it.isNotBlank() } ?: return null
     if (count <= 0) return null
-    return KuiklyThreadReactionItem(emoji = validEmoji, count = count, selected = false)
+    return RaftThreadReactionItem(emoji = validEmoji, count = count, selected = false)
 }
 
-private fun CanonicalAttachmentV2.toAttachmentItem(index: Int): KuiklyThreadAttachmentItem =
-    KuiklyThreadAttachmentItem(
+private fun CanonicalAttachmentV2.toAttachmentItem(index: Int): RaftThreadAttachmentItem =
+    RaftThreadAttachmentItem(
         id = id,
         name = filename.ifBlank { "Attachment ${index + 1}" },
         mimeType = mimeType,

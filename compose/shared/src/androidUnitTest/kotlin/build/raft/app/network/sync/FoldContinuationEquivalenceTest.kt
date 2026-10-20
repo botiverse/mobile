@@ -22,7 +22,7 @@ import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -43,9 +43,9 @@ class FoldContinuationEquivalenceTest {
 
     private fun freshAdapter(): FoldPersistenceAdapter {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
         driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
-        val db = SlockSqlDatabase(driver)
+        val db = RaftSqlDatabase(driver)
         return DefaultFoldPersistenceAdapter(SqlDelightFoldPersistTransactionRunner(db), SqlDelightFoldPersistStore(db, now = { 100L }))
     }
 

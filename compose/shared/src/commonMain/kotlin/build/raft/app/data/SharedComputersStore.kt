@@ -123,7 +123,7 @@ internal sealed interface SharedComputersIntent {
 }
 
 class SharedComputersStore internal constructor(
-    private val computersApiClient: SlockComputersApiClient,
+    private val computersApiClient: RaftComputersApiClient,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {},
     private val ownerProvider: suspend () -> SharedComputersOwner? = {
@@ -447,21 +447,3 @@ private fun SharedComputersServerSlice.toSettingsComputerSnapshotResult(machineI
         is DataResult.Error -> DataResult.Error(result.error)
         is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
     }
-
-private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
-    SettingsComputerSnapshot(
-        id = id,
-        name = name,
-        daemonVersion = daemonVersion.orEmpty(),
-        computerVersion = computerVersion,
-        isComputer = isComputer,
-        online = status == ComputerStatus.Online,
-        hostname = hostname,
-        platform = os,
-        lastSeenLabel = lastHeartbeat,
-        runtimes = runtimes,
-        createdAt = createdAt,
-        lastHeartbeat = lastHeartbeat,
-        apiKeyPrefix = apiKeyPrefix,
-        statusVersion = statusVersion
-    )

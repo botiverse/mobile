@@ -38,12 +38,12 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
                     .put("slockShellInstanceId", "canonical-final-app-$nonce")
                     .put("slockShellServerId", ServerA)
             val intent =
-                Intent(context, SlockKuiklyActivity::class.java)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, PageName)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
-                    .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                Intent(context, RaftCmpActivity::class.java)
+                    .putExtra(RaftCmpActivity.KEY_PAGE_NAME, PageName)
+                    .putExtra(RaftCmpActivity.KEY_PAGE_DATA, pageData.toString())
+                    .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-            ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
+            ActivityScenario.launch<RaftCmpActivity>(intent).use {
                 val evidence = waitForTerminalEvidence(nonce)
                 verifyEvidence(evidence, nonce)
                 assertTrue(
@@ -341,7 +341,7 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertTrue("Actual SharedThreadRouteContent did not request its initial payload.", sharedThread.getInt("threadDataRequests") > 0)
 
         assertTrue(
-            "Missing a real SlockAppShellContent runtime marker.",
+            "Missing a real RaftAppShellContent runtime marker.",
             evidence.fullLog.contains("app_shell_auth_gate_state") || evidence.fullLog.contains("app_shell_parent_home_start_check"),
         )
         assertTrue(

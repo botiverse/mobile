@@ -2,13 +2,13 @@ package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.ColorFilter
-import com.tencent.kuikly.compose.ui.graphics.painter.Painter
-import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.text.PlaceholderVerticalAlign
-import com.tencent.kuikly.core.base.Size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.geometry.Size
 
 interface ImageTransformer {
     /**

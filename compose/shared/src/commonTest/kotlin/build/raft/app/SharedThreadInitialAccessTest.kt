@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.ChannelSnapshot
 import build.raft.app.data.DataResult
 import build.raft.app.data.DirectMessageSnapshot
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -51,7 +51,7 @@ class SharedThreadInitialAccessTest {
                 currentMemberId = "account-b",
             )
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 authSessionFixture(userId = "account-b", selectedServerId = serverId.value)
             )
         val channelRepository =
@@ -121,7 +121,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -176,7 +176,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -240,7 +240,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -334,7 +334,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     SharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(owner.value.session),
+                        sessionStore = InMemoryRaftAuthSessionStore(owner.value.session),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = conversationRepository,
                         channelRepository = channelRepository,
@@ -401,7 +401,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -459,7 +459,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -530,7 +530,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -607,7 +607,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(
@@ -725,7 +725,7 @@ class SharedThreadInitialAccessTest {
                     dataSource =
                         testSharedThreadDataSource(
                             networkApi = ReplyThreadAccessNetworkApi,
-                            sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                            sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                             conversationRepository =
                                 ReplyThreadAccessConversationRepositoryRecorder(
@@ -865,7 +865,7 @@ class SharedThreadInitialAccessTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = ReplyThreadAccessNetworkApi,
-                        sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                        sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository =
                             ReplyThreadAccessConversationRepositoryRecorder(

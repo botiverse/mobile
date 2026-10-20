@@ -3,11 +3,10 @@ package build.raft.app
 import androidx.compose.runtime.*
 import build.raft.app.base.BasePager
 import build.raft.app.data.*
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.*
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 /** Real header, popover, toast and store; only the repository uses deterministic fixture data. */
@@ -18,7 +17,7 @@ internal class ThreadFollowersVisualPage : BasePager() {
         val elegant = pageData.params.optBoolean("elegant", false)
         val single = pageData.params.optBoolean("single", false)
         setContent {
-            SlockThemeProvider(if (elegant) elegantTheme else brutalTheme) {
+            RaftThemeProvider(if (elegant) elegantTheme else raftLightTheme) {
                 FollowersVisualContent(single)
             }
         }
@@ -36,11 +35,11 @@ private fun FollowersVisualContent(single: Boolean) {
     LaunchedEffect(store) { store.dispatch(ThreadAgentFollowersIntent.Refresh) }
     val state by store.state.collectAsState()
     ThreadFollowersOverlayHost {
-        Column(Modifier.fillMaxSize().background(LocalSlockTheme.current.surface)) {
+        Column(Modifier.fillMaxSize().background(LocalRaftTheme.current.surface)) {
             ThreadPageHeader(
-                payload = KuiklyThreadScreenPayload(
+                payload = RaftThreadScreenPayload(
                     instanceId = "followers-visual", title = "消息列 — #general", status = "content",
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread, selectedTab = "chat",
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread, selectedTab = "chat",
                     showModeTabs = false, showSettingsAction = false, showMembersAction = false,
                     showOpenInChannelAction = true,
                 ),

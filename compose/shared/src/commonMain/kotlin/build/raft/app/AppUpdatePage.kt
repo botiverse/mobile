@@ -9,46 +9,45 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.DataResult
-import build.raft.app.data.KuiklyAppUpdateEvents
+import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import build.raft.app.data.SharedUpdateDownloadProgress
-import build.raft.app.components.SlockProgressBar
+import build.raft.app.components.RaftProgressBar
 
 const val APP_UPDATE_PAGE = "compose_app_update"
 
@@ -56,17 +55,17 @@ const val APP_UPDATE_PAGE = "compose_app_update"
 internal class ComposeAppUpdatePage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { AppUpdateScreen(slockPageVisibleResumeTick, slockPageVisible) }
+        setContent { AppUpdateScreen(raftPageVisibleResumeTick, raftPageVisible) }
     }
 }
 
-internal fun Pager.openAppUpdatePage(storeScope: SlockShellStoreScope) {
+internal fun Pager.openAppUpdatePage(storeScope: RaftShellStoreScope) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         APP_UPDATE_PAGE,
         JSONObject().apply {
             put("pageName", APP_UPDATE_PAGE)
-            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+            put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
         }
     )
 }
@@ -77,8 +76,8 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val appUpdateEvents = remember(sharedStores.eventBus) { KuiklyAppUpdateEvents(sharedStores.eventBus) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val appUpdateEvents = remember(sharedStores.eventBus) { RaftAppUpdateEvents(sharedStores.eventBus) }
     val scope = rememberCoroutineScope()
     val refreshGate = remember { AppUpdateRefreshGate() }
     val unavailableMessage = stringResource(MR.strings.app_update_unavailable)
@@ -142,14 +141,14 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
         onDispose { appUpdateEvents.removeStatusListener(listener) }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        RaftTopPageHeader(
             title = stringResource(MR.strings.home_notification_app_update_title),
-            iconName = SlockLucideIconName.CircleArrowUp,
-            backgroundColor = SlockColor.BrandYellow,
+            iconName = RaftLucideIconName.CircleArrowUp,
+            backgroundColor = RaftColor.BrandYellow,
             leadingContent = {
-                SlockTopPageHeaderAction(
-                    icon = SlockLucideIconName.ArrowLeft,
+                RaftTopPageHeaderAction(
+                    icon = RaftLucideIconName.ArrowLeft,
                     onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                 )
             }
@@ -361,7 +360,7 @@ internal fun AppUpdateSummary(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -371,16 +370,16 @@ internal fun AppUpdateSummary(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier.size(40.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.Download, modifier = Modifier.size(20.dp))
+                RaftLucideIcon(RaftLucideIconName.Download, modifier = Modifier.size(20.dp))
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = stringResource(MR.strings.app_update_version_summary, currentVersion, latestVersion),
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
+                    style = RaftType.ButtonBold,
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -393,19 +392,19 @@ internal fun AppUpdateSummary(
                         } else {
                             snapshot?.detail.orEmpty()
                         },
-                    style = SlockType.Caption,
-                    color = if (errorMessage == null) SlockColor.TextMutedGray else SlockColor.AccentRed,
+                    style = RaftType.Caption,
+                    color = if (errorMessage == null) RaftColor.TextMutedGray else RaftColor.AccentRed,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = actionLabel,
                 onClick = if (errorMessage != null && snapshot == null) onRetry else onAction,
                 enabled = appUpdatePrimaryActionEnabled(snapshot, loading, actionRunning, errorMessage),
                 leadingIcon = appUpdatePrimaryActionIcon(snapshot, errorMessage),
                 minWidth = 96.dp,
-                backgroundColor = SlockColor.AccentPink
+                backgroundColor = RaftColor.AccentPink
             )
         }
         if (progress?.active == true) {
@@ -414,23 +413,23 @@ internal fun AppUpdateSummary(
             val label = if (total != null) "$bytes / $total" else bytes
             Text(
                 text = stringResource(if (progress.phase == "paused") MR.strings.app_update_download_paused else MR.strings.app_update_downloading),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
             // Unknown response length has no fabricated percentage/bar fill.
             if (progress.percent != null) {
-                SlockProgressBar(value = progress.percent, label = label, showPercent = true)
+                RaftProgressBar(value = progress.percent, label = label, showPercent = true)
             } else {
-                Text(text = label, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                Text(text = label, style = RaftType.Caption, color = RaftColor.TextMutedGray)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
         if (appUpdateCanSkipVersion(snapshot)) {
             Text(
                 text = stringResource(MR.strings.app_update_skip_version),
                 modifier = Modifier.align(Alignment.End).clickable(onClick = onSkipVersion).padding(vertical = 4.dp),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
         }
     }
@@ -459,13 +458,13 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             fullDownloadSizeBytes = 94_411_540L,
             checkedAtLabel = "Just now"
         )
-    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp)) {
+        RaftTopPageHeader(
             title = stringResource(MR.strings.home_notification_app_update_title),
-            iconName = SlockLucideIconName.CircleArrowUp,
-            backgroundColor = SlockColor.BrandYellow,
+            iconName = RaftLucideIconName.CircleArrowUp,
+            backgroundColor = RaftColor.BrandYellow,
             leadingContent = {
-                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = {})
+                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = {})
             }
         )
         AppUpdateSummary(
@@ -483,13 +482,13 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
         ) {
             Text(
                 text = if (chinese) "1.6.0 更新内容" else "WHAT'S NEW IN 1.6.0",
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
             Text(
                 text = if (chinese) "专注于更高效协作的更新" else "A focused update for faster collaboration",
-                style = SlockType.PageTitle,
-                color = SlockColor.TextBlack
+                style = RaftType.PageTitle,
+                color = RaftColor.TextBlack
             )
             Text(
                 text =
@@ -498,8 +497,8 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
                     } else {
                         "Update Raft to get clearer activity states, smoother navigation, and the latest reliability improvements."
                     },
-                style = SlockType.Body,
-                color = SlockColor.TextBlack
+                style = RaftType.Body,
+                color = RaftColor.TextBlack
             )
             Text(
                 text =
@@ -508,8 +507,8 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
                     } else {
                         "- Review new activity at a glance\n- Move between conversations with fewer interruptions\n- Download and install updates without leaving Raft"
                     },
-                style = SlockType.Body,
-                color = SlockColor.TextBlack
+                style = RaftType.Body,
+                color = RaftColor.TextBlack
             )
         }
     }
@@ -518,12 +517,12 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
 private const val SkippedAppUpdateVersionCodeKey = "appUpdate.skippedVersionCode"
 
 internal fun skippedAppUpdateVersionCode(
-    store: SharedPreferenceStore = slockSharedPreferenceStore()
+    store: SharedPreferenceStore = raftSharedPreferenceStore()
 ): Long = store.getString(SkippedAppUpdateVersionCodeKey)?.toLongOrNull() ?: 0L
 
 internal fun saveSkippedAppUpdateVersionCode(
     versionCode: Long,
-    store: SharedPreferenceStore = slockSharedPreferenceStore()
+    store: SharedPreferenceStore = raftSharedPreferenceStore()
 ) {
     if (versionCode > 0L) {
         store.putString(SkippedAppUpdateVersionCodeKey, versionCode.toString())
@@ -618,19 +617,19 @@ internal fun appUpdatePrimaryActionEnabled(
 internal fun appUpdatePrimaryActionIcon(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
     errorMessage: String?
-): SlockLucideIconName =
+): RaftLucideIconName =
     when {
-        snapshot == null && errorMessage != null -> SlockLucideIconName.RefreshCw
+        snapshot == null && errorMessage != null -> RaftLucideIconName.RefreshCw
         snapshot?.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
             snapshot?.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ->
-            SlockLucideIconName.PackageCheck
+            RaftLucideIconName.PackageCheck
         snapshot?.transactionState == SharedSettingsUpdateTransactionState.Installed ->
-            SlockLucideIconName.CircleCheckBig
+            RaftLucideIconName.CircleCheckBig
         snapshot?.transactionRetryable == true &&
             (snapshot.transactionState == SharedSettingsUpdateTransactionState.Failed ||
                 snapshot.transactionState == SharedSettingsUpdateTransactionState.Stale) ->
-            SlockLucideIconName.RefreshCw
-        else -> SlockLucideIconName.Download
+            RaftLucideIconName.RefreshCw
+        else -> RaftLucideIconName.Download
     }
 
 internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot?): Boolean {

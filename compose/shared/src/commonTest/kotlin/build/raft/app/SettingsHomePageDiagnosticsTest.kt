@@ -17,8 +17,8 @@ import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SettingsServerAdminSnapshot
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -241,21 +241,21 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun textFieldsResolveSlockInputFontFamily() {
+    fun textFieldsResolveRaftInputFontFamily() {
         assertEquals(
-            SlockType.Input.fontFamily,
-            slockTextFieldResolvedTextStyle(TextStyle.Default).fontFamily
+            RaftType.Input.fontFamily,
+            raftTextFieldResolvedTextStyle(TextStyle.Default).fontFamily
         )
         assertEquals(
-            SlockType.Input.fontFamily,
-            slockTextFieldResolvedTextStyle(SlockType.Input.copy(fontFamily = null)).fontFamily
+            RaftType.Input.fontFamily,
+            raftTextFieldResolvedTextStyle(RaftType.Input.copy(fontFamily = null)).fontFamily
         )
     }
 
     @Test
     fun settingsAccountInputForegroundUsesSpaceMono() {
-        assertEquals(SlockMonoFamily, settingsAccountInputTextStyle().fontFamily)
-        assertEquals(SlockMonoFamily, settingsAccountInputTextStyle(SlockColor.TextMutedGray).fontFamily)
+        assertEquals(RaftMonoFamily, settingsAccountInputTextStyle().fontFamily)
+        assertEquals(RaftMonoFamily, settingsAccountInputTextStyle(RaftColor.TextMutedGray).fontFamily)
     }
 
     @Test

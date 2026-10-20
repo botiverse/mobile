@@ -33,12 +33,12 @@ class AndroidAdaptivePaneHostConnectedTest {
                 )
             )
         val intent =
-            Intent(targetContext, SlockKuiklyActivity::class.java)
+            Intent(targetContext, RaftCmpActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .putExtra("pageName", SlockKuiklyActivity.PAGE_LOGIN)
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra("pageName", RaftCmpActivity.PAGE_LOGIN)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        val activity = instrumentation.startActivitySync(intent) as SlockKuiklyActivity
+        val activity = instrumentation.startActivitySync(intent) as RaftCmpActivity
         var host: AndroidAdaptivePaneHost? = null
         try {
             instrumentation.runOnMainSync {

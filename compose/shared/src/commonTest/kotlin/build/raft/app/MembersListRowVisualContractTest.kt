@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -17,8 +17,8 @@ class MembersListRowVisualContractTest {
         assertEquals(4.dp, MembersListRowSpacing)
         assertEquals(6.dp, MembersListContentGap)
         assertEquals(0.7f, MembersListNameMaxWidthFraction)
-        assertEquals(SlockType.Button.fontFamily, MembersListNameTextStyle.fontFamily)
-        assertEquals(SlockType.Button.fontWeight, MembersListNameTextStyle.fontWeight)
+        assertEquals(RaftType.Button.fontFamily, MembersListNameTextStyle.fontFamily)
+        assertEquals(RaftType.Button.fontWeight, MembersListNameTextStyle.fontWeight)
         assertEquals(14.sp, MembersListNameTextStyle.fontSize)
         assertEquals(20.sp, MembersListNameTextStyle.lineHeight)
         assertEquals(12.sp, MembersListDescriptionTextStyle.fontSize)
@@ -41,8 +41,8 @@ class MembersListRowVisualContractTest {
         // the actual content slot. Compact windows pass through unchanged.
         assertEquals(720.dp, MembersListContentMaxWidth)
         assertEquals(24.dp, MembersListContentMinSideMargin)
-        val compact = SlockAdaptivePaneLayout.Compact
-        val dual = SlockAdaptivePaneLayout.DualPane
+        val compact = RaftAdaptivePaneLayout.Compact
+        val dual = RaftAdaptivePaneLayout.DualPane
         // Compact windows: whatever the slot is, no cap, no new padding —
         // including a sub-840 window that happens to have a wide slot.
         assertEquals(360.dp, membersListContentMaxWidth(360.dp, compact))

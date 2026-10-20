@@ -1,0 +1,508 @@
+package build.raft.app
+
+import build.raft.app.components.RaftMetrics
+import build.raft.app.components.RaftLookSeparator
+import build.raft.app.components.raftLookOverlaySurface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.data.TasksUnassignedAssigneeFilterId
+import build.raft.app.data.tasksIdentityFilterId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.avatarWireValueForAvatarSlot
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+internal data class RaftBaseMenuItem(
+    val id: String,
+    val label: String,
+    val icon: RaftLucideIconName? = null,
+    val dividerBefore: Boolean = false,
+    /**
+     * Checked state independent of the overlay's single `selectedId`, for menus
+     * with several radio groups or checkbox rows (web `menuitemradio` /
+     * `menuitemcheckbox`): drawn like the selected row (bold + check).
+     */
+    val checked: Boolean = false,
+    /** Disabled rows render muted and ignore taps (web `MenuItem disabled`). */
+    val enabled: Boolean = true,
+    /**
+     * Non-interactive group heading drawn above this row, after its divider
+     * (raft-ui `DropdownMenuLabel` / web `ContextMenuLabel`).
+     */
+    val groupLabel: String? = null
+)
+
+private val RaftBaseMenuGroupLabelHeight = 28.dp
+
+private val RaftBaseMenuMinWidth = 136.dp
+private val RaftBaseMenuMaxWidth = 280.dp
+private val RaftBaseMenuRowHeight = 34.dp
+private val RaftBaseMenuHorizontalOffset = (-8).dp
+private val RaftBaseMenuVerticalOffset = 8.dp
+private val RaftBaseMenuViewportGap = 8.dp
+private val RaftBaseMenuForegroundColor = Color(0xFF000000)
+private const val RaftBaseMenuChromeWidthValue = 84
+
+// Status editors can be opened from a card near either viewport edge. React measures
+// the trigger and flips the portal above when needed; retain that contract here.
+internal val RaftTaskStatusMenuVerticalPlacement = RaftFloatingVerticalPlacement.Auto
+
+internal enum class RaftMenuSelectedIndicatorPlacement {
+    Leading,
+    Trailing
+}
+
+@Suppress("UNUSED_PARAMETER")
+@Composable
+internal fun RaftBaseMenuOverlay(
+    anchor: RaftPopoverAnchor,
+    items: List<RaftBaseMenuItem>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    surfaceBorderColor: Color = RaftBaseMenuForegroundColor,
+    surfaceShadowColor: Color = RaftBaseMenuForegroundColor,
+    selectedRowColor: Color = RaftColor.BrandYellow,
+    uppercaseLabels: Boolean = true,
+    minWidth: Dp = RaftBaseMenuMinWidth,
+    // Exact menu width (border-box, like react's fixed-width menus). When null the
+    // width is estimated from the widest label via raftBaseMenuWidth (task #370).
+    width: Dp? = null,
+    rowHeight: Dp = RaftBaseMenuRowHeight,
+    labelFontSize: TextUnit = 12.sp,
+    labelLineHeight: TextUnit = 14.sp,
+    labelFontWeight: FontWeight = FontWeight.SemiBold,
+    labelLetterSpacing: TextUnit = 0.8.sp,
+    selectedIndicatorPlacement: RaftMenuSelectedIndicatorPlacement = RaftMenuSelectedIndicatorPlacement.Leading,
+    modifier: Modifier = Modifier,
+    horizontalOffset: Dp = RaftBaseMenuHorizontalOffset,
+    verticalOffset: Dp = RaftBaseMenuVerticalOffset,
+    // #223: default to Auto so the menu flips above the trigger when
+    // there's no room below. The trigger (e.g. row top-left) is
+    // passed in as `anchor`, so the menu's natural reading is "drop
+    // below the trigger; if no room, flip above".
+    verticalPlacement: RaftFloatingVerticalPlacement = RaftFloatingVerticalPlacement.Auto
+) {
+    if (items.isEmpty()) return
+    RaftLookBaseMenuOverlay(
+        anchor = anchor,
+        items = items,
+        selectedId = selectedId,
+        onDismiss = onDismiss,
+        onSelect = onSelect,
+        width = raftLookBaseMenuWidth(items, fixedWidth = width, minWidth = minWidth),
+        horizontalOffset = horizontalOffset,
+        // The brutal default gap becomes DropdownMenuContent's `sideOffset` 6; a caller's
+        // own gap (the 4dp status menu) is kept.
+        verticalOffset = if (verticalOffset == RaftBaseMenuVerticalOffset) RaftMetrics.MenuSideOffset else verticalOffset,
+        verticalPlacement = verticalPlacement,
+        modifier = modifier
+    )
+}
+
+/** Muted, non-interactive menu group heading (raft-ui `DropdownMenuLabel`). */
+@Composable
+private fun RaftBaseMenuGroupLabel(label: String, horizontalPadding: Dp) {
+    Text(
+        text = label,
+        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
+        color = RaftColor.ForegroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(RaftBaseMenuGroupLabelHeight)
+                .padding(
+                    start = horizontalPadding,
+                    end = horizontalPadding,
+                    top = RaftMetrics.MenuLabelPaddingTop,
+                    bottom = RaftMetrics.MenuLabelPaddingBottom
+                )
+    )
+}
+
+/**
+ * The task-status dropdown, aligned to react (#370/#112). This is the single
+ * source of truth for that menu's styling — the Tasks page and the thread
+ * conversation flow (#394) both go through here so the two can never drift back
+ * to the RaftBaseMenuOverlay defaults (uppercase labels, yellow selected row,
+ * leading check, estimated width) that read as the "old" menu. Callers pass only
+ * their own status items + selection/dispatch; the visual style lives here.
+ */
+@Composable
+internal fun RaftTaskStatusMenuOverlay(
+    anchor: RaftPopoverAnchor,
+    items: List<RaftBaseMenuItem>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    RaftBaseMenuOverlay(
+        anchor = anchor,
+        items = items,
+        selectedId = selectedId,
+        selectedRowColor = RaftColor.SurfaceWhite,
+        // react's status menu renders at exactly its 140px min-width (the longest
+        // label "In Progress" is narrower); the char estimate overshoots to 172dp.
+        // Raft sets the selected label bold, so there 140dp is only the minimum
+        // (see raftLookBaseMenuWidth).
+        width = 140.dp,
+        rowHeight = 36.dp,
+        labelFontSize = 14.sp,
+        labelLineHeight = 20.sp,
+        labelFontWeight = FontWeight.Normal,
+        labelLetterSpacing = 0.sp,
+        selectedIndicatorPlacement = RaftMenuSelectedIndicatorPlacement.Trailing,
+        horizontalOffset = 0.dp,
+        verticalOffset = 4.dp,
+        verticalPlacement = RaftTaskStatusMenuVerticalPlacement,
+        onDismiss = onDismiss,
+        onSelect = onSelect
+    )
+}
+
+/**
+ * raft-ui DropdownMenu / Select popup for [RaftBaseMenuOverlay]: overlay surface (container
+ * radius, popover layer, seam ring, float shadow) with a `p-1.5` inset; 36dp control-radius
+ * rows (`px-2.5`, `gap-2.5`) in callout medium ink with a 16dp muted-ink icon; the selected
+ * row is bold with a trailing 16dp check (no selected fill, no uppercase); `dividerBefore`
+ * is the menu's full-bleed `-mx-1.5 my-1.5` hairline. Rows are the shared
+ * [RaftBrutalDropdownMenuRow] (BrandSoft press wash). The brutal colour / label tuning
+ * parameters of the overlay do not apply here.
+ */
+@Composable
+private fun RaftLookBaseMenuOverlay(
+    anchor: RaftPopoverAnchor,
+    items: List<RaftBaseMenuItem>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    width: Dp,
+    horizontalOffset: Dp,
+    verticalOffset: Dp,
+    verticalPlacement: RaftFloatingVerticalPlacement,
+    modifier: Modifier
+) {
+    val density = LocalDensity.current
+    val separatorHeight = RaftMetrics.MenuSeparatorInset * 2 + RaftAppStroke.Thin
+    val menuHeight =
+        RaftMetrics.MenuRowHeight * items.size +
+            RaftMetrics.PopupPadding * 2 +
+            separatorHeight * items.count { it.dividerBefore } +
+            RaftBaseMenuGroupLabelHeight * items.count { it.groupLabel != null }
+    RaftModalAnchoredPopover(
+        anchor = anchor,
+        // raft overlays float on a shadow that takes no layout space.
+        contentSize = with(density) { Size(width.toPx(), menuHeight.toPx()) },
+        viewportGap = with(density) { RaftBaseMenuViewportGap.toPx() },
+        horizontalOffset = with(density) { horizontalOffset.toPx() },
+        verticalOffset = with(density) { verticalOffset.toPx() },
+        verticalPlacement = verticalPlacement,
+        horizontalAutoFlip = true,
+        onDismiss = onDismiss,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .width(width)
+                .raftLookOverlaySurface()
+                // Keeps blank menu space out of the sibling dismiss barrier (see the
+                // brutal surface).
+                .clickable(onClick = {})
+                .padding(vertical = RaftMetrics.PopupPadding)
+        ) {
+            items.forEach { item ->
+                if (item.dividerBefore) {
+                    RaftLookSeparator(verticalSpacing = RaftMetrics.MenuSeparatorInset)
+                }
+                item.groupLabel?.let { label ->
+                    Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
+                        RaftBaseMenuGroupLabel(label, horizontalPadding = RaftMetrics.MenuItemPaddingHorizontal)
+                    }
+                }
+                val selected = item.id == selectedId || item.checked
+                // Rows sit in the popup's 6dp side inset; separators bleed through it.
+                Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
+                    RaftBrutalDropdownMenuRow(
+                        item =
+                            RaftBrutalDropdownMenuItem(
+                                id = item.id,
+                                label = item.label,
+                                icon = item.icon,
+                                trailingIcon = if (selected) RaftLucideIconName.Check else null,
+                                enabled = item.enabled
+                            ),
+                        rowHeight = RaftMetrics.MenuRowHeight,
+                        emphasized = selected,
+                        onClick = { if (item.enabled) onSelect(item.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Width of the raft [RaftBaseMenuOverlay] popup. Without a caller width it is the label
+ * estimate, never under `min-w-60`. A caller width (the 140dp status menu) is a minimum,
+ * like web's `min-w-[140px]`: the popup grows to fit the widest label set bold (the
+ * selected row) plus the row chrome and trailing check, up to the brutal max width.
+ */
+internal fun raftLookBaseMenuWidth(items: List<RaftBaseMenuItem>, fixedWidth: Dp?, minWidth: Dp): Dp {
+    if (fixedWidth == null) return raftMenuWidth(raftBaseMenuWidth(items, minWidth = minWidth))
+    // Bold 14sp: ~8.5dp per Latin glyph, a full em for CJK and other wide glyphs.
+    val widestLabelWidth =
+        items.maxOfOrNull { item ->
+            item.label.fold(0f) { total, char -> total + if (char.code > 127) 14f else 8.5f }
+        } ?: 0f
+    val iconWidth =
+        if (items.any { it.icon != null }) (RaftMetrics.MenuIconSize + RaftMetrics.MenuItemGap).value else 0f
+    val chrome =
+        RaftMetrics.PopupPadding.value * 2 +
+            RaftMetrics.MenuItemPaddingHorizontal.value * 2 +
+            iconWidth +
+            // Trailing check of the selected row.
+            RaftMetrics.MenuIconSize.value + RaftMetrics.MenuItemGap.value
+    val maxWidth = maxOf(fixedWidth, RaftBaseMenuMaxWidth)
+    return kotlin.math.ceil(widestLabelWidth + chrome).dp.coerceIn(fixedWidth, maxWidth)
+}
+
+private fun raftBaseMenuWidth(items: List<RaftBaseMenuItem>, minWidth: Dp): Dp {
+    val widestLabelWidth =
+        items.maxOfOrNull { item ->
+            item.label.fold(0) { total, char -> total + if (char.code > 127) 14 else 8 }
+        } ?: 0
+    return (widestLabelWidth + RaftBaseMenuChromeWidthValue)
+        .coerceIn(minWidth.value.toInt(), RaftBaseMenuMaxWidth.value.toInt())
+        .dp
+}
+
+/*
+ * Task #258 successor (artin msg=f65282d2 via Mahua msg=cf4c6b0a): the assignee
+ * selector is a STANDALONE CENTERED modal (RaftUnifiedDialog, same shell family
+ * as the channel add-member dialog), not an anchored expansion. It reuses the
+ * channel add-user interaction verbatim: RaftBrutalSearchField with the Search
+ * leading icon, RaftModalListShell + RaftModalSectionHeader (AGENTS then
+ * HUMANS), and the exact RaftModalCompactMemberRow visuals extracted into
+ * RowScope.RaftModalCompactMemberRowContent. One adaptation: rows are wrapped
+ * in a native Button shell (same disabled/selected/idle background mapping incl.
+ * BrandYellow selection) because plain-`clickable` rows inside a dialog stacked
+ * on the task detail dialog lose to the outer dismiss barrier. Single-select
+ * semantics: tapping a row applies it immediately and closes (matching the
+ * add-member row contract), with the unassigned sentinel kept first.
+ */
+@Composable
+internal fun RaftTaskAssigneeMenuOverlay(
+    open: Boolean,
+    onDismiss: () -> Unit,
+    rows: List<MemberProfile?>,
+    selectedId: String,
+    agentStatusResolver: RaftAgentStatusResolver,
+    searchValue: TextFieldValue,
+    onSearchValueChange: (TextFieldValue) -> Unit,
+    searchPlaceholder: String,
+    modalTitle: String,
+    unassignedLabel: String,
+    humansHeaderLabel: String,
+    agentsHeaderLabel: String,
+    onSelect: (String) -> Unit
+) {
+    if (!open || rows.isEmpty()) return
+    val memberRows = rows.filterNotNull()
+    val agentCount = memberRows.count { it.kind == MemberKind.Agent }
+    val humanCount = memberRows.count { it.kind == MemberKind.Human }
+    // Same list height formula as the channel add-member dialog.
+    val listHeight = threadMemberListHeight(agentCount = agentCount, humanCount = humanCount).dp
+    RaftUnifiedDialog(
+        title = modalTitle,
+        onDismiss = onDismiss,
+        minWidth = 356.dp,
+        maxWidth = 356.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Same search field as the channel add-member dialog.
+            RaftBrutalSearchField(
+                value = searchValue,
+                placeholder = searchPlaceholder,
+                leadingIcon = RaftLucideIconName.Search,
+                enabled = true,
+                onValueChange = onSearchValueChange
+            )
+            RaftModalListShell(height = listHeight) {
+                if (memberRows.isEmpty()) {
+                    item(key = "no-match") {
+                        Text(
+                            text = searchPlaceholder,
+                            style = RaftType.Caption,
+                            color = RaftColor.TextMutedGray,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 18.dp)
+                        )
+                    }
+                }
+                rows.forEach { row ->
+                    if (row == null) {
+                        item(key = TasksUnassignedAssigneeFilterId) {
+                            RaftTaskAssigneeMemberButton(
+                                selected = selectedId == TasksUnassignedAssigneeFilterId,
+                                onClick = { onSelect(TasksUnassignedAssigneeFilterId) }
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(26.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    RaftLucideIcon(
+                                        RaftLucideIconName.UserMinus,
+                                        modifier = Modifier.size(15.dp),
+                                        color = "#FF000000"
+                                    )
+                                }
+                                Text(
+                                    text = unassignedLabel,
+                                    style = RaftType.Body.withRaftFontWeight(FontWeight.Medium)
+                                        .copy(fontSize = 14.sp, lineHeight = 18.sp),
+                                    color = RaftColor.TextBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (selectedId == TasksUnassignedAssigneeFilterId) {
+                                    RaftLucideIcon(
+                                        RaftLucideIconName.Check,
+                                        modifier = Modifier.size(15.dp),
+                                        color = "#FF000000"
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.size(15.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                var lastKind: MemberKind? = null
+                rows.forEach { row ->
+                    val member = row ?: return@forEach
+                    if (lastKind != member.kind) {
+                        lastKind = member.kind
+                        item(key = "header-${member.kind.name.lowercase()}") {
+                            // Same section header as the channel add-member dialog.
+                            RaftModalSectionHeader(
+                                label = if (member.kind == MemberKind.Human) humansHeaderLabel else agentsHeaderLabel
+                            )
+                        }
+                    }
+                    item(key = member.tasksIdentityFilterId()) {
+                        val selected = member.tasksIdentityFilterId() == selectedId
+                        val statusIndicatorState =
+                            if (member.kind == MemberKind.Agent) {
+                                resolveThreadMemberAgentStatusIndicatorState(
+                                    memberKind = member.kind.name.lowercase(),
+                                    canonicalState = rememberRaftAgentStatusIndicatorState(
+                                        agentStatusResolver,
+                                        member.id.value
+                                    )
+                                )
+                            } else {
+                                null
+                            }
+                        RaftTaskAssigneeMemberButton(
+                            selected = selected,
+                            onClick = { onSelect(member.tasksIdentityFilterId()) }
+                        ) {
+                            RaftModalCompactMemberRowContent(
+                                title = member.displayName,
+                                subtitle = member.roleDescription
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: "${member.kind.name.lowercase()} · @${member.handle}",
+                                avatarWireValue = member.avatarWireValueForAvatarSlot(),
+                                avatarLabel = member.avatarLabel.ifBlank { member.displayName },
+                                statusColor = statusIndicatorState?.color,
+                                statusPulsing = statusIndicatorState?.pulsing == true,
+                                avatarSize = 26.dp,
+                                sourceBadgeLabel = null,
+                                enabled = true,
+                                selected = selected,
+                                trailingText = "",
+                                trailingIcon = if (selected) RaftLucideIconName.Check else null,
+                                onTrailingClick = null,
+                                cacheSubject = member.raftAvatarCacheSubject(),
+                                cacheServerId = member.serverId?.value
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun RaftTaskAssigneeMemberButton(
+    selected: Boolean,
+    onClick: () -> Unit,
+    // RowScope receiver: the row content reuses RaftModalCompactMemberRowContent,
+    // a RowScope extension whose children rely on Row-scope weight modifiers.
+    content: @Composable RowScope.() -> Unit
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite
+            )
+    ) {
+        // Task #258 (artin msg=be381a13): same 12dp horizontal inset as the
+        // channel RaftModalCompactMemberRow shell so member rows indent alike.
+        // Task #269 (artin msg=d04b1d19): and the same 8dp vertical padding -- the
+        // port kept only the horizontal value, so rows sat avatar-to-avatar with no
+        // gap. The native Button shell contributes no padding of its own here.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            content()
+        }
+    }
+}

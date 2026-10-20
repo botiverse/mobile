@@ -2,7 +2,7 @@ package build.raft.app.markdown
 
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownDialect
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -128,7 +128,7 @@ class RaftMarkdownDialectTest {
     @Test
     fun flavourParseEmitsFirstClassRaftReferenceTokens() {
         val source = "**Review #1487 with @artin**"
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
         val tokenTexts = mutableListOf<String>()
         fun collect(node: ASTNode) {
             if (node.type == RaftMarkdownTokenTypes.REFERENCE) {
@@ -184,7 +184,7 @@ class RaftMarkdownDialectTest {
     @Test
     fun taskShapedLinkDefinitionLabelRemainsADefinitionAndNeverBecomesRaftAction() {
         val source = "[#123]: https://example.test/release\n\nUse [#123] then outside #56"
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)
         val definitions = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.LINK_DEFINITION) definitions += node
@@ -207,7 +207,7 @@ class RaftMarkdownDialectTest {
 
     private fun String.raftRefs(): List<String> =
         RaftMarkdownDialect.inlineRefs(
-            MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(this),
+            MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(this),
             this,
         ).map { ref -> ref.sourceText }
 }

@@ -3,9 +3,9 @@ package build.raft.app
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.SharedThreadStoreTest.FakeThreadApi
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadApiResult
@@ -13,7 +13,7 @@ import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadPendingSendJournalFailureInjector
 import build.raft.app.data.WireMessage
-import build.raft.app.shared.data.local.SlockDatabase
+import build.raft.app.shared.data.local.RaftDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -334,7 +334,7 @@ class ThreadPendingSendStoreIntegrationTest {
                 nowMillis = { 100L },
                 failureInjector = failureInjector,
             )
-        val sessionStore = InMemorySlockAuthSessionStore(identityProvider().session)
+        val sessionStore = InMemoryRaftAuthSessionStore(identityProvider().session)
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
@@ -353,7 +353,7 @@ class ThreadPendingSendStoreIntegrationTest {
         )
     }
 
-    private fun openDatabase(driver: JdbcSqliteDriver): SlockSqlDatabase {
+    private fun openDatabase(driver: JdbcSqliteDriver): RaftSqlDatabase {
         val version =
             driver.executeQuery(
                 identifier = null,
@@ -366,15 +366,15 @@ class ThreadPendingSendStoreIntegrationTest {
                 binders = null,
             ).value
         if (version == 0L) {
-            SlockDatabase.Schema.create(driver).value
+            RaftDatabase.Schema.create(driver).value
             driver.execute(
                 identifier = null,
-                sql = "PRAGMA user_version = ${SlockDatabase.Schema.version}",
+                sql = "PRAGMA user_version = ${RaftDatabase.Schema.version}",
                 parameters = 0,
                 binders = null,
             )
         }
-        return SlockSqlDatabase(driver)
+        return RaftSqlDatabase(driver)
     }
 
     private fun identity(): ThreadReplyCacheIdentitySnapshot =
@@ -403,16 +403,16 @@ class ThreadPendingSendStoreIntegrationTest {
             selectionGeneration = selectionGeneration,
         )
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "integration-thread",
             sourceThreadId = "channel-1",
             status = "loading",
             canSend = true,
         )
 
-    private fun pendingMessage(localId: String, randomId: String, createdAt: Long? = null): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    private fun pendingMessage(localId: String, randomId: String, createdAt: Long? = null): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = localId,
             authorId = "u1",
             authorName = "Artin",
@@ -421,7 +421,7 @@ class ThreadPendingSendStoreIntegrationTest {
             threadChannelId = "channel-1",
             deliveryState = ThreadMessageDeliverySending,
             pendingSendContext =
-                KuiklyThreadPendingSendContext(
+                RaftThreadPendingSendContext(
                     channelId = "channel-1",
                     body = "pending body",
                     streamChannelId = "channel-1",

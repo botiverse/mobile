@@ -21,10 +21,10 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const dump = JSON.parse(execFileSync("python3", [join(here, "gen_tokens.py"), "--dump-json"], { encoding: "utf8", maxBuffer: 1 << 26 }));
+// raft-ui 0.7.1: one "raft" family; the root carries `.light` or `.dark`.
 const roots = {
-  brutal: { theme: "brutal", cls: "" },
-  elegantLight: { theme: "elegant", cls: "light" },
-  elegantDark: { theme: "elegant", cls: "dark" },
+  raftLight: { cls: "light" },
+  raftDark: { cls: "dark" },
 };
 
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
@@ -34,7 +34,7 @@ const themes = {};
 for (const [name, root] of Object.entries(roots)) {
   themes[name] = await page.evaluate(({ root, tokens }) => {
     const html = document.documentElement;
-    html.setAttribute("data-theme", root.theme);
+    html.removeAttribute("data-theme");
     html.className = root.cls;
     const probe = document.getElementById("probe");
     const canvas = document.createElement("canvas");

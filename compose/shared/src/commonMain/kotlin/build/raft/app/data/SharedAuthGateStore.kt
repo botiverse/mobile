@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

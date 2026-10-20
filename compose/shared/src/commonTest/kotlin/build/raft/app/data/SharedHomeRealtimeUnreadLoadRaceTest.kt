@@ -138,7 +138,7 @@ class SharedHomeRealtimeUnreadLoadRaceTest {
     fun aRacedLoadThatOutlivesAServerSwitchSchedulesNothingForTheNewServer() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = GatedHomeApi(serverUnread = mutableListOf(3, 3, 0))
-        val authStore = InMemorySlockAuthSessionStore(twoServerSession())
+        val authStore = InMemoryRaftAuthSessionStore(twoServerSession())
         val store = homeStore(api, scope, authStore)
         store.accept(SharedHomeIntent.Start)
 
@@ -174,7 +174,7 @@ class SharedHomeRealtimeUnreadLoadRaceTest {
     private fun homeStore(
         api: GatedHomeApi,
         scope: CoroutineScope,
-        authStore: InMemorySlockAuthSessionStore = InMemorySlockAuthSessionStore(session()),
+        authStore: InMemoryRaftAuthSessionStore = InMemoryRaftAuthSessionStore(session()),
     ): SharedHomeStore {
         return SharedHomeStore(
             authStore = authStore,
@@ -227,7 +227,7 @@ class SharedHomeRealtimeUnreadLoadRaceTest {
             )
         )
 
-    private class GatedHomeApi(private val serverUnread: MutableList<Int>) : SlockHomeApi {
+    private class GatedHomeApi(private val serverUnread: MutableList<Int>) : RaftHomeApi {
         var loads = 0
             private set
         var duringLoad: suspend (Int) -> Unit = {}

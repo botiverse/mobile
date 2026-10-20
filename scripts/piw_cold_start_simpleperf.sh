@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cold-start simpleperf capture for Slock Android (SlockKuiklyActivity).
+# Cold-start simpleperf capture for Slock Android (RaftLegacyHostActivity).
 # Records native CPU samples at 1ms frequency during cold start window.
 # Stops automatically after --duration-seconds.
 #

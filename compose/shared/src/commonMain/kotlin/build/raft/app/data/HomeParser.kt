@@ -22,7 +22,7 @@ import kotlinx.serialization.json.Json
 /**
  * Canonical Slock home parser.
  *
- * Mirrors the React server contracts directly. [SlockHomeApiClient.homePayload]
+ * Mirrors the React server contracts directly. [RaftHomeApiClient.homePayload]
  * owns the API boundary and decodes strict typed DTOs with no envelope
  * unwrapping and no field aliasing before this parser maps them into domain
  * state.
@@ -161,7 +161,7 @@ data class WireChannelCapabilities(
         )
 }
 
-internal fun parseSlockChannelDetail(
+internal fun parseRaftChannelDetail(
     bodyText: String,
     warningLogger: (String) -> Unit = {}
 ): HomeConversationRow? {
@@ -221,7 +221,7 @@ internal fun parseSlockChannelDetail(
     }
 }
 
-fun parseSlockHome(
+fun parseRaftHome(
     payload: HomeNetworkPayload,
     session: StoredAuthSession,
     warningLogger: (String) -> Unit = {}

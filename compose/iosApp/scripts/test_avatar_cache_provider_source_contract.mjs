@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDirectory, '../../..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8').replaceAll('\r\n', '\n');
-const provider = read('compose/iosApp/iosApp/SlockIosAvatarCacheProvider.swift');
+const provider = read('compose/iosApp/iosApp/RaftIosAvatarCacheProvider.swift');
 const app = read('compose/iosApp/iosApp/iOSApp.swift');
-const handler = read('compose/iosApp/iosApp/KuiklyExpand/Handler/KuiklyRenderComponentExpandHandler.m');
-const bridge = read('compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m');
+const hostHooks = read('compose/shared/src/iosMain/kotlin/build/raft/app/RaftIosHostHooks.kt');
+const bridge = read('compose/iosApp/iosApp/Host/HRBridgeModule.m');
 const project = read('compose/iosApp/iosApp.xcodeproj/project.pbxproj');
 
 function fail(message) {
@@ -26,12 +26,12 @@ function count(body, marker) {
 }
 
 function validateProvider(candidate) {
-  check(count(candidate, 'final class SlockIosAvatarDurableStore') === 1, 'durable store must exist once');
-  check(candidate.includes('SlockAvatarMountedNativeProvider'), 'provider must implement shared mounted contract');
-  check(candidate.includes('SlockAvatarMountedNativeProviderRegistry.shared.install(next: store)'), 'provider must install through shared registry');
+  check(count(candidate, 'final class RaftIosAvatarDurableStore') === 1, 'durable store must exist once');
+  check(candidate.includes('RaftAvatarMountedNativeProvider'), 'provider must implement shared mounted contract');
+  check(candidate.includes('RaftAvatarMountedNativeProviderRegistry.shared.install(next: store)'), 'provider must install through shared registry');
   check(candidate.includes('slock-avatar-render-v1:'), 'managed render protocol must be recognized');
-  check(candidate.includes('slockIosAvatarMaxEntryBytes: Int64 = 5 * 1024 * 1024'), '5 MiB entry limit drifted');
-  check(candidate.includes('slockIosAvatarMaxManagedBytes: Int64 = 64 * 1024 * 1024'), '64 MiB budget drifted');
+  check(candidate.includes('raftIosAvatarMaxEntryBytes: Int64 = 5 * 1024 * 1024'), '5 MiB entry limit drifted');
+  check(candidate.includes('raftIosAvatarMaxManagedBytes: Int64 = 64 * 1024 * 1024'), '64 MiB budget drifted');
   for (const marker of [
     'persistIndex()',
     'atomicWrite(',
@@ -58,14 +58,16 @@ function validateProvider(candidate) {
 
 validateProvider(provider);
 
-const install = app.indexOf('SlockIosAvatarCacheHost.shared.install()');
-const firstPageOwner = app.indexOf('SlockIosAppScopeMMKV.install()');
+const install = app.indexOf('RaftIosAvatarCacheHost.shared.install()');
+const firstPageOwner = app.indexOf('RaftIosAppScopeMMKV.install()');
 check(install >= 0 && firstPageOwner > install, 'provider must install before shared app scope starts');
 
-const managedRoute = handler.indexOf('isManagedRenderModel:url');
-const networkRoute = handler.indexOf('sd_setImageWithURL:resolvedURL');
-check(managedRoute >= 0 && networkRoute > managedRoute, 'managed descriptor must be intercepted before URL loading');
-check(handler.includes('imageForRenderModel:url'), 'render path must resolve exact committed native bytes');
+// CMP image loader: managed descriptors are read from the durable store, never downloaded.
+check(provider.includes('extension RaftIosAvatarCacheHost: RaftIosManagedImageStore'), 'host must serve managed reads to the CMP image loader');
+check(provider.includes('store.renderData('), 'managed read must resolve exact committed native bytes');
+check(hostHooks.includes('RaftImageHost.managedImageReader'), 'iOS host hooks must install the managed image reader');
+const hooksInstall = app.search(/RaftIosHostHooks\.shared\.install\(\s*managedImages: RaftIosAvatarCacheHost\.shared\b/);
+check(hooksInstall > install, 'managed image reader must be installed after the provider');
 
 const bridgeStart = bridge.indexOf('- (void)avatarCacheCapability:(NSDictionary *)args {');
 const bridgeEnd = bridge.indexOf('\n- (void)settingsCapability:', bridgeStart);
@@ -74,9 +76,9 @@ check(bridgeStart >= 0 && bridgeEnd > bridgeStart, 'unable to isolate bridge met
 check(bridgeBody.includes('handleLegacyCommand:params'), 'legacy bridge must delegate terminal cleanup to provider');
 check(!bridgeBody.includes('Avatar cache capability unavailable'), 'unsupported fallback must be removed');
 
-check(project.includes('A42400010000000000000001 /* SlockIosAvatarCacheProvider.swift in Sources */,'), 'provider missing from app target');
-check(project.includes('A42400010000000000000002 /* SlockIosAvatarCacheProvider.swift in Sources */,'), 'provider missing from unit-test target');
-check(project.includes('A42400010000000000000003 /* SlockIosAvatarCacheProviderTests.swift in Sources */,'), 'provider tests missing from unit-test target');
+check(project.includes('A42400010000000000000001 /* RaftIosAvatarCacheProvider.swift in Sources */,'), 'provider missing from app target');
+check(project.includes('A42400010000000000000002 /* RaftIosAvatarCacheProvider.swift in Sources */,'), 'provider missing from unit-test target');
+check(project.includes('A42400010000000000000003 /* RaftIosAvatarCacheProviderTests.swift in Sources */,'), 'provider tests missing from unit-test target');
 
 function assertProviderMutationRejected(mutation, label) {
   check(mutation !== provider, 'source-contract mutation fixture did not change source');
@@ -89,15 +91,15 @@ function assertProviderMutationRejected(mutation, label) {
 }
 
 assertProviderMutationRejected(
-  provider.replace('SlockAvatarMountedNativeProviderRegistry.shared.install(next: store)', '/* removed */'),
+  provider.replace('RaftAvatarMountedNativeProviderRegistry.shared.install(next: store)', '/* removed */'),
   'missing registry install'
 );
 assertProviderMutationRejected(
-  provider.replace('slockIosAvatarMaxEntryBytes: Int64 = 5 * 1024 * 1024', 'slockIosAvatarMaxEntryBytes: Int64 = 6 * 1024 * 1024'),
+  provider.replace('raftIosAvatarMaxEntryBytes: Int64 = 5 * 1024 * 1024', 'raftIosAvatarMaxEntryBytes: Int64 = 6 * 1024 * 1024'),
   'entry-limit drift'
 );
 assertProviderMutationRejected(
-  provider.replace('slockIosAvatarMaxManagedBytes: Int64 = 64 * 1024 * 1024', 'slockIosAvatarMaxManagedBytes: Int64 = 65 * 1024 * 1024'),
+  provider.replace('raftIosAvatarMaxManagedBytes: Int64 = 64 * 1024 * 1024', 'raftIosAvatarMaxManagedBytes: Int64 = 65 * 1024 * 1024'),
   'budget drift'
 );
 assertProviderMutationRejected(

@@ -20,7 +20,7 @@ class RealtimeCanonicalFinalProductionFactoryTest {
             onAuthRevisionAdvanced = {},
                 registry =
                     RealtimeAuthorityRegistry(
-                        authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                        authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                         processInstanceId = "factory-default-null",
                     ),
                 authStore = auth,

@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -12,33 +12,32 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_STORAGE_PAGE = "compose_settings_storage"
@@ -52,20 +51,20 @@ internal class ComposeSettingsStoragePage : AuthenticatedProductPager(Authentica
 }
 
 @Serializable
-internal data class KuiklySettingsStoragePayload(
+internal data class RaftSettingsStoragePayload(
     val instanceId: String = "",
     val totalTitle: String = "Storage used",
     val totalSize: String = "0 B",
     val refreshLabel: String = "Refresh",
     val safeClearNote: String = "Clearing cache never removes your account or server data.",
     val feedback: String = "",
-    val rows: List<KuiklySettingsStorageRow> = emptyList()
+    val rows: List<RaftSettingsStorageRow> = emptyList()
 )
 
 @Serializable
-internal data class KuiklySettingsStorageRow(
+internal data class RaftSettingsStorageRow(
     val target: String = "",
-    val iconName: SlockLucideIconName = SlockLucideIconName.Archive,
+    val iconName: RaftLucideIconName = RaftLucideIconName.Archive,
     val title: String = "",
     val detail: String = "",
     val size: String = "0 B",
@@ -74,38 +73,38 @@ internal data class KuiklySettingsStorageRow(
     val clearInProgress: Boolean = false
 )
 
-internal val settingsStorageSmokePayload = KuiklySettingsStoragePayload(
+internal val settingsStorageSmokePayload = RaftSettingsStoragePayload(
     instanceId = "settings-storage-smoke",
     totalSize = "22.5 MB",
     rows = listOf(
-        KuiklySettingsStorageRow(
+        RaftSettingsStorageRow(
             target = "database",
-            iconName = SlockLucideIconName.Archive,
+            iconName = RaftLucideIconName.Archive,
             title = "Local database",
             detail = "Messages, task metadata, and server snapshots stored on this device.",
             size = "4.6 MB"
         ),
-        KuiklySettingsStorageRow(
+        RaftSettingsStorageRow(
             target = "imageCache",
-            iconName = SlockLucideIconName.Image,
+            iconName = RaftLucideIconName.Image,
             title = "Image cache",
             detail = "Downloaded image previews kept for faster viewing.",
             size = "17.4 MB",
             clearLabel = "Clear image cache",
             clearEnabled = true
         ),
-        KuiklySettingsStorageRow(
+        RaftSettingsStorageRow(
             target = "attachmentDownloads",
-            iconName = SlockLucideIconName.Download,
+            iconName = RaftLucideIconName.Download,
             title = "Attachment staging",
             detail = "Temporary data from active or failed downloads. Completed files remain in Downloads.",
             size = "768 KB",
             clearLabel = "Clear attachment staging",
             clearEnabled = true
         ),
-        KuiklySettingsStorageRow(
+        RaftSettingsStorageRow(
             target = "temporaryAndLogs",
-            iconName = SlockLucideIconName.FileText,
+            iconName = RaftLucideIconName.FileText,
             title = "Temporary files and logs",
             detail = "Debug logs and temporary files generated by the app.",
             size = "512 KB",
@@ -142,7 +141,7 @@ private fun SettingsStorageScreen() {
     ) {
         SettingsStorageContent(
             // task #177: standalone page outside the app shell.
-            bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg,
+            bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
             payload =
                 settingsState.storage.toStoragePayload(
                     actionState = settingsState.actionState,
@@ -167,19 +166,19 @@ private fun rememberStoragePayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklySettingsStoragePayload =
+): RaftSettingsStoragePayload =
     remember(payload, fallbackPageData, instanceId) {
         parseSettingsStoragePayload(payload, fallbackPageData, instanceId)
     }
 
 @Composable
 internal fun SettingsStorageContent(
-    payload: KuiklySettingsStoragePayload,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    payload: RaftSettingsStoragePayload,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -200,8 +199,8 @@ internal fun SettingsStorageContent(
         item {
             Text(
                 payload.safeClearNote,
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
         payload.feedback.takeIf { it.isNotBlank() }?.let { feedback ->
@@ -219,19 +218,19 @@ private fun SettingsStorageSummary(
     onRefresh: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(title.slockDisplayUppercase(), style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        Text(size, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        SettingsStorageButton(refreshLabel, iconName = SlockLucideIconName.RefreshCw, enabled = true, loading = false, onClick = onRefresh)
+        Text(title.raftDisplayUppercase(), style = RaftType.SectionLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+        Text(size, style = RaftType.PageTitle.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+        SettingsStorageButton(refreshLabel, iconName = RaftLucideIconName.RefreshCw, enabled = true, loading = false, onClick = onRefresh)
     }
 }
 
 @Composable
-private fun SettingsStorageRow(row: KuiklySettingsStorageRow, onClear: () -> Unit) {
+private fun SettingsStorageRow(row: RaftSettingsStorageRow, onClear: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceWhite).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
@@ -241,15 +240,15 @@ private fun SettingsStorageRow(row: KuiklySettingsStorageRow, onClear: () -> Uni
         ) {
             IconBox(row.iconName)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(row.title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(row.detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+                Text(row.title, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(row.detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
             }
-            Text(row.size, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(row.size, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (row.clearLabel.isNotBlank()) {
             SettingsStorageButton(
                 text = row.clearLabel,
-                iconName = SlockLucideIconName.Trash,
+                iconName = RaftLucideIconName.Trash,
                 enabled = row.clearEnabled,
                 loading = row.clearInProgress,
                 onClick = onClear
@@ -261,24 +260,24 @@ private fun SettingsStorageRow(row: KuiklySettingsStorageRow, onClear: () -> Uni
 @Composable
 private fun SettingsStorageButton(
     text: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     enabled: Boolean,
     loading: Boolean,
     onClick: () -> Unit
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = if (loading) "$text..." else text,
-        leadingIcon = if (loading) SlockLucideIconName.LoaderCircle else iconName,
+        leadingIcon = if (loading) RaftLucideIconName.LoaderCircle else iconName,
         leadingIconSpinning = loading,
         onClick = onClick,
         enabled = enabled && !loading,
         modifier = Modifier.fillMaxWidth(),
-        backgroundColor = SlockColor.SurfaceWhite,
-        disabledBackgroundColor = SlockColor.EmptyStateGray,
+        backgroundColor = RaftColor.SurfaceWhite,
+        disabledBackgroundColor = RaftColor.EmptyStateGray,
         minWidth = 0.dp,
         minHeight = 44.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
+        textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
     )
 }
 
@@ -288,24 +287,24 @@ private fun SettingsStorageFeedback(text: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.AccentCyan)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(RaftColor.AccentCyan)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                 .padding(14.dp)
     ) {
         Text(
             text,
-            style = SlockType.Body.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.Body.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
     }
 }
 
 @Composable
-private fun IconBox(iconName: SlockLucideIconName) {
+private fun IconBox(iconName: RaftLucideIconName) {
     Box(
-        modifier = Modifier.size(42.dp).background(SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
+        modifier = Modifier.size(42.dp).background(RaftColor.EmptyStateGray).border(RaftAppStroke.Default, RaftColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(22.dp))
+        RaftLucideIcon(iconName, modifier = Modifier.size(22.dp))
     }
 }

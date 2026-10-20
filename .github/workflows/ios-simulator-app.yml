@@ -77,24 +77,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Raise Gradle/Kotlin heap for the iOS Simulator build (this runner only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # compose/gradle.properties caps the build JVM and Kotlin daemon at
-          # 4g, which OOMs Kotlin/Native ObjC-framework generation for the shared
-          # module during archive. Override it via $GRADLE_USER_HOME/gradle.properties
-          # (higher precedence than the project file), scoped to THIS macOS
-          # runner only — so Android CI (ubuntu) and local dev keep their 4g.
-          # Two release archives exhausted the former 8g heap in Kotlin/Native's
-          # devirtualization analysis. The runner has ~30GB RAM, so 12g still
-          # leaves room for Xcode/clang while keeping Gradle at one worker.
-          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
-          mkdir -p "$GUH"
-          printf '%s\n' 'org.gradle.jvmargs=-Xmx12g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx12g,-Xss4m"' >> "$GUH/gradle.properties"
-
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
+      - name: Shared Kotlin/Native Gradle settings
+        uses: ./.github/actions/ios-kn-gradle
+        with:
+          # Kept at this job's previous, consistently green value; the other
+          # hosted-macOS jobs use the 6g default.
+          heap: 12g
 
       # Same guard as qa-acceptance-ios.yml: stale KSP incremental caches on a
       # reused runner produce the FIR RAW_FIR->STATUS cast failure.

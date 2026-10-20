@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in Raft Mobile (the Android, iOS and HarmonyOS
+Thank you for your interest in Raft Mobile (the Android and iOS
 clients of Raft). External pull requests are welcome. Please read this page
 before opening one.
 
@@ -39,6 +39,6 @@ change license described in the LICENSE file.
 ## Issues
 
 Bug reports and feature requests are welcome as GitHub Issues. Please include
-the platform (Android / iOS / HarmonyOS), app version and build, and steps to
+the platform (Android / iOS), app version and build, and steps to
 reproduce. Product feedback and support requests can also go through the
 in-app feedback tool or the support channels listed on raft.build.

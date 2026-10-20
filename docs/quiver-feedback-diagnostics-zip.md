@@ -69,6 +69,9 @@ never overwritten. Quiver receives each returned path as an attachment.
 
 ## HarmonyOS ZIP layout
 
+This layout applies to feedback from OHOS builds up to 1.14.x (the frozen last
+OHOS release line, `release/1.14.x`); `main` no longer ships an OHOS app.
+
 HarmonyOS writes one `raft-feedback-*.zip`. It stages the summary and selected
 logs into a flat upload directory before compression, so session identity is
 encoded into each log entry name:

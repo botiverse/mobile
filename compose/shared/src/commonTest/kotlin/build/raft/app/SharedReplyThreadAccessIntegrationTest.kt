@@ -2,9 +2,9 @@ package build.raft.app
 
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataResult
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ScreenError
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
@@ -44,7 +44,7 @@ class SharedReplyThreadAccessIntegrationTest {
             fun dataSource(repository: ConversationRepository) =
                 replyThreadAccessDataSource(
                     repository = repository,
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     payloadStore = payloadStore
                 )
             val base = unresolvedReplyThreadAccessPayload()
@@ -60,8 +60,8 @@ class SharedReplyThreadAccessIntegrationTest {
             assertTrue(secondRepository.replyRequests.isEmpty())
             release.complete(Unit)
 
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(first.await())
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(second.await())
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(first.await())
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(second.await())
             assertTrue(secondRepository.replyRequests.isEmpty())
         }
     }
@@ -70,7 +70,7 @@ class SharedReplyThreadAccessIntegrationTest {
     fun accessFlightFailsClosedWhenAuthBindingChangesDuringFetch() = runBlocking {
         withPortableAppScope { appScope ->
             val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
-            val sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1"))
+            val sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1"))
             val release = CompletableDeferred<Unit>()
             val repository =
                 ReplyThreadAccessConversationRepositoryRecorder(
@@ -91,7 +91,7 @@ class SharedReplyThreadAccessIntegrationTest {
             val firstResult = assertIs<DataResult.Error>(first.await())
             assertEquals("thread_reply_access_authority_changed", firstResult.error.code)
 
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
                 dataSource.fetchThreadPayload(base, persistResult = false)
             )
             assertEquals(2, repository.replyRequests.size)
@@ -117,7 +117,7 @@ class SharedReplyThreadAccessIntegrationTest {
             val dataSource =
                 replyThreadAccessDataSource(
                     repository = repository,
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     payloadStore = payloadStore,
                     replyOriginHydrationGraceMillis = 0L,
                     diagnosticsLogger = diagnostics::add
@@ -181,7 +181,7 @@ class SharedReplyThreadAccessIntegrationTest {
             val dataSource =
                 replyThreadAccessDataSource(
                     repository = repository,
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
                 )
             val store = SharedThreadStore(dataSource = dataSource, scope = appScope)
@@ -231,7 +231,7 @@ class SharedReplyThreadAccessIntegrationTest {
             val dataSource =
                 replyThreadAccessDataSource(
                     repository = repository,
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
                 )
             val store = SharedThreadStore(dataSource = dataSource, scope = appScope)
@@ -272,7 +272,7 @@ class SharedReplyThreadAccessIntegrationTest {
                                     ScreenError(code = "thread_reply_network", retryable = true)
                                 )
                         ),
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     payloadStore = payloadStore
                 )
             assertIs<DataResult.Error>(failingDataSource.fetchThreadPayload(base, persistResult = false))
@@ -288,7 +288,7 @@ class SharedReplyThreadAccessIntegrationTest {
             val retryDataSource =
                 replyThreadAccessDataSource(
                     repository = retryRepository,
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     payloadStore = payloadStore
                 )
             val store = SharedThreadStore(dataSource = retryDataSource, scope = appScope)
@@ -329,7 +329,7 @@ class SharedReplyThreadAccessIntegrationTest {
 
     private fun replyThreadAccessDataSource(
         repository: ConversationRepository,
-        sessionStore: SlockAuthSessionStore,
+        sessionStore: RaftAuthSessionStore,
         payloadStore: SharedThreadPayloadStore,
         replyOriginHydrationGraceMillis: Long = 300L,
         diagnosticsLogger: (String) -> Unit = {},

@@ -15,7 +15,7 @@ import kotlin.test.assertNotNull
 class SearchTooBroadRecoveryTest {
     @Test
     fun recoveryPreservesFiltersAndStartsARecentFirstPageThroughRealRepository() = runTest {
-        val auth = InMemorySlockAuthSessionStore(canonicalV2TestSession())
+        val auth = InMemoryRaftAuthSessionStore(canonicalV2TestSession())
         val network = RecoveryNetworkClient()
         val store = SharedHomeSearchSavedStore(
             authStore = auth,
@@ -67,7 +67,7 @@ class SearchTooBroadRecoveryTest {
 
     @Test
     fun recentRecoveryReplacesRetainedPagesInsteadOfAppending() = runTest {
-        val auth = InMemorySlockAuthSessionStore(canonicalV2TestSession())
+        val auth = InMemoryRaftAuthSessionStore(canonicalV2TestSession())
         val network = RecoveryNetworkClient(respond = { query ->
             when {
                 query.any { it == ("sort" to "recent") } -> recoveryPage("newest", hasMore = false)
@@ -109,7 +109,7 @@ class SearchTooBroadRecoveryTest {
 
     @Test
     fun onlyThePublicTyped422ActivatesRecovery() = runTest {
-        val auth = InMemorySlockAuthSessionStore(canonicalV2TestSession())
+        val auth = InMemoryRaftAuthSessionStore(canonicalV2TestSession())
         val vectors = listOf(
             Triple(422, """{"error":"too broad","code":"QUERY_TOO_BROAD"}""", "QUERY_TOO_BROAD"),
             Triple(422, """{"error":"QUERY_TOO_BROAD"}""", "http_422"),
@@ -135,7 +135,7 @@ class SearchTooBroadRecoveryTest {
 private class RecoveryNetworkClient(
     val response: HomeNetworkResponse? = null,
     val respond: ((List<Pair<String, String>>) -> HomeNetworkResponse)? = null,
-) : SlockNetworkClient {
+) : RaftNetworkClient {
     val calls = mutableListOf<List<Pair<String, String>>>()
     override suspend fun request(
         priority: DataRequestPriority, path: String, method: String,

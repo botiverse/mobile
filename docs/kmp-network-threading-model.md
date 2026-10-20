@@ -3,6 +3,9 @@
 Scope: Slock Kuikly/KMP shared UI, shared data sources, and host network
 modules on Android and OHOS.
 
+> **OHOS note:** HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed
+> from `main`; OHOS sections below are historical and describe `release/1.14.x`.
+
 This document answers the question from task #180: should response parsing
 happen "inside the network process" at the same time as the HTTP request?
 
@@ -22,7 +25,7 @@ Current mobile client shape:
 - The UI/runtime side owns composition, observable/state updates, Kuikly module
   access, and route/store lifecycle.
 - Android host networking runs on a background executor via
-  `SlockKuiklyThreadAdapter.execute(...)`, then OkHttp executes synchronously on
+  `RaftThreadAdapter.execute(...)`, then OkHttp executes synchronously on
   that worker.
 - OHOS host networking runs through an async ArkTS `http.request(...)` path.
 - Shared/KMP response decode/map can hop to `Dispatchers.Default` after the host
@@ -180,7 +183,7 @@ state, mutate observables, or emit route state from a background parse block.
 
 `KuiklySlockNetworkClient.request(...)` runs in shared/KMP and calls:
 
-1. `SlockRequestScheduler.run(...)`
+1. `RaftRequestScheduler.run(...)`
 2. auth middleware
 3. `SlockNetworkModule.requestRaw(...)`
 
@@ -205,7 +208,7 @@ not a process boundary by itself.
 ### Android Host Network Path
 
 `SlockKuiklyNetworkModule` receives the command JSON from Kuikly and runs the
-request inside `SlockKuiklyThreadAdapter.execute("network-request-...")`.
+request inside `RaftThreadAdapter.execute("network-request-...")`.
 
 Inside that worker, Android uses OkHttp synchronously:
 

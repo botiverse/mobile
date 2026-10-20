@@ -64,15 +64,15 @@ as page-boundary candidates.
 
 Current Android host:
 
-- `SlockKuiklyActivity` owns one `KuiklyRenderViewBaseDelegator`.
+- `RaftLegacyHostActivity` owns one `KuiklyRenderViewBaseDelegator`.
 - `onCreate` attaches one native container via
   `kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, pageData)`.
-- `SlockKuiklyTraceFrameLayout` wraps the host container and records
+- `RaftTraceFrameLayout` wraps the host container and records
   `measure`, `layout`, and `dispatchDraw`.
 
 Current shared shell:
 
-- `SlockHomeComponents.kt` contains `ComposeSlockHomePage` and the structural
+- `RaftHomeComponents.kt` contains `ComposeRaftHomePage` and the structural
   home shell with bottom-tab state.
 - The shell carries retained Home/Tasks/Members/Settings UI and owns the
   session-level realtime connection.
@@ -156,7 +156,7 @@ Current guard:
 
 - Production `compose_thread` launch is parsed through `WireThreadLaunchPayload`
   only.
-- Full `KuiklyThreadScreenPayload` route payloads are rejected in production
+- Full `RaftThreadScreenPayload` route payloads are rejected in production
   parser tests.
 - `WireThreadLaunchPayload` descriptor tests enforce the whitelist above.
 
@@ -370,7 +370,7 @@ Pager boundary above.
 - The AppShell Pager remains the session, auth-refresh, realtime-connection,
   selected-server, and top-level window owner.
 - A visible conversation detail is a separate `THREAD_PAGE` child Pager hosted
-  through `SlockKuiklyChildPage`. The parent must not call
+  through `RaftChildPage`. The parent must not call
   `SharedThreadRouteContent` directly or restore an embedded Thread route.
 - Parent-to-child launch data remains `WireThreadLaunchPayload` plus shell
   scope. It contains route identity and intent only. Messages, header display
@@ -444,7 +444,7 @@ selection, Back, and terminal session/server changes:
   new child. A late old-generation load, lifecycle, navigation, or realtime
   callback is ignored.
 
-`SlockKuiklyChildPage` must emit exactly one `didAppear` when
+`RaftChildPage` must emit exactly one `didAppear` when
 `parentAppeared && childActive` becomes true, and exactly one `didDisappear`
 when it becomes false. Recomposition, duplicate window facts, or row updates
 must not replay lifecycle events. A child with `active=false` is clipped,

@@ -22,8 +22,8 @@ class DiagnosticsCallerPipelineConnectedTest {
     fun measuresCallerAndFrameCostAgainstNoOpControl() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
-        SlockAndroidLocalDiagnostics.init(context)
-        assertTrue(SlockAndroidLocalDiagnostics.flush())
+        RaftAndroidLocalDiagnostics.init(context)
+        assertTrue(RaftAndroidLocalDiagnostics.flush())
 
         Debug.startAllocCounting()
         val control: ProbeResult
@@ -35,9 +35,9 @@ class DiagnosticsCallerPipelineConnectedTest {
                 measureSeries(
                     instrumentation,
                     label = "diagnostics",
-                    afterSeries = SlockAndroidLocalDiagnostics::flush,
+                    afterSeries = RaftAndroidLocalDiagnostics::flush,
                 ) { index ->
-                    SlockAndroidLocalDiagnostics.recordLog(
+                    RaftAndroidLocalDiagnostics.recordLog(
                         level = "debug",
                         tag = "Task272Probe",
                         message =
@@ -51,8 +51,8 @@ class DiagnosticsCallerPipelineConnectedTest {
             Debug.stopAllocCounting()
         }
 
-        assertTrue(SlockAndroidLocalDiagnostics.flush())
-        val recentJsonl = SlockGeneralLogRing.exportRecentJsonl()
+        assertTrue(RaftAndroidLocalDiagnostics.flush())
+        val recentJsonl = RaftGeneralLogRing.exportRecentJsonl()
         val probeSequences =
             recentJsonl.lineSequence()
                 .filter { it.contains("diagnostics_probe") }
@@ -60,16 +60,16 @@ class DiagnosticsCallerPipelineConnectedTest {
                 .toList()
 
         instrumentation.runOnMainSync {
-            SlockAndroidLocalDiagnostics.recordCriticalLog(
+            RaftAndroidLocalDiagnostics.recordCriticalLog(
                 level = "debug",
                 tag = "Task272AuthProbe",
                 message = "task272_auth_probe refresh_failed authorization=Bearer auth-secret",
                 includeNonCritical = false,
             )
         }
-        assertTrue(SlockAndroidLocalDiagnostics.flush())
+        assertTrue(RaftAndroidLocalDiagnostics.flush())
         val authProbe =
-            SlockAuthCriticalJournal.recentEntries(context)
+            RaftAuthCriticalJournal.recentEntries(context)
                 .lastOrNull { it.message.contains("task272_auth_probe") }
 
         Log.i(ProbeTag, control.logLine())

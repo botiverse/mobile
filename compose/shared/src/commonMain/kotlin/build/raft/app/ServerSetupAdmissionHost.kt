@@ -8,23 +8,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
-import build.raft.app.data.NetworkSlockServerSetupProjectionApi
-import build.raft.app.data.SlockAuthSessionEventSource
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.NetworkRaftServerSetupProjectionApi
+import build.raft.app.data.RaftAuthSessionEventSource
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
-import build.raft.app.data.SlockNetworkClient
-import build.raft.app.data.SlockServerSetupProjectionRepository
+import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
@@ -76,9 +76,9 @@ internal fun rememberServerSetupAdmissionHost(
     serverId: String,
     environmentId: String,
     webBaseUrl: String,
-    networkClient: SlockNetworkClient,
-    shellAuthStore: SlockAuthSessionStore,
-    authEvents: SlockAuthSessionEventSource,
+    networkClient: RaftNetworkClient,
+    shellAuthStore: RaftAuthSessionStore,
+    authEvents: RaftAuthSessionEventSource,
     featureFlags: SharedServerFeatureFlags,
     authDataSource: SharedAuthDataSource,
     bridge: BridgeModule,
@@ -86,7 +86,7 @@ internal fun rememberServerSetupAdmissionHost(
     refreshSignal: Int,
 ): ServerSetupAdmissionHost {
     val scope = rememberCoroutineScope()
-    val controller = rememberSlockWebViewController()
+    val controller = rememberRaftWebViewController()
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(shellAuthStore, authEvents)
     val accountId = session.user.id.trim()
     val serverSlug = session.servers.firstOrNull { it.id == serverId }?.slug
@@ -99,7 +99,7 @@ internal fun rememberServerSetupAdmissionHost(
         ServerSetupAdmissionIdentity(environmentId, accountId, serverId, generation)
     }
     val repository = remember(networkClient) {
-        SlockServerSetupProjectionRepository(NetworkSlockServerSetupProjectionApi(networkClient))
+        RaftServerSetupProjectionRepository(NetworkRaftServerSetupProjectionApi(networkClient))
     }
     val controllerState = remember(repository) { ServerSetupAdmissionController(repository) }
     var featureDecision by remember(identity) {
@@ -141,12 +141,12 @@ internal fun rememberServerSetupAdmissionHost(
                         is ServerSetupAdmissionState.Loading -> SettingsWebViewLoadingCover()
                         is ServerSetupAdmissionState.Failed -> SettingsWebViewErrorContent(
                             actionLabel = stringResource(MR.strings.common_retry),
-                            actionIcon = SlockLucideIconName.RefreshCw,
+                            actionIcon = RaftLucideIconName.RefreshCw,
                             onAction = retry,
                         )
                         is ServerSetupAdmissionState.Admitted -> Unit
                         is ServerSetupAdmissionState.Blocked -> {
-                            SlockBackHandler(enabled = true, label = "server_setup_onboarding") { }
+                            RaftBackHandler(enabled = true, label = "server_setup_onboarding") { }
                             val binding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
                             val url = remember(webBaseUrl, serverSlug, generation) {
                                 serverSetupOnboardingUrl(webBaseUrl, serverSlug, generation)
@@ -171,7 +171,7 @@ internal fun rememberServerSetupAdmissionHost(
                                         })();
                                     """.trimIndent()
                                 }
-                                Box(Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
+                                Box(Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
                                     SettingsWebViewContent(
                                         url = url,
                                         allowNavigation = false,

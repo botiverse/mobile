@@ -1,9 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.StoredAuthSession
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Pager
 
-internal fun Pager.openSettingsMarketplacePage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsMarketplacePage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Marketplace, storeScope)
 }
 

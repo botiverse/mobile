@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadMessagesPage
@@ -44,7 +44,7 @@ class SharedThreadStoreEnteredScopeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val loader = FakeLoader()
         val store = SharedThreadStore(dataSource = dataSource(loader = loader, identity = { ownerA }), scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload().copy(surfaceKind = KuiklyThreadSurfaceKind.DirectMessage)))
+        store.accept(SharedThreadIntent.Start(basePayload().copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage)))
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
         scope.cancel()
     }
@@ -111,7 +111,7 @@ class SharedThreadStoreEnteredScopeTest {
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
-            sessionStore = InMemorySlockAuthSessionStore(identity().session),
+            sessionStore = InMemoryRaftAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { identity() },
             durableLastKnownReader = reader,
@@ -142,8 +142,8 @@ class SharedThreadStoreEnteredScopeTest {
             selectionGeneration = 1L,
         )
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
             title = "general",
             sourceThreadId = "channel-1",
@@ -151,9 +151,9 @@ class SharedThreadStoreEnteredScopeTest {
             canSend = true,
         )
 
-    private fun replyRoute(): KuiklyThreadScreenPayload =
+    private fun replyRoute(): RaftThreadScreenPayload =
         basePayload().copy(
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "thread-parent-1",
             streamChannelId = "thread-parent-1",
             parentChannelId = "channel-1",
@@ -162,7 +162,7 @@ class SharedThreadStoreEnteredScopeTest {
             originStatus = "loading",
         )
 
-    private fun contentPayload(body: String): KuiklyThreadScreenPayload =
+    private fun contentPayload(body: String): RaftThreadScreenPayload =
         buildSharedThreadPayloadFromMessagesPage(
             basePayload = basePayload(),
             page = ThreadMessagesPage(

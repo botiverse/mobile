@@ -11,11 +11,11 @@ pixels as a raw `Offset`.
 - `onGloballyPositioned { coords -> coords.positionInRoot() }` returns root
   coordinates in pixels.
 - `coords.size.width` and `coords.size.height` are pixels.
-- `SlockFloatingOverlayLayout.origin` and `SlockFloatingOverlayLayout.size` are
+- `RaftFloatingOverlayLayout.origin` and `RaftFloatingOverlayLayout.size` are
   pixels.
-- `SlockAnchoredPopover(anchor = ...)` accepts a typed `SlockPopoverAnchor`.
+- `RaftAnchoredPopover(anchor = ...)` accepts a typed `RaftPopoverAnchor`.
   Its opaque root pixels are unwrapped only by the shared overlay layout.
-- `SlockFloatingOverlayLayout.positionContent(...)` returns a pixel offset,
+- `RaftFloatingOverlayLayout.positionContent(...)` returns a pixel offset,
   consumed by `Modifier.offset { IntOffset(...) }`.
 
 Do not convert anchors through `LocalDensity`, `toDp()`, `.dp`, or
@@ -29,15 +29,15 @@ explicitly named `*Dp`.
 ## Correct Live Anchor Pattern
 
 ```kotlin
-val anchorRef = remember(identity) { SlockLiveRootAnchorRef(identity) }
+val anchorRef = remember(identity) { RaftLiveRootAnchorRef(identity) }
 
-Modifier.slockCaptureLiveRootAnchor(anchorRef)
+Modifier.raftCaptureLiveRootAnchor(anchorRef)
 
 // Resolve at the click/long-press that opens the popover.
-anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
+anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
 ```
 
-For a programmatic open, retain a typed `SlockPopoverAnchorResolver` and call
+For a programmatic open, retain a typed `RaftPopoverAnchorResolver` and call
 `resolve()` only when opening. The resolver keeps current coordinates, size,
 translation, and scale; detached coordinates fail closed. Every resolver owns a
 stable identity so a Lazy item cannot reuse another item's anchor.
@@ -49,7 +49,7 @@ business screens.
 
 ## Known Regression Class
 
-Task #258 found this exact bug in `SlockAnchoredToolbarChip`: the trigger anchor
+Task #258 found this exact bug in `RaftAnchoredToolbarChip`: the trigger anchor
 converted `positionInRoot()` and the trigger height to dp before opening the
 Home Search / Tasks filter dropdowns. Android then aligned the dropdown around
 the trigger's top instead of opening from the trigger bottom.
@@ -58,11 +58,11 @@ The original fix resolved the bottom edge in pixels. The hardened contract now
 keeps that calculation behind the typed live resolver:
 
 ```kotlin
-anchorRef.resolve(SlockPopoverLocalPoint.BottomStart)
+anchorRef.resolve(RaftPopoverLocalPoint.BottomStart)
 ```
 
 ## Relevant Code
 
-- `compose/shared/src/commonMain/kotlin/build/raft/app/SlockFloatingOverlay.kt`
-- `compose/shared/src/commonMain/kotlin/build/raft/app/SlockLiveRootAnchorRef.kt`
-- `compose/shared/src/commonMain/kotlin/build/raft/app/components/SlockBrutalComponents.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/RaftFloatingOverlay.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/RaftLiveRootAnchorRef.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftBrutalComponents.kt`

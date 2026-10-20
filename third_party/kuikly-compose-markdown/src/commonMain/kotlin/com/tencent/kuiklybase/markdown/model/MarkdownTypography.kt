@@ -1,8 +1,8 @@
 package com.tencent.kuiklybase.markdown.model
 
 import androidx.compose.runtime.Immutable
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
-import com.tencent.kuikly.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
 
 interface MarkdownTypography {
     val text: TextStyle

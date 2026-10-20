@@ -6,13 +6,12 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.compat.pager.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.coroutines.flow.flowOf
 
@@ -25,9 +24,9 @@ internal class ChannelMembersParityVisualPage : BasePager() {
         super.willInit()
         val variant = pageData.params.optString("variant", "roster")
         setContent {
-            SlockThemeProvider(brutalTheme) {
+            RaftThemeProvider(raftLightTheme) {
                 // Match ThreadMembersPageScreen's production outer surface.
-                Box(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
                     ChannelMembersParityContent(variant)
                 }
             }
@@ -41,14 +40,14 @@ private fun ChannelMembersParityContent(variant: String) {
     StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
     DisposableEffect(Unit) { onDispose { StringDesc.localeType = previousLocale } }
     var members by remember { mutableStateOf(listOf(
-        KuiklyThreadMemberItem("human-alex", "Alex", handle = "alex", effectiveChannelRole = "owner"),
-        KuiklyThreadMemberItem("human-maya", "Maya", handle = "maya", description = "Product Designer"),
-        KuiklyThreadMemberItem("1", "Grace", handle = "grace", kind = "agent", effectiveChannelRole = "admin"),
-        KuiklyThreadMemberItem("2", "Josh", handle = "josh", kind = "agent"),
-        KuiklyThreadMemberItem("3", "Agent", handle = "agent", kind = "agent", sourceServerId = "peer", sourceServerLabel = "Peer Server", canRemove = false),
+        RaftThreadMemberItem("human-alex", "Alex", handle = "alex", effectiveChannelRole = "owner"),
+        RaftThreadMemberItem("human-maya", "Maya", handle = "maya", description = "Product Designer"),
+        RaftThreadMemberItem("1", "Grace", handle = "grace", kind = "agent", effectiveChannelRole = "admin"),
+        RaftThreadMemberItem("2", "Josh", handle = "josh", kind = "agent"),
+        RaftThreadMemberItem("3", "Agent", handle = "agent", kind = "agent", sourceServerId = "peer", sourceServerLabel = "Peer Server", canRemove = false),
     )) }
-    val candidates = remember { listOf(KuiklyThreadMemberItem("candidate", "Quill", handle = "quill", kind = "agent")) +
-        if (variant == "interaction") listOf(KuiklyThreadMemberItem("human-taylor", "Taylor", handle = "taylor")) else emptyList() }
+    val candidates = remember { listOf(RaftThreadMemberItem("candidate", "Quill", handle = "quill", kind = "agent")) +
+        if (variant == "interaction") listOf(RaftThreadMemberItem("human-taylor", "Taylor", handle = "taylor")) else emptyList() }
     var submitStatus by remember { mutableStateOf("idle") }
     var submitAttempts by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf(TextFieldValue(if (variant == "search") "Grace" else "")) }
@@ -56,8 +55,8 @@ private fun ChannelMembersParityContent(variant: String) {
     var humansExpanded by remember { mutableStateOf(true) }
     var externalExpanded by remember { mutableStateOf(true) }
     var addVisible by remember { mutableStateOf(variant == "add" || variant == "interaction") }
-    val resolver: SlockAgentStatusResolver = remember { { id -> flowOf(
-        slockAgentStatusIndicatorState(
+    val resolver: RaftAgentStatusResolver = remember { { id -> flowOf(
+        raftAgentStatusIndicatorState(
             status = if (id == "2") AgentStatus.Offline else AgentStatus.Online,
             presence = if (id == "2") Presence.Offline else Presence.Active,
             statusLabel = if (id == "2") "offline" else "online", external = false,
@@ -73,7 +72,7 @@ private fun ChannelMembersParityContent(variant: String) {
         onAddVisibleChange = { addVisible = it }, addMemberStatus = submitStatus, addMemberErrorCode = "member_add_failed",
         removalGate = ThreadMemberRemovalGateState(), membersFailed = false, membersLoading = false,
         refreshing = false, canAddMembers = true, canCreateAgents = true, agentStatusResolver = resolver,
-        memberAvatarResolver = EmptySlockMemberAvatarResolver, onBack = {}, onRefresh = {},
+        memberAvatarResolver = EmptyRaftMemberAvatarResolver, onBack = {}, onRefresh = {},
         onOpenMember = {}, onRemoveMember = {}, onSubmit = { selected ->
             if (variant == "interaction") {
                 submitAttempts += 1

@@ -18,7 +18,7 @@ class RuntimeI18nDisplayBoundaryTest {
             "频道",
             localizedThreadHeaderTitle(
                 "Channel",
-                KuiklyThreadSurfaceKind.Channel,
+                RaftThreadSurfaceKind.Channel,
                 "话题",
                 "频道",
                 "私聊"
@@ -28,7 +28,7 @@ class RuntimeI18nDisplayBoundaryTest {
             "私聊",
             localizedThreadHeaderTitle(
                 "Direct Message",
-                KuiklyThreadSurfaceKind.DirectMessage,
+                RaftThreadSurfaceKind.DirectMessage,
                 "话题",
                 "频道",
                 "私聊"
@@ -38,7 +38,7 @@ class RuntimeI18nDisplayBoundaryTest {
             "话题",
             localizedThreadHeaderTitle(
                 ThreadReplyPageTitle,
-                KuiklyThreadSurfaceKind.ReplyThread,
+                RaftThreadSurfaceKind.ReplyThread,
                 "话题",
                 "频道",
                 "私聊"
@@ -48,7 +48,7 @@ class RuntimeI18nDisplayBoundaryTest {
             "product",
             localizedThreadHeaderTitle(
                 "product",
-                KuiklyThreadSurfaceKind.Channel,
+                RaftThreadSurfaceKind.Channel,
                 "话题",
                 "频道",
                 "私聊"
@@ -58,7 +58,7 @@ class RuntimeI18nDisplayBoundaryTest {
             "Ada",
             localizedThreadHeaderTitle(
                 "Ada",
-                KuiklyThreadSurfaceKind.DirectMessage,
+                RaftThreadSurfaceKind.DirectMessage,
                 "话题",
                 "频道",
                 "私聊"

@@ -15,10 +15,10 @@ package build.raft.app
  * - Do not add new heuristic matching dimensions (timestamps are forbidden in
  *   decision paths; see binding doc §3 obligation 5).
  */
-internal fun List<KuiklyThreadMessageItem>.absorbingCanonicalSendEchoes(
-    canonicalMessages: List<KuiklyThreadMessageItem>,
+internal fun List<RaftThreadMessageItem>.absorbingCanonicalSendEchoes(
+    canonicalMessages: List<RaftThreadMessageItem>,
     matchPolicy: ThreadSendEchoMatchPolicy = ThreadSendEchoMatchPolicy.LegacyCompatible
-): List<KuiklyThreadMessageItem> {
+): List<RaftThreadMessageItem> {
     if (canonicalMessages.isEmpty()) return this
     val retained =
         filterNot { localMessage ->
@@ -37,7 +37,7 @@ internal enum class ThreadSendEchoMatchPolicy {
     LegacyCompatible
 }
 
-internal fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
+internal fun RaftThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
 
@@ -47,7 +47,7 @@ internal fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
  * the server echoes the same idempotency key it is no longer an unresolved
  * failure and must not remain beside the canonical bubble.
  */
-private fun KuiklyThreadMessageItem.isPendingLocalSendShadow(): Boolean =
+private fun RaftThreadMessageItem.isPendingLocalSendShadow(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         pendingSendContext != null &&
         (
@@ -55,8 +55,8 @@ private fun KuiklyThreadMessageItem.isPendingLocalSendShadow(): Boolean =
                 deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
         )
 
-private fun KuiklyThreadMessageItem.matchesCanonicalSendEcho(
-    canonicalMessage: KuiklyThreadMessageItem,
+private fun RaftThreadMessageItem.matchesCanonicalSendEcho(
+    canonicalMessage: RaftThreadMessageItem,
     matchPolicy: ThreadSendEchoMatchPolicy
 ): Boolean {
     val context = pendingSendContext ?: return false

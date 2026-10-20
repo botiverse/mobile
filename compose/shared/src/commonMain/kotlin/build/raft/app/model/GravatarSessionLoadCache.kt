@@ -68,4 +68,4 @@ internal class GravatarSessionLoadCache(
     }
 }
 
-internal val slockGravatarSessionLoadCache = GravatarSessionLoadCache()
+internal val raftGravatarSessionLoadCache = GravatarSessionLoadCache()

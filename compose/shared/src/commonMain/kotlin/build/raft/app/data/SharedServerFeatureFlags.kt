@@ -68,7 +68,7 @@ const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_
 const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
 /**
- * Task #153 DNS-over-HTTPS fallback for the curl transport (see SlockDohFallbackPolicy). Default ON
+ * Task #153 DNS-over-HTTPS fallback for the curl transport (see RaftDohFallbackPolicy). Default ON
  * (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); the server turns it off with an explicit
  * decision such as a kill switch. Kept in the last-known store so a cold start during a DNS outage,
  * when evaluate itself cannot reach the server, still honours the last explicit decision; internal
@@ -79,7 +79,7 @@ const val MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY: String = "mobile_doh_fallback_v0
 /**
  * Task #154: realtime (Socket.IO) over NetworkKMM's curl client instead of the platform Socket.IO
  * library. Default OFF (an ordinary flag: no decision reads off); read per server at each connect
- * and reconnect (see SlockCurlSocketIoPolicy), so turning it on or off takes effect on the next
+ * and reconnect (see RaftCurlSocketIoPolicy), so turning it on or off takes effect on the next
  * connection. Internal Android builds can force it through Local Feature Overrides.
  */
 const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_v0"
@@ -189,14 +189,14 @@ data class ServerFeatureFlagSnapshot(
     }
 }
 
-interface SlockFeatureFlagsApi {
+interface RaftFeatureFlagsApi {
     suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse
 }
 
-internal class SlockFeatureFlagsNetworkApi(
-    private val networkClient: SlockNetworkClient,
+internal class RaftFeatureFlagsNetworkApi(
+    private val networkClient: RaftNetworkClient,
     private val clientContext: () -> FeatureFlagClientContext = ::currentFeatureFlagClientContext,
-) : SlockFeatureFlagsApi {
+) : RaftFeatureFlagsApi {
     override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
         val client = clientContext()
         return networkClient.request(
@@ -237,7 +237,7 @@ fun interface ServerFeatureFlagDiagnosticOverride {
 }
 
 class SharedServerFeatureFlags(
-    private val api: SlockFeatureFlagsApi,
+    private val api: RaftFeatureFlagsApi,
     private val keys: List<String> = REGISTERED_SERVER_FEATURE_FLAG_KEYS,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val diagnosticOverride: ServerFeatureFlagDiagnosticOverride? = null,

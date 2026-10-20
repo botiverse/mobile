@@ -41,7 +41,7 @@ internal data class ThreadLinkedTaskReferences(
         get() = messageIds.isEmpty() && taskIds.isEmpty() && taskNumbers.isEmpty()
 }
 
-internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): KuiklyThreadMessageItem {
+internal fun RaftThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): RaftThreadMessageItem {
     linkedTask ?: return this
     return copy(
         taskId = linkedTask.id.value,
@@ -53,9 +53,9 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
     )
 }
 
-internal fun KuiklyThreadMessageItem.withLinkedTaskProjection(
+internal fun RaftThreadMessageItem.withLinkedTaskProjection(
     projection: ThreadLinkedTasksProjection
-): KuiklyThreadMessageItem {
+): RaftThreadMessageItem {
     val linkedTask = projection.lookup.threadLinkedTaskForMessage(this)
     return when {
         linkedTask != null -> withLinkedTask(linkedTask)
@@ -64,7 +64,7 @@ internal fun KuiklyThreadMessageItem.withLinkedTaskProjection(
     }
 }
 
-internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =
+internal fun RaftThreadMessageItem.withoutLinkedTask(): RaftThreadMessageItem =
     if (
         taskId == null &&
         taskNumber == null &&
@@ -85,7 +85,7 @@ internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageIte
         )
     }
 
-internal fun KuiklyThreadScreenPayload.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {
+internal fun RaftThreadScreenPayload.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {
     val messages = buildList {
         originMessage?.let(::add)
         addAll(this@threadLinkedTaskReferences.messages)
@@ -277,9 +277,43 @@ private fun TaskSummary.matchesThreadLinkedTaskReferences(references: ThreadLink
         id.value.trim().takeIf { it.isNotBlank() }?.let { it in references.taskIds } == true ||
         taskNumber?.let { it in references.taskNumbers } == true
 
-internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: KuiklyThreadMessageItem): TaskSummary? =
+internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: RaftThreadMessageItem): TaskSummary? =
     get(message.id) ?: message.taskId?.trim()?.takeIf { it.isNotBlank() }?.let { taskId ->
         get(ThreadTaskIdLookupPrefix + taskId)
     } ?: message.taskNumber?.let { taskNumber ->
         get(ThreadTaskNumberLookupPrefix + taskNumber)
     }
+
+/**
+ * Thread-wide task status by task number for inline `#N` chips in this thread's Markdown
+ * (web MessageItem `taskByNumber`): server tasks, then channel tasks (channel wins). The message's
+ * own linked task is layered on per message body by `RaftMarkdownOwnTaskStatusScope`, as on web.
+ *
+ * Returns `null` until the channel or the server task slice has loaded, so task refs keep the
+ * legacy chip instead of flashing the grey "unknown task" badge before turning status-coloured.
+ */
+internal fun threadMarkdownTaskStatusesByNumber(
+    channelTasks: List<TaskSummary>,
+    serverTasks: List<TaskSummary>,
+    loaded: Boolean,
+): Map<Int, TaskStatus>? {
+    if (!loaded) return null
+    val statuses = LinkedHashMap<Int, TaskStatus>()
+    serverTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
+    channelTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
+    return statuses
+}
+
+/**
+ * Either task slice feeding the thread's inline task chips has loaded at least once. A slice that
+ * was demoted to [SharedTasksDataStoreStatus.Partial] (canonical conflict, refetch pending) but
+ * still holds tasks counts as loaded, so chips do not flip back to the legacy style meanwhile.
+ */
+internal fun threadMarkdownTaskSourceLoaded(
+    channelProjectionSlice: SharedTasksProjectionSlice,
+    serverProjectionSlice: SharedTasksProjectionSlice,
+): Boolean = channelProjectionSlice.hasUsableTasks() || serverProjectionSlice.hasUsableTasks()
+
+private fun SharedTasksProjectionSlice.hasUsableTasks(): Boolean =
+    status == SharedTasksDataStoreStatus.Loaded ||
+        (status == SharedTasksDataStoreStatus.Partial && tasks.isNotEmpty())

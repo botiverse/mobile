@@ -1,13 +1,19 @@
 package build.raft.app.data
 
 import build.raft.app.data.realtime.GeneratedRealtimeContract
-import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.data.realtime.RealtimeCursorPolicy
+import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeProcessDesiredSession
 import build.raft.app.data.realtime.RealtimeSocketEvents
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.withEntry
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,12 +23,9 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class ProcessRealtimeIngressCoordinatorTest {
     @Test
@@ -30,7 +33,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         val auth = FakeAuthStore()
         val registry =
             RealtimeAuthorityRegistry(
-                KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
                 processInstanceId = "process-ingress-test",
             )
         val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
@@ -46,7 +49,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         val roomsJoined = mutableListOf<Pair<String, Long>>()
         val owner =
             SharedRealtimeDomainEventOwner(
-                cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+                cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
                 runIfCurrentGrant = provider::runIfCurrentGrant,
                 runWithCurrentMessageGrant = provider::runWithCurrentMessageGrant,
             )
@@ -57,12 +60,12 @@ class ProcessRealtimeIngressCoordinatorTest {
             },
         )
         ProcessRealtimeIngressCoordinator(
-            events = KuiklyRealtimeEvents(bus),
+            events = RaftRealtimeEvents(bus),
             authorityProvider = provider,
             authorityFlow = provider.authorityFlow("process-realtime-host"),
             domainOwner = owner,
             authStore = auth,
-            environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore()),
+            environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
             mapper = RealtimeEventMapper(),
             nativeHost = host,
             scope = scope,
@@ -74,16 +77,16 @@ class ProcessRealtimeIngressCoordinatorTest {
         yield()
 
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 3L),
         )
         yield()
         assertEquals(listOf(authority.witness.connectionFamilyId to 3L), presenceConnections)
 
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 4L)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+                .withEntry(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
         )
         yield()
         assertEquals(
@@ -93,20 +96,20 @@ class ProcessRealtimeIngressCoordinatorTest {
         )
 
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 3L)
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
+                .withEntry(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined),
         )
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 0L)
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined),
+                .withEntry(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined),
         )
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             presenceTransportEnvelope(authority, epoch = 5L)
-                .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+                .withEntry(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined)
+                .withEntry(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
         )
         yield()
         assertEquals(
@@ -117,7 +120,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         assertEquals(listOf(authority.witness.connectionFamilyId to 3L), presenceConnections)
 
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             eventEnvelope(
                 authority,
                 RealtimeSocketEvents.SyncResumeResponse,
@@ -129,7 +132,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         assertEquals(listOf(42L), host.advancedSeqs)
 
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             eventEnvelope(
                 authority,
                 GeneratedRealtimeContract.SocketEvent.ServerMembershipRemoved,
@@ -142,7 +145,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         assertTrue(provider.runIfCurrentGrant(oldGrant) {})
 
         bus.post(
-            SlockRealtimeNotifyContract.EventName,
+            RaftRealtimeNotifyContract.EventName,
             eventEnvelope(
                 authority,
                 GeneratedRealtimeContract.SocketEvent.ServerMembershipRemoved,
@@ -163,45 +166,47 @@ class ProcessRealtimeIngressCoordinatorTest {
         authority: RealtimeScopeAuthority,
         eventName: String,
         rawPayload: String,
-    ): JSONObject =
-        JSONObject()
-            .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
-            .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload)
-            .put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
-            .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+    ): JsonObject =
+        buildJsonObject {
+            put(RaftRealtimeNotifyContract.KeyEventName, eventName)
+            put(RaftRealtimeNotifyContract.KeyRawPayload, rawPayload)
+            put(RaftRealtimeNotifyContract.KeyServerId, "server-a")
+            put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
+            put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
+            put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
+            put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+        }
 
     private fun presenceTransportEnvelope(
         authority: RealtimeScopeAuthority,
         epoch: Long,
-    ): JSONObject =
-        JSONObject()
-            .put(
-                SlockRealtimeNotifyContract.KeyAction,
-                SlockRealtimeNotifyContract.ActionPresenceTransportConnected,
+    ): JsonObject =
+        buildJsonObject {
+            put(
+                RaftRealtimeNotifyContract.KeyAction,
+                RaftRealtimeNotifyContract.ActionPresenceTransportConnected,
             )
-            .put(SlockRealtimeNotifyContract.KeyServerId, "server-a")
-            .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
-            .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+            put(RaftRealtimeNotifyContract.KeyServerId, "server-a")
+            put(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+            put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, authority.witness.scopeLeaseId)
+            put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, authority.witness.principalId)
+            put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, authority.witness.authGeneration)
+            put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, authority.witness.connectionFamilyId)
+        }
 
-    private class FakeEventBus : SlockEventBus {
-        private val listeners = mutableMapOf<String, MutableList<(JSONObject?) -> Unit>>()
+    private class FakeEventBus : RaftEventBus {
+        private val listeners = mutableMapOf<String, MutableList<(JsonObject?) -> Unit>>()
 
         override fun observe(
             eventName: String,
             crossProcess: Boolean,
-            listener: (JSONObject?) -> Unit,
+            listener: (JsonObject?) -> Unit,
         ): RealtimeSubscription {
             listeners.getOrPut(eventName) { mutableListOf() } += listener
             return RealtimeSubscription { listeners[eventName]?.remove(listener) }
         }
 
-        override fun post(eventName: String, eventData: JSONObject, crossProcess: Boolean, source: String) {
+        override fun post(eventName: String, eventData: JsonObject, crossProcess: Boolean, source: String) {
             listeners[eventName].orEmpty().toList().forEach { it(eventData) }
         }
     }
@@ -228,7 +233,7 @@ class ProcessRealtimeIngressCoordinatorTest {
         }
     }
 
-    private class FakeAuthStore : SlockAuthSessionStore, SlockAuthSessionEventSource {
+    private class FakeAuthStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
         private var session: StoredAuthSession? = null
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
         override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()

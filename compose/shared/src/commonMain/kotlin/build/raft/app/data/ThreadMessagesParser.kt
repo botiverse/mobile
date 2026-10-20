@@ -1,32 +1,37 @@
 package build.raft.app.data
 
+import build.raft.app.RaftThreadAttachmentItem
+import build.raft.app.RaftThreadMessageCommentHostSource
+import build.raft.app.RaftThreadMessageCommentRef
+import build.raft.app.RaftThreadMessageItem
+import build.raft.app.RaftThreadReactionItem
+import build.raft.app.RaftThreadScreenPayload
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.MemberKindWireContract
-import build.raft.app.commentHostTypeOrNull
-import build.raft.app.commentHostRouteKindOrNull
-import build.raft.app.KuiklyThreadAttachmentItem
-import build.raft.app.KuiklyThreadMessageCommentHostSource
-import build.raft.app.KuiklyThreadMessageCommentRef
-import build.raft.app.KuiklyThreadMessageItem
-import build.raft.app.KuiklyThreadReactionItem
-import build.raft.app.KuiklyThreadScreenPayload
-import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.SharedThreadComposerAttachment
+import build.raft.app.commentHostRouteKindOrNull
+import build.raft.app.commentHostTypeOrNull
 import build.raft.app.matchesResolvedReplyThreadTimeline
 import build.raft.app.memberKindWireValue
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageType
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.model.providerLabel
+import build.raft.app.optJsonArray
+import build.raft.app.optJsonObject
+import build.raft.app.optLong
+import build.raft.app.optString
+import build.raft.app.parseRaftJsonObject
 import build.raft.app.replyThreadContentChannelId
 import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictMessageTypeOrNull
 import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.strictTaskStatusOrNull
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MessageType
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
-import build.raft.app.model.providerLabel
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Strict, React-aligned parsers for the thread message timeline + attachment
@@ -158,7 +163,7 @@ private data class WireAttachmentsResponse(
 )
 
 internal fun parseSharedThreadUploadedAttachments(
-    response: JSONObject?
+    response: JsonObject?
 ): List<SharedThreadComposerAttachment> {
     val bodyText = response?.optString("bodyText").orEmpty()
     if (bodyText.isBlank()) return emptyList()
@@ -182,16 +187,16 @@ internal fun parseSharedThreadUploadedAttachments(
 
 @OptIn(ExperimentalEncodingApi::class)
 internal fun parseSharedThreadPickedPlatformFiles(
-    response: JSONObject?
+    response: JsonObject?
 ): List<PlatformFile> {
-    val filesJson = response?.optJSONArray("files")
+    val filesJson = response?.optJsonArray("files")
         ?: response?.optString("bodyText").orEmpty()
             .takeIf { it.isNotBlank() }
-            ?.let { bodyText -> runCatching { JSONObject(bodyText).optJSONArray("files") }.getOrNull() }
+            ?.let { bodyText -> runCatching { parseRaftJsonObject(bodyText).optJsonArray("files") }.getOrNull() }
         ?: return emptyList()
     return buildList {
-        for (index in 0 until filesJson.length()) {
-            val fileJson = filesJson.optJSONObject(index) ?: continue
+        for (index in 0 until filesJson.size) {
+            val fileJson = filesJson.optJsonObject(index) ?: continue
             val fileName = fileJson.optString("fileName").takeIf { it.isNotBlank() }
                 ?: "attachment-${index + 1}"
             val fileRef = fileJson.optString("fileRef").takeIf { it.isNotBlank() }
@@ -216,11 +221,11 @@ internal fun parseSharedThreadPickedPlatformFiles(
 }
 
 internal fun buildSharedThreadPayloadFromMessagesPage(
-    basePayload: KuiklyThreadScreenPayload,
+    basePayload: RaftThreadScreenPayload,
     page: ThreadMessagesPage,
     session: StoredAuthSession?,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val currentUserId = session?.user?.id
     val messages =
         page.messages
@@ -236,15 +241,15 @@ internal fun buildSharedThreadPayloadFromMessagesPage(
 }
 
 internal fun appendSharedThreadSentMessageFromPage(
-    basePayload: KuiklyThreadScreenPayload,
+    basePayload: RaftThreadScreenPayload,
     page: ThreadMessagesPage,
     session: StoredAuthSession?,
     trustedReplyThreadChannelId: String? = null,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val trustSingleReplySend =
         page.messages.size == 1 &&
-            basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
             trustedReplyThreadChannelId
                 ?.trim()
                 ?.takeIf { it.isNotBlank() && it == basePayload.replyThreadContentChannelId() } != null
@@ -268,7 +273,7 @@ internal fun appendSharedThreadSentMessageFromPage(
 private fun WireMessage.toMessageItem(
     currentUserId: String?,
     diagnostics: (String) -> Unit,
-): KuiklyThreadMessageItem? {
+): RaftThreadMessageItem? {
     val resolvedMessageType = messageType.strictMessageTypeOrNull("thread_wire_message", diagnostics) ?: return null
     val senderKind =
         senderType.strictMemberKindOrNull(
@@ -299,7 +304,7 @@ private fun WireMessage.toMessageItem(
     val resolvedName = resolvedExternalAuthor?.displayName
         ?: senderName?.takeIf { it.isNotBlank() } ?: "Unknown"
     val summary = threadSummary
-    return KuiklyThreadMessageItem(
+    return RaftThreadMessageItem(
         id = id,
         authorId = senderId.ifBlank { "unknown" },
         authorName = resolvedName,
@@ -313,7 +318,7 @@ private fun WireMessage.toMessageItem(
         externalAuthor = resolvedExternalAuthor,
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
-        createdAtEpochMillis = parseSlockTimestampEpochMillisOrNull(createdAt),
+        createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),
         seq = seq,
         messageType = resolvedMessageType.name,
         systemEventType = null,
@@ -340,8 +345,8 @@ private fun WireMessage.toMessageItem(
     )
 }
 
-private fun WireMessage.belongsToBasePayloadThread(basePayload: KuiklyThreadScreenPayload): Boolean {
-    if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return true
+private fun WireMessage.belongsToBasePayloadThread(basePayload: RaftThreadScreenPayload): Boolean {
+    if (basePayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread) return true
     val selectedThreadId = basePayload.replyThreadContentChannelId() ?: return true
     return matchesResolvedReplyThreadTimeline(
         resolvedThreadChannelId = selectedThreadId,
@@ -353,8 +358,8 @@ private fun WireMessage.belongsToBasePayloadThread(basePayload: KuiklyThreadScre
 private fun firstNonBlank(vararg values: String?): String? =
     values.firstOrNull { !it.isNullOrBlank() }?.trim()
 
-private fun WireReaction.toReactionItem(currentUserId: String?): KuiklyThreadReactionItem =
-    KuiklyThreadReactionItem(
+private fun WireReaction.toReactionItem(currentUserId: String?): RaftThreadReactionItem =
+    RaftThreadReactionItem(
         emoji = emoji,
         count = count,
         selected = currentUserId != null && currentUserId in reactorIds,
@@ -362,8 +367,8 @@ private fun WireReaction.toReactionItem(currentUserId: String?): KuiklyThreadRea
         reactorNames = reactorNames
     )
 
-private fun WireAttachment.toAttachmentItem(index: Int): KuiklyThreadAttachmentItem =
-    KuiklyThreadAttachmentItem(
+private fun WireAttachment.toAttachmentItem(index: Int): RaftThreadAttachmentItem =
+    RaftThreadAttachmentItem(
         id = id,
         name = filename.ifBlank { "Attachment ${index + 1}" },
         mimeType = mimeType,
@@ -373,10 +378,10 @@ private fun WireAttachment.toAttachmentItem(index: Int): KuiklyThreadAttachmentI
         commentCount = commentCount.coerceAtLeast(0)
     )
 
-private fun WireCommentRef.toMessageCommentRef(): KuiklyThreadMessageCommentRef? {
+private fun WireCommentRef.toMessageCommentRef(): RaftThreadMessageCommentRef? {
     val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
     val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
-    return KuiklyThreadMessageCommentRef(
+    return RaftThreadMessageCommentRef(
         attachmentId = cleanAttachmentId,
         filename = cleanFilename,
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() },
@@ -385,11 +390,11 @@ private fun WireCommentRef.toMessageCommentRef(): KuiklyThreadMessageCommentRef?
     )
 }
 
-private fun WireCommentHostSource.toMessageCommentHostSource(): KuiklyThreadMessageCommentHostSource? {
+private fun WireCommentHostSource.toMessageCommentHostSource(): RaftThreadMessageCommentHostSource? {
     val cleanType = type.commentHostTypeOrNull() ?: return null
     val cleanRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
     val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
-    return KuiklyThreadMessageCommentHostSource(
+    return RaftThreadMessageCommentHostSource(
         type = cleanType,
         routeKind = cleanRouteKind,
         channelId = cleanChannelId,

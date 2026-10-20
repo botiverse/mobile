@@ -1,11 +1,11 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
-import build.raft.app.data.SlockShellStoreScope
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -76,8 +76,8 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun settingsDisposeAbortsClaimedAndPartialSessionsAndRetiresRefs() {
-        val registry = SlockFilePreviewEphemeralActionRegistry()
-        val ledger = SlockFilePreviewEphemeralCleanupLedger(InMemorySlockKeyValueStore())
+        val registry = RaftFilePreviewEphemeralActionRegistry()
+        val ledger = RaftFilePreviewEphemeralCleanupLedger(InMemoryRaftKeyValueStore())
         val tracker = SettingsHandsFeedbackImageEditSessionTracker()
         val sessionId = "settings-preview-a"
         val threadKey = "feedback-group-a"
@@ -101,7 +101,7 @@ class SettingsHandsFeedbackImageEditTest {
             )
         )
         ledger.replace(sessionId, pending.pendingFileRefs)
-        assertIs<SlockFilePreviewEphemeralActionClaim.Accepted>(
+        assertIs<RaftFilePreviewEphemeralActionClaim.Accepted>(
             registry.claim(sessionId, threadKey, "action-0", refs.getValue("action-0"))
         )
         tracker.track(sessionId)
@@ -200,7 +200,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun requestCarriesExplicitScopedGroupAndEditableGalleryIntent() {
-        val sourceStoreScope = SlockShellStoreScope.create("settings-shell-a", "server-a")
+        val sourceStoreScope = RaftShellStoreScope.create("settings-shell-a", "server-a")
         val files =
             listOf(
                 image("original-0", "file:///picked/zero.png"),
@@ -238,7 +238,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun requestRejectsMissingSessionOrDurablePickerInputs() {
-        val sourceStoreScope = SlockShellStoreScope.create("settings-shell-a", "server-a")
+        val sourceStoreScope = RaftShellStoreScope.create("settings-shell-a", "server-a")
         val validFile = image("original", "file:///picked/original.png")
 
         assertNull(
@@ -281,7 +281,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun ohosPickerResultCarriesSettingsAuthorityIntoFilePreviewLaunch() {
-        val sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a")
+        val sourceStoreScope = RaftShellStoreScope.create("legacy", "server-a")
         val picked =
             PlatformFile(
                 id = "ohos-picked",
@@ -296,7 +296,7 @@ class SettingsHandsFeedbackImageEditTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
                 fileCount = normalized.size,
-                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(normalized)
+                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(normalized)
             )
         )
 
@@ -311,23 +311,23 @@ class SettingsHandsFeedbackImageEditTest {
                 )
             )
         val resolvedScope =
-            resolveSlockFilePreviewSourceStoreScope(
+            resolveRaftFilePreviewSourceStoreScope(
                 sourcePageData = JSONObject(),
                 sourceStoreScope = request.sourceStoreScope
             )
         val pageData =
-            slockFilePreviewLaunchPageData(
+            raftFilePreviewLaunchPageData(
                 launch =
-                    slockFilePreviewLaunchDescriptor(
+                    raftFilePreviewLaunchDescriptor(
                         sessionId = "ohos-preview",
                         payload = request.previewPayload
                     ),
                 storeScope = requireNotNull(resolvedScope)
             )
 
-        assertEquals(SLOCK_FILE_PREVIEW_PAGE, pageData.optString("pageName"))
-        assertEquals("legacy", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals(RAFT_FILE_PREVIEW_PAGE, pageData.optString("pageName"))
+        assertEquals("legacy", pageData.optString(RAFT_SHELL_INSTANCE_ID))
+        assertEquals("server-a", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals("file://media/Photo/11604/IMG_11604.jpg", request.previewPayload.imageUrl)
         assertTrue(request.previewPayload.composerImageCanEdit)
         assertTrue(request.previewPayload.composerImageCanComplete)
@@ -350,7 +350,7 @@ class SettingsHandsFeedbackImageEditTest {
         val session = session(expectedCount = 1)
         val parsed = parseSettingsHandsFeedbackImageEditEvent(eventJson(index = 0, total = 1))!!
 
-        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, parsed.source)
+        assertEquals(RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, parsed.source)
         assertFalse(parsed.compressed)
         assertEquals("settings_feedback_draft", parsed.file.source)
 
@@ -373,12 +373,12 @@ class SettingsHandsFeedbackImageEditTest {
                 eventJson().apply {
                     put("fileName", "edited-0.jpg")
                     put("mimeType", "image/jpeg")
-                    put("source", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+                    put("source", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
                     put("compressed", true)
                 }
             )!!
 
-        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, parsed.source)
+        assertEquals(RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, parsed.source)
         assertTrue(parsed.compressed)
         assertEquals("image/jpeg", parsed.file.mimeType)
         assertEquals("settings_feedback_draft", parsed.file.source)
@@ -403,7 +403,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun missingGroupEventNeverProducesACommitCandidateOrMutatesDraft() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         val store = SettingsHandsFeedbackDraftStore(preferences)
         val existing = image("existing", "file:///draft/existing.png")
         store.save("account-a", "Keep this draft", listOf(existing))
@@ -434,7 +434,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun conflictingReplayPoisonsTheGroupWithoutDraftMutation() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         val store = SettingsHandsFeedbackDraftStore(preferences)
         store.save("account-a", "Draft before edit")
         val afterFirst = assertPending(fold(session(expectedCount = 2), event(index = 0, total = 2)))
@@ -447,7 +447,7 @@ class SettingsHandsFeedbackImageEditTest {
         val failed =
             assertIs<SettingsHandsFeedbackImageEditFoldResult.Failed>(fold(afterFirst, conflict))
 
-        assertEquals(SlockImageEditGroupReconcile.REJECT_DUPLICATE_CONFLICT, failed.reason)
+        assertEquals(RaftImageEditGroupReconcile.REJECT_DUPLICATE_CONFLICT, failed.reason)
         assertEquals("Draft before edit", store.read("account-a").text)
         assertTrue(store.read("account-a").attachments.isEmpty())
     }
@@ -480,7 +480,7 @@ class SettingsHandsFeedbackImageEditTest {
             assertIs<SettingsHandsFeedbackImageEditFoldResult.Failed>(
                 fold(session, validEvent.copy(groupId = "other-group"))
             )
-        assertEquals(SlockImageEditGroupReconcile.REJECT_WRONG_GROUP, wrongGroup.reason)
+        assertEquals(RaftImageEditGroupReconcile.REJECT_WRONG_GROUP, wrongGroup.reason)
     }
 
     @Test
@@ -515,7 +515,7 @@ class SettingsHandsFeedbackImageEditTest {
         assertNull(
             parseSettingsHandsFeedbackImageEditEvent(
                 eventJson().apply {
-                    put("source", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
+                    put("source", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE)
                     put("compressed", true)
                 }
             )
@@ -577,7 +577,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun editedFileRefsPersistInOriginalOrderAcrossDraftStoreRecreation() {
-        val preferences = InMemorySlockKeyValueStore()
+        val preferences = InMemoryRaftKeyValueStore()
         val initial = session(expectedCount = 2)
         val afterOne = assertPending(fold(initial, event(index = 1, total = 2)))
         val complete =
@@ -625,10 +625,10 @@ class SettingsHandsFeedbackImageEditTest {
         val normalized = normalizeSettingsHandsFeedbackPickerFiles(listOf(opaque), imageOnly = true)
 
         assertEquals("opaque-id.jpg", normalized.single().fileName)
-        assertTrue(slockComposerImagePickerFilesAreStrictImages(normalized))
+        assertTrue(raftComposerImagePickerFilesAreStrictImages(normalized))
         val video = opaque.copy(fileName = "opaque-video", mimeType = "video/mp4")
         assertEquals("opaque-video", normalizeSettingsHandsFeedbackPickerFiles(listOf(video), true).single().fileName)
-        assertFalse(slockComposerImagePickerFilesAreStrictImages(listOf(video)))
+        assertFalse(raftComposerImagePickerFilesAreStrictImages(listOf(video)))
         assertEquals(
             "opaque-id",
             normalizeSettingsHandsFeedbackPickerFiles(listOf(opaque), imageOnly = false).single().fileName
@@ -1133,7 +1133,7 @@ class SettingsHandsFeedbackImageEditTest {
 
     @Test
     fun previewEditRequestBuildsReplaceBoundEditablePayload() {
-        val sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a")
+        val sourceStoreScope = RaftShellStoreScope.create("legacy", "server-a")
         val file =
             PlatformFile(
                 id = "att-1",
@@ -1183,7 +1183,7 @@ class SettingsHandsFeedbackImageEditTest {
                 accountId = "account-a",
                 pageGeneration = "page-a",
                 file = file,
-                sourceStoreScope = SlockShellStoreScope.create("legacy", "server-a"),
+                sourceStoreScope = RaftShellStoreScope.create("legacy", "server-a"),
                 groupId = "edit-group"
             )
         )
@@ -1295,7 +1295,7 @@ class SettingsHandsFeedbackImageEditTest {
             groupId = "group-a",
             index = index,
             total = total,
-            source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+            source = RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
             compressed = false,
             file = image("edited-$index", "file:///edited/$index.png")
         )
@@ -1319,7 +1319,7 @@ class SettingsHandsFeedbackImageEditTest {
             put("mimeType", "image/png")
             put("sizeBytes", 100L)
             put("previewUri", "file:///edited/$index-preview.png")
-            if (includeSource) put("source", SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE)
+            if (includeSource) put("source", RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE)
             if (includeCompressed) put("compressed", false)
         }
 
@@ -1351,6 +1351,6 @@ class SettingsHandsFeedbackImageEditTest {
             sizeBytes = sizeBytes,
             previewUri = "$fileRef-preview",
             fileRef = fileRef,
-            source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
+            source = RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE
         )
 }

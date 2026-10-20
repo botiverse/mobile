@@ -100,7 +100,7 @@ internal object AndroidHistoricalProcessExitDiagnostics {
                 )
             if (latestMetadata == null) {
                 val newest = snapshots.maxByOrNull { it.timestampMillis }
-                SlockAndroidLocalDiagnostics.recordLog(
+                RaftAndroidLocalDiagnostics.recordLog(
                     level = "info",
                     tag = Tag,
                     message =
@@ -129,13 +129,13 @@ internal object AndroidHistoricalProcessExitDiagnostics {
                 persistLatestTrace(appContext, latestExit)
             }
             preferences.edit().putLong(LastReportedTimestampKey, latest.timestampMillis).apply()
-            SlockAndroidLocalDiagnostics.recordLog(
+            RaftAndroidLocalDiagnostics.recordLog(
                 level = "warn",
                 tag = Tag,
                 message = formatHistoricalProcessExit(latest)
             )
         }.onFailure { error ->
-            SlockAndroidLocalDiagnostics.recordLog(
+            RaftAndroidLocalDiagnostics.recordLog(
                 level = "warn",
                 tag = Tag,
                 message = "previous_process_exit_read_failed class=${error.javaClass.name}"

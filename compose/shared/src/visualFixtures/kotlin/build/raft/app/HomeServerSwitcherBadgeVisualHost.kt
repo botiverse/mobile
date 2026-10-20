@@ -22,20 +22,19 @@ import build.raft.app.data.SharedAgentCreateVisibilityRule
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.data.slockSharedPreferenceStore
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
+import build.raft.app.data.raftSharedPreferenceStore
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 /**
@@ -80,19 +79,19 @@ internal class ComposeHomeServerSwitcherBadgeVisualPage : BasePager() {
 
 @Composable
 private fun HomeServerSwitcherBadgeVisualContent() {
-    SlockStructuralHomeShell(
+    RaftStructuralHomeShell(
         currentServerName = VisualFixtureData.Server.NAME,
         currentServerId = VisualFixtureData.Server.ID,
         servers =
             listOf(
                 // Current server, no unread of either kind.
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = VisualFixtureData.Server.ID,
                     name = VisualFixtureData.Server.NAME,
                     slug = VisualFixtureData.Server.SLUG
                 ),
                 // 1. Exact Activity count present -> exact number.
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "badge-exact",
                     name = "Exact Three",
                     slug = "exact-three",
@@ -104,7 +103,7 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                 //    `Fallback Capped` takes the same path, so BOTH fallback rows move when that fix
                 //    lands -- a migration declaration naming only this row would leave the other
                 //    unexplained.
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "badge-fallback",
                     name = "Unknown Seven",
                     slug = "unknown-seven",
@@ -112,7 +111,7 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                     activityUnreadCount = null
                 ),
                 // 3. Authoritative zero outranks a nonzero legacy count -> no badge at all.
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "badge-authoritative-zero",
                     name = "Authoritative Zero",
                     slug = "authoritative-zero",
@@ -120,7 +119,7 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                     activityUnreadCount = 0L
                 ),
                 // 4. Exact count above the display cap -> "99+".
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "badge-capped",
                     name = "Capped Count",
                     slug = "capped-count",
@@ -142,7 +141,7 @@ private fun HomeServerSwitcherBadgeVisualContent() {
                 //    from 7 and 99+ back to a dot or nothing. `Authoritative Zero` does not move.
                 //    That declaration is easy to miss: it lands in a routine dead-code cleanup that
                 //    looks unrelated to visuals.
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "badge-fallback-capped",
                     name = "Fallback Capped",
                     slug = "fallback-capped",

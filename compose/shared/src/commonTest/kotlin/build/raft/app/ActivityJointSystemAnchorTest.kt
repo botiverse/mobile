@@ -26,7 +26,7 @@ class ActivityJointSystemAnchorTest {
                     canonicalChannelId = "joint-1",
                     aliases = setOf("joint-1"),
                     conversationKind = ConversationKind.Joint,
-                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
                     channelKind = "joint",
                     title = "raft-mobile-reconcile"
                 )

@@ -2,8 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.ProcessPresenceAuthContext
 import build.raft.app.data.SelectedServerStore
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.ThreadReplyCacheIdentityAuthority
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -14,7 +14,7 @@ import kotlinx.atomicfu.locks.synchronized
  * Test-side reply-cache identity authority (task #1122).
  *
  * The production data source has no private identity resolver any more: identity comes only from
- * a `replyCacheIdentityAuthority`, which in production is `SlockSharedStoreProvider` handing a
+ * a `replyCacheIdentityAuthority`, which in production is `RaftSharedStoreProvider` handing a
  * process-wide `ProcessPresenceAuthContext` to [ThreadReplyCacheIdentityAuthority]. Tests cannot
  * build the provider, so this helper constructs THE SAME production class and supplies only the
  * one thing the provider would: the auth context. Environment / principal / server re-validation
@@ -29,14 +29,14 @@ import kotlinx.atomicfu.locks.synchronized
  * 1, 2, 3. It is NOT the registry, and it must not be read as a mirror of anything but that counting
  * rule over that identity (pinned by `SharedThreadTestIdentityAuthorityTest`).
  *
- * Holder scope: one holder per [SlockAuthSessionStore] INSTANCE (see
+ * Holder scope: one holder per [RaftAuthSessionStore] INSTANCE (see
  * [testThreadReplyCacheIdentityAuthority]). The store instance is the test's stand-in for "one
  * process"; the identity fields are runtime inputs read from it, never part of the memo key. Two
  * data sources built on the same store therefore share one generation sequence — the shape the
  * deleted per-instance resolver got wrong (task #1122 defect: "A→B→A = 1, 3; restart from 1").
  */
 internal class TestThreadReplyCacheIdentityAuthority(
-    private val sessionStore: SlockAuthSessionStore,
+    private val sessionStore: RaftAuthSessionStore,
     internal val environmentId: String,
     selectedServerStore: SelectedServerStore? = null,
 ) {
@@ -84,7 +84,7 @@ internal class TestThreadReplyCacheIdentityAuthority(
                     // any later principal gets a fresh store, as a shell rebinding would give it.
                     explicitSelectedServerStore?.takeIf { selectedServerStoreByPrincipal.isEmpty() }
                         ?: SelectedServerStore(
-                            SlockShellStoreScope.create(
+                            RaftShellStoreScope.create(
                                 "test-identity-authority-$principalId",
                                 session.selectedServerId ?: session.currentServerId ?: "",
                             ),
@@ -109,19 +109,19 @@ internal class TestThreadReplyCacheIdentityAuthority(
 }
 
 private val testIdentityAuthorityLock = SynchronizedObject()
-private val testIdentityAuthorityByStore = mutableMapOf<SlockAuthSessionStore, TestThreadReplyCacheIdentityAuthority>()
+private val testIdentityAuthorityByStore = mutableMapOf<RaftAuthSessionStore, TestThreadReplyCacheIdentityAuthority>()
 
 /**
  * Memoised per session-store INSTANCE: every call with the same store returns the same holder, so
  * however many data sources a test builds on one store, they count generations together. Stores
- * are compared by reference (`InMemorySlockAuthSessionStore` does not override `equals`).
+ * are compared by reference (`InMemoryRaftAuthSessionStore` does not override `equals`).
  *
  * The memo is a test-process-wide map (one strong reference per store ever used; memory only,
  * never cleared). It stays test-local only because every test function creates its own store —
  * a class-field store would carry a generation sequence across test functions and stay green.
  * That invariant is enforced, not assumed: `scripts/ci/check_source_constraints.py`
  * (`check_test_session_stores_are_test_local`) fails on any class-field
- * `InMemorySlockAuthSessionStore` under commonTest.
+ * `InMemoryRaftAuthSessionStore` under commonTest.
  *
  * Configuration on a repeated call for the same store is checked, not merged, and both optional
  * parameters mean the same thing when omitted (`null`): "I am not specifying this — reuse what the
@@ -131,7 +131,7 @@ private val testIdentityAuthorityByStore = mutableMapOf<SlockAuthSessionStore, T
  * environment builds the holder on [TestThreadEnvironmentId].
  */
 internal fun testThreadReplyCacheIdentityAuthority(
-    sessionStore: SlockAuthSessionStore,
+    sessionStore: RaftAuthSessionStore,
     environmentId: String? = null,
     selectedServerStore: SelectedServerStore? = null,
 ): TestThreadReplyCacheIdentityAuthority =

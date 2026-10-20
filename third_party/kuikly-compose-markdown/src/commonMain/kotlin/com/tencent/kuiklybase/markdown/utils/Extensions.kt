@@ -1,8 +1,8 @@
 package com.tencent.kuiklybase.markdown.utils
 
 import androidx.compose.runtime.Composable
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.text.SpanStyle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.model.MarkdownTypography
 import org.intellij.markdown.IElementType

@@ -29,14 +29,14 @@ private val announcementsRemindersJson = Json {
  *
  * Field names are canonical camelCase. Do not add snake_case fallbacks here.
  */
-interface SlockAnnouncementsRemindersApi {
+interface RaftAnnouncementsRemindersApi {
     suspend fun activeAnnouncements(): HomeNetworkResponse
     suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse
     suspend fun reminders(ownerAgentId: MemberId, status: String = "scheduled"): HomeNetworkResponse
 }
 
-class SlockAnnouncementsRemindersApiClient(
-    private val transport: SlockAnnouncementsRemindersApi
+class RaftAnnouncementsRemindersApiClient(
+    private val transport: RaftAnnouncementsRemindersApi
 ) {
     suspend fun activeAnnouncements(): DataResult<AnnouncementsPage> =
         transport.activeAnnouncements()
@@ -68,9 +68,9 @@ class SlockAnnouncementsRemindersApiClient(
             }
 }
 
-class NetworkSlockAnnouncementsRemindersApi(
-    private val networkClient: SlockNetworkClient
-) : SlockAnnouncementsRemindersApi {
+class NetworkRaftAnnouncementsRemindersApi(
+    private val networkClient: RaftNetworkClient
+) : RaftAnnouncementsRemindersApi {
     override suspend fun activeAnnouncements(): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Visible, "announcements/active")
 

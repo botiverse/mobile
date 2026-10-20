@@ -2,17 +2,17 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
 
 // task #800 rendering-evidence fixture: four right-aligned own-message cards
 // separated by pure-red full-width markers so the connected test can segment
@@ -33,8 +33,8 @@ private fun threadAlignRightVisualFixtureMessage(
     body: String,
     deliveryState: String = ThreadMessageDeliverySent,
     pending: Boolean = false
-): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
+): RaftThreadMessageItem =
+    RaftThreadMessageItem(
         id = id,
         authorId = "member-own",
         authorName = "You",
@@ -45,7 +45,7 @@ private fun threadAlignRightVisualFixtureMessage(
         deliveryState = deliveryState,
         pendingSendContext =
             if (pending) {
-                KuiklyThreadPendingSendContext(channelId = "channel-align-right", body = body)
+                RaftThreadPendingSendContext(channelId = "channel-align-right", body = body)
             } else {
                 null
             }
@@ -101,12 +101,12 @@ internal fun ThreadAlignRightVisualScreen() {
                 retryTint = Color(0xFFFFFF00)
             )
     ) {
-        Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             fixtures.forEach { message ->
                 Box(Modifier.fillMaxWidth().height(4.dp).background(Color(0xFFFF0000)))
                 ThreadMessageCard(
                     message = message,
-                    messageBodyTextStyle = slockMessageBodyTextStyle("md"),
+                    messageBodyTextStyle = raftMessageBodyTextStyle("md"),
                     alignOwnMessageRight = true,
                     onShowActions = {},
                     onOpenMember = {},

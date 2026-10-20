@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareServerOption
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

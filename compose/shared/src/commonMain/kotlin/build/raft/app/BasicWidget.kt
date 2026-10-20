@@ -2,7 +2,9 @@
 
 package build.raft.app
 
+import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,99 +18,101 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.coil3.AsyncImagePainter
-import com.tencent.kuikly.compose.coil3.rememberAsyncImageBitmap
-import com.tencent.kuikly.compose.extension.RefFunc
-import com.tencent.kuikly.compose.extension.keyboardHeightChange
-import com.tencent.kuikly.compose.extension.nativeRef
-import com.tencent.kuikly.compose.extension.setProp
-import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
-import com.tencent.kuikly.compose.foundation.ExperimentalFoundationApi
-import com.tencent.kuikly.compose.foundation.Image
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
-import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
-import com.tencent.kuikly.compose.foundation.gestures.calculatePan
-import com.tencent.kuikly.compose.foundation.gestures.calculateZoom
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.absoluteOffset
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.lazy.LazyItemScope
-import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.foundation.text.BasicTextField
-import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
-import com.tencent.kuikly.compose.foundation.text.KeyboardActions
-import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.clip
-import com.tencent.kuikly.compose.ui.draw.clipToBounds
-import com.tencent.kuikly.compose.ui.draw.scale
-import com.tencent.kuikly.compose.ui.focus.FocusRequester
-import com.tencent.kuikly.compose.ui.focus.focusRequester
-import com.tencent.kuikly.compose.ui.focus.onFocusChanged
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.graphics.Brush
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.SolidColor
-import com.tencent.kuikly.compose.ui.input.pointer.PointerId
-import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
-import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
-import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
-import com.tencent.kuikly.compose.ui.layout.boundsInRoot
-import com.tencent.kuikly.compose.ui.layout.layout
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.onSizeChanged
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
-import com.tencent.kuikly.compose.ui.semantics.Role
-import com.tencent.kuikly.compose.ui.semantics.disabled
-import com.tencent.kuikly.compose.ui.semantics.onLongClick
-import com.tencent.kuikly.compose.ui.semantics.onClick
-import com.tencent.kuikly.compose.ui.semantics.role
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.text.TextLayoutResult
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.max
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.window.Dialog
-import com.tencent.kuikly.compose.ui.window.DialogProperties
-import com.tencent.kuikly.core.base.BorderStyle
-import com.tencent.kuikly.core.base.DeclarativeBaseView
-import com.tencent.kuikly.core.base.ViewContainer
-import com.tencent.kuikly.core.base.event.EventHandlerFn
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.views.AutoHeightTextAreaView
-import com.tencent.kuikly.core.views.KeyboardParams
-import com.tencent.kuikly.core.views.ModalView
-import com.tencent.kuikly.core.views.TextInputState
+import build.raft.app.data.parseRaftAvatarMountedRenderModel
+import coil3.compose.AsyncImagePainter
+import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import build.raft.app.compat.ui.keyboardHeightChange
+import coil3.compose.rememberAsyncImagePainter
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActionScope
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.positionChangedIgnoreConsumed
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import build.raft.app.compat.ui.BorderStyle
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.ui.KeyboardParams
+import build.raft.app.compat.ui.TextInputState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -120,40 +124,40 @@ fun Modifier.backgroundColor(color: Color): Modifier {
 }
 
 /** Neutral fallback shown before or around image preview content. */
-internal val SlockImagePreviewLetterboxColor: Color = SlockColor.SurfaceWhite
+internal val RaftImagePreviewLetterboxColor: Color = RaftColor.SurfaceWhite
 
 /** Thumbnail contract: preserve ratio while filling the fixed preview frame. */
-internal val SlockImageThumbnailContentScale: ContentScale = ContentScale.Crop
+internal val RaftImageThumbnailContentScale: ContentScale = ContentScale.Crop
 
-internal data class SlockImagePreviewLoadingPresentation(
+internal data class RaftImagePreviewLoadingPresentation(
     val fallbackUnderlaySource: String?,
     val showLoadingOverlay: Boolean
 )
 
-internal data class SlockImagePreviewRenderIdentity(
+internal data class RaftImagePreviewRenderIdentity(
     val source: String,
     val decodedWidth: Int,
     val decodedHeight: Int
 )
 
-internal fun slockImagePreviewRenderIdentity(
+internal fun raftImagePreviewRenderIdentity(
     source: String,
     decodedWidth: Int,
     decodedHeight: Int
-): SlockImagePreviewRenderIdentity =
-    SlockImagePreviewRenderIdentity(
+): RaftImagePreviewRenderIdentity =
+    RaftImagePreviewRenderIdentity(
         source = source,
         decodedWidth = decodedWidth.coerceAtLeast(0),
         decodedHeight = decodedHeight.coerceAtLeast(0)
     )
 
-internal fun resolveSlockImagePreviewRenderIdentity(
-    currentIdentity: SlockImagePreviewRenderIdentity?,
+internal fun resolveRaftImagePreviewRenderIdentity(
+    currentIdentity: RaftImagePreviewRenderIdentity?,
     source: String,
     decodedWidth: Int,
     decodedHeight: Int,
     activeSucceeded: Boolean
-): SlockImagePreviewRenderIdentity {
+): RaftImagePreviewRenderIdentity {
     val normalizedSource = source.trim()
     if (currentIdentity != null && currentIdentity.source == normalizedSource) {
         if (activeSucceeded) {
@@ -163,24 +167,27 @@ internal fun resolveSlockImagePreviewRenderIdentity(
             return currentIdentity
         }
     }
-    return slockImagePreviewRenderIdentity(
+    return raftImagePreviewRenderIdentity(
         source = normalizedSource,
         decodedWidth = decodedWidth,
         decodedHeight = decodedHeight
     )
 }
 
-private class SlockImagePreviewIdentityHolder(
-    var identity: SlockImagePreviewRenderIdentity
+/** Decode bound of the dimensions-only read in the image preview (render identity). */
+internal const val RaftImagePreviewIdentityDecodeEdgePx = 64
+
+private class RaftImagePreviewIdentityHolder(
+    var identity: RaftImagePreviewRenderIdentity
 )
 
-private class SlockImagePreviewSourceOutcome(
+private class RaftImagePreviewSourceOutcome(
     var failed: Boolean = false
 )
 
 @Composable
-internal fun SlockImagePreviewRenderSlot(
-    identity: SlockImagePreviewRenderIdentity,
+internal fun RaftImagePreviewRenderSlot(
+    identity: RaftImagePreviewRenderIdentity,
     content: @Composable () -> Unit
 ) {
     key(identity) {
@@ -188,7 +195,15 @@ internal fun SlockImagePreviewRenderSlot(
     }
 }
 
-internal fun slockImagePreviewLoadingPresentation(
+private fun AsyncImagePainter.State.raftImagePreviewDiagnosticsPhase(): String =
+    when (this) {
+        is AsyncImagePainter.State.Empty -> "empty"
+        is AsyncImagePainter.State.Loading -> "loading"
+        is AsyncImagePainter.State.Success -> "success"
+        is AsyncImagePainter.State.Error -> "error"
+    }
+
+internal fun raftImagePreviewLoadingPresentation(
     activeSource: String?,
     fallbackSource: String?,
     showLoadingIndicator: Boolean,
@@ -196,7 +211,7 @@ internal fun slockImagePreviewLoadingPresentation(
     activeFailed: Boolean,
     previousRenderedSource: String? = null,
     previousPresentableSource: String? = null
-): SlockImagePreviewLoadingPresentation {
+): RaftImagePreviewLoadingPresentation {
     val active = activeSource?.trim()?.takeIf { it.isNotBlank() }
     val fallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() }
     val previous = previousRenderedSource?.trim()?.takeIf { it.isNotBlank() && it != active }
@@ -216,7 +231,7 @@ internal fun slockImagePreviewLoadingPresentation(
     val keepsContentVisible =
         previous != null || previousPending != null ||
             (fallback != null && !(active == fallback && activeFailed))
-    return SlockImagePreviewLoadingPresentation(
+    return RaftImagePreviewLoadingPresentation(
         fallbackUnderlaySource = underlay.takeUnless { activeSucceeded },
         showLoadingOverlay =
             showLoadingIndicator &&
@@ -226,7 +241,7 @@ internal fun slockImagePreviewLoadingPresentation(
 }
 
 @Composable
-fun SlockCachedImage(
+fun RaftCachedImage(
     source: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
@@ -250,14 +265,14 @@ fun SlockCachedImage(
 }
 
 @Composable
-internal fun SlockAspectFitImagePreviewSurface(
+internal fun RaftAspectFitImagePreviewSurface(
     source: String?,
     fallbackSource: String? = null,
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderLabel: String = "IMG",
-    backgroundColor: Color = SlockImagePreviewLetterboxColor,
-    borderWidth: Dp = SlockStroke.Default,
+    backgroundColor: Color = RaftImagePreviewLetterboxColor,
+    borderWidth: Dp = RaftAppStroke.Default,
     contentScale: ContentScale = ContentScale.Fit,
     zoomable: Boolean = false,
     showLoadingIndicator: Boolean = false,
@@ -279,7 +294,7 @@ internal fun SlockAspectFitImagePreviewSurface(
     // never pinned underneath.
     var lastPresentableSource by remember { mutableStateOf<String?>(null) }
     val activeSourceOutcome = remember(activeSource) {
-        SlockImagePreviewSourceOutcome()
+        RaftImagePreviewSourceOutcome()
     }
     DisposableEffect(activeSource) {
         val departed = activeSource
@@ -290,19 +305,35 @@ internal fun SlockAspectFitImagePreviewSurface(
             }
         }
     }
+    // task #402: image previews never carried painter telemetry, so the 9ea07421 "flash white then
+    // reappear" report couldn't be attributed. Mirror the avatar line shape: hashed source, model
+    // kind, painter phase, and whether an underlay frame was pinned while the new source loaded.
+    LaunchedEffect(activeSource, imageState, lastSucceededSource, lastPresentableSource) {
+        raftLogInfo(
+            "SlockImagePreview",
+            "image_preview_painter " +
+                "source=${activeSource.raftAvatarDiagnosticsHash()} " +
+                "model=${if (activeSource != null && parseRaftAvatarMountedRenderModel(activeSource.orEmpty()) != null) "managed" else "url"} " +
+                "painter=${imageState.raftImagePreviewDiagnosticsPhase()} " +
+                "underlay=${if (lastSucceededSource != null || lastPresentableSource != null) "yes" else "none"}"
+        )
+    }
     Box(
         modifier = modifier
             .background(backgroundColor)
-            .border(borderWidth, SlockColor.BorderBlack),
+            .border(borderWidth, RaftColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
-            val activeBitmap = rememberAsyncImageBitmap(activeSource)
+            // Only the decoded dimensions are read (render identity), so decode a small,
+            // subsampled copy instead of the full-resolution image per thumbnail.
+            // TODO(cmp-switch): read the dimensions from the image header without decoding.
+            val activeBitmap = rememberAsyncImageBitmap(activeSource, maxDecodeEdgePx = RaftImagePreviewIdentityDecodeEdgePx)
             val currentSource = activeSource.orEmpty()
             val activeSucceeded = imageState is AsyncImagePainter.State.Success
             val identityHolder = remember(activeSource) {
-                SlockImagePreviewIdentityHolder(
-                    slockImagePreviewRenderIdentity(
+                RaftImagePreviewIdentityHolder(
+                    raftImagePreviewRenderIdentity(
                         source = currentSource,
                         decodedWidth = activeBitmap?.width ?: 0,
                         decodedHeight = activeBitmap?.height ?: 0
@@ -310,7 +341,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                 )
             }
             val renderIdentity =
-                resolveSlockImagePreviewRenderIdentity(
+                resolveRaftImagePreviewRenderIdentity(
                     currentIdentity = identityHolder.identity,
                     source = currentSource,
                     decodedWidth = activeBitmap?.width ?: 0,
@@ -318,7 +349,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                     activeSucceeded = activeSucceeded
                 ).also { identityHolder.identity = it }
             val loadingPresentation =
-                slockImagePreviewLoadingPresentation(
+                raftImagePreviewLoadingPresentation(
                     activeSource = activeSource,
                     fallbackSource = normalizedFallback,
                     showLoadingIndicator = showLoadingIndicator,
@@ -328,16 +359,16 @@ internal fun SlockAspectFitImagePreviewSurface(
                     previousPresentableSource = lastPresentableSource
                 )
             loadingPresentation.fallbackUnderlaySource?.let { underlaySource ->
-                SlockCachedImage(
+                RaftCachedImage(
                     source = underlaySource,
                     contentDescription = contentDescription,
                     contentScale = contentScale,
                     modifier = Modifier.fillMaxSize()
                 )
             }
-            SlockImagePreviewRenderSlot(renderIdentity) {
+            RaftImagePreviewRenderSlot(renderIdentity) {
                 if (zoomable) {
-                    SlockZoomableCachedImage(
+                    RaftZoomableCachedImage(
                         source = activeSource.orEmpty(),
                         contentDescription = contentDescription,
                         modifier = Modifier.fillMaxSize(),
@@ -356,7 +387,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                         }
                     )
                 } else {
-                    SlockCachedImage(
+                    RaftCachedImage(
                         source = activeSource,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
@@ -378,7 +409,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                 }
             }
             if (loadingPresentation.showLoadingOverlay) {
-                SlockImagePreviewLoadingOverlay(
+                RaftImagePreviewLoadingOverlay(
                     failed = imageState is AsyncImagePainter.State.Error,
                     placeholderLabel = placeholderLabel,
                     modifier = Modifier.fillMaxSize()
@@ -387,8 +418,8 @@ internal fun SlockAspectFitImagePreviewSurface(
         } else {
             Text(
                 text = placeholderLabel,
-                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(fontSize = 11.sp, color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1
             )
         }
@@ -418,7 +449,7 @@ internal class ZoomPanTouchSlopTracker(private val touchSlop: Float) {
 }
 
 @Composable
-private fun SlockZoomableCachedImage(
+private fun RaftZoomableCachedImage(
     source: String,
     contentDescription: String?,
     modifier: Modifier = Modifier,
@@ -480,7 +511,7 @@ private fun SlockZoomableCachedImage(
             },
         contentAlignment = Alignment.Center
     ) {
-        SlockCachedImage(
+        RaftCachedImage(
             source = source,
             contentDescription = contentDescription,
             contentScale = ContentScale.Fit,
@@ -494,7 +525,7 @@ private fun SlockZoomableCachedImage(
 }
 
 @Composable
-private fun SlockImagePreviewLoadingOverlay(
+private fun RaftImagePreviewLoadingOverlay(
     failed: Boolean,
     placeholderLabel: String,
     modifier: Modifier = Modifier
@@ -506,12 +537,12 @@ private fun SlockImagePreviewLoadingOverlay(
         if (failed) {
             Text(
                 text = placeholderLabel,
-                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(fontSize = 11.sp, color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1
             )
         } else {
-            SlockHeaderRefreshIndicator()
+            RaftHeaderRefreshIndicator()
         }
     }
 }
@@ -634,11 +665,8 @@ fun LazyListScope.Hover(
     listState: LazyListState,
     content: @Composable LazyItemScope.() -> Unit
 ) {
-    stickyHeaderWithMarginTop(
-        key = key,
-        hoverMarginTop = hoverMarginTop,
-        listState = listState
-    ) {
+    // TODO(cmp-switch): Kuikly stickyHeaderWithMarginTop pinned below hoverMarginTop.
+    stickyHeader(key = key) {
         Box(modifier = modifier) {
             content()
         }
@@ -647,28 +675,15 @@ fun LazyListScope.Hover(
 
 fun Modifier.borderRadius(radius: Dp) = clip(RoundedCornerShape(radius))
 
-internal fun Modifier.slockSquareCorners(): Modifier =
-    setProp(SlockSquareCornerBorderRadiusProp, SlockSquareCornerBorderRadiusValue)
-        .setProp(SlockSquareCornerClipPathProp, "")
+/** Kuikly native views needed an explicit 0 radius; Compose corners are square by default. */
+internal fun Modifier.raftSquareCorners(): Modifier = this
 
 /**
- * Register-driven corner rounding on the same Kuikly borderRadius prop path as
- * [slockSquareCorners]. At [radius] == 0.dp this emits the exact same
- * "0.0,0.0,0.0,0.0" string as [slockSquareCorners], so brutal callers (whose
- * theme corner radius is [SlockRadius.None]) render byte-identically; the elegant
- * register passes its rounded radius and the same prop path rounds the corners.
- * Kept on the prop mechanism (not clip(RoundedCornerShape)) so migrating a
- * component from [slockSquareCorners] to this is a no-op in the brutal default.
+ * Register-driven corner rounding: square (no clip) at [radius] == 0.dp, which is what brutal
+ * callers (theme radius [RaftAppRadius.None]) get; the elegant register clips to [radius].
  */
-internal fun Modifier.slockThemedCorners(radius: Dp): Modifier {
-    val r = radius.value
-    return setProp(SlockSquareCornerBorderRadiusProp, "$r,$r,$r,$r")
-        .setProp(SlockSquareCornerClipPathProp, "")
-}
-
-private const val SlockSquareCornerBorderRadiusProp = "borderRadius"
-private const val SlockSquareCornerBorderRadiusValue = "0.0,0.0,0.0,0.0"
-private const val SlockSquareCornerClipPathProp = "clipPath"
+internal fun Modifier.raftThemedCorners(radius: Dp): Modifier =
+    if (radius.value <= 0f) this else clip(RoundedCornerShape(radius))
 
 fun Color.changeAlpha(alpha: Float) = this.copy(alpha = alpha)
 
@@ -718,17 +733,17 @@ fun Modifier.touchListener(
  */
 @Composable
 internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
-    registry: SlockInputFocusOwnerRegistry,
+    registry: RaftInputFocusOwnerRegistry,
     enabled: Boolean = true,
 ): Modifier {
     val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
     val currentEnabled by rememberUpdatedState(enabled)
-    val hostAnchor = remember { SlockInputFocusRootAnchor() }
+    val hostAnchor = remember { RaftInputFocusRootAnchor() }
     val focusDismissScope = rememberCoroutineScope()
     return onGloballyPositioned(hostAnchor::update).pointerInput(registry) {
         awaitEachGesture {
-            val touchTracker = SlockTouchSequenceTracker<PointerId>()
-            val dismissTracker = SlockInputFocusDismissGestureTracker()
+            val touchTracker = RaftTouchSequenceTracker<PointerId>()
+            val dismissTracker = RaftInputFocusDismissGestureTracker()
             var multiplePointers = false
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -756,7 +771,7 @@ internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
                     }
                     continue
                 }
-                var terminalDismissToken: SlockInputFocusDismissToken? = null
+                var terminalDismissToken: RaftInputFocusDismissToken? = null
                 var sawTrackedUp = false
                 event.changes.forEach { change ->
                     val type =
@@ -813,7 +828,7 @@ internal fun Modifier.dismissInputFocusOnOutsidePointerDown(
     }
 }
 
-internal class SlockInputFocusOwnerAnchor {
+internal class RaftInputFocusOwnerAnchor {
     private var coordinates: LayoutCoordinates? = null
 
     fun update(next: LayoutCoordinates) {
@@ -826,13 +841,13 @@ internal class SlockInputFocusOwnerAnchor {
             ?.boundsInRoot()
 }
 
-internal class SlockInputFocusOwnerRegistry {
+internal class RaftInputFocusOwnerRegistry {
     private val activeOwners = mutableMapOf<Any, () -> Rect?>()
     private val retainedInteractionRegions = mutableMapOf<Any, () -> Rect?>()
     private var focusOwnerGeneration: Long = 0L
     private var pointerSafetyGeneration: Long = 0L
     private var multiPointerFocusClearBlocked: Boolean = false
-    private var claimedFocusClearToken: SlockInputFocusDismissToken? = null
+    private var claimedFocusClearToken: RaftInputFocusDismissToken? = null
     var hasActiveOwner by mutableStateOf(false)
         private set
 
@@ -877,9 +892,9 @@ internal class SlockInputFocusOwnerRegistry {
         retainedInteractionRegions.remove(owner)
     }
 
-    fun outsideFocusToken(position: Offset): SlockInputFocusDismissToken? {
+    fun outsideFocusToken(position: Offset): RaftInputFocusDismissToken? {
         if (multiPointerFocusClearBlocked || !shouldClearFocus(position)) return null
-        return SlockInputFocusDismissToken(
+        return RaftInputFocusDismissToken(
             focusOwnerGeneration = focusOwnerGeneration,
             pointerSafetyGeneration = pointerSafetyGeneration
         )
@@ -892,7 +907,7 @@ internal class SlockInputFocusOwnerRegistry {
         }
     }
 
-    fun claimFocusClear(token: SlockInputFocusDismissToken): Boolean {
+    fun claimFocusClear(token: RaftInputFocusDismissToken): Boolean {
         if (
             activeOwners.isEmpty() ||
             multiPointerFocusClearBlocked ||
@@ -906,7 +921,7 @@ internal class SlockInputFocusOwnerRegistry {
         return true
     }
 
-    fun releaseUnreconciledFocusClearClaim(token: SlockInputFocusDismissToken) {
+    fun releaseUnreconciledFocusClearClaim(token: RaftInputFocusDismissToken) {
         if (
             activeOwners.isNotEmpty() &&
             focusOwnerGeneration == token.focusOwnerGeneration &&
@@ -964,12 +979,12 @@ private fun Rect.containsInclusive(position: Offset): Boolean =
         position.y >= top &&
         position.y <= bottom
 
-internal data class SlockInputFocusDismissToken(
+internal data class RaftInputFocusDismissToken(
     val focusOwnerGeneration: Long,
     val pointerSafetyGeneration: Long
 )
 
-private const val SlockKuiklyNativeCancelEvent = "cancel"
+private const val RaftNativeCancelEvent = "cancel"
 
 /**
  * Kuikly's `SuperTouchManager` tags a native touch-cancel as
@@ -980,10 +995,10 @@ private const val SlockKuiklyNativeCancelEvent = "cancel"
 internal fun isNativeInputFocusDismissCancellation(
     nativeEvent: Any?,
     hasTerminalChange: Boolean
-): Boolean = nativeEvent == SlockKuiklyNativeCancelEvent && hasTerminalChange
+): Boolean = nativeEvent == RaftNativeCancelEvent && hasTerminalChange
 
-internal val LocalSlockInputFocusOwnerRegistry =
-    compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
+internal val LocalRaftInputFocusOwnerRegistry =
+    compositionLocalOf<RaftInputFocusOwnerRegistry?> { null }
 
 /**
  * Resolves focused-input geometry from the registry that is current where this resolver is
@@ -991,8 +1006,8 @@ internal val LocalSlockInputFocusOwnerRegistry =
  * inside modal content rather than capture the page-level registry before entering [Modal].
  */
 @Composable
-internal fun rememberSlockFocusedInputBoundsResolver(): () -> Rect? {
-    val currentRegistry = rememberUpdatedState(LocalSlockInputFocusOwnerRegistry.current)
+internal fun rememberRaftFocusedInputBoundsResolver(): () -> Rect? {
+    val currentRegistry = rememberUpdatedState(LocalRaftInputFocusOwnerRegistry.current)
     return remember { { currentRegistry.value?.focusedBounds() } }
 }
 
@@ -1006,9 +1021,9 @@ internal fun rememberSlockFocusedInputBoundsResolver(): () -> Rect? {
  */
 @Composable
 internal fun Modifier.retainInputFocusForInteractions(): Modifier {
-    val registry = LocalSlockInputFocusOwnerRegistry.current ?: return this
+    val registry = LocalRaftInputFocusOwnerRegistry.current ?: return this
     val interactionOwner = remember { Any() }
-    val interactionAnchor = remember { SlockInputFocusOwnerAnchor() }
+    val interactionAnchor = remember { RaftInputFocusOwnerAnchor() }
     DisposableEffect(registry, interactionOwner) {
         registry.retainFocusForInteraction(interactionOwner, interactionAnchor::resolveBounds)
         onDispose { registry.removeRetainedInteraction(interactionOwner) }
@@ -1024,14 +1039,14 @@ internal fun Modifier.retainInputFocusForInteractions(): Modifier {
  * sequences all dispatch once at terminal release, after descendants have finished their pointer
  * gesture. An inside-input gesture never arms, even if it later leaves the input bounds.
  */
-internal class SlockInputFocusDismissGestureTracker {
+internal class RaftInputFocusDismissGestureTracker {
     private var tracking: Boolean = false
-    private var armedDismissToken: SlockInputFocusDismissToken? = null
+    private var armedDismissToken: RaftInputFocusDismissToken? = null
 
     fun onTouch(
         type: TouchType,
-        dismissToken: SlockInputFocusDismissToken? = null
-    ): SlockInputFocusDismissToken? =
+        dismissToken: RaftInputFocusDismissToken? = null
+    ): RaftInputFocusDismissToken? =
         when (type) {
             TouchType.Down -> {
                 tracking = true
@@ -1064,15 +1079,15 @@ internal class SlockInputFocusDismissGestureTracker {
  */
 @Composable
 internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
-    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
-    val scrollAnchor = remember { SlockInputFocusRootAnchor() }
+    val scrollAnchor = remember { RaftInputFocusRootAnchor() }
     val focusDismissScope = rememberCoroutineScope()
     return onGloballyPositioned(scrollAnchor::update).pointerInput(focusOwnerRegistry) {
         val registry = focusOwnerRegistry ?: return@pointerInput
         awaitEachGesture {
-            val touchTracker = SlockTouchSequenceTracker<PointerId>()
-            val dismissTracker = SlockInputFocusDismissGestureTracker()
+            val touchTracker = RaftTouchSequenceTracker<PointerId>()
+            val dismissTracker = RaftInputFocusDismissGestureTracker()
             var multiplePointers = false
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Main)
@@ -1089,7 +1104,7 @@ internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
                     multiplePointers = true
                     dismissTracker.cancel()
                 }
-                var terminalDismissToken: SlockInputFocusDismissToken? = null
+                var terminalDismissToken: RaftInputFocusDismissToken? = null
                 var sawTrackedUp = false
                 event.changes.forEach { change ->
                     val type =
@@ -1141,11 +1156,11 @@ internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
  * business-page tap handler or allowlist entry.
  */
 @Composable
-internal fun SlockInputFocusDismissHost(
+internal fun RaftInputFocusDismissHost(
     content: @Composable (Modifier) -> Unit
 ) {
-    val registry = remember { SlockInputFocusOwnerRegistry() }
-    CompositionLocalProvider(LocalSlockInputFocusOwnerRegistry provides registry) {
+    val registry = remember { RaftInputFocusOwnerRegistry() }
+    CompositionLocalProvider(LocalRaftInputFocusOwnerRegistry provides registry) {
         content(
             Modifier.dismissInputFocusOnOutsidePointerDown(
                 registry = registry,
@@ -1164,15 +1179,15 @@ internal fun Modifier.touchListenerWithConfiguration(
     onTouchEvent: (type: TouchType, position: Offset, touchSlop: Float) -> Unit
 ): Modifier {
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "touch-listener",
             semanticIdentity = Unit,
-            callbacks = SlockTouchListenerGestureCallbacks(onTouchEvent)
+            callbacks = RaftTouchListenerGestureCallbacks(onTouchEvent)
         )
-    return this.slockGesturePointerInput(gestureOwner) { owner ->
+    return this.raftGesturePointerInput(gestureOwner) { owner ->
         awaitEachGesture {
-            val tracker = SlockTouchSequenceTracker<PointerId>()
-            var gesture: SlockGestureSession<SlockTouchListenerGestureCallbacks>? = null
+            val tracker = RaftTouchSequenceTracker<PointerId>()
+            var gesture: RaftGestureSession<RaftTouchListenerGestureCallbacks>? = null
 
             while (true) {
                 val event = awaitPointerEvent()
@@ -1200,7 +1215,7 @@ internal fun Modifier.touchListenerWithConfiguration(
     }
 }
 
-private data class SlockTouchListenerGestureCallbacks(
+private data class RaftTouchListenerGestureCallbacks(
     val onTouchEvent: (type: TouchType, position: Offset, touchSlop: Float) -> Unit
 )
 
@@ -1213,7 +1228,7 @@ enum class TouchType { Down, Move, Up }
  * final changed position on ACTION_UP. Treating that event as Move leaves the
  * old pointer id latched and makes every later gesture invisible.
  */
-internal class SlockTouchSequenceTracker<T : Any> {
+internal class RaftTouchSequenceTracker<T : Any> {
     private var currentPointerId: T? = null
 
     fun onChange(
@@ -1239,11 +1254,11 @@ internal class SlockTouchSequenceTracker<T : Any> {
     }
 }
 
-private object SlockPressTokens {
+private object RaftPressTokens {
     val ButtonOffset = 2.dp
 }
 
-private fun Modifier.slockPressedOffset(
+private fun Modifier.raftPressedOffset(
     pressed: Boolean,
     pressOffset: Dp
 ): Modifier {
@@ -1263,7 +1278,7 @@ private fun Modifier.slockPressedOffset(
  * accessibility element. iOS/XCUITest and screen readers then see the whole dialog as a single
  * button instead of independently focusable actions.
  */
-internal fun Modifier.slockButtonAccessibility(
+internal fun Modifier.raftButtonAccessibility(
     enabled: Boolean,
     longClickLabel: String? = null,
     performLongClick: (() -> Unit)? = null,
@@ -1306,16 +1321,16 @@ internal fun Modifier.slockButtonAccessibility(
 @Composable
 fun Modal(
     modifier: Modifier = Modifier,
-    ref: RefFunc<ModalView>? = null,
     /* 物理键触发时调用该事件（目前仅支持鸿蒙平台） */
-    onWillDismiss: EventHandlerFn? = null,
+    onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
     Dialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties = slockModalDialogProperties()
+        properties = raftModalDialogPropertiesWithoutScrim()
     ) {
-        SlockInputFocusDismissHost { focusDismissModifier ->
+        RaftModalDialogWindowEffect()
+        RaftInputFocusDismissHost { focusDismissModifier ->
             Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
                 content()
             }
@@ -1330,60 +1345,63 @@ fun Modal(
  * clickable around the dialog content. Those framework nodes are harmless on Android's virtual
  * accessibility tree, but UIKit exposes the full-window native parent as an accessibility leaf and
  * hides the independent child actions. Disable the framework click wrappers and leave outside-tap
- * dismissal to [SlockModalDismissBarrier].
+ * dismissal to [RaftModalDismissBarrier].
  */
-internal fun slockModalDialogProperties(): DialogProperties =
-    DialogProperties(
-        dismissOnClickOutside = false,
-        usePlatformDefaultWidth = false,
-        scrimColor = Color.Transparent
-    )
+internal fun raftModalDialogPropertiesWithoutScrim(): DialogProperties =
+    // Per platform: no framework scrim / window dim (Kuikly passed scrimColor = Transparent),
+    // edge to edge, insets left to the page. See raftModalDialogProperties.
+    raftModalDialogProperties()
 
+/** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable
-fun Modifier.dragEnable(enable: Boolean): Modifier {
-    return this.setProp("dragEnable", enable)
-}
+fun Modifier.dragEnable(enable: Boolean): Modifier = this
 
 @Composable
 internal fun Button(
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
-    onClick2: ((SlockPopoverAnchor) -> Unit)? = null,
+    onClick2: ((RaftPopoverAnchor) -> Unit)? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     pressFeedback: Boolean = true,
-    pressOffset: Dp = SlockPressTokens.ButtonOffset,
+    pressOffset: Dp = RaftPressTokens.ButtonOffset,
     clickIdentity: Any? = null,
     anchorOwnerIdentity: Any? = null,
+    // Observes the press (raft-ui lays a pressed wash over the control instead of
+    // offsetting it); only reported while [pressFeedback] is on.
+    onPressedChange: ((Boolean) -> Unit)? = null,
     content: (@Composable () -> Unit) = {}
 ) {
     val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "button"
     val rootAnchor =
-        remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
+        remember(resolvedAnchorOwnerIdentity) { RaftLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
     var pressed by remember(resolvedAnchorOwnerIdentity) { mutableStateOf(false) }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongClick by rememberUpdatedState(onLongClick)
     val currentEnabled by rememberUpdatedState(enabled)
     val hasLongClick = onLongClick != null
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "button",
             semanticIdentity = resolvedAnchorOwnerIdentity,
             callbacks =
-                SlockButtonGestureCallbacks(
+                RaftButtonGestureCallbacks(
                     enabled = enabled,
                     pressFeedback = pressFeedback,
                     onClick = onClick,
                     onLongClick = onLongClick,
                     onClick2 = onClick2,
-                    onPressedChange = { pressed = it },
+                    onPressedChange = {
+                        pressed = it
+                        onPressedChange?.invoke(it)
+                    },
                     rootAnchor = rootAnchor
                 )
         )
     Box(
         modifier = Modifier
-            .slockButtonAccessibility(
+            .raftButtonAccessibility(
                 enabled = enabled,
                 performClick = { if (currentEnabled) currentOnClick() },
                 longClickLabel = longClickLabel,
@@ -1393,7 +1411,7 @@ internal fun Button(
             )
             .then(
                 if (onClick2 != null) {
-                    Modifier.slockCaptureLiveRootAnchor(rootAnchor)
+                    Modifier.raftCaptureLiveRootAnchor(rootAnchor)
                 } else {
                     Modifier
                 }
@@ -1402,12 +1420,12 @@ internal fun Button(
             // out of the pointer-input keys prevents Kuikly from tearing down
             // the tap handler when a dynamically-enabled button (for example
             // Undo/Clear after the first edit) transitions from false to true.
-            .slockGesturePointerInput(gestureOwner, pressFeedback, hasLongClick) { owner ->
-                var gesture: SlockGestureSession<SlockButtonGestureCallbacks>? = null
-                var arbiter = SlockButtonGestureArbiter(hasLongClick)
+            .raftGesturePointerInput(gestureOwner, pressFeedback, hasLongClick) { owner ->
+                var gesture: RaftGestureSession<RaftButtonGestureCallbacks>? = null
+                var arbiter = RaftButtonGestureArbiter(hasLongClick)
                 detectTapGestures(
                     onPress = {
-                        arbiter = SlockButtonGestureArbiter(hasLongClick)
+                        arbiter = RaftButtonGestureArbiter(hasLongClick)
                         val session = owner.beginGesture()
                         gesture = session
                         val callbacks = session.currentCallbacksOrNull()
@@ -1427,7 +1445,7 @@ internal fun Button(
                         if (callbacks.enabled) {
                             arbiter.dispatchTap {
                                 callbacks.onClick()
-                                callbacks.rootAnchor.resolve(SlockPopoverLocalPoint.Exact(offset))?.let { anchor ->
+                                callbacks.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(offset))?.let { anchor ->
                                     callbacks.onClick2?.invoke(anchor)
                                 }
                             }
@@ -1448,7 +1466,7 @@ internal fun Button(
                         }
                 )
             }
-            .slockPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
+            .raftPressedOffset(pressed = pressed && enabled, pressOffset = pressOffset)
             .then(modifier),
         contentAlignment = Alignment.Center
     ) {
@@ -1457,7 +1475,7 @@ internal fun Button(
 }
 
 /** Owns the one-gesture tap/long-press decision used by the production pointer callbacks. */
-internal class SlockButtonGestureArbiter(private val hasLongClick: Boolean) {
+internal class RaftButtonGestureArbiter(private val hasLongClick: Boolean) {
     private var longClickCommitted = false
 
     fun dispatchTap(action: () -> Unit): Boolean {
@@ -1474,14 +1492,14 @@ internal class SlockButtonGestureArbiter(private val hasLongClick: Boolean) {
     }
 }
 
-private data class SlockButtonGestureCallbacks(
+private data class RaftButtonGestureCallbacks(
     val enabled: Boolean,
     val pressFeedback: Boolean,
     val onClick: () -> Unit,
     val onLongClick: (() -> Unit)?,
-    val onClick2: ((SlockPopoverAnchor) -> Unit)?,
+    val onClick2: ((RaftPopoverAnchor) -> Unit)?,
     val onPressedChange: (Boolean) -> Unit,
-    val rootAnchor: SlockLiveRootAnchorRef
+    val rootAnchor: RaftLiveRootAnchorRef
 )
 
 internal class Border(
@@ -1491,14 +1509,112 @@ internal class Border(
 )
 
 internal fun Modifier.border(border: Border) =
-    this.border(width = border.lineWidth, color = border.color).slockSquareCorners()
+    this.border(width = border.lineWidth, color = border.color).raftSquareCorners()
 
-internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
-    textStyle.withResolvedSlockFontFamily()
+internal fun raftTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
+    textStyle.withResolvedRaftFontFamily()
 
-internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
+internal fun raftTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
 
-internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
+/**
+ * CMP port of the Kuikly text-area `imeActionRequested` prop: a multi-line native editor that was
+ * not asked for an action key stayed multi-line, so the IME showed a newline key. Compose shows the
+ * action key on multi-line fields too, so drop the action in that case.
+ */
+internal fun raftResolvedKeyboardOptions(
+    keyboardOptions: KeyboardOptions,
+    singleLine: Boolean,
+    imeActionRequested: Boolean,
+): KeyboardOptions =
+    if (!singleLine && !imeActionRequested && keyboardOptions.imeAction != ImeAction.Default) {
+        keyboardOptions.copy(imeAction = ImeAction.Default)
+    } else {
+        keyboardOptions
+    }
+
+/**
+ * CMP port of the Android host's hardware-Enter routing (RaftLegacyHostActivity
+ * handleRaftTextFieldEnterKey): when the field's IME action is Send, Enter sends on key-up and
+ * Shift+Enter inserts a newline (multi-line fields only); which of the two is decided on key-down
+ * ([RaftHardwareEnterRouter]). Compose would otherwise insert a newline
+ * for every hardware Enter on a multi-line field.
+ *
+ * TODO(cmp-switch): `systemNewlineAction` (an "Insert newline" item in the Android text
+ * selection menu) has no common Compose API yet; it is still ignored.
+ * TODO(cmp-switch): verify on iOS that the soft-keyboard Send key on a multi-line field fires
+ * KeyboardActions.onSend instead of inserting "\n".
+ */
+@Composable
+internal fun Modifier.raftImeEnterAction(
+    singleLine: Boolean,
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+): Modifier {
+    val router = remember { RaftHardwareEnterRouter() }
+    if (keyboardOptions.imeAction != ImeAction.Send) return this
+    val onSend = keyboardActions.onSend ?: return this
+    return onPreviewKeyEvent { event ->
+        if (event.key != Key.Enter && event.key != Key.NumPadEnter) return@onPreviewKeyEvent false
+        val phase =
+            when (event.type) {
+                KeyEventType.KeyDown -> RaftHardwareEnterRouter.Phase.Down
+                KeyEventType.KeyUp -> RaftHardwareEnterRouter.Phase.Up
+                else -> return@onPreviewKeyEvent false
+            }
+        router.onEnter(phase, shiftPressed = event.isShiftPressed, singleLine = singleLine) {
+            onSend(RaftHardwareEnterKeyboardActionScope)
+        }
+    }
+}
+
+/**
+ * Per-field hardware Enter decision for [raftImeEnterAction]. Send vs newline is decided on the
+ * key-down (by the Shift state at that moment) and the key-up only carries it out, so releasing
+ * Shift a moment before Enter still inserts the newline instead of sending, and a key-up whose
+ * key-down this field did not see (focus moved mid-press) does nothing.
+ */
+internal class RaftHardwareEnterRouter {
+    enum class Phase { Down, Up }
+
+    private enum class Decision { Send, Newline }
+
+    private var pending: Decision? = null
+
+    /** Returns true when the event is consumed (the field must not handle it). */
+    fun onEnter(phase: Phase, shiftPressed: Boolean, singleLine: Boolean, send: () -> Unit): Boolean =
+        when (phase) {
+            Phase.Down -> {
+                val decision = if (shiftPressed) Decision.Newline else Decision.Send
+                pending = decision
+                // Newline: a multi-line field inserts it; a single-line field swallows (no send).
+                decision == Decision.Send || singleLine
+            }
+            Phase.Up -> {
+                val decision = pending
+                pending = null
+                when (decision) {
+                    Decision.Send -> {
+                        send()
+                        true
+                    }
+                    Decision.Newline -> singleLine
+                    null -> false
+                }
+            }
+        }
+}
+
+/**
+ * Receiver of the `onSend` call [raftImeEnterAction] makes for a hardware Enter. Callers compare
+ * against it to tell a hardware Enter (which must not send while the IME is composing: Enter
+ * commits the conversion) from the soft keyboard's Send key (which always sends, committing any
+ * open composition).
+ */
+internal object RaftHardwareEnterKeyboardActionScope : KeyboardActionScope {
+    override fun defaultKeyboardAction(imeAction: ImeAction) = Unit
+}
+
+internal fun TextInputState.toRaftTextFieldValue(): TextFieldValue {
     val boundedSelectionStart = selectionStart.coerceIn(0, text.length)
     val boundedSelectionEnd = selectionEnd.coerceIn(0, text.length)
     val boundedComposition =
@@ -1520,30 +1636,71 @@ internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
     )
 }
 
-internal data class SlockTextFieldNativeEditorRead(
+internal data class RaftTextFieldNativeEditorRead(
     val state: TextInputState?,
     val editorNativeRef: Int? = null,
 )
 
-internal sealed class SlockTextFieldNativeEditingStateReadResult {
+internal sealed class RaftTextFieldNativeEditingStateReadResult {
     data class Available(
         val value: TextFieldValue,
         // nativeRef of the AutoHeightTextAreaView the state was read from (-1 when the
         // read path could not attribute one); matches ViewRef.nativeRef on the native side.
         val editorNativeRef: Int,
-    ) : SlockTextFieldNativeEditingStateReadResult()
+    ) : RaftTextFieldNativeEditingStateReadResult()
 
-    data object Unavailable : SlockTextFieldNativeEditingStateReadResult()
+    data object Unavailable : RaftTextFieldNativeEditingStateReadResult()
 }
 
-private fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor(): AutoHeightTextAreaView? =
-    when (this) {
-        is AutoHeightTextAreaView -> this
-        is ViewContainer<*, *> ->
-            templateChildren().firstNotNullOfOrNull { child ->
-                child.findSlockNativeTextEditor()
-            }
-        else -> null
+internal fun TextFieldValue.toRaftTextInputState(): TextInputState =
+    TextInputState(
+        text = text,
+        selectionStart = selection.start,
+        selectionEnd = selection.end,
+        compositionStart = composition?.start ?: TextInputState.NO_COMPOSITION,
+        compositionEnd = composition?.end ?: TextInputState.NO_COMPOSITION,
+    )
+
+/**
+ * The most recent [TextFieldValue] a field has seen, for action-boundary reads (Send).
+ *
+ * The composed `value` lags an IME edit by a frame: Compose delivers the edit to `onValueChange`,
+ * the caller stores it, and only the next recomposition passes it back. A Send fired inside that
+ * window must still see the edit, so the `onValueChange` wrapper records it ([recordEdit]) before
+ * calling the caller. Every committed composition records the caller's value ([recordComposed]),
+ * so programmatic changes (clear after send, draft restore) and edits the caller rejected win
+ * again once composed.
+ */
+internal class RaftLiveTextFieldValue(initial: TextFieldValue) {
+    var value: TextFieldValue = initial
+        private set
+
+    fun recordEdit(next: TextFieldValue) {
+        value = next
+    }
+
+    fun recordComposed(composed: TextFieldValue) {
+        value = composed
+    }
+}
+
+/**
+ * Composition barrier for action-boundary reads (Send, draft capture): the IME's unfinished
+ * composition (mid-dictation, mid-CJK conversion) is committed as-is, without dropping characters.
+ *
+ * Kuikly's Android editor ran `finishComposingText()` inside `getTextInputState` (7ae5b181a), so
+ * the composer never received an open composing region. On CMP the reader returns the Compose
+ * [TextFieldValue], whose text already contains the composing characters; clearing the range makes
+ * the snapshot match that contract, and when the composer writes the snapshot back to the field
+ * (acceptEditorValue) Compose sees a composition-only change and restarts input, which ends the
+ * IME's composition the way `finishComposingText` did - so the IME cannot keep composing into
+ * the text that is being sent.
+ */
+internal fun TextInputState.raftWithFinishedComposition(): TextInputState =
+    if (compositionStart == TextInputState.NO_COMPOSITION && compositionEnd == TextInputState.NO_COMPOSITION) {
+        this
+    } else {
+        copy(compositionStart = TextInputState.NO_COMPOSITION, compositionEnd = TextInputState.NO_COMPOSITION)
     }
 
 /**
@@ -1553,18 +1710,18 @@ private fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor(): AutoHeightTex
  * still queued for Compose. Callers such as Send therefore need an explicit barrier instead of
  * assuming the last rendered [TextFieldValue] is the value currently on screen.
  */
-internal class SlockTextFieldNativeEditingStateReader {
+internal class RaftTextFieldNativeEditingStateReader {
     private class Binding(
         val owner: Any,
         // An async read OPERATION: callers hand it the callback that receives the result.
-        var read: ((SlockTextFieldNativeEditorRead) -> Unit) -> Unit,
+        var read: ((RaftTextFieldNativeEditorRead) -> Unit) -> Unit,
     )
 
     private var binding: Binding? = null
 
     internal fun bind(
         owner: Any,
-        read: ((SlockTextFieldNativeEditorRead) -> Unit) -> Unit,
+        read: ((RaftTextFieldNativeEditorRead) -> Unit) -> Unit,
     ) {
         val activeBinding = binding
         if (activeBinding?.owner === owner) {
@@ -1581,25 +1738,25 @@ internal class SlockTextFieldNativeEditingStateReader {
     }
 
     fun readCurrentValue(
-        onResult: (SlockTextFieldNativeEditingStateReadResult) -> Unit,
+        onResult: (RaftTextFieldNativeEditingStateReadResult) -> Unit,
     ) {
         val activeBinding = binding
         if (activeBinding == null) {
-            onResult(SlockTextFieldNativeEditingStateReadResult.Unavailable)
+            onResult(RaftTextFieldNativeEditingStateReadResult.Unavailable)
             return
         }
         activeBinding.read { editorRead ->
             onResult(
                 if (binding === activeBinding && editorRead.state != null) {
-                    SlockTextFieldNativeEditingStateReadResult.Available(
-                        value = editorRead.state.toSlockTextFieldValue(),
+                    RaftTextFieldNativeEditingStateReadResult.Available(
+                        value = editorRead.state.toRaftTextFieldValue(),
                         // Kuikly nativeRef of the resolved AutoHeightTextAreaView — the
                         // instance identity the native layer matches against
                         // viewWithNativeRef for the adoption commit-time editor fence.
                         editorNativeRef = editorRead.editorNativeRef ?: -1,
                     )
                 } else {
-                    SlockTextFieldNativeEditingStateReadResult.Unavailable
+                    RaftTextFieldNativeEditingStateReadResult.Unavailable
                 }
             )
         }
@@ -1613,7 +1770,7 @@ internal class SlockTextFieldNativeEditingStateReader {
  * contract is the editor-level `keyboardHeightChange` event. The default is deliberately a no-op
  * so ordinary page editors retain their existing layout behavior.
  */
-internal val LocalSlockDialogKeyboardHeightChange =
+internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }
 
 @Composable
@@ -1654,14 +1811,14 @@ internal fun TextField(
     contentAlignment: Alignment = Alignment.CenterStart
 ) {
     var lastFocus by remember { mutableStateOf(false) }
-    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusOwner = remember { Any() }
-    val focusOwnerAnchor = remember { SlockInputFocusOwnerAnchor() }
+    val focusOwnerAnchor = remember { RaftInputFocusOwnerAnchor() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
     val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
-    val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+    val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
     DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
@@ -1672,10 +1829,16 @@ internal fun TextField(
         }
     }
 
+    val resolvedKeyboardOptions =
+        raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
     val updatedModifier = modifier
-        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, if (imeActionRequested) 1 else 0) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
+        // systemNewlineAction / imeActionRequested were native-editor props; see
+        // raftImeEnterAction / raftResolvedKeyboardOptions.
+        .raftImeEnterAction(
+            singleLine = raftTextFieldSingleLine(maxLines),
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+        )
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
             dialogKeyboardHeightChange(params)
@@ -1699,16 +1862,16 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-    val resolvedTextStyle = slockTextFieldResolvedTextStyle(textStyle)
+    val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
     BasicTextField(
         modifier = updatedModifier,
         value = value,
         onValueChange = currentOnValueChange,
         textStyle = resolvedTextStyle,
-        singleLine = slockTextFieldSingleLine(maxLines),
+        singleLine = raftTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
-        keyboardOptions = keyboardOptions,
+        keyboardOptions = resolvedKeyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
         enabled = enabled,
@@ -1768,18 +1931,18 @@ internal fun TextField(
     participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart,
-    nativeEditingStateReader: SlockTextFieldNativeEditingStateReader? = null,
+    nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
     var lastFocus by remember { mutableStateOf(false) }
-    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusOwner = remember { Any() }
-    val focusOwnerAnchor = remember { SlockInputFocusOwnerAnchor() }
+    val focusOwnerAnchor = remember { RaftInputFocusOwnerAnchor() }
     val nativeEditingStateBindingOwner = remember { Any() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
     val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
-    val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+    val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
     DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
@@ -1793,10 +1956,16 @@ internal fun TextField(
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
 
+    val resolvedKeyboardOptions =
+        raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
     val updatedModifier = modifier
-        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_IME_ACTION_REQUESTED_PROP, if (imeActionRequested) 1 else 0) else it }
-        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
+        // systemNewlineAction / imeActionRequested were native-editor props; see
+        // raftImeEnterAction / raftResolvedKeyboardOptions.
+        .raftImeEnterAction(
+            singleLine = raftTextFieldSingleLine(maxLines),
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+        )
         .keyboardHeightChange { params ->
             currentKeyboardHeightChange(params)
             dialogKeyboardHeightChange(params)
@@ -1820,64 +1989,82 @@ internal fun TextField(
                 lastFocus = false
             }
         }
-        .then(
-            if (nativeEditingStateReader != null) {
-                Modifier.nativeRef {
-                    val nativeEditorRoot = this
-                    nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
-                        // CoreTextField splits non-prop/event modifiers onto its outer Box. Resolve
-                        // the actual AutoHeightTextAreaView at read time; calling the Box silently
-                        // drops getTextInputState because that native view has no such method.
-                        val nativeEditor = nativeEditorRoot.findSlockNativeTextEditor()
-                        if (nativeEditor == null) {
-                            callback(SlockTextFieldNativeEditorRead(state = null))
-                        } else {
-                            val editorRef = nativeEditor.nativeRef
-                            nativeEditor.getTextInputState({ state ->
-                                callback(
-                                    SlockTextFieldNativeEditorRead(
-                                        state = state,
-                                        editorNativeRef = editorRef,
-                                    )
-                                )
-                            })
-                        }
-                    }
-                }
-            } else {
-                Modifier
-            }
-        )
-    val resolvedTextStyle = slockTextFieldResolvedTextStyle(textStyle)
-    BasicTextField(
-        modifier = updatedModifier,
-        value = value,
-        onValueChange = currentOnValueChange,
-        textStyle = resolvedTextStyle,
-        singleLine = slockTextFieldSingleLine(maxLines),
-        maxLines = maxLines,
-        onTextLayout = currentOnTextLayout,
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush,
-        enabled = enabled,
-        readOnly = readOnly,
-        visualTransformation = visualTransformation,
-        decorationBox = { innerTextField ->
-            Box(contentAlignment = contentAlignment) {
-                if (value.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                innerTextField()
+    // CMP: the editing state lives in Compose, so the "native" read is the live value: the most
+    // recent value seen by the field, including an IME edit delivered to onValueChange that the
+    // caller has not recomposed with yet (an IME commit and Send within one frame), see
+    // RaftLiveTextFieldValue.
+    val liveValueForReader = remember { RaftLiveTextFieldValue(value) }
+    SideEffect { liveValueForReader.recordComposed(value) }
+    val onValueChangeRecordingLive: (TextFieldValue) -> Unit =
+        remember(liveValueForReader) {
+            { next ->
+                liveValueForReader.recordEdit(next)
+                currentOnValueChange(next)
             }
         }
-    )
+    if (nativeEditingStateReader != null) {
+        SideEffect {
+            nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
+                callback(
+                    RaftTextFieldNativeEditorRead(
+                        state = liveValueForReader.value.toRaftTextInputState().raftWithFinishedComposition(),
+                        editorNativeRef = -1,
+                    )
+                )
+            }
+        }
+    }
+    // Touch double-tap word / triple-tap paragraph selection; see raftTextFieldMultiTapSelection.
+    val (multiTapSelectionModifier, multiTapSelection) =
+        rememberRaftTextFieldMultiTapSelection(
+            enabled =
+                enabled &&
+                    !readOnly &&
+                    visualTransformation == VisualTransformation.None &&
+                    raftPlatformTextFieldNeedsMultiTapBackport(),
+            composedValue = value,
+            currentValue = { liveValueForReader.value },
+            onValueChange = onValueChangeRecordingLive,
+        )
+    val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
+    // The field gets the backport's toolbar so its own hide() calls do not close a multi-tap menu.
+    val fieldToolbar = if (raftPlatformTextFieldNeedsMultiTapBackport()) multiTapSelection.fieldToolbar else LocalTextToolbar.current
+    CompositionLocalProvider(LocalTextToolbar provides fieldToolbar) {
+        BasicTextField(
+            // Outside the field's own pointer modifiers, so its Main pass runs after the field's tap
+            // handler has placed the cursor.
+            modifier = multiTapSelectionModifier.then(updatedModifier),
+            value = value,
+            onValueChange = onValueChangeRecordingLive,
+            textStyle = resolvedTextStyle,
+            singleLine = raftTextFieldSingleLine(maxLines),
+            maxLines = maxLines,
+            onTextLayout = { layout ->
+                multiTapSelection.textLayout = layout
+                currentOnTextLayout(layout)
+            },
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+            cursorBrush = cursorBrush,
+            enabled = enabled,
+            readOnly = readOnly,
+            visualTransformation = visualTransformation,
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = contentAlignment) {
+                    if (value.text.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+                            color = placeholderColor ?: resolvedTextStyle.color,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        )
+    }
 
     LaunchedEffect(autoFocus) {
         if (autoFocus) {
@@ -1887,33 +2074,6 @@ internal fun TextField(
     }
 }
 
-private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
-private const val SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP = "numberOfLines"
-
-// Android claims the single-line declaration to make the IME render an action key, and a
-// multi-line field suppresses that key entirely. The native view decides the mode exactly once,
-// and numberOfLines is what triggers that decision — so this prop must be attached ahead of
-// SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP in the modifier chain, not after it.
-private const val SLOCK_IME_ACTION_REQUESTED_PROP = "slockImeActionRequested"
-
-@Composable
-fun Modifier.dtReport(enable: Boolean): Modifier {
-    var ref1 = remember { 0 }
-    var ref2 = remember { 9 }
-    return this.setProp("dragEnable", enable)
-        .nativeRef {
-            println("<top>.dtReport1")
-            ref1 = this.nativeRef
-        }.nativeRef {
-            println("<top>.dtReport2")
-            ref2 = this.nativeRef
-
-        }.clickable {
-            println("<top>.clickable1 ref1=${ref1} ${ref2}")
-        }.clickable {
-            println("<top>.clickable2 ref1=${ref1} ${ref2}")
-        }
-}
 
 fun Modifier.appearPercentage(
     onPercentageChanged: (Float) -> Unit
@@ -1959,9 +2119,9 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
         Box {
             Text(
                 text = "<",
-                style = SlockType.PageTitle
+                style = RaftType.PageTitle
                     .copy(fontSize = 22.sp, lineHeight = 28.sp)
-                    .withSlockFontWeight(FontWeight.SemiBold),
+                    .withRaftFontWeight(FontWeight.SemiBold),
                 modifier = Modifier
                     .padding(vertical = 12.dp, horizontal = 12.dp)
                     .clickable {
@@ -1970,9 +2130,9 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
             )
             Text(
                 title,
-                style = SlockType.PageTitle
+                style = RaftType.PageTitle
                     .copy(fontSize = 22.sp, lineHeight = 28.sp)
-                    .withSlockFontWeight(FontWeight.SemiBold),
+                    .withRaftFontWeight(FontWeight.SemiBold),
                 textAlign = TextAlign.Center,
                 color = Color(0xFF333333),
                 modifier = Modifier

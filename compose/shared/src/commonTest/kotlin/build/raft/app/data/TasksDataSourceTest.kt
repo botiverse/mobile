@@ -18,7 +18,7 @@ class TasksDataSourceTest {
     @Test
     fun typedTasksApiUsesCanonicalTaskRoutesAndBodies() = runBlocking {
         val transport = RecordingTasksApi()
-        val client = SlockTasksApiClient(transport)
+        val client = RaftTasksApiClient(transport)
 
         val serverTasks = client.serverTasks(ServerId("server-1"), DataRequestPriority.Visible)
         val channelTasks = client.channelTasks(ChannelId("channel-1"), DataRequestPriority.Visible)
@@ -56,9 +56,9 @@ class TasksDataSourceTest {
     }
 
     @Test
-    fun networkTasksApiUsesSlockNetworkClientRoutesAndBodies() = runBlocking {
+    fun networkTasksApiUsesRaftNetworkClientRoutesAndBodies() = runBlocking {
         val networkClient = RecordingTasksNetworkClient()
-        val client = SlockTasksApiClient(NetworkSlockTasksApi(networkClient))
+        val client = RaftTasksApiClient(NetworkRaftTasksApi(networkClient))
 
         assertIs<DataResult.Content<TaskSnapshot>>(
             client.serverTasks(ServerId("server-1"), DataRequestPriority.Visible)
@@ -97,7 +97,7 @@ class TasksDataSourceTest {
     @Test
     fun networkTasksApiBindsProjectedReadsAndWritesToExplicitServer() = runBlocking {
         val networkClient = RecordingTasksNetworkClient()
-        val client = SlockTasksApiClient(NetworkSlockTasksApi(networkClient))
+        val client = RaftTasksApiClient(NetworkRaftTasksApi(networkClient))
         val serverId = ServerId("server-peer")
 
         assertIs<DataResult.Content<TaskSnapshot>>(
@@ -139,7 +139,7 @@ class TasksDataSourceTest {
 
     @Test
     fun typedTasksApiRejectsGuessedCreateWrappers() = runBlocking {
-        val client = SlockTasksApiClient(
+        val client = RaftTasksApiClient(
             RecordingTasksApi(createBody = """{"data":[{"id":"task-1","title":"Task #1: guessed"}]}""")
         )
 
@@ -152,11 +152,11 @@ class TasksDataSourceTest {
     @Test
     fun convertMessageAcceptsSuccessfulResponseWithoutTaskProjection() = runBlocking {
         val missingBody =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(convertResponse = HomeNetworkResponse(code = 204, bodyText = null))
             ).convertMessage(MessageId("message-1"))
         val emptyEnvelope =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(convertResponse = HomeNetworkResponse(code = 200, bodyText = "{}"))
             ).convertMessage(MessageId("message-1"))
 
@@ -166,7 +166,7 @@ class TasksDataSourceTest {
 
     @Test
     fun typedTasksApiRequiresDeleteOkTrue() = runBlocking {
-        val client = SlockTasksApiClient(RecordingTasksApi(deleteBody = """{"success":true}"""))
+        val client = RaftTasksApiClient(RecordingTasksApi(deleteBody = """{"success":true}"""))
 
         val result = client.deleteTask(TaskId("task-1"))
 
@@ -194,7 +194,7 @@ class TasksDataSourceTest {
     @Test
     fun statusUpdateMapsMatchingAlreadyAppliedConflict() = runBlocking {
         val client =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(
                     updateResponse =
                         HomeNetworkResponse(
@@ -215,7 +215,7 @@ class TasksDataSourceTest {
     @Test
     fun statusUpdateDoesNotAcceptMismatchedAlreadyAppliedConflict() = runBlocking {
         val client =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(
                     updateResponse =
                         HomeNetworkResponse(
@@ -236,7 +236,7 @@ class TasksDataSourceTest {
     @Test
     fun statusUpdateAcceptsSuccessfulResponseWithoutTaskProjection() = runBlocking {
         val client =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(
                     updateResponse = HomeNetworkResponse(code = 204, bodyText = null)
                 )
@@ -252,7 +252,7 @@ class TasksDataSourceTest {
     @Test
     fun taskWireMappingPreservesTrimmedDescription() = runBlocking {
         val client =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(
                     listBody =
                         """
@@ -298,7 +298,7 @@ class TasksDataSourceTest {
     fun taskListDropsUnknownStatusAndDoesNotInventUnknownAssigneeKind() = runBlocking {
         val logs = mutableListOf<String>()
         val client =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(
                     listBody =
                         """
@@ -376,7 +376,7 @@ class TasksDataSourceTest {
     fun taskActionWithUnknownStatusReturnsContractMismatch() = runBlocking {
         val logs = mutableListOf<String>()
         val client =
-            SlockTasksApiClient(
+            RaftTasksApiClient(
                 RecordingTasksApi(
                     actionBody =
                         """
@@ -418,7 +418,7 @@ class TasksDataSourceTest {
             """{"tasks":[{"id":"task-2","channelId":"channel-1","taskNumber":2,"title":"Task #2: created","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
         private val deleteBody: String = """{"ok":true}""",
         private val convertResponse: HomeNetworkResponse? = null
-    ) : SlockTasksApi {
+    ) : RaftTasksApi {
         val calls = mutableListOf<String>()
 
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
@@ -478,7 +478,7 @@ class TasksDataSourceTest {
             HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private class RecordingTasksNetworkClient : SlockNetworkClient {
+    private class RecordingTasksNetworkClient : RaftNetworkClient {
         val calls = mutableListOf<String>()
 
         override suspend fun request(

@@ -13,7 +13,7 @@ Realtime is a session/server capability. It must not be owned by a transient
 Kuikly page, shell, route, or Activity instance.
 
 As of `upstream/main` including `95d848ef fix(android): host realtime for
-standalone thread`, Android `SlockKuiklyActivity` treats both
+standalone thread`, Android `RaftLegacyHostActivity` treats both
 `PAGE_APP_SHELL` and `PAGE_THREAD` as realtime host pages:
 
 - `onCreate` / `onResume` call `startRealtimeBridgeIfNeeded()`.
@@ -179,12 +179,12 @@ Phase 1: extract a process-scoped manager.
 
 - Move `realtimeRepository`, subscriptions, `realtimeServerId`,
   `realtimeSessionKey`, `realtimeLastSeq`, and connect job out of
-  `SlockKuiklyActivity`.
-- Host the manager under application scope or `SlockKuiklyAdapters`, not an
+  `RaftLegacyHostActivity`.
+- Host the manager under application scope or `RaftAdapters`, not an
   Activity instance.
 - Keep `SessionRealtimeRepository`, `SocketIoRealtimeClient`, and
   `AuthTokenRefresher` as the transport stack.
-- Make `SlockKuiklyActivity` call `attachConsumer(surfaceId, sink)` in
+- Make `RaftLegacyHostActivity` call `attachConsumer(surfaceId, sink)` in
   `onCreate`/`onStart` and `detachConsumer(surfaceId)` in `onDestroy`.
 - Replace Activity `stopRealtimeBridge()` with consumer detach. Do not call
   repository `disconnect()` on `onPause` or normal `onDestroy`.

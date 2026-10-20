@@ -8,7 +8,7 @@ The picker/editor path is deliberately a two-stage protocol:
   the native host to produce one new JPEG temporary file.
 
 This checker only verifies the structural faces of that protocol.  It does not
-claim that an iOS/OHOS compiler, a camera, or a physical device was exercised.
+claim that an iOS compiler, a camera, or a physical device was exercised.
 Run ``--self-test`` to exercise mutation arms against small source fixtures;
 without the flag the checker reads the current repository and fails closed when
 any required source or contract face is absent.
@@ -26,12 +26,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PATHS = {
     "bridge": "compose/shared/src/commonMain/kotlin/build/raft/app/base/BridgeModule.kt",
-    "preview": "compose/shared/src/commonMain/kotlin/build/raft/app/SlockFilePreview.kt",
+    "preview": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftFilePreview.kt",
     "thread": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt",
     "uploaded_preview": "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerUploadedImagePreview.kt",
-    "android": "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt",
-    "ios": "compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m",
-    "ohos": "compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets",
+    "android": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+    "ios": "compose/iosApp/iosApp/Host/HRBridgeModule.m",
 }
 
 ERROR_CODE = "attachment_image_compression_failed"
@@ -94,44 +93,6 @@ def _require_video_set_covers(
         raise Violation(
             f"{label}: missing shared video extensions: {', '.join(missing)}"
         )
-
-
-def _ohos_video_regex_extensions(
-    region: str,
-    target: str,
-    label: str,
-) -> set[str]:
-    """Extract alternatives from an OHOS ``/\\.(a|b)$/`` guard."""
-
-    match = re.search(
-        rf"/\\\.\((?P<body>[^)]+)\)\$/\.test\(\s*{re.escape(target)}\s*\)",
-        region,
-    )
-    if match is None:
-        raise Violation(f"{label}: video-extension regex for {target} is missing")
-    extensions = {
-        token.strip().lower()
-        for token in match.group("body").split("|")
-        if token.strip()
-    }
-    if not extensions:
-        raise Violation(f"{label}: video-extension regex for {target} is empty")
-    return extensions
-
-
-def _ohos_video_array_extensions(region: str, label: str) -> set[str]:
-    """Extract quoted extensions from an OHOS ``[...].includes(extension)`` guard."""
-
-    match = re.search(
-        r"\[(?P<body>[^\]]+)\]\.includes\(\s*extension\s*\)",
-        region,
-    )
-    if match is None:
-        raise Violation(f"{label}: video-extension array guard is missing")
-    extensions = _quoted_tokens(match.group("body"))
-    if not extensions:
-        raise Violation(f"{label}: video-extension array guard is empty")
-    return extensions
 
 
 def _objc_video_set_extensions(region: str, label: str) -> set[str]:
@@ -244,12 +205,12 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
         (
             ERROR_CODE,
             SOURCE_MARKER,
-            "SlockFilePreviewComposerImageOperationGate",
+            "RaftFilePreviewComposerImageOperationGate",
             "fun begin(",
             "fun complete(",
             "fun cancel(",
             "fun retire(",
-            "parseSlockFilePreviewCompressedImageResult",
+            "parseRaftFilePreviewCompressedImageResult",
             "composerImageCompressAfterEdit",
             "composerImageEditCompleted",
             "composerImageCompressed",
@@ -261,7 +222,7 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
     )
     parser = _region(
         source,
-        "internal fun parseSlockFilePreviewCompressedImageResult(",
+        "internal fun parseRaftFilePreviewCompressedImageResult(",
         None,
         "shared compression response parser",
     )
@@ -270,9 +231,9 @@ def check_shared_preview(sources: Mapping[str, str]) -> None:
         (
             "filesJson.length() != 1",
             'rawMimeType != "image/jpeg"',
-            "rawSource != SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE",
-            "SlockFilePreviewCompressedImageResult.Failure",
-            "SlockFilePreviewCompressedImageResult.Success",
+            "rawSource != RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE",
+            "RaftFilePreviewCompressedImageResult.Failure",
+            "RaftFilePreviewCompressedImageResult.Success",
         ),
         "shared compression response parser",
     )
@@ -288,7 +249,7 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
     policy = _region(
         thread,
         "internal fun shouldCompressThreadAttachmentPickerImages(",
-        "internal fun slockComposerImagePickerFilesAreStrictImages(",
+        "internal fun raftComposerImagePickerFilesAreStrictImages(",
         "ThreadPage mixed-picker compression policy",
     )
     if re.search(r'action\s*==\s*"attachFile"\s*&&\s*!originalImage', policy):
@@ -350,13 +311,13 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
              "threadComposerImageAnnotationPayload(threadInstanceKey, actionId, files, originalImage)",
              "uploaded-preview policy forwarding")
     initial_builder = _region(thread, "internal fun threadComposerImageAnnotationPayload(",
-                              "private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(",
+                              "private fun RaftThreadAttachmentItem.toThreadAttachmentPreviewPayload(",
                               "initial image editor policy")
     _require(initial_builder, "composerImageCompressAfterEdit = !originalImage", "initial image editor policy")
     _require_all(
         thread,
         (
-            "slockComposerImagePickerIsStrictImage",
+            "raftComposerImagePickerIsStrictImage",
             "resolveThreadPickedAttachmentComposerAction",
             "ThreadPickedAttachmentComposerAction.UploadToComposer",
             "ThreadPickedAttachmentComposerAction.OpenImageAnnotation",
@@ -368,7 +329,7 @@ def check_thread_routing(sources: Mapping[str, str]) -> None:
     # the dedicated bridge/parser pair.
     combined = thread + "\n" + preview
     _require(combined, "compressThreadImage", "editor-confirmation compression route")
-    _require(combined, "parseSlockFilePreviewCompressedImageResult", "editor-confirmation response admission")
+    _require(combined, "parseRaftFilePreviewCompressedImageResult", "editor-confirmation response admission")
     _require(combined, "withComposerImageFinalResult", "editor-confirmation payload replacement")
 
 
@@ -385,7 +346,7 @@ def _owned_temporary_source_set_names(thread: str) -> set[str]:
             for marker in ('"platform_picker"', '"platform_camera"', '"composer_image_editor"')
         ) and (
             '"composer_image_compressor"' in body
-            or "SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in body
+            or "RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in body
         ):
             names.add(match.group(1))
     return names
@@ -401,7 +362,7 @@ def _require_owned_temporary_sources(
         for marker in ('"platform_picker"', '"platform_camera"', '"composer_image_editor"')
     ) and (
         '"composer_image_compressor"' in region
-        or "SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in region
+        or "RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE" in region
     )
     shared_source_sets = _owned_temporary_source_set_names(thread)
     if not direct_sources_present and not any(name in region for name in shared_source_sets):
@@ -520,18 +481,18 @@ def _check_pending_journal_upload_propagation(thread: str) -> None:
 
 
 def _check_strict_image_classifier(preview: str) -> None:
-    classifier_start = preview.find("internal fun slockComposerImagePickerIsStrictImage(")
+    classifier_start = preview.find("internal fun raftComposerImagePickerIsStrictImage(")
     if classifier_start < 0:
         raise Violation(
             "shared image/video classifier: start marker "
-            "'internal fun slockComposerImagePickerIsStrictImage(' not found"
+            "'internal fun raftComposerImagePickerIsStrictImage(' not found"
         )
     # The extension set is shared with ThreadPage's pending-send ownership
     # helper.  Its visibility is intentionally allowed to be private (legacy
     # source) or internal (when ThreadPage references the single shared set).
     video_set = re.search(
         r"(?m)^\s*(?:private|internal)\s+(?:const\s+)?val\s+"
-        r"SlockFilePreviewVideoExtensions\b",
+        r"RaftFilePreviewVideoExtensions\b",
         preview[classifier_start:],
     )
     if video_set is None:
@@ -541,7 +502,7 @@ def _check_strict_image_classifier(preview: str) -> None:
     classifier = preview[classifier_start : classifier_start + video_set.start()]
     _require_all(
         classifier,
-        ('mime.startsWith("image/")', "extension in SlockFilePreviewImageExtensions"),
+        ('mime.startsWith("image/")', "extension in RaftFilePreviewImageExtensions"),
         "shared image/video classifier",
     )
     # MIME and extension are both required; this prevents a video MIME or a
@@ -555,7 +516,7 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
     _check_strict_image_classifier(preview)
     shared_video_extensions = _kotlin_string_set(
         preview,
-        "SlockFilePreviewVideoExtensions",
+        "RaftFilePreviewVideoExtensions",
         "shared video-extension contract",
     )
 
@@ -646,8 +607,8 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
     ios = _source(sources, "ios")
     ios_fn = _region(
         ios,
-        "static BOOL SlockThreadImageCompressionInputIsImage(",
-        "static NSString *SlockCompressedAttachmentFileName",
+        "static BOOL RaftThreadImageCompressionInputIsImage(",
+        "static NSString *RaftCompressedAttachmentFileName",
         "iOS image/video classifier",
     )
     _require_all(
@@ -692,8 +653,8 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
     # image/* acceptance so a mismatched provider tuple cannot enter ImageIO.
     ios_picker_fn = _region(
         ios,
-        "static BOOL SlockAttachmentIsImage(",
-        "static NSError *SlockThreadAttachmentImageCompressionError(",
+        "static BOOL RaftAttachmentIsImage(",
+        "static NSError *RaftThreadAttachmentImageCompressionError(",
         "iOS picker image/video classifier",
     )
     _require_all(
@@ -733,69 +694,6 @@ def _check_video_priority(sources: Mapping[str, str]) -> None:
                 "iOS picker image/video classifier: video guard must precede image acceptance"
             )
 
-    ohos = _source(sources, "ohos")
-    ohos_fn = _region(
-        ohos,
-        "private isOhosImageAttachment(",
-        "private async cacheCompressedPickedThreadImage(",
-        "OHOS image/video classifier",
-    )
-    _require_all(
-        ohos_fn,
-        ("startsWith('video/')", "startsWith('image/')", "\\.(avif|bmp|gif|heic|heif|jpe?g|png|webp|tiff?)"),
-        "OHOS image/video classifier",
-    )
-    _ordered(
-        ohos_fn,
-        ("startsWith('video/')", "startsWith('image/')"),
-        "OHOS video MIME priority",
-    )
-    ohos_picker_video_extensions = _ohos_video_regex_extensions(
-        ohos_fn,
-        "lowerUri",
-        "OHOS picker image/video classifier",
-    )
-    _require_video_set_covers(
-        ohos_picker_video_extensions,
-        shared_video_extensions,
-        "OHOS picker video-extension contract",
-    )
-
-    # The lower-level compression admission receives the resolved source path,
-    # which may disagree with the picker display name.  It must apply the same
-    # video-suffix guard before opening the source file/ImageKit decoder.
-    ohos_input = _region(
-        ohos,
-        "private async isThreadImageCompressionInput(",
-        "private threadImageCompressionOutputName(",
-        "OHOS source-path image/video classifier",
-    )
-    _require_all(
-        ohos_input,
-        (
-            "sourcePath",
-            "normalizedSourcePath",
-            "test(normalizedSourcePath)",
-            "fs.stat(sourcePath)",
-        ),
-        "OHOS source-path image/video classifier",
-    )
-    source_guard = ohos_input.find("test(normalizedSourcePath)")
-    stat_position = ohos_input.find("fs.stat(sourcePath)")
-    if source_guard < 0 or stat_position < 0 or source_guard > stat_position:
-        raise Violation(
-            "OHOS source-path image/video classifier: source extension guard must precede source stat/decode"
-        )
-    ohos_source_video_extensions = _ohos_video_regex_extensions(
-        ohos_input,
-        "normalizedSourcePath",
-        "OHOS source-path image/video classifier",
-    )
-    _require_video_set_covers(
-        ohos_source_video_extensions,
-        shared_video_extensions,
-        "OHOS source-path video-extension contract",
-    )
 
 
 def _check_android_native(sources: Mapping[str, str]) -> None:
@@ -869,7 +767,7 @@ def _check_ios_native(sources: Mapping[str, str]) -> None:
             'params[@"mimeType"]',
             "[operation.outputLock lock]",
             "[operation.outputLock unlock]",
-            "SlockWriteCompressedPickedImage",
+            "RaftWriteCompressedPickedImage",
         ),
         "iOS native compression",
     )
@@ -882,7 +780,7 @@ def _check_ios_native(sources: Mapping[str, str]) -> None:
     write_region = method[write_lock_start:write_lock_end]
     _require(
         write_region,
-        "SlockWriteCompressedPickedImage",
+        "RaftWriteCompressedPickedImage",
         "iOS native compression output-lock fence",
     )
     # Cleanup may be performed directly in the method or through the operation's
@@ -891,61 +789,6 @@ def _check_ios_native(sources: Mapping[str, str]) -> None:
     if "removeItemAtURL:outputURL" not in method:
         _require(method, "removeOutputs", "iOS native compression cleanup dispatch")
         _require(source, "removeItemAtURL:self.outputURL", "iOS native compression cleanup implementation")
-
-
-def _check_ohos_native(sources: Mapping[str, str]) -> None:
-    source = _source(sources, "ohos")
-    _require_all(
-        source,
-        (
-            "static readonly COMPRESS_THREAD_IMAGE = \"compressThreadImage\"",
-            "static readonly CANCEL_COMPRESS_THREAD_IMAGE = \"cancelCompressThreadImage\"",
-            "case KRBridgeModule.COMPRESS_THREAD_IMAGE",
-            "case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE",
-            "private async compressThreadImage(",
-            "private cancelCompressThreadImage(",
-            SOURCE_MARKER,
-            ERROR_CODE,
-            "image/jpeg",
-            "UUID",
-            "await fs.unlink",
-        ),
-        "OHOS native compression bridge",
-    )
-    method = _region(source, "private async compressThreadImage(", "private cancelCompressThreadImage(", "OHOS native compression")
-    _require_all(
-        method,
-        (
-            '["requestId"]',
-            '["fileRef"]',
-            '["fileName"]',
-            '["mimeType"]',
-        ),
-        "OHOS native compression",
-    )
-    # The production bridge keeps ImageKit work in a separate helper so the
-    # request dispatcher remains small. Inspect that helper when the encode
-    # markers are not in the dispatcher itself (the fixture keeps both forms
-    # valid for mutation testing).
-    encode_source = method
-    if "packToFile" not in encode_source:
-        _require(source, "cacheCompressedPickedThreadImage", "OHOS native compression dispatch")
-        encoder_end = (
-            "private async applyOhosImageOrientation("
-            if "private async applyOhosImageOrientation(" in source
-            else "private cancelCompressThreadImage("
-        )
-        encode_source = _region(
-            source,
-            "private async cacheCompressedPickedThreadImage(",
-            encoder_end,
-            "OHOS native compression encoder",
-        )
-    _require_all(
-        encode_source,
-        ("packToFile", "format: 'image/jpeg'", "await fs.unlink"),
-        "OHOS native compression encoder",
-    )
 
 
 def check_contract(sources: Mapping[str, str]) -> None:
@@ -959,7 +802,6 @@ def check_contract(sources: Mapping[str, str]) -> None:
     _check_video_priority(sources)
     _check_android_native(sources)
     _check_ios_native(sources)
-    _check_ohos_native(sources)
 
 
 def load_repo_sources(root: Path) -> dict[str, str]:

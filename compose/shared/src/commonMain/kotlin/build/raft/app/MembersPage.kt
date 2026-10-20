@@ -1,28 +1,50 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import build.raft.app.components.raftSoftWash
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.raftCardSurface
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftRadioGroup
+import build.raft.designsystem.components.RaftRadioRow
+import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabStrip
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalBadge
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockAnchorPlacement
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalTone
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalBadge
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftAnchorPlacement
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftBrutalTone
 import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
-import build.raft.app.components.SlockBrutalCard
-import build.raft.app.components.SlockCheckbox
-import build.raft.app.components.SlockSectionEyebrow
-import build.raft.app.components.SlockRaftUiControlledMenu
-import build.raft.app.components.SlockFormField
-import build.raft.app.components.SlockRaftUiMenuItem
-import build.raft.app.components.SlockRaftUiSelectionPopover
-import build.raft.app.components.SlockRaftUiSelectionOption
+import build.raft.app.components.RaftBrutalCard
+import build.raft.app.components.RaftAppCheckbox
+import build.raft.app.components.RaftCheckMarker
+import build.raft.app.components.RaftCheckMarkerShape
+import build.raft.app.components.RaftCheckMarkerTone
+import build.raft.app.components.SegmentedControl
+import build.raft.app.components.SegmentedControlOption
+import build.raft.app.components.RaftAppSectionEyebrow
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftFormField
+import build.raft.app.components.RaftUiMenuItem
+import build.raft.app.components.RaftUiSelectionPopover
+import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportRepository
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueReportSubmission
@@ -51,7 +73,7 @@ import build.raft.app.data.AgentWorkspaceChildrenSnapshot
 import build.raft.app.data.AgentWorkspaceTreeSnapshot
 import build.raft.app.data.AgentProfileUpdateRequest
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
-import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -68,10 +90,10 @@ import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockAvatarCacheRuntime
-import build.raft.app.data.SlockAvatarNativeCache
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftAvatarCacheRuntime
+import build.raft.app.data.RaftAvatarNativeCache
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -82,10 +104,10 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerActionResult
 import build.raft.app.data.SettingsServerMemberRoleUpdateRequest
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
@@ -113,7 +135,7 @@ import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.sharedAgentDetailOwner
 import build.raft.app.data.kuiklyBridgeCallContext
-import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -140,16 +162,16 @@ import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.SlockWorkspaceFileKind
-import build.raft.app.model.SlockWorkspaceNode
-import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.SlockTimeFormat12Hour
-import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.RaftWorkspaceFileKind
+import build.raft.app.model.RaftWorkspaceNode
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.formatSlockTimestampClockWithSeconds
+import build.raft.app.model.formatRaftTimestampClockWithSeconds
 import build.raft.app.model.hidesHumanDirectoryForViewer
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -166,73 +188,92 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
-import com.tencent.kuikly.compose.foundation.layout.FlowRow
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.requiredWidth
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.lazy.LazyRow
-import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.extension.NestedScrollMode
-import com.tencent.kuikly.compose.extension.nestedScroll
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.boundsInRoot
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.core.views.KeyboardParams
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.module.CodecModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.compat.ui.NestedScrollMode
+import build.raft.app.compat.ui.nestedScroll
+import androidx.compose.material3.Text
+import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.addsListItem
+import build.raft.app.components.rememberRaftPullToRefreshStyle
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.isSpecified
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionValue
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.ui.graphics.Color
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import build.raft.app.compat.ui.KeyboardParams
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.module.CodecModule
+import build.raft.app.compat.json.JSONArray
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IPagerEventObserver
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.StringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -257,7 +298,7 @@ const val MEMBER_DETAIL_PAGE = "compose_member_detail"
 const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
-private val MembersPageInset = SlockSpacing.Md
+private val MembersPageInset = RaftAppSpacing.Md
 // React Sidebar members view: scroll container `px-2` (8px) + per-row/section `px-2` (8px) = 16px
 // total; the container half lives on the LazyColumn, the row half on each row/header.
 internal val MembersListContainerInset = 8.dp
@@ -285,9 +326,9 @@ internal val MembersListContentMinSideMargin = 24.dp
  */
 internal fun membersListContentMaxWidth(
     slotWidth: Dp,
-    paneLayout: SlockAdaptivePaneLayout,
+    paneLayout: RaftAdaptivePaneLayout,
 ): Dp {
-    if (paneLayout != SlockAdaptivePaneLayout.DualPane) return slotWidth
+    if (paneLayout != RaftAdaptivePaneLayout.DualPane) return slotWidth
     val cap = slotWidth - MembersListContentMinSideMargin * 2
     return if (cap < MembersListContentMaxWidth) cap else MembersListContentMaxWidth
 }
@@ -298,9 +339,9 @@ internal val MembersListRowSpacing = 4.dp
 internal val MembersListContentGap = 6.dp
 internal const val MembersListNameMaxWidthFraction = 0.7f
 internal val MembersListNameTextStyle =
-    SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
+    RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
 internal val MembersListDescriptionTextStyle =
-    SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
+    RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
 internal val MembersListSectionHeaderMinHeight = 24.dp
 // React Sidebar's Agents/Humans section `+` is a compact 24px root-list action.
 // This is intentionally separate from the 28dp member-detail message/menu actions below.
@@ -309,7 +350,7 @@ internal val MembersListSectionAddActionIconSize = 14.dp
 internal val MembersListMachineLabelInset = 12.dp
 internal val MembersListMachineLabelIconSize = 9.dp
 internal val MembersListMachineLabelTextStyle =
-    SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
+    RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 // Web AgentActivityLog row: `gap-2` (8) + StatusDot sm (`size-2` = 8) + `gap-2` (8).
@@ -326,15 +367,15 @@ internal fun MembersCreateAgentMode.requiresComputerSelection(): Boolean = this 
 
 internal enum class MembersAgentDetailTab(
     val label: String,
-    val iconName: SlockLucideIconName,
+    val iconName: RaftLucideIconName,
     val privateSurface: Boolean = true
 ) {
-    Profile("Profile", SlockLucideIconName.Bot, privateSurface = false),
-    Activity("Activity", SlockLucideIconName.Activity),
-    Chat("Chat", SlockLucideIconName.MessageSquare),
-    Reminders("Reminders", SlockLucideIconName.BellRing),
-    Workspace("Workspace", SlockLucideIconName.FolderOpen),
-    Apps("Apps", SlockLucideIconName.Link2)
+    Profile("Profile", RaftLucideIconName.Bot, privateSurface = false),
+    Activity("Activity", RaftLucideIconName.Activity),
+    Chat("Chat", RaftLucideIconName.MessageSquare),
+    Reminders("Reminders", RaftLucideIconName.BellRing),
+    Workspace("Workspace", RaftLucideIconName.FolderOpen),
+    Apps("Apps", RaftLucideIconName.Link2)
 }
 
 @Composable
@@ -356,17 +397,17 @@ internal enum class MembersAgentServerRole(
     val label: String,
     val backgroundColor: Color
 ) {
-    Admin("admin", "Admin", SlockColor.AccentPink),
-    Member("member", "Member", SlockColor.AccentLavender)
+    Admin("admin", "Admin", RaftColor.AccentPink),
+    Member("member", "Member", RaftColor.AccentLavender)
 }
 
 internal enum class MembersHumanServerRole(
     val wireValue: String,
     val backgroundColor: Color
 ) {
-    Owner("owner", SlockColor.AccentOrange),
-    Admin("admin", SlockColor.AccentPink),
-    Member("member", SlockColor.AccentLavender)
+    Owner("owner", RaftColor.AccentOrange),
+    Admin("admin", RaftColor.AccentPink),
+    Member("member", RaftColor.AccentLavender)
 }
 
 @Composable
@@ -419,6 +460,99 @@ internal fun membersEditableHumanServerRoles(
             if (currentRole == MembersHumanServerRole.Member) listOf(MembersHumanServerRole.Admin)
             else emptyList()
         else -> emptyList()
+    }
+}
+
+/** Web `getHumanDepartureLabel`: a person who left or was removed shows that instead of a role. */
+internal enum class MembersHumanDeparture { Left, Removed }
+
+internal fun membersHumanDeparture(membershipStatus: String?): MembersHumanDeparture? =
+    when (membershipStatus?.trim()?.lowercase()) {
+        "left" -> MembersHumanDeparture.Left
+        "removed" -> MembersHumanDeparture.Removed
+        else -> null
+    }
+
+internal fun membersHumanIsSelf(member: MemberProfile, currentUserId: String?): Boolean {
+    val selfId = currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    return member.kind == MemberKind.Human && member.id.value.trim() == selfId
+}
+
+/**
+ * Web shows Info and Created Agents only for a person of this server; a profile reached
+ * through another server (`isRemoteJointHuman`) shows the name, handle and description.
+ */
+internal fun membersHumanShowsServerFacts(accessMode: MemberDetailAccessMode): Boolean =
+    accessMode == MemberDetailAccessMode.LocalFull
+
+/**
+ * The role chip of a human profile (web HumanDetailPanel `ROLE_CONFIG`): a role is a fact
+ * about the person, so owner, admin and member are the same neutral soft badge; a guest
+ * comes from outside and reads as the information badge; no role is the muted "Unknown".
+ */
+internal enum class MembersHumanRoleBadge(val badgeVariant: RaftBadgeVariant) {
+    Owner(RaftBadgeVariant.Default),
+    Admin(RaftBadgeVariant.Default),
+    Member(RaftBadgeVariant.Default),
+    Guest(RaftBadgeVariant.Information),
+    Unknown(RaftBadgeVariant.Muted)
+}
+
+internal fun membersHumanRoleBadge(serverRole: String?, roleDescription: String?): MembersHumanRoleBadge {
+    fun String?.toBadgeOrNull(): MembersHumanRoleBadge? =
+        when (this?.trim()?.lowercase()) {
+            "owner" -> MembersHumanRoleBadge.Owner
+            "admin" -> MembersHumanRoleBadge.Admin
+            "member" -> MembersHumanRoleBadge.Member
+            "guest" -> MembersHumanRoleBadge.Guest
+            else -> null
+        }
+    return serverRole.toBadgeOrNull() ?: roleDescription.toBadgeOrNull() ?: MembersHumanRoleBadge.Unknown
+}
+
+internal data class MembersJoinedDate(val year: Int, val month: Int, val day: Int)
+
+/** The local calendar day of a `joinedAt` timestamp, or null when it is missing or unparseable. */
+internal fun String?.membersJoinedDateOrNull(timeContext: RaftTimeContext): MembersJoinedDate? {
+    val trimmed = this?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return null
+    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
+    val date = membersReminderCivilDateFromEpochDay(membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay))
+    return MembersJoinedDate(year = date.year, month = date.month, day = date.day)
+}
+
+/**
+ * The month token of `member_joined_date` (web `formatDate` with `month: "short"`): "Sep" in
+ * English, "9" where the locale writes 2026年9月11日. [monthsCsv] is the localized twelve.
+ */
+internal fun membersJoinedMonthLabel(monthsCsv: String, month: Int): String =
+    monthsCsv.split(',').getOrNull(month - 1)?.trim()?.takeIf { it.isNotEmpty() } ?: month.toString()
+
+/**
+ * Route data for the profile of an agent listed under a human's Created Agents (web
+ * CreatedAgentRow opens the agent profile). Keeps the human page's time context and
+ * source server so a remote server's agent resolves against the same server.
+ */
+internal fun RaftMemberDetailPayload.toCreatedAgentDetailPageData(
+    agentId: MemberId,
+    sourceServerId: ServerId?
+): JSONObject? {
+    val selected = agentId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "members-detail-created-agent-${instanceId.ifBlank { "member" }}-$selected")
+        put("memberId", selected)
+        put("memberKind", MemberKind.Agent.memberKindWireValue())
+        (sourceServerId ?: identity?.sourceServerId)?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
+            put("sourceServerId", it)
+        }
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+        if (agentPanelTabOrder.isNotEmpty()) {
+            put("agentPanelTabOrder", JSONArray().apply { agentPanelTabOrder.forEach(::put) })
+        }
     }
 }
 
@@ -590,9 +724,9 @@ internal fun membersAgentDisplayServerRole(
 
 internal fun membersAgentServerRoleOptions(
     selectedRole: MembersAgentServerRole?
-): List<SlockRaftUiSelectionOption> =
+): List<RaftUiSelectionOption> =
     MembersAgentServerRole.entries.map { role ->
-        SlockRaftUiSelectionOption(
+        RaftUiSelectionOption(
             id = role.wireValue,
             label = role.label,
             selected = role == selectedRole
@@ -832,17 +966,6 @@ internal fun List<MembersAgentDetailTab>.membersMoveTab(
     val item = mutable.removeAt(fromIndex)
     mutable.add(toIndex, item)
     return mutable
-}
-
-internal fun membersAgentTabVisibleAnchorIndex(
-    tabs: List<MembersAgentDetailTab>,
-    selectedTab: MembersAgentDetailTab
-): Int {
-    val selectedIndex = tabs.indexOf(selectedTab)
-    return when {
-        selectedIndex <= 0 -> 0
-        else -> selectedIndex - 1
-    }
 }
 
 /**
@@ -1130,17 +1253,19 @@ private sealed interface MembersAgentWorkspaceTreeState {
 internal enum class MembersAgentLifecycleAction(
     val actionKey: String,
     val label: String,
-    val iconName: SlockLucideIconName,
+    val iconName: RaftLucideIconName,
     val successLabel: String,
     val destructive: Boolean = false
 ) {
-    Start("start", "Start", SlockLucideIconName.Play, "Started"),
-    Stop("stop", "Stop", SlockLucideIconName.Square, "Stopped"),
-    Restart("restart", "Restart", SlockLucideIconName.RotateCw, "Restarted"),
-    ResetSession("reset_session", "Reset session", SlockLucideIconName.RefreshCw, "Session reset"),
-    ResetFull("reset_full", "Full reset", SlockLucideIconName.Eraser, "Full reset"),
-    Delete("delete", "Delete Agent", SlockLucideIconName.Trash2, "Deleted", destructive = true),
-    UnassignMachine("assign_machine", "Unassign machine", SlockLucideIconName.MonitorX, "Machine unassigned");
+    Start("start", "Start", RaftLucideIconName.Play, "Started"),
+    Stop("stop", "Stop", RaftLucideIconName.Square, "Stopped"),
+    Restart("restart", "Restart", RaftLucideIconName.RotateCw, "Restarted"),
+    ResetSession("reset_session", "Reset session", RaftLucideIconName.RefreshCw, "Session reset"),
+    ResetFull("reset_full", "Full reset", RaftLucideIconName.Eraser, "Full reset"),
+    // task #515: the action is the web "archive" (former delete). Enum labels are
+    // non-localized fallbacks; user-visible text comes from MR strings.
+    Delete("delete", "Archive Agent", RaftLucideIconName.Archive, "Archived", destructive = true),
+    UnassignMachine("assign_machine", "Unassign machine", RaftLucideIconName.MonitorX, "Machine unassigned");
 
     val resetMode: AgentResetMode?
         get() =
@@ -1242,8 +1367,8 @@ internal fun membersResolvedPrimaryLifecycleAction(
 @Composable
 private fun rememberExternalAgentDetailIndicatorState(
     detail: AgentDetailSnapshot?,
-    timeContext: SlockTimeContext
-): SlockAgentStatusIndicatorState {
+    timeContext: RaftTimeContext
+): RaftAgentStatusIndicatorState {
     val externalStatus = detail?.externalStatus
     // task #410: lastSeenAt comes from the detail summary (GET /agents/:id
     // carries it for external agents) and realtime agent:seen updates it in
@@ -1271,8 +1396,8 @@ private fun rememberExternalAgentDetailIndicatorState(
     return indicator.state.copy(label = label)
 }
 
-private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
+private fun unknownMembersAgentStatusIndicatorState(): RaftAgentStatusIndicatorState =
+    raftAgentStatusIndicatorState(
         status = null,
         presence = Presence.Offline,
         statusLabel = MembersUnknownAgentStatusLabel,
@@ -1289,10 +1414,10 @@ private fun unknownMembersAgentStatusIndicatorState(): SlockAgentStatusIndicator
  * first attempt fixing only the elvis-fallback spelling of this defect and missing this one).
  */
 internal fun resolveMembersAgentStatusIndicatorStateOrNull(
-    canonicalState: SlockAgentStatusIndicatorState?,
-    fixtureFallback: SlockAgentStatusIndicatorState?,
+    canonicalState: RaftAgentStatusIndicatorState?,
+    fixtureFallback: RaftAgentStatusIndicatorState?,
     fixtureStatusFallbackEnabled: Boolean
-): SlockAgentStatusIndicatorState? =
+): RaftAgentStatusIndicatorState? =
     canonicalState ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
 
 /**
@@ -1301,17 +1426,17 @@ internal fun resolveMembersAgentStatusIndicatorStateOrNull(
  * Do not use it to choose a dot colour.
  */
 internal fun resolveMembersAgentStatusIndicatorState(
-    canonicalState: SlockAgentStatusIndicatorState?,
-    fixtureFallback: SlockAgentStatusIndicatorState?,
+    canonicalState: RaftAgentStatusIndicatorState?,
+    fixtureFallback: RaftAgentStatusIndicatorState?,
     fixtureStatusFallbackEnabled: Boolean
-): SlockAgentStatusIndicatorState =
+): RaftAgentStatusIndicatorState =
     resolveMembersAgentStatusIndicatorStateOrNull(
         canonicalState = canonicalState,
         fixtureFallback = fixtureFallback,
         fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
     ) ?: unknownMembersAgentStatusIndicatorState()
 
-private fun SlockAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =
+private fun RaftAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = status,
         color = color,
@@ -1335,16 +1460,16 @@ internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
 
 @Page(MEMBERS_PAGE, supportInLocal = true)
 internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProductRoute.Members) {
-    private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
+    private var adaptivePane by mutableStateOf(RaftAdaptivePaneState())
 
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent { MembersPageContent(paneLayout = adaptivePane.layout) }
     }
 
-    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
-        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
-        adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
+    override fun onRaftAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toRaftAdaptivePaneEventOrNull() ?: return
+        adaptivePane = reduceRaftAdaptivePane(adaptivePane, event)
     }
 }
 
@@ -1352,21 +1477,21 @@ internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProdu
 internal class ComposeMemberDetailPage : AuthenticatedProductPager(AuthenticatedProductRoute.MemberDetail) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { MemberDetailPageContent(slockPageVisibleResumeTick) }
+        setAuthenticatedContent { MemberDetailPageContent(raftPageVisibleResumeTick) }
     }
 }
 
 @Serializable
-data class KuiklyMembersPayload(
+data class RaftMembersPayload(
     val instanceId: String = "",
     val title: String = "Members",
-    val labels: KuiklyMembersLabels = KuiklyMembersLabels(),
+    val labels: RaftMembersLabels = RaftMembersLabels(),
     val members: List<MemberProfile> = emptyList(),
     val initialAgentTab: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour,
+    val timeFormat: String = RaftTimeFormat24Hour,
     val agentPanelTabOrder: List<String> = emptyList(),
     /**
      * Whether the active session can create agents. Driven by the host from
@@ -1385,7 +1510,7 @@ data class KuiklyMembersPayload(
     val showHumanDirectory: Boolean = true
 )
 
-internal data class KuiklyMemberDetailPayload(
+internal data class RaftMemberDetailPayload(
     val instanceId: String = "",
     val identity: MemberDetailIdentity? = null,
     val initialAgentTab: String? = null,
@@ -1393,12 +1518,12 @@ internal data class KuiklyMemberDetailPayload(
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour,
+    val timeFormat: String = RaftTimeFormat24Hour,
     val agentPanelTabOrder: List<String> = emptyList()
 )
 
 @Serializable
-data class KuiklyMembersLabels(
+data class RaftMembersLabels(
     val agents: String = "AGENTS",
     val humans: String = "HUMANS",
     val addHuman: String = "Add human"
@@ -1410,7 +1535,7 @@ internal fun canonicalMembersDisplayText(
     localizedDefault: String
 ): String = if (value == canonicalDefault) localizedDefault else value
 
-private val membersSmokePayload = KuiklyMembersPayload(
+private val membersSmokePayload = RaftMembersPayload(
     title = "Members",
     members = listOf(
         MemberProfile(
@@ -1545,7 +1670,28 @@ private val membersHumanDetailVisualMember = MemberProfile(
     avatarLabel = "A",
     presence = Presence.Active,
     joinedAt = "2026-06-18T00:00:00.000Z",
-    membershipStatus = "active"
+    membershipStatus = "active",
+    // Web HumanDetailPanel lists the agents this person created as inset list rows.
+    createdAgents = listOf(
+        AgentProfile(
+            id = MemberId("visual-agent-created-1"),
+            userId = "visual-agent-created-1",
+            displayName = "Product UX",
+            handle = "@product-ux",
+            runtime = "claude",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Online
+        ),
+        AgentProfile(
+            id = MemberId("visual-agent-created-2"),
+            userId = "visual-agent-created-2",
+            displayName = "Release Notes",
+            handle = "@release-notes",
+            runtime = "codex",
+            presence = Presence.Offline,
+            agentStatus = AgentStatus.Offline
+        )
+    )
 )
 
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
@@ -1573,7 +1719,7 @@ private val membersAgentDetailVisualScopeSet = AgentScopeSet(
  * computerOffline / computerMissing / noComputer / longMachine, machines
  * studio / longName); the slock-side test pins them there.
  */
-private data class MembersAgentDetailVisualVariant(
+internal data class MembersAgentDetailVisualVariant(
     val id: String,
     val name: String,
     val displayName: String,
@@ -1584,8 +1730,9 @@ private data class MembersAgentDetailVisualVariant(
     val daemonVersion: String?,
     /** Server role as the wire sends it. Every fixture agent is a server member;
         one is admin so the role chip cell can fail (task #261). Without this the
-        default seed leaves it null and membersAgentDisplayServerRole draws Member. */
-    val serverRole: String
+        default seed leaves it null and membersAgentDisplayServerRole draws Member.
+        Null = no membership row (the wire omits serverRole; role chip hidden). */
+    val serverRole: String?
 )
 
 private val membersAgentDetailVisualVariants = listOf(
@@ -1855,24 +2002,24 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
 private val membersAgentDetailVisualWorkspaceTreeSnapshot = AgentWorkspaceTreeSnapshot(
     agentId = membersAgentDetailVisualMember.id,
     rootPath = "~/.slock/agents/agent-product-ux",
-    root = SlockWorkspaceNode(
+    root = RaftWorkspaceNode(
         id = "~/.slock/agents/agent-product-ux",
         name = "agent-product-ux",
         path = "~/.slock/agents/agent-product-ux",
-        kind = SlockWorkspaceFileKind.Folder,
+        kind = RaftWorkspaceFileKind.Folder,
         children = listOf(
-            SlockWorkspaceNode(
+            RaftWorkspaceNode(
                 id = "MEMORY.md",
                 name = "MEMORY.md",
                 path = "MEMORY.md",
-                kind = SlockWorkspaceFileKind.Markdown,
+                kind = RaftWorkspaceFileKind.Markdown,
                 meta = "86 B"
             ),
-            SlockWorkspaceNode(
+            RaftWorkspaceNode(
                 id = "notes",
                 name = "notes",
                 path = "notes",
-                kind = SlockWorkspaceFileKind.Folder,
+                kind = RaftWorkspaceFileKind.Folder,
                 meta = "folder"
             )
         )
@@ -1883,11 +2030,11 @@ private val membersAgentDetailVisualWorkspaceNotesChildren = AgentWorkspaceChild
     agentId = membersAgentDetailVisualMember.id,
     dirPath = "notes",
     children = listOf(
-        SlockWorkspaceNode(
+        RaftWorkspaceNode(
             id = "notes/visual-parity.md",
             name = "visual-parity.md",
             path = "notes/visual-parity.md",
-            kind = SlockWorkspaceFileKind.Markdown,
+            kind = RaftWorkspaceFileKind.Markdown,
             meta = "1.2 KB"
         )
     )
@@ -1912,13 +2059,13 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
 
 @Composable
 internal fun MembersPageContent(
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     var payloadText by remember { mutableStateOf(pager.pageData.params.optString("payload")) }
     var instanceId by remember { mutableStateOf(pager.pageData.params.optString("instanceId")) }
@@ -1939,7 +2086,7 @@ internal fun MembersPageContent(
         onDispose { pager.removePagerEventObserver(observer) }
     }
     val payload = remember(payloadText, instanceId) {
-        val decodedPayload = payloadText.toKuiklyMembersPayload()
+        val decodedPayload = payloadText.toRaftMembersPayload()
         if (instanceId.isBlank() || decodedPayload.instanceId == instanceId) {
             decodedPayload
         } else {
@@ -1947,7 +2094,7 @@ internal fun MembersPageContent(
         }
     }
     val bridgeCallScope = rememberCoroutineScope()
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
@@ -1962,7 +2109,7 @@ internal fun MembersPageContent(
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
     // Use the shared provider network client so request scheduling and transport swaps
     // stay centralized instead of being recreated per page.
-    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
@@ -1973,18 +2120,18 @@ internal fun MembersPageContent(
     // key family the web sidebar uses.
     val membersAgentGroupCollapseStore = remember {
         build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
-            build.raft.app.data.slockSharedPreferenceStore()
+            build.raft.app.data.raftSharedPreferenceStore()
         )
     }
     val agentsApiClient = remember(networkClient) {
-        build.raft.app.data.SlockAgentsApiClient(
-            transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
+        build.raft.app.data.RaftAgentsApiClient(
+            transport = build.raft.app.data.RaftAgentsNetworkApi(networkClient),
             diagnosticsLogger = { message -> bridge.log("members_agents_api $message") }
         )
     }
     val computersApiClient = remember(networkClient) {
-        build.raft.app.data.SlockComputersApiClient(
-            build.raft.app.data.SlockComputersNetworkApi(networkClient)
+        build.raft.app.data.RaftComputersApiClient(
+            build.raft.app.data.RaftComputersNetworkApi(networkClient)
         )
     }
     val scope = rememberCoroutineScope()
@@ -2028,6 +2175,10 @@ internal fun MembersPageContent(
     }
     var maxAgents by remember { mutableStateOf(-1) }
     var optimisticMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
+    // task #399 (Hands 3a56004f): the Members page is a *separate* create path from the thread
+    // member panel. #3132/#3140 only fixed ChannelMembersCreateAgentDialog, so creating from here
+    // still dropped the user back on the list. The created row is staged here and opened below.
+    var createdAgentToOpen by remember { mutableStateOf<MemberProfile?>(null) }
     // Derive the active serverId from the auth session. Replaces the prior
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
@@ -2109,7 +2260,7 @@ internal fun MembersPageContent(
                 .filter { it.kind == MemberKind.Agent && it.membersComputerId == null }
                 .map { agent ->
                     val source = if (agent.id.value.trim() in storeIds) "store" else "optimistic"
-                    "${agent.id.value.slockAvatarDiagnosticsHash()}:$source:badges=${agent.permissionBadges.size}"
+                    "${agent.id.value.raftAvatarDiagnosticsHash()}:$source:badges=${agent.permissionBadges.size}"
                 }
         }
     LaunchedEffect(agentsWithoutComputer, serverMembersEntry.status) {
@@ -2125,11 +2276,11 @@ internal fun MembersPageContent(
     }
     val agentStatusResolver =
         remember(serverMembersStore, serverId) {
-            slockScopedAgentStatusResolver(serverMembersStore, serverId)
+            raftScopedAgentStatusResolver(serverMembersStore, serverId)
         }
     val memberAvatarResolver =
         remember(serverMembersStore, serverId) {
-            slockMemberAvatarResolver(serverMembersStore, serverId)
+            raftMemberAvatarResolver(serverMembersStore, serverId)
         }
     val membersRefreshing = serverMembersEntry.status == build.raft.app.data.SharedServerMembersLoadStatus.InFlight
     val refreshMembers: () -> Unit = remember(serverMembersStore, serverId) {
@@ -2142,6 +2293,7 @@ internal fun MembersPageContent(
                         DataRequestPriority.Foreground,
                         force = true
                     )
+
                 }
             }
         }
@@ -2175,6 +2327,15 @@ internal fun MembersPageContent(
                 if (result is DataResult.Content) {
                     val profile = createdAgentMemberProfile(result.data, submit, computersSlice.machines)
                     optimisticMembers = optimisticMembers + profile
+                    // task #399: hand the created agent to the detail opener below so the user
+                    // lands on its profile instead of the refreshed member list.
+                    //
+                    // Ordering matters here and must not be changed: this runs inside the dialog's
+                    // submit coroutine, which the caller cancels by clearing activeCreateAgentMode
+                    // AFTER submit() returns. Staging the profile inside submit — before that
+                    // teardown — is what makes the write survive; that is the opposite of the
+                    // #3140 bug, where the dismissal came first and cancelled the navigation.
+                    createdAgentToOpen = profile
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
                         serverMembersStore.refreshMembers(
                             ServerId(cleanServerId),
@@ -2316,12 +2477,75 @@ internal fun MembersPageContent(
         } else {
             payload.agentPanelTabOrder
         }
+
+
     val membersPayload =
         payload.copy(
             members = localMembers,
             agentPanelTabOrder = agentPanelTabOrder,
             showHumanDirectory = serverMembersEntry.server?.hidesHumanDirectoryForViewer() != true,
         )
+
+    // task #399 (Hands 3a56004f): the Members page has its own create path (createAgentSubmit
+    // above), separate from ChannelMembersCreateAgentDialog used by the thread member panel.
+    // #3132/#3140 only fixed the thread panel, so creating here still landed on the list.
+    // Defined here so both the row tap and the post-create path share one navigation.
+    fun openMemberDetail(member: MemberProfile) {
+        scope.launch {
+            val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+            val accessMode = identity.memberDetailAccessMode(serverId)
+            val launchPayload =
+                if (
+                    member.kind == MemberKind.Agent &&
+                    accessMode.allowsPrivateAgentSurfaces &&
+                    (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                ) {
+                    loadAgentPanelTabOrderForMembersPage()
+                        ?.also { order ->
+                            agentPanelTabOrderStore.applyLoaded(
+                                serverId = serverId,
+                                order = order,
+                                source = "members_detail_open_preload",
+                                logger = { message -> bridge.log(message) }
+                            )
+                        }
+                        ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
+                        ?: membersPayload
+                } else {
+                    membersPayload
+                }
+            val pageData = launchPayload.toMemberDetailPageData(identity)
+            if (pageData == null) {
+                bridge.toast(openProfileFailed)
+                bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
+            } else {
+                val seedMember =
+                    member.copy(
+                        serverId = member.serverId ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                    )
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
+                pager.openRaftPage(
+                    pageName = MEMBER_DETAIL_PAGE,
+                    pageData = pageData,
+                    storeScopeOverride = storeScope,
+                    onMissingScope = {
+                        bridge.toast(openProfileFailed)
+                        bridge.log("members_detail_open_skip reason=missing_shell_scope instanceId=${payload.instanceId}")
+                    }
+                )
+            }
+        }
+    }
+
+    // task #399: open the profile of a just-created agent. Runs after localMembers merged the
+    // optimistic row, so the created agent is addressable. Cleared immediately so re-entry does
+    // not reopen it on recomposition.
+    LaunchedEffect(createdAgentToOpen) {
+        val created = createdAgentToOpen ?: return@LaunchedEffect
+        createdAgentToOpen = null
+        bridge.log("members_create_agent_open_profile memberId=${created.id.value} instanceId=${payload.instanceId}")
+        openMemberDetail(created)
+    }
 
     MembersRouteContent(
         payload = membersPayload,
@@ -2330,55 +2554,7 @@ internal fun MembersPageContent(
         onRefresh = refreshMembers,
         paneLayout = paneLayout,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
-        onOpenMemberDetail = { member ->
-            scope.launch {
-                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                val accessMode = identity.memberDetailAccessMode(serverId)
-                val launchPayload =
-                    if (
-                        member.kind == MemberKind.Agent &&
-                        accessMode.allowsPrivateAgentSurfaces &&
-                        (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
-                    ) {
-                        loadAgentPanelTabOrderForMembersPage()
-                            ?.also { order ->
-                                agentPanelTabOrderStore.applyLoaded(
-                                    serverId = serverId,
-                                    order = order,
-                                    source = "members_detail_open_preload",
-                                    logger = { message -> bridge.log(message) }
-                                )
-                            }
-                            ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
-                            ?: membersPayload
-                    } else {
-                        membersPayload
-                    }
-                val pageData =
-                    launchPayload.toMemberDetailPageData(
-                        identity
-                    )
-                if (pageData == null) {
-                    bridge.toast(openProfileFailed)
-                    bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
-                } else {
-                    val seedMember =
-                        member.copy(
-                            serverId = member.serverId ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
-                        )
-                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                    pager.openSlockPage(
-                        pageName = MEMBER_DETAIL_PAGE,
-                        pageData = pageData,
-                        storeScopeOverride = storeScope,
-                        onMissingScope = {
-                            bridge.toast(openProfileFailed)
-                            bridge.log("members_detail_open_skip reason=missing_shell_scope instanceId=${payload.instanceId}")
-                        }
-                    )
-                }
-            }
-        },
+        onOpenMemberDetail = ::openMemberDetail,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
         canCreateAgents = payload.canCreateAgents,
@@ -2620,7 +2796,7 @@ internal fun membersAgentDetailOwnerForSession(
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
     val reportIssueFailedMessage: String,
-    val authStore: SlockAuthSessionStore,
+    val authStore: RaftAuthSessionStore,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val memberRepository: MemberRepository,
     val channelRepository: ChannelRepository,
@@ -2633,12 +2809,12 @@ private class MemberDetailRouteProvider(
     val computersStore: SharedComputersStore,
     val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator,
     val createAgentFormStore: SharedCreateAgentFormStore,
-    val avatarCacheRuntime: SlockAvatarCacheRuntime,
-    val avatarNativeCache: SlockAvatarNativeCache,
+    val avatarCacheRuntime: RaftAvatarCacheRuntime,
+    val avatarNativeCache: RaftAvatarNativeCache,
     val conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
     val sharedHomeStore: SharedHomeStore?,
-    val storeScope: SlockShellStoreScope,
-    val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    val storeScope: RaftShellStoreScope,
+    val agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     val runtimeAccountUsageStore: SharedRuntimeAccountUsageStore? = null,
     val computersOwner: suspend () -> SharedComputersOwner? = { null }
 ) {
@@ -3029,7 +3205,8 @@ private class MemberDetailRouteProvider(
     suspend fun runLifecycleAction(
         serverId: ServerId,
         agentId: MemberId,
-        action: MembersAgentLifecycleAction
+        action: MembersAgentLifecycleAction,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult> {
         val result =
             when (action) {
@@ -3051,6 +3228,7 @@ private class MemberDetailRouteProvider(
                     serverMembersStore.deleteAgent(
                         serverId = serverId,
                         agentId = agentId,
+                        workspaceChoice = workspaceChoice,
                         priority = DataRequestPriority.Foreground
                     )
                 MembersAgentLifecycleAction.UnassignMachine ->
@@ -3197,12 +3375,12 @@ private class MemberDetailRouteProvider(
 private fun rememberMemberDetailRouteProvider(
     pager: Pager,
     bridge: BridgeModule,
-    storeScopeOverride: SlockShellStoreScope? = null
+    storeScopeOverride: RaftShellStoreScope? = null
 ): MemberDetailRouteProvider {
     val reportIssueFailedMessage = stringResource(MR.strings.member_error_report_issue)
-    val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
     val storeScope = storeScopeOverride ?: remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -3246,8 +3424,8 @@ private fun rememberMemberDetailRouteProvider(
         )
     }
     val computersApiClient = remember(networkClient) {
-        SlockComputersApiClient(
-            SlockComputersNetworkApi(networkClient)
+        RaftComputersApiClient(
+            RaftComputersNetworkApi(networkClient)
         )
     }
     val computersStore = remember(computersApiClient, scope) {
@@ -3261,8 +3439,8 @@ private fun rememberMemberDetailRouteProvider(
         )
     }
     val agentsApiClient = remember(networkClient) {
-        build.raft.app.data.SlockAgentsApiClient(
-            transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
+        build.raft.app.data.RaftAgentsApiClient(
+            transport = build.raft.app.data.RaftAgentsNetworkApi(networkClient),
             diagnosticsLogger = { message -> bridge.log("member_detail_agents_api $message") }
         )
     }
@@ -3286,7 +3464,7 @@ private fun rememberMemberDetailRouteProvider(
     }
     val avatarNativeCache =
         remember(bridge, scope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = scope.kuiklyBridgeCallContext()
             )
@@ -3345,14 +3523,14 @@ private fun rememberMemberDetailRouteProvider(
 @Composable
 internal fun MemberDetailPageContent(
     pageVisibleTick: Int,
-    embeddedPayload: KuiklyMemberDetailPayload? = null,
-    storeScopeOverride: SlockShellStoreScope? = null,
+    embeddedPayload: RaftMemberDetailPayload? = null,
+    storeScopeOverride: RaftShellStoreScope? = null,
     onClose: (() -> Unit)? = null,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val memberIdCopied = stringResource(MR.strings.member_notice_member_id_copied)
     val diagnosticsCopied = stringResource(MR.strings.member_notice_diagnostics_copied)
     val removeFromSettings = stringResource(MR.strings.member_notice_remove_from_settings)
@@ -3363,8 +3541,9 @@ internal fun MemberDetailPageContent(
     val directMessageOpenError = stringResource(MR.strings.member_error_open_direct_message)
     val directMessageOpenErrorTemplate = membersStringTemplate(MR.strings.member_error_open_direct_message_detail)
     val directMessagePermissionError = stringResource(MR.strings.member_error_open_direct_message_permission)
+    val openProfileFailed = stringResource(MR.strings.member_error_open_profile)
     val payload = embeddedPayload ?: remember(pager.pageData.params.toString()) {
-        pager.pageData.params.toKuiklyMemberDetailPayload()
+        pager.pageData.params.toRaftMemberDetailPayload()
     }
     val visualSeed = remember(payload) { payload.toMemberDetailVisualSeedOrNull() }
     if (embeddedPayload == null && visualSeed != null) {
@@ -3415,7 +3594,7 @@ internal fun MemberDetailPageContent(
         } else {
             MembersAgentDetailLoadState.Loading
         }
-    val timeContext = payload.toSlockTimeContext()
+    val timeContext = payload.toRaftTimeContext()
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = memberIdentity?.kind
     val statusLookupServerId =
@@ -3499,14 +3678,14 @@ internal fun MemberDetailPageContent(
     }
     val agentStatusResolver =
         remember(provider.serverMembersStore, statusResolverServerId) {
-            slockScopedAgentStatusResolver(provider.serverMembersStore, statusResolverServerId)
+            raftScopedAgentStatusResolver(provider.serverMembersStore, statusResolverServerId)
         }
     val memberAvatarResolver =
         remember(provider.serverMembersStore, statusResolverServerId) {
             if (statusResolverServerId == null) {
-                EmptySlockMemberAvatarResolver
+                EmptyRaftMemberAvatarResolver
             } else {
-                slockMemberAvatarResolver(provider.serverMembersStore, statusResolverServerId)
+                raftMemberAvatarResolver(provider.serverMembersStore, statusResolverServerId)
             }
         }
 
@@ -3669,7 +3848,7 @@ internal fun MemberDetailPageContent(
     // Live identity boundary: a sign-out / account / environment change clears a usage card that
     // was already loaded for the previous identity, even while this page stays composed.
     LaunchedEffect(runtimeAccountUsageOwnerTracker, provider.authStore) {
-        (provider.authStore as? build.raft.app.data.SlockAuthSessionEventSource)
+        (provider.authStore as? build.raft.app.data.RaftAuthSessionEventSource)
             ?.authSessionEvents
             ?.collect { event -> runtimeAccountUsageOwnerTracker.onAuthSessionEvent(event) }
     }
@@ -3704,10 +3883,10 @@ internal fun MemberDetailPageContent(
                 val member = selectedAgentDetail?.toStaticMembersProfile(current.server)
                 if (member == null) {
                     Box(
-                        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+                        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite),
                         contentAlignment = Alignment.Center
                     ) {
-                        SlockCenteredLoading()
+                        RaftCenteredLoading()
                     }
                 } else {
                     val agentMachineId =
@@ -3877,9 +4056,10 @@ internal fun MemberDetailPageContent(
                             object : SharedAgentDetailActions {
                                 override suspend fun runLifecycleAction(
                                     agentId: MemberId,
-                                    action: MembersAgentLifecycleAction
+                                    action: MembersAgentLifecycleAction,
+                                    workspaceChoice: AgentArchiveWorkspaceChoice
                                 ): DataResult<AgentLifecycleActionResult> {
-                                    val result = provider.runLifecycleAction(current.server.id, agentId, action)
+                                    val result = provider.runLifecycleAction(current.server.id, agentId, action, workspaceChoice)
                                     if (result is DataResult.Content && result.data.success) {
                                         localAgentDetailRefreshKey += 1
                                         if (action == MembersAgentLifecycleAction.Delete) {
@@ -4004,8 +4184,8 @@ internal fun MemberDetailPageContent(
                                 }
                                 result
                             },
-                            onAgentLifecycleAction = { agentId, action ->
-                                agentDetailActions.runLifecycleAction(agentId, action)
+                            onAgentLifecycleAction = { agentId, action, workspaceChoice ->
+                                agentDetailActions.runLifecycleAction(agentId, action, workspaceChoice)
                             },
                             agentWorkspaceTreeLoader = { agentId ->
                                 provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
@@ -4152,7 +4332,24 @@ internal fun MemberDetailPageContent(
                                 onUnavailableAction = { provider.bridge.toast(it) }
                             )
                         },
-                        onUnavailableAction = { bridge.toast(it) }
+                        onUnavailableAction = { bridge.toast(it) },
+                        onOpenCreatedAgent = { agent ->
+                            val pageData =
+                                payload.toCreatedAgentDetailPageData(
+                                    agentId = agent.id,
+                                    sourceServerId = current.member.serverId ?: current.server.id
+                                )
+                            if (pageData == null) {
+                                bridge.toast(openProfileFailed)
+                            } else {
+                                pager.openRaftPage(
+                                    pageName = MEMBER_DETAIL_PAGE,
+                                    pageData = pageData,
+                                    storeScopeOverride = provider.storeScope,
+                                    onMissingScope = { bridge.toast(openProfileFailed) }
+                                )
+                            }
+                        }
                     ),
                     humanRole = MembersHumanRoleInputs(
                         humanActorRole = current.server.role,
@@ -4185,15 +4382,18 @@ internal fun MemberDetailPageContent(
     }
 }
 
-private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDetailVisualSeed? {
+/** Default agent-detail visual seed (fixture agent agent-product-ux). */
+private fun membersAgentDetailDefaultVisualSeed(): MemberDetailVisualSeed =
+    MemberDetailVisualSeed(
+        member = membersAgentDetailVisualMember,
+        agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
+        agentScopeSet = membersAgentDetailVisualScopeSet
+    )
+
+private fun RaftMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDetailVisualSeed? {
     if (!instanceId.startsWith("visual-")) return null
     return when (identity?.memberId?.value) {
-        membersAgentDetailVisualMember.id.value ->
-            MemberDetailVisualSeed(
-                member = membersAgentDetailVisualMember,
-                agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
-                agentScopeSet = membersAgentDetailVisualScopeSet
-            )
+        membersAgentDetailVisualMember.id.value -> membersAgentDetailDefaultVisualSeed()
         membersHumanDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersHumanDetailVisualMember,
@@ -4205,11 +4405,34 @@ private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDe
     }
 }
 
+/**
+ * Entry for gated visual fixture pages (visualFixtures source set): renders the agent
+ * detail for a typed [variant] (null = default agent-product-ux seed) without going
+ * through the production `compose_member_detail` pageData parser.
+ */
+@Composable
+internal fun MembersAgentDetailVisualVariantContent(
+    payload: RaftMemberDetailPayload,
+    variant: MembersAgentDetailVisualVariant?,
+    pageVisibleTick: Int,
+    machineStatusRow: ((String?) -> MembersMachineStatusRow)? = null
+) {
+    val seed = remember(variant) { variant?.toSeed() ?: membersAgentDetailDefaultVisualSeed() }
+    MemberDetailVisualSeedContent(
+        payload = payload,
+        seed = seed,
+        pageVisibleTick = pageVisibleTick,
+        machineStatusRow = machineStatusRow ?: membersVisualFixtureMachineStatusRow
+    )
+}
+
 @Composable
 private fun MemberDetailVisualSeedContent(
-    payload: KuiklyMemberDetailPayload,
+    payload: RaftMemberDetailPayload,
     seed: MemberDetailVisualSeed,
-    pageVisibleTick: Int
+    pageVisibleTick: Int,
+    // Gated visual fixture pages inject other computers-store states (e.g. still loading).
+    machineStatusRow: (String?) -> MembersMachineStatusRow = membersVisualFixtureMachineStatusRow
 ) {
     val initialAgentTab = remember(payload.initialAgentTab) {
         payload.initialAgentTab.toMembersAgentDetailTabOrNull()
@@ -4224,7 +4447,7 @@ private fun MemberDetailVisualSeedContent(
         agentDetailState = seed.agentDetailState,
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
-        machineStatusRow = membersVisualFixtureMachineStatusRow,
+        machineStatusRow = machineStatusRow,
         actions = MembersDetailActions(
             onBack = {},
             onOpenDirectMessage = {},
@@ -4240,7 +4463,7 @@ private fun MemberDetailVisualSeedContent(
         agentCallbacks = MembersAgentDetailCallbacks(
             onUpdateAgentProfile = { DataResult.Content(seed.member) },
             onUploadAgentAvatar = null,
-            onAgentLifecycleAction = { agentId, action ->
+            onAgentLifecycleAction = { agentId, action, _ ->
                 DataResult.Content(
                     AgentLifecycleActionResult(
                         agentId = agentId,
@@ -4266,7 +4489,7 @@ private fun MemberDetailVisualSeedContent(
                 )
             }
         ),
-        timeContext = payload.toSlockTimeContext(),
+        timeContext = payload.toRaftTimeContext(),
         presentation = MembersAgentDetailPresentation(
             pageVisibleTick = pageVisibleTick,
             initialVisualMode = visualMode,
@@ -4287,7 +4510,7 @@ private fun MemberDetailLoadingPageShell(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            SlockCenteredLoading()
+            RaftCenteredLoading()
         }
     }
 }
@@ -4300,10 +4523,10 @@ private fun MemberDetailErrorPageShell(
     onRetry: () -> Unit
 ) {
     MemberDetailRoutePageShell(onBack = onBack) {
-        SlockEmptyState(
+        RaftEmptyState(
             title = title,
             detail = detail,
-            iconName = SlockLucideIconName.TriangleAlert,
+            iconName = RaftLucideIconName.TriangleAlert,
             actionLabel = stringResource(MR.strings.common_retry),
             onAction = onRetry,
             modifier = Modifier.fillMaxSize()
@@ -4316,14 +4539,14 @@ private fun MemberDetailRoutePageShell(
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        RaftTopPageHeader(
             title = stringResource(MR.strings.member_role_member),
             subtitle = stringResource(MR.strings.member_label_profile),
-            iconName = SlockLucideIconName.Users,
-            backgroundColor = SlockColor.SurfaceWhite,
+            iconName = RaftLucideIconName.Users,
+            backgroundColor = RaftColor.SurfaceWhite,
             leadingContent = {
-                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -4366,7 +4589,7 @@ internal fun MembersAgentDetailVisualContent() {
         ),
         agentCallbacks = MembersAgentDetailCallbacks(
             onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
-            onAgentLifecycleAction = { _, action ->
+            onAgentLifecycleAction = { _, action, _ ->
                 DataResult.Content(
                     AgentLifecycleActionResult(
                         agentId = membersAgentDetailVisualMember.id,
@@ -4381,11 +4604,11 @@ internal fun MembersAgentDetailVisualContent() {
             onReportAgentIssue = null,
             onUploadAgentAvatar = null
         ),
-        timeContext = SlockTimeContext(
+        timeContext = RaftTimeContext(
             localOffsetMinutes = 480,
             todayEpochDay = 20623,
             nowEpochMillis = 1781872200000,
-            timeFormat = SlockTimeFormat24Hour
+            timeFormat = RaftTimeFormat24Hour
         ),
         presentation = MembersAgentDetailPresentation(
             initialVisualMode = visualMode,
@@ -4396,22 +4619,22 @@ internal fun MembersAgentDetailVisualContent() {
 
 private fun readCurrentServerId(): String? = null
 
-internal fun SlockLinkNavigator.openMembersReminderForceExternalFallback(
+internal fun RaftLinkNavigator.openMembersReminderForceExternalFallback(
     rawUrl: String
-): SlockLinkOpenDecision =
-    open(rawUrl, SlockLinkOpenIntent.ForceExternal)
+): RaftLinkOpenDecision =
+    open(rawUrl, RaftLinkOpenIntent.ForceExternal)
 
 private fun Pager.openMembersReminderMessage(
     permalink: String,
     server: ServerSummary,
     conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
-    storeScope: SlockShellStoreScope,
-    timeContext: SlockTimeContext,
+    storeScope: RaftShellStoreScope,
+    timeContext: RaftTimeContext,
     onOpenExternal: (String) -> Unit,
     unavailableMessage: String,
     onUnavailableAction: (String) -> Unit
 ) {
-    val target = permalink.toSlockThreadWebLinkTarget()
+    val target = permalink.toRaftThreadWebLinkTarget()
     if (target == null) {
         onOpenExternal(permalink)
         return
@@ -4432,7 +4655,7 @@ private fun Pager.openMembersReminderMessage(
                 onUnavailableAction(unavailableMessage)
                 return
             }
-    openSlockPage(
+    openRaftPage(
         pageName = THREAD_PAGE,
         pageData = launchPayload.toThreadPageData(),
         storeScopeOverride = storeScope,
@@ -4443,7 +4666,7 @@ private fun Pager.openMembersReminderMessage(
 private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
     pager: Pager,
     member: MemberProfile,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     unavailableMessage: String,
     errorTemplate: String,
     permissionMessage: String,
@@ -4461,7 +4684,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
             if (launchPayload == null) {
                 onUnavailableAction(unavailableMessage)
             } else {
-                pager.openSlockPage(
+                pager.openRaftPage(
                     pageName = THREAD_PAGE,
                     pageData = launchPayload.toThreadPageData(),
                     onMissingScope = { onUnavailableAction(unavailableMessage) }
@@ -4480,7 +4703,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
 internal fun buildMembersDirectMessageThreadLaunchPayload(
     member: MemberProfile,
     conversation: HomeDirectMessageRow,
-    timeContext: SlockTimeContext
+    timeContext: RaftTimeContext
 ): WireThreadLaunchPayload? {
     val threadId =
         conversation.threadId.value.trim().takeIf { it.isNotBlank() }
@@ -4491,7 +4714,7 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
             ThreadLaunchConversationIdentity(
                 threadId = ThreadId(threadId),
                 channelId = ChannelId(threadId),
-                channelType = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = RaftThreadSurfaceKind.DirectMessage,
                 kind = ConversationKind.DirectMessage,
                 dmPeerIdentity =
                     memberDetailIdentity(
@@ -4505,9 +4728,9 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
     )
 }
 
-internal fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
+internal fun RaftThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
     messageId: String,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     server: ServerSummary,
     conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
@@ -4528,22 +4751,22 @@ internal fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
     )
 }
 
-internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
-    if (isBlank()) return KuiklyMembersPayload()
+internal fun String.toRaftMembersPayload(): RaftMembersPayload {
+    if (isBlank()) return RaftMembersPayload()
     val payload = JSONObject(this)
     val labelsJson = payload.optJSONObject("labels")
-    return KuiklyMembersPayload(
+    return RaftMembersPayload(
         instanceId = payload.optString("instanceId"),
         title = payload.optString("title").ifBlank { "Members" },
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
+        timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
         canInviteHumans = (payload.opt("canInviteHumans") as? Boolean) ?: true,
-        labels = KuiklyMembersLabels(
+        labels = RaftMembersLabels(
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
             humans = labelsJson?.optString("humans").orEmpty().ifBlank { "HUMANS" },
             addHuman = labelsJson?.optString("addHuman").orEmpty().ifBlank { "Add human" }
@@ -4551,7 +4774,7 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
     )
 }
 
-internal fun KuiklyMembersPayload.toMemberDetailPageData(
+internal fun RaftMembersPayload.toMemberDetailPageData(
     identity: MemberDetailIdentity
 ): JSONObject? {
     val selected = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
@@ -4583,10 +4806,10 @@ internal fun KuiklyMembersPayload.toMemberDetailPageData(
     }
 }
 
-internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload {
+internal fun JSONObject.toRaftMemberDetailPayload(): RaftMemberDetailPayload {
     val payloadText = optString("payload")
     val payload = if (payloadText.isNotBlank()) JSONObject(payloadText) else this
-    return KuiklyMemberDetailPayload(
+    return RaftMemberDetailPayload(
         instanceId = payload.optString("instanceId").ifBlank { optString("instanceId") },
         identity =
             memberDetailIdentityFromWire(
@@ -4603,7 +4826,7 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
+        timeFormat = payload.optString("timeFormat").ifBlank { RaftTimeFormat24Hour },
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder")
     )
 }
@@ -4649,9 +4872,11 @@ internal class MembersCreateAgentInputs(
     val createAgentTakenAgentNames: List<String> = emptyList()
 )
 
-/** Agent @names (handles) of live agents, so a suggested create-agent name avoids them. */
+/** @names (handles) of live agents and humans, so a suggested create-agent name avoids them. */
 internal fun List<MemberProfile>.takenAgentNames(): List<String> =
-    filter { it.kind == MemberKind.Agent && it.agentDeletedAt.isNullOrBlank() }.map { it.handle }
+    filter {
+        (it.kind == MemberKind.Agent && it.agentDeletedAt.isNullOrBlank()) || it.kind == MemberKind.Human
+    }.map { it.handle }
 
 internal class MembersInviteHumanInputs(
     /**
@@ -4669,13 +4894,13 @@ internal class MembersInviteHumanInputs(
 
 @Composable
 internal fun MembersRouteContent(
-    payload: KuiklyMembersPayload,
+    payload: RaftMembersPayload,
     refreshing: Boolean = false,
     onBack: (() -> Unit)? = null,
     onAddHuman: () -> Unit,
     onOpenMemberDetail: (MemberProfile) -> Unit,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     createAgent: MembersCreateAgentInputs = MembersCreateAgentInputs(),
     inviteHuman: MembersInviteHumanInputs = MembersInviteHumanInputs(),
     /**
@@ -4683,7 +4908,7 @@ internal fun MembersRouteContent(
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
      */
     canCreateAgents: Boolean = false,
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     /**
      * Task #409: current session's user id, used as the persistence scope for
      * per-machine agent-group collapse (same `slock:sidebarCollapsed:<userId>`
@@ -4692,11 +4917,11 @@ internal fun MembersRouteContent(
      */
     currentUserId: String? = null,
     agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
     selectedIdentity: MemberDetailIdentity? = null,
     selectedLocalServerId: ServerId? = null,
     onRefresh: () -> Unit = {}
@@ -4727,24 +4952,24 @@ internal fun MembersRouteContent(
 
 @Composable
 internal fun MembersListContent(
-    payload: KuiklyMembersPayload,
+    payload: RaftMembersPayload,
     selectedIdentity: MemberDetailIdentity? = null,
     selectedLocalServerId: ServerId? = null,
     refreshing: Boolean = false,
     onBack: (() -> Unit)? = null,
     onAddHuman: () -> Unit,
     onOpenMember: (MemberProfile) -> Unit,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     canCreateAgents: Boolean = false,
     createAgent: MembersCreateAgentInputs = MembersCreateAgentInputs(),
     inviteHuman: MembersInviteHumanInputs = MembersInviteHumanInputs(),
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {},
     currentUserId: String? = null,
     agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null
@@ -4815,7 +5040,7 @@ internal fun MembersListContent(
         resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
     var activeCreateAgentMode by remember(payload.instanceId) { mutableStateOf<MembersCreateAgentMode?>(null) }
     var createAgentMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
-    var createAgentMenuAnchor by remember(payload.instanceId) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var createAgentMenuAnchor by remember(payload.instanceId) { mutableStateOf<RaftPopoverAnchor?>(null) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
@@ -4838,7 +5063,7 @@ internal fun MembersListContent(
             inviteHumanError = null
         }
     }
-    val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
+    val pullToRefreshStyle = rememberRaftPullToRefreshStyle()
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
@@ -4850,7 +5075,7 @@ internal fun MembersListContent(
                     .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
                     .toSet(),
             showHumanDirectory = payload.showHumanDirectory,
-            hasPullToRefreshItem = showPullToRefreshItem
+            hasPullToRefreshItem = pullToRefreshStyle.addsListItem
         )
 
     val listState =
@@ -4885,12 +5110,11 @@ internal fun MembersListContent(
         }
     }
     val pullRefreshing = refreshing && pullRefreshActive
-    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(SlockColor.SurfaceWhite)
+            .background(RaftColor.SurfaceWhite)
     ) {
         MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
         BoxWithConstraints(
@@ -4898,120 +5122,158 @@ internal fun MembersListContent(
             contentAlignment = Alignment.TopCenter,
         ) {
         val lazyMaxWidth = maxWidth
-        LazyColumn(
-            state = listState,
-            // React parity: the web members view pads the scroll container itself (Sidebar
-            // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
-            // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
-            // the missing half — without it the list sits 8dp from the screen edge (task #140).
-            modifier = Modifier
-                .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
-                .fillMaxSize()
-                .padding(horizontal = MembersListContainerInset),
-            verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
-            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
+        RaftPullToRefreshBox(
+            isRefreshing = pullRefreshing,
+            onRefresh = {
+                pullRefreshActive = true
+                onRefresh()
+            },
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
+            style = pullToRefreshStyle,
         ) {
-            if (showPullToRefreshItem) {
-                slockRaftPullToRefreshItem(
-                    state = pullToRefreshState,
-                    scrollState = listState,
-                    onRefresh = {
-                        pullRefreshActive = true
-                        onRefresh()
-                    }
-                )
-            }
-            item { Spacer(Modifier.height(SlockSpacing.Md)) }
-            item {
-                SlockCollapsibleSectionHeader(
-                    label = displayAgentsLabel,
-                    count = agents.size,
-                    expanded = agentsExpanded,
-                    onExpandedChange = { agentsExpanded = it },
-                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                    minHeight = MembersListSectionHeaderMinHeight,
-                    trailingContent = {
-                        if (canCreateAgents) {
-                            SlockSectionHeaderIconAction(
-                                icon = SlockLucideIconName.Plus,
-                                contentDescription = stringResource(MR.strings.agent_create_action_create),
-                                size = MembersListSectionAddActionSize,
-                                iconSize = MembersListSectionAddActionIconSize,
-                                onClick2 = { anchor ->
-                                    if (createAgentSubmit != null) {
-                                        createAgentMenuAnchor = anchor
-                                        createAgentMenuOpen = true
+            LazyColumn(
+                state = listState,
+                // React parity: the web members view pads the scroll container itself (Sidebar
+                // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
+                // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
+                // the missing half — without it the list sits 8dp from the screen edge (task #140).
+                modifier = Modifier
+                    .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
+                    .fillMaxSize()
+                    .padding(horizontal = MembersListContainerInset),
+                verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
+            ) {
+                raftPullToRefreshItem()
+                item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
+                item {
+                    RaftCollapsibleSectionHeader(
+                        label = displayAgentsLabel,
+                        count = agents.size,
+                        expanded = agentsExpanded,
+                        onExpandedChange = { agentsExpanded = it },
+                        modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                        minHeight = MembersListSectionHeaderMinHeight,
+                        trailingContent = {
+                            if (canCreateAgents) {
+                                RaftSectionHeaderIconAction(
+                                    icon = RaftLucideIconName.Plus,
+                                    contentDescription = stringResource(MR.strings.agent_create_action_create),
+                                    size = MembersListSectionAddActionSize,
+                                    iconSize = MembersListSectionAddActionIconSize,
+                                    onClick2 = { anchor ->
+                                        if (createAgentSubmit != null) {
+                                            createAgentMenuAnchor = anchor
+                                            createAgentMenuOpen = true
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
-                    }
-                )
-            }
-            if (agentsExpanded) {
-                groupedAgentMembers(agents) { machineId ->
-                    createAgentMachines.firstOrNull { it.id == machineId }?.name
-                }.forEach { group ->
-                    item("group_${group.key}") {
-                        val groupExpanded = !isAgentGroupCollapsed(group.key)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = MembersListMachineLabelInset)
-                                .padding(top = SlockSpacing.Xs)
-                                .clickable {
-                                    // Slot stores *collapsed*; toggling writes !collapsed
-                                    // (writing !groupExpanded stored the old value and made the
-                                    // row a no-op — task #409 regression).
-                                    val collapseNow =
-                                        resolveAgentGroupCollapseToggle(
-                                            isAgentGroupCollapsed(group.key)
+                    )
+                }
+                if (agentsExpanded) {
+                    groupedAgentMembers(agents) { machineId ->
+                        createAgentMachines.firstOrNull { it.id == machineId }?.name
+                    }.forEach { group ->
+                        item("group_${group.key}") {
+                            val groupExpanded = !isAgentGroupCollapsed(group.key)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = MembersListMachineLabelInset)
+                                    .padding(top = RaftAppSpacing.Xs)
+                                    .clickable {
+                                        // Slot stores *collapsed*; toggling writes !collapsed
+                                        // (writing !groupExpanded stored the old value and made the
+                                        // row a no-op — task #409 regression).
+                                        val collapseNow =
+                                            resolveAgentGroupCollapseToggle(
+                                                isAgentGroupCollapsed(group.key)
+                                            )
+                                        agentGroupCollapseOverrides =
+                                            agentGroupCollapseOverrides + (group.key to collapseNow)
+                                        agentGroupCollapseStore?.setCollapsed(
+                                            membersCurrentUserId,
+                                            group.key,
+                                            collapseNow
                                         )
-                                    agentGroupCollapseOverrides =
-                                        agentGroupCollapseOverrides + (group.key to collapseNow)
-                                    agentGroupCollapseStore?.setCollapsed(
-                                        membersCurrentUserId,
-                                        group.key,
-                                        collapseNow
-                                    )
-                                },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                        ) {
-                            SlockLucideIcon(
-                                SlockLucideIconName.ChevronRight,
-                                modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                color = SlockColor.TextMutedGrayArgb,
-                                rotationDegrees = if (groupExpanded) 90f else 0f,
-                                rotationAnimationDurationSeconds =
-                                    SlockCollapsibleSectionTokens.AnimationDurationSeconds
-                            )
-                            SlockLucideIcon(
-                                SlockLucideIconName.Monitor,
-                                modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                color = SlockColor.TextMutedGrayArgb
-                            )
-                            Text(
-                                text = membersListMachineLabel(group.label),
-                                style = MembersListMachineLabelTextStyle,
-                                color = SlockColor.TextMutedGray,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Text(
-                                text = group.members.size.toString(),
-                                style = MembersListMachineLabelTextStyle,
-                                color = SlockColor.TextMutedGray
-                            )
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+                            ) {
+                                RaftLucideIcon(
+                                    RaftLucideIconName.ChevronRight,
+                                    modifier = Modifier.size(MembersListMachineLabelIconSize),
+                                    color = RaftColor.TextMutedGrayArgb,
+                                    rotationDegrees = if (groupExpanded) 90f else 0f,
+                                    rotationAnimationDurationSeconds =
+                                        RaftCollapsibleSectionTokens.AnimationDurationSeconds
+                                )
+                                RaftLucideIcon(
+                                    RaftLucideIconName.Monitor,
+                                    modifier = Modifier.size(MembersListMachineLabelIconSize),
+                                    color = RaftColor.TextMutedGrayArgb
+                                )
+                                Text(
+                                    text = membersListMachineLabel(group.label),
+                                    style = MembersListMachineLabelTextStyle,
+                                    color = RaftColor.TextMutedGray,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Text(
+                                    text = group.members.size.toString(),
+                                    style = MembersListMachineLabelTextStyle,
+                                    color = RaftColor.TextMutedGray
+                                )
+                            }
+                        }
+                        if (!isAgentGroupCollapsed(group.key)) {
+                            items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
+                                val member = group.members[index]
+                                MembersListRow(
+                                    member = member,
+                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                                    onClick = { onOpenMember(member) }
+                                )
+                            }
                         }
                     }
-                    if (!isAgentGroupCollapsed(group.key)) {
-                        items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
-                            val member = group.members[index]
+                }
+                if (payload.showHumanDirectory) {
+                    item {
+                        Spacer(Modifier.height(RaftAppSpacing.Sm))
+                        RaftCollapsibleSectionHeader(
+                            label = displayHumansLabel,
+                            count = humans.size,
+                            expanded = humansExpanded,
+                            onExpandedChange = { humansExpanded = it },
+                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                            minHeight = MembersListSectionHeaderMinHeight,
+                            trailingContent = {
+                                if (canInviteHumans) {
+                                    RaftSectionHeaderIconAction(
+                                        icon = RaftLucideIconName.Plus,
+                                        contentDescription = stringResource(MR.strings.member_action_invite_human),
+                                        size = MembersListSectionAddActionSize,
+                                        iconSize = MembersListSectionAddActionIconSize,
+                                        onClick = { activeInviteHuman = true }
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    if (humansExpanded) {
+                        items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
+                            val member = humans[index]
                             MembersListRow(
                                 member = member,
-                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
@@ -5020,63 +5282,26 @@ internal fun MembersListContent(
                         }
                     }
                 }
+                item { Spacer(Modifier.height(bottomContentPadding)) }
             }
-            if (payload.showHumanDirectory) {
-                item {
-                    Spacer(Modifier.height(SlockSpacing.Sm))
-                    SlockCollapsibleSectionHeader(
-                        label = displayHumansLabel,
-                        count = humans.size,
-                        expanded = humansExpanded,
-                        onExpandedChange = { humansExpanded = it },
-                        modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                        minHeight = MembersListSectionHeaderMinHeight,
-                        trailingContent = {
-                            if (canInviteHumans) {
-                                SlockSectionHeaderIconAction(
-                                    icon = SlockLucideIconName.Plus,
-                                    contentDescription = stringResource(MR.strings.member_action_invite_human),
-                                    size = MembersListSectionAddActionSize,
-                                    iconSize = MembersListSectionAddActionIconSize,
-                                    onClick = { activeInviteHuman = true }
-                                )
-                            }
-                        }
-                    )
-                }
-                if (humansExpanded) {
-                    items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
-                        val member = humans[index]
-                        MembersListRow(
-                            member = member,
-                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                            onClick = { onOpenMember(member) }
-                        )
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(bottomContentPadding)) }
         }
         }
     }
     if (createAgentMenuOpen && createAgentMenuAnchor != null && createAgentSubmit != null) {
-        SlockRaftUiControlledMenu(
+        RaftUiControlledMenu(
             expanded = true,
             anchor = createAgentMenuAnchor!!,
             width = 220.dp,
             items = listOf(
-                SlockRaftUiMenuItem(
+                RaftUiMenuItem(
                     id = MembersCreateAgentMode.Managed.name,
                     label = stringResource(MR.strings.agent_create_action_create),
-                    icon = SlockLucideIconName.Bot
+                    icon = RaftLucideIconName.Bot
                 ),
-                SlockRaftUiMenuItem(
+                RaftUiMenuItem(
                     id = MembersCreateAgentMode.External.name,
                     label = stringResource(MR.strings.agent_create_action_create_external),
-                    icon = SlockLucideIconName.Link2
+                    icon = RaftLucideIconName.Link2
                 )
             ),
             onSelect = { id ->
@@ -5241,11 +5466,12 @@ internal fun membersLazyItemCount(
     humansExpanded: Boolean,
     collapsedAgentGroupKeys: Set<String> = emptySet(),
     showHumanDirectory: Boolean = true,
-    hasPullToRefreshItem: Boolean = true
+    /** The custom pull-to-refresh header item (see RaftPullToRefreshStyle.addsListItem). */
+    hasPullToRefreshItem: Boolean = false
 ): Int {
     val fixedItems =
         (if (hasPullToRefreshItem) 1 else 0) +
-            1 + // top spacer
+        1 + // top spacer
             1 + // agents header
             (if (showHumanDirectory) 1 else 0) + // humans header
             1 // bottom spacer
@@ -5282,7 +5508,7 @@ private class MembersAgentDetailCallbacks(
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
     val onUploadAgentAvatar: (suspend (MemberId, PlatformFile) -> DataResult<MemberProfile>)?,
     val onPickAgentAvatarFile: suspend () -> DataResult<PlatformFile> = { DataResult.Empty(EmptyReason.NoMembers) },
-    val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
+    val onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction, AgentArchiveWorkspaceChoice) -> DataResult<AgentLifecycleActionResult>)?,
     val agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     val agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
     val onCopyAgentDiagnostics: (String) -> Unit,
@@ -5298,7 +5524,9 @@ private class MembersDetailActions(
     val onRemoveMember: (() -> Unit)? = null,
     val onOpenUrl: (String) -> Unit,
     val onOpenReminderMessage: (String) -> Unit = {},
-    val onUnavailableAction: (String) -> Unit
+    val onUnavailableAction: (String) -> Unit,
+    /** Opens the profile of an agent listed under a human's Created Agents. */
+    val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null
 )
 
 private class MembersAgentDetailPresentation(
@@ -5330,16 +5558,16 @@ private fun MembersDetailContent(
     humanRole: MembersHumanRoleInputs = MembersHumanRoleInputs(),
     agentDetailActions: SharedAgentDetailActions? = null,
     agentCallbacks: MembersAgentDetailCallbacks,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     presentation: MembersAgentDetailPresentation = MembersAgentDetailPresentation(),
     accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     // #89: forwarded to the Permissions tab so it can call
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
     externalSetupServerUrl: String? = null
 ) {
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
@@ -5371,6 +5599,7 @@ private fun MembersDetailContent(
     val onOpenUrl = actions.onOpenUrl
     val onOpenReminderMessage = actions.onOpenReminderMessage
     val onUnavailableAction = actions.onUnavailableAction
+    val onOpenCreatedAgent = actions.onOpenCreatedAgent
     val pageVisibleTick = presentation.pageVisibleTick
     val initialVisualMode = presentation.initialVisualMode
     val initialAgentTab = presentation.initialAgentTab
@@ -5393,12 +5622,12 @@ private fun MembersDetailContent(
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
     val managedAgentStatusObservedState =
         if (member.kind == MemberKind.Agent) {
-            val canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
             resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = canonicalState,
                 fixtureFallback =
                     if (stableVisualCapture) {
-                        member.toFixtureSlockAgentStatusIndicatorState(
+                        member.toFixtureRaftAgentStatusIndicatorState(
                             summaryStatus = detail?.summary?.status,
                             summaryActivity = detail?.summary?.activity
                         )
@@ -5508,16 +5737,16 @@ private fun MembersDetailContent(
         } else {
             diagnosticActionState
         }
-    var managementMenuAnchor by remember(member.id.value) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var managementMenuAnchor by remember(member.id.value) { mutableStateOf<RaftPopoverAnchor?>(null) }
     var managementMenuAnchorResolver by remember(member.id.value) {
-        mutableStateOf<SlockPopoverAnchorResolver?>(null)
+        mutableStateOf<RaftPopoverAnchorResolver?>(null)
     }
     var showAvatarPicker by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
         mutableStateOf<MembersAgentWorkspaceTreeState>(MembersAgentWorkspaceTreeState.Idle)
     }
     var expandedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Set<String>>(emptySet()) }
-    var loadedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Map<String, List<SlockWorkspaceNode>>>(emptyMap()) }
+    var loadedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Map<String, List<RaftWorkspaceNode>>>(emptyMap()) }
     var loadingWorkspaceDirs by remember(member.id.value) { mutableStateOf<Set<String>>(emptySet()) }
     var workspaceDirErrors by remember(member.id.value) { mutableStateOf<Map<String, String>>(emptyMap()) }
     LaunchedEffect(member.id.value, initialVisualMode) {
@@ -5643,7 +5872,7 @@ private fun MembersDetailContent(
         }
     }
     fun selectWorkspaceFile(path: String) {
-        pager.openSlockFilePreviewPage(agentWorkspaceLazyPreviewPayload(agentId = member.id.value, path = path))
+        pager.openRaftFilePreviewPage(agentWorkspaceLazyPreviewPayload(agentId = member.id.value, path = path))
     }
     LaunchedEffect(member.id.value, selectedTab, canViewPrivate, agentWorkspaceTreeLoader) {
         if (
@@ -5654,7 +5883,11 @@ private fun MembersDetailContent(
             loadWorkspaceRoot()
         }
     }
-    fun runLifecycleAction(action: MembersAgentLifecycleAction, confirmed: Boolean = false) {
+    fun runLifecycleAction(
+        action: MembersAgentLifecycleAction,
+        confirmed: Boolean = false,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
+    ) {
         if (lifecycleInFlight != null) return
         val callback = onAgentLifecycleAction
         if (!canManage || (agentDetailActions == null && callback == null)) {
@@ -5675,10 +5908,10 @@ private fun MembersDetailContent(
             actionState = MembersAgentActionState(action, inProgress = true)
             val result =
                 if (sharedAgentDetailStore != null && agentDetailActions != null) {
-                    sharedAgentDetailStore.runLifecycleAction(member.id, action, agentDetailActions)
+                    sharedAgentDetailStore.runLifecycleAction(member.id, action, agentDetailActions, workspaceChoice)
                 } else {
                     try {
-                        requireNotNull(callback).invoke(member.id, action)
+                        requireNotNull(callback).invoke(member.id, action, workspaceChoice)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -5823,31 +6056,42 @@ private fun MembersDetailContent(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SlockColor.SurfaceWhite)
+            .background(RaftColor.SurfaceWhite)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             val runtimeErrorText = member.membersAgentRuntimeErrorText(detail, agentStatusIndicatorState)
-            MembersDetailHeader(
-                member = member,
-                currentUserId = currentUserId,
-                currentServerId = currentServerId,
-                detail = detail,
-                deleted = deleted,
-                canManage = canManage,
-                onBack = onBack,
-                onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
-                onOpenDirectMessage = onOpenDirectMessage,
-                onCopyMemberId = onCopyMemberId,
-                agentStatusIndicatorState = agentStatusIndicatorState,
-                memberAvatarResolver = memberAvatarResolver,
-                onManagementMenuAnchorResolverReady = { managementMenuAnchorResolver = it },
-                onRequestManagementMenu = { anchor ->
-                    if (anchor != null) {
-                        managementMenuAnchor = anchor
-                        managementMenuOpen = true
+            if (member.kind == MemberKind.Human) {
+                MembersHumanDetailHeader(
+                    member = member,
+                    currentUserId = currentUserId,
+                    currentServerId = currentServerId,
+                    memberAvatarResolver = memberAvatarResolver,
+                    onBack = onBack,
+                    onOpenDirectMessage = onOpenDirectMessage
+                )
+            } else {
+                MembersDetailHeader(
+                    member = member,
+                    currentUserId = currentUserId,
+                    currentServerId = currentServerId,
+                    detail = detail,
+                    deleted = deleted,
+                    canManage = canManage,
+                    onBack = onBack,
+                    onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
+                    onOpenDirectMessage = onOpenDirectMessage,
+                    onCopyMemberId = onCopyMemberId,
+                    agentStatusIndicatorState = agentStatusIndicatorState,
+                    memberAvatarResolver = memberAvatarResolver,
+                    onManagementMenuAnchorResolverReady = { managementMenuAnchorResolver = it },
+                    onRequestManagementMenu = { anchor ->
+                        if (anchor != null) {
+                            managementMenuAnchor = anchor
+                            managementMenuOpen = true
+                        }
                     }
-                }
-            )
+                )
+            }
             val runtimeErrorBanner =
                 membersAgentRuntimeErrorBannerState(
                     memberKind = member.kind,
@@ -5885,7 +6129,7 @@ private fun MembersDetailContent(
                     },
                     pageCount = visibleTabs.size.coerceAtLeast(1),
                     gesturePolicy = TabPagerGesturePolicy(
-                        startEdgeInset = slockPlatformTabPagerStartEdgeInsetDp().dp,
+                        startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
                     ),
                     keepItemAlive = true,
                     tabBar = {
@@ -5893,8 +6137,7 @@ private fun MembersDetailContent(
                             tabs = visibleTabs,
                             selectedTab = selectedTab,
                             onSelectedTabChange = { selectedTabOverride = it },
-                            onReorderTabs = onAgentPanelTabOrderChange,
-                            autoScrollSelectedTab = !stableVisualCapture
+                            onReorderTabs = onAgentPanelTabOrderChange
                         )
                     },
                     modifier = Modifier
@@ -5903,9 +6146,9 @@ private fun MembersDetailContent(
                 ) { page, active ->
                     val pageTab = membersAgentDetailPageTab(visibleTabs, page)
                     if (pageTab == null || !active || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
-                        // SlockCenteredLoading renders common_loading when message
+                        // RaftCenteredLoading renders common_loading when message
                         // is null — only shown for tabs that have not been visited yet.
-                        SlockCenteredLoading(modifier = Modifier.fillMaxSize())
+                        RaftCenteredLoading(modifier = Modifier.fillMaxSize())
                     } else if (pageTab == MembersAgentDetailTab.Activity) {
                         MembersAgentActivityTab(
                             detail = detail,
@@ -5921,12 +6164,11 @@ private fun MembersDetailContent(
                         LazyColumn(
                             state = agentTabListStates.getValue(pageTab),
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
+                            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                         ) {
                             if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
                                 item(key = "member-detail-${member.id.value}-top-spacer") {
-                                    Spacer(Modifier.height(SlockSpacing.Sm))
+                                    Spacer(Modifier.height(RaftAppSpacing.Sm))
                                 }
                             }
                             if (
@@ -6007,6 +6249,31 @@ private fun MembersDetailContent(
                                             onApplyAgentProfileResult = onApplyAgentProfileResult,
                                             onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection,
                                             agentsApiClient = agentsApiClient,
+                                            archiveInputs = MembersAgentArchiveInputs(
+                                                loadArchive = { id ->
+                                                    agentsApiClient?.agentArchive(id)
+                                                        ?: DataResult.Error(
+                                                            ScreenError(code = "archive_unavailable", retryable = false)
+                                                        )
+                                                },
+                                                deleteWorkspace = { id ->
+                                                    agentsApiClient?.deleteAgentArchiveWorkspace(id)
+                                                        ?: DataResult.Error(
+                                                            ScreenError(code = "archive_unavailable", retryable = false)
+                                                        )
+                                                },
+                                                memberNameByUserId = { userId ->
+                                                    val serverId = currentServerId
+                                                    if (serverId.isNullOrBlank()) {
+                                                        null
+                                                    } else {
+                                                        serverMembersState.entryFor(ServerId(serverId))
+                                                            ?.members
+                                                            ?.firstOrNull { it.id.value == userId }
+                                                            ?.displayName
+                                                    }
+                                                }
+                                            ),
                                             externalSetupServerUrl = externalSetupServerUrl,
                                             onUnavailableAction = onUnavailableAction,
                                             lifecycle = MembersAgentLifecycleInputs(
@@ -6076,8 +6343,6 @@ private fun MembersDetailContent(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
                     item(key = "member-detail-${member.id.value}-human-content") {
                         MembersHumanDetailSections(
@@ -6095,7 +6360,7 @@ private fun MembersDetailContent(
                             onRemoveMember = onRemoveMember?.takeIf {
                                 member.membershipStatus != "removed"
                             },
-                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                            onOpenCreatedAgent = onOpenCreatedAgent
                         )
                     }
                     item(key = "member-detail-${member.id.value}-bottom-spacer") {
@@ -6120,14 +6385,14 @@ private fun MembersDetailContent(
                     deleted = deleted,
                     inProgress = lifecycleInFlight != null
                 ).map { item ->
-                    SlockRaftUiMenuItem(
+                    RaftUiMenuItem(
                         id = item.id,
                         label = item.label.localized(),
                         icon = item.icon,
                         enabled = item.enabled
                     )
                 }
-            SlockRaftUiControlledMenu(
+            RaftUiControlledMenu(
                 expanded = managementMenuOpen,
                 anchor = dropdownAnchor,
                 items = menuItems,
@@ -6217,10 +6482,24 @@ private fun MembersDetailContent(
         val activePendingConfirmation =
             if (sharedAgentDetailStore != null) storePendingConfirmation else pendingConfirmation
         activePendingConfirmation?.let { action ->
+            // task #515: archive (the former delete) gains the web
+            // `AgentArchiveDialog` contract — "keep on the Computer" vs "delete
+            // the workspace" — only when this agent actually has a workspace on
+            // a Computer, matching the web gate `hasComputerWorkspace`
+            // (`machineId` set, not an external runtime).
+            val archiveHasComputerWorkspace =
+                action == MembersAgentLifecycleAction.Delete &&
+                    membersAgentArchiveHasComputerWorkspace(
+                        machineId = detail?.summary?.machineId,
+                        isExternalAgent = isExternalAgent
+                    )
+            var archiveWorkspaceChoice by remember(member.id.value, detail?.summary?.machineId) {
+                mutableStateOf(AgentArchiveWorkspaceChoice.Keep)
+            }
             // Reuse the shared unified dialog (React ConfirmDialog is a plain
             // card: uppercase 18px title + X, no header divider, max-w-sm).
-            SlockUnifiedDialog(
-                title = membersLifecycleConfirmTitle(action).slockDisplayUppercase(),
+            RaftUnifiedDialog(
+                title = membersLifecycleConfirmTitle(action, member.displayName).raftDisplayUppercase(),
                 dismissEnabled = lifecycleInFlight != action.actionKey,
                 maxWidth = 384.dp,
                 contentPadding = 24.dp,
@@ -6238,7 +6517,12 @@ private fun MembersDetailContent(
                     action = action,
                     agentName = member.displayName,
                     busy = lifecycleInFlight == action.actionKey,
-                    onConfirm = { runLifecycleAction(action, confirmed = true) },
+                    archiveHasComputerWorkspace = archiveHasComputerWorkspace,
+                    archiveComputerName = detail?.summary?.machineName?.takeIf { it.isNotBlank() }
+                        ?: stringResource(MR.strings.member_archive_unknown_computer),
+                    archiveWorkspaceChoice = archiveWorkspaceChoice,
+                    onArchiveWorkspaceChoiceChange = { archiveWorkspaceChoice = it },
+                    onConfirm = { runLifecycleAction(action, confirmed = true, workspaceChoice = archiveWorkspaceChoice) },
                     onCancel = {
                         if (sharedAgentDetailStore != null) {
                             sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
@@ -6265,7 +6549,7 @@ private fun DataResult<AgentLifecycleActionResult>.membersLifecycleError(action:
 internal data class MembersManagementMenuItemSpec(
     val id: String,
     val label: StringDesc,
-    val icon: SlockLucideIconName,
+    val icon: RaftLucideIconName,
     val enabled: Boolean
 )
 
@@ -6292,7 +6576,7 @@ internal fun buildMembersManagementMenuItems(
     items += MembersManagementMenuItemSpec(
         id = MembersAgentLifecycleAction.Restart.actionKey,
         label = MR.strings.member_label_restart_reset.desc(),
-        icon = SlockLucideIconName.RotateCcw,
+        icon = RaftLucideIconName.RotateCcw,
         enabled = !inProgress
     )
     return items
@@ -6323,6 +6607,89 @@ private fun DataResult<AgentWorkspaceTreeSnapshot>.toMembersWorkspaceTreeState()
         is DataResult.NoPermission -> MembersAgentWorkspaceTreeState.NoPermission(blocker)
     }
 
+// raft-ui PanelHeader on a phone: Back and the trailing action are 44dp ghost icon buttons
+// sitting 3dp from the screen edges, so their 22dp glyphs mirror each other.
+private val MembersHumanHeaderEdgeInset = 3.dp
+private val MembersHumanHeaderContentSpacing = 6.dp
+
+/**
+ * The human profile head (web HumanDetailPanel `PanelHeader`): Back, the `md` avatar sticker,
+ * the name (PanelTitle) over the `@handle` (Space Mono 12/16 hint), and the Message action
+ * as a ghost PanelAction.
+ */
+@Composable
+private fun MembersHumanDetailHeader(
+    member: MemberProfile,
+    currentUserId: String?,
+    currentServerId: String?,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    onBack: () -> Unit,
+    onOpenDirectMessage: () -> Unit
+) {
+    val canMessage =
+        membersDirectMessageEligibility(
+            member = member,
+            currentUserId = currentUserId,
+            currentServerId = currentServerId
+        ) != MembersDirectMessageEligibility.Unavailable
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val backLabel = stringResource(MR.strings.common_back)
+    val messageLabel = stringResource(MR.strings.member_label_message)
+    RaftTopPageHeader(
+        title = member.displayName,
+        backgroundColor = RaftColor.Canvas,
+        contentStartPadding = MembersHumanHeaderEdgeInset,
+        contentEndPadding = if (canMessage) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+        contentSpacing = MembersHumanHeaderContentSpacing,
+        showBodyTopBanner = false,
+        titleLeadingContent = {
+            RaftIconButton(
+                onClick = onBack,
+                tooltip = backLabel,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg
+            ) {
+                MembersHumanGlyph(RaftLucideIconName.ArrowLeft, 22.dp)
+            }
+            MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
+        },
+        titleContent = {
+            Column(modifier = Modifier.weight(1f)) {
+                RaftText(
+                    text = member.displayName,
+                    style = typography.headline,
+                    color = colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                RaftText(
+                    text = member.detailHandle,
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        trailingContent =
+            if (canMessage) {
+                {
+                    RaftIconButton(
+                        onClick = onOpenDirectMessage,
+                        tooltip = messageLabel,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg
+                    ) {
+                        MembersHumanGlyph(RaftLucideIconName.MessageSquare, 22.dp)
+                    }
+                }
+            } else {
+                null
+            }
+    )
+}
+
 @Composable
 private fun MembersDetailHeader(
     member: MemberProfile,
@@ -6331,14 +6698,14 @@ private fun MembersDetailHeader(
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
     canManage: Boolean,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onBack: () -> Unit,
     onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
-    onManagementMenuAnchorResolverReady: (SlockPopoverAnchorResolver) -> Unit,
-    onRequestManagementMenu: (SlockPopoverAnchor?) -> Unit
+    onManagementMenuAnchorResolverReady: (RaftPopoverAnchorResolver) -> Unit,
+    onRequestManagementMenu: (RaftPopoverAnchor?) -> Unit
 ) {
     val summary = detail?.summary
     val directMessageEligibility =
@@ -6349,9 +6716,9 @@ private fun MembersDetailHeader(
             deleted = deleted
         )
     val threeDotButtonAnchor =
-        remember(member.id.value) { SlockLiveRootAnchorRef(identity = "member:${member.id.value}:management") }
+        remember(member.id.value) { RaftLiveRootAnchorRef(identity = "member:${member.id.value}:management") }
     val threeDotButtonAnchorResolver =
-        remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(SlockPopoverLocalPoint.BottomEnd) }
+        remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(RaftPopoverLocalPoint.BottomEnd) }
     val currentOnManagementMenuAnchorResolverReady by
         rememberUpdatedState(onManagementMenuAnchorResolverReady)
     val agentStatusDisplayState =
@@ -6370,22 +6737,22 @@ private fun MembersDetailHeader(
             else -> null
         }
     val avatarClick = onAvatarClick
-    val topSafeArea = slockTopSafeAreaPadding()
+    val topSafeArea = raftTopSafeAreaPadding()
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(topSafeArea + SlockSize.PageHeaderHeight)
-            .background(SlockColor.SurfaceWhite)
+            .height(topSafeArea + RaftAppSize.PageHeaderHeight)
+            .background(RaftColor.SurfaceWhite)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(topSafeArea + SlockSize.PageHeaderContentHeight)
+                .height(topSafeArea + RaftAppSize.PageHeaderContentHeight)
                 .padding(start = 12.dp, top = topSafeArea + 8.dp, end = 24.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
-            SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+            RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
             MembersAvatar(
                 member = member,
                 avatarSize = 36.dp,
@@ -6406,9 +6773,9 @@ private fun MembersDetailHeader(
             ) {
                 Text(
                     text = member.displayName,
-                    style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp)
+                        .withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -6419,8 +6786,8 @@ private fun MembersDetailHeader(
                     ) {
                         Text(
                             text = headerMetaLabel,
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = if (deleted) SlockColor.AccentOrange else SlockColor.TextMutedGray,
+                            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = if (deleted) RaftColor.AccentOrange else RaftColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
@@ -6432,42 +6799,54 @@ private fun MembersDetailHeader(
                 directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
                 membersHeaderMessageUsesIconOnly(member.kind)
             ) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.MessageSquare,
+                RaftIconButton(
                     onClick = onOpenDirectMessage,
-                    contentDescription = stringResource(MR.strings.member_label_message),
-                    size = MembersActionSize
-                )
+                    tooltip = stringResource(MR.strings.member_label_message),
+                    variant = RaftButtonVariant.Ghost
+                ) {
+                    RaftLucideIcon(
+                        RaftLucideIconName.MessageSquare,
+                        modifier = Modifier.size(18.dp),
+                        color = raftArgbHex(LocalRaftContentColor.current)
+                    )
+                }
             } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.member_label_message),
-                    leadingIcon = SlockLucideIconName.MessageSquare,
+                    leadingIcon = RaftLucideIconName.MessageSquare,
                     minHeight = MembersActionSize,
                     modifier = Modifier.widthIn(min = 92.dp),
                     onClick = onOpenDirectMessage
                 )
             }
             if (member.kind == MemberKind.Agent) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Menu,
+                RaftIconButton(
                     onClick = {
                         onRequestManagementMenu(
                             threeDotButtonAnchorResolver.resolve()
                         )
                     },
-                    size = MembersActionSize,
+                    tooltip = stringResource(MR.strings.member_section_actions),
+                    variant = RaftButtonVariant.Ghost,
                     modifier =
-                        Modifier.slockCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                        Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
                             currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
                         }
-                )
+                ) {
+                    RaftLucideIcon(
+                        RaftLucideIconName.Menu,
+                        modifier = Modifier.size(18.dp),
+                        color = raftArgbHex(LocalRaftContentColor.current)
+                    )
+                }
             }
         }
+        // raft panel head: a 1dp `line-seam` under it, not a control-ink rule.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderSeam)
                 .align(Alignment.BottomCenter)
         )
     }
@@ -6478,8 +6857,8 @@ private fun MembersDetailSummary(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     modifier: Modifier = Modifier
 ) {
     val summary = detail?.summary
@@ -6498,11 +6877,10 @@ private fun MembersDetailSummary(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(if (deleted) SlockColor.EmptyStateGray else SlockColor.SurfaceCream)
-            .padding(SlockSpacing.Md),
+            .raftCardSurface(fill = if (deleted) RaftColor.FillMuted else RaftColor.Card)
+            .padding(RaftAppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
     ) {
         MembersAvatar(
             member = member,
@@ -6514,12 +6892,12 @@ private fun MembersDetailSummary(
             statusIndicatorState = agentStatusIndicatorState,
             memberAvatarResolver = memberAvatarResolver
         )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = member.displayName,
-                    style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -6528,22 +6906,22 @@ private fun MembersDetailSummary(
             }
             Text(
                 text = member.detailHandle,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = member.description?.takeIf { it.isNotBlank() } ?: member.detailRoleLabel,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = statusLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = if (deleted) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                color = if (deleted) RaftColor.AccentRed else RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -6561,18 +6939,18 @@ private fun MembersDetailActions(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailActionButton(
             label = stringResource(MR.strings.member_label_message),
-            iconName = SlockLucideIconName.MessageSquare,
+            iconName = RaftLucideIconName.MessageSquare,
             enabled = member.kind != MemberKind.System && !deleted,
             onClick = onOpenDirectMessage,
             modifier = Modifier.weight(1f)
         )
         MembersDetailActionButton(
             label = stringResource(MR.strings.member_action_copy_id),
-            iconName = SlockLucideIconName.Copy,
+            iconName = RaftLucideIconName.Copy,
             enabled = true,
             onClick = onCopyMemberId,
             modifier = Modifier.weight(1f)
@@ -6580,15 +6958,39 @@ private fun MembersDetailActions(
     }
 }
 
+
+/**
+ * task #515 — web `AgentArchiveDialog` gate `hasComputerWorkspace`
+ * (`Boolean(agent.machineId) && agent.external !== true && !isExternalAgentRuntime(runtime)`):
+ * the workspace keep/delete choice is offered only when a managed agent really
+ * has a workspace on a Computer. External runtimes never do (server would 409
+ * `archive_workspace_unavailable`), and a missing machineId hides the radio
+ * entirely — the request then archives with the workspace kept.
+ */
+internal fun membersAgentArchiveHasComputerWorkspace(
+    machineId: String?,
+    isExternalAgent: Boolean
+): Boolean = !isExternalAgent && machineId?.isNotBlank() == true
+
+/**
+ * Wire body for `DELETE /agents/:id` — web always sends `{"workspace":...}`.
+ */
+internal fun membersAgentArchiveRequestBody(choice: AgentArchiveWorkspaceChoice): String =
+    choice.toRequestBody()
+
 // Mirrors React ConfirmDialog usage in AgentDetailPanel: title matches the
 // action button label, message is user-facing copy, warning banner shows the
 // message only (never repeats the title), and the confirm button carries the
 // action label with warning/destructive color.
 @Composable
-private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction): String =
+private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction, agentName: String): String =
     when (action) {
         MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
-        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_delete_agent)
+        // task #515: the archive dialog's title carries the agent name, matching
+        // web `agent.archive.title` ("Archive {name}?"); other actions keep the
+        // action-label title.
+        MembersAgentLifecycleAction.Delete ->
+            stringResource(MR.strings.member_archive_title).replace("%1\$s", agentName)
         else -> action.localizedLabel()
     }
 
@@ -6598,7 +7000,7 @@ private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, 
         MembersAgentLifecycleAction.Stop ->
             stringResource(MR.strings.member_dialog_confirm_stop).replace("%1\$s", agentName)
         MembersAgentLifecycleAction.Delete ->
-            stringResource(MR.strings.member_dialog_confirm_delete).replace("%1\$s", agentName)
+            stringResource(MR.strings.member_archive_description)
         MembersAgentLifecycleAction.UnassignMachine ->
             stringResource(MR.strings.member_dialog_confirm_unassign).replace("%1\$s", agentName)
         else -> "Are you sure you want to ${action.localizedLabel().lowercase()} \"$agentName\"?"
@@ -6609,51 +7011,382 @@ private fun MembersLifecycleConfirmation(
     action: MembersAgentLifecycleAction,
     agentName: String,
     busy: Boolean,
+    archiveHasComputerWorkspace: Boolean = false,
+    archiveComputerName: String = "",
+    archiveWorkspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep,
+    onArchiveWorkspaceChoiceChange: (AgentArchiveWorkspaceChoice) -> Unit = {},
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val accent = if (action.destructive) SlockColor.AccentRed else SlockColor.AccentOrange
-    // Hosted inside SlockUnifiedDialog, which owns the card padding.
+    // Web `AgentArchiveDialog`: confirm button is warning when the workspace is
+    // kept, danger once the user picks "delete the workspace". For non-archive
+    // actions the classic destructive flag rules unchanged.
+    val isArchive = action == MembersAgentLifecycleAction.Delete
+    // Archive overrides the enum's blanket `destructive=true`: web keeps the
+    // confirm button at warning until the user picks "delete the workspace".
+    val destructive =
+        if (isArchive) archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete else action.destructive
+    val accent = if (destructive) RaftColor.AccentRed else RaftColor.AccentOrange
+    // Hosted inside RaftUnifiedDialog, which owns the card padding.
     // Banner metrics mirror React Banner density=md: p-3 (12), gap-3 (12),
     // text-sm (14/20), border-2, and ConfirmDialog's mb-5 (20) to the buttons.
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(accent.copy(alpha = 0.2f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            // React Banner icons: destructive → AlertTriangle, warning →
-            // CircleAlert (closest available catalog glyph is Info).
-            SlockLucideIcon(
-                if (action.destructive) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Info,
-                modifier = Modifier.size(18.dp),
-                color = SlockColor.TextBlackArgb
-            )
+        if (isArchive) {
+            // Web order: description → workspace question + radio rows → the
+            // destructive banner ONLY when "delete" is selected (the keep path
+            // carries no warning at all).
             Text(
-                text = membersLifecycleConfirmMessage(action, agentName),
-                style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack
+                text = stringResource(MR.strings.member_archive_description),
+                style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                color = RaftColor.TextBlack
+            )
+            if (archiveHasComputerWorkspace) {
+                Text(
+                    text = stringResource(MR.strings.member_archive_workspace_question),
+                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = RaftColor.TextMutedGray
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    MembersArchiveWorkspaceOption(
+                        label = stringResource(MR.strings.member_archive_option_keep),
+                        description = stringResource(MR.strings.member_archive_option_keep_desc)
+                            .replace("%1\$s", archiveComputerName),
+                        selected = archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Keep,
+                        enabled = !busy,
+                        onSelect = { onArchiveWorkspaceChoiceChange(AgentArchiveWorkspaceChoice.Keep) }
+                    )
+                    MembersArchiveWorkspaceOption(
+                        label = stringResource(MR.strings.member_archive_option_delete),
+                        description = stringResource(MR.strings.member_archive_option_delete_desc)
+                            .replace("%1\$s", archiveComputerName),
+                        selected = archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete,
+                        enabled = !busy,
+                        onSelect = { onArchiveWorkspaceChoiceChange(AgentArchiveWorkspaceChoice.Delete) }
+                    )
+                }
+            }
+            if (archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete && archiveHasComputerWorkspace) {
+                MembersLifecycleWarningBanner(
+                    destructive = true,
+                    text = stringResource(MR.strings.member_archive_delete_warning)
+                )
+            }
+        } else {
+            MembersLifecycleWarningBanner(
+                destructive = destructive,
+                text = membersLifecycleConfirmMessage(action, agentName)
             )
         }
-        SlockDialogFooter {
-            SlockBrutalActionButton(
+        RaftDialogFooter {
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
                 onClick = onCancel
             )
-            SlockBrutalActionButton(
-                label = membersLifecycleConfirmTitle(action),
+            RaftBrutalActionButton(
+                label = if (isArchive) {
+                    stringResource(MR.strings.member_action_delete_agent)
+                } else {
+                    membersLifecycleConfirmTitle(action, agentName)
+                },
                 enabled = !busy,
                 backgroundColor = accent,
-                leadingIcon = if (busy) SlockLucideIconName.Loader else null,
+                // Web ConfirmDialog carries confirmIcon=<Archive> on the archive
+                // confirm; other actions stay icon-less.
+                leadingIcon = if (busy) RaftLucideIconName.Loader else if (isArchive) RaftLucideIconName.Archive else null,
                 onClick = onConfirm
+            )
+        }
+    }
+}
+
+/** Banner row extracted so the archive flow can show it conditionally (web renders it only for the delete choice). */
+@Composable
+private fun MembersLifecycleWarningBanner(destructive: Boolean, text: String) {
+    val accent = if (destructive) RaftColor.AccentRed else RaftColor.AccentOrange
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .raftCardSurface(fill = raftSoftWash(accent))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        // React Banner icons: destructive → AlertTriangle, warning →
+        // CircleAlert (closest available catalog glyph is Info).
+        RaftLucideIcon(
+            if (destructive) RaftLucideIconName.TriangleAlert else RaftLucideIconName.Info,
+            modifier = Modifier.size(18.dp),
+            color = RaftColor.TextBlackArgb
+        )
+        Text(
+            text = text,
+            style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = RaftColor.TextBlack
+        )
+    }
+}
+
+// ── task #517: post-archive workspace section (web AgentArchiveSection parity) ──
+
+/** Server-bound callbacks for the archive section so page wiring stays flat. */
+internal class MembersAgentArchiveInputs(
+    /** `GET /agents/:id/archive` — `Content(null)` means no archive record. */
+    val loadArchive: suspend (MemberId) -> DataResult<build.raft.app.data.RaftAgentArchive?> = {
+        DataResult.Error(ScreenError(code = "archive_unavailable", retryable = false))
+    },
+    /** `POST /agents/:id/archive/workspace {"action":"delete"}` — returns the updated view. */
+    val deleteWorkspace: suspend (MemberId) -> DataResult<build.raft.app.data.RaftAgentArchive> = {
+        DataResult.Error(ScreenError(code = "archive_unavailable", retryable = false))
+    },
+    /** Resolves `archivedByUserId` to a display name; null = render the date alone. */
+    val memberNameByUserId: (String) -> String? = { null }
+)
+
+internal sealed interface MembersAgentArchiveUiState {
+    data object Loading : MembersAgentArchiveUiState
+    data class Loaded(val archive: build.raft.app.data.RaftAgentArchive?) : MembersAgentArchiveUiState
+    data object Failed : MembersAgentArchiveUiState
+}
+
+/** Maps the archive view's `lastErrorCode` to a user-readable line
+ *  (web `archiveErrorMessageId` + pending-op overlays). */
+@Composable
+private fun membersArchiveLastErrorText(
+    archive: build.raft.app.data.RaftAgentArchive,
+    computer: String
+): String? {
+    val code = archive.lastErrorCode ?: return null
+    return if (archive.pendingOp == null) {
+        when (code) {
+            "ARCHIVE_WORKSPACE_MISSING" ->
+                stringResource(MR.strings.member_archive_error_workspace_missing)
+            "ARCHIVE_DELETE_UNCONFIRMED" ->
+                stringResource(MR.strings.member_archive_error_delete_unconfirmed)
+            else -> stringResource(MR.strings.member_archive_error_generic)
+        }
+    } else if (code == "ARCHIVE_DELETE_TIMED_OUT") {
+        stringResource(MR.strings.member_archive_still_deleting, computer)
+    } else {
+        stringResource(MR.strings.member_archive_retrying)
+    }
+}
+
+/** Maps a refused workspace-delete `ScreenError` to text: known machine codes
+ *  get localized copy, everything else shows the raw server message or the
+ *  generic failure line (web `archiveRequestErrorMessage`). */
+@Composable
+private fun membersArchiveDeleteErrorText(error: ScreenError): String =
+    when (error.code) {
+        "archive_migration_active" ->
+            stringResource(MR.strings.member_archive_error_migration_active)
+        else -> error.serverMessage?.takeIf { it.isNotBlank() }
+            ?: stringResource(MR.strings.member_archive_error_generic)
+    }
+
+@Composable
+private fun MembersAgentArchiveSection(
+    agentId: MemberId,
+    canManage: Boolean,
+    fallbackArchivedAt: String?,
+    timeContext: RaftTimeContext,
+    inputs: MembersAgentArchiveInputs
+) {
+    var archiveState by remember(agentId) {
+        mutableStateOf<MembersAgentArchiveUiState>(MembersAgentArchiveUiState.Loading)
+    }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    var deleteError by remember { mutableStateOf<ScreenError?>(null) }
+
+    LaunchedEffect(agentId) {
+        archiveState = when (val result = inputs.loadArchive(agentId)) {
+            is DataResult.Content -> MembersAgentArchiveUiState.Loaded(result.data)
+            else -> MembersAgentArchiveUiState.Failed
+        }
+    }
+
+    val archive = (archiveState as? MembersAgentArchiveUiState.Loaded)?.archive
+    val computer = archive?.machineName?.takeIf { it.isNotBlank() }
+        ?: stringResource(MR.strings.member_archive_unknown_computer)
+    val workspaceText = when {
+        archive == null -> stringResource(MR.strings.member_archive_workspace_unknown)
+        archive.pendingOp != null ->
+            stringResource(MR.strings.member_archive_workspace_deleting, computer)
+        archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer ->
+            stringResource(MR.strings.member_archive_workspace_on_computer, computer)
+        archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.Deleted ->
+            stringResource(MR.strings.member_archive_workspace_deleted)
+        else -> stringResource(MR.strings.member_archive_workspace_unknown)
+    }
+    val archivedAtIso = archive?.archivedAt ?: fallbackArchivedAt
+    val archivedAtText = archivedAtIso?.let {
+        timeContext.formatTimestampLabel(it).ifBlank { it }
+    }
+    val archivedByName = archive?.archivedByUserId?.let(inputs.memberNameByUserId)
+    val canDeleteWorkspace = canManage && archive != null && archive.pendingOp == null &&
+        archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer && !deleting
+
+    MembersDetailSection(
+        title = stringResource(MR.strings.member_archive_section_title).raftDisplayUppercase()
+    ) {
+        if (archiveState == MembersAgentArchiveUiState.Failed) {
+            MembersLifecycleWarningBanner(
+                destructive = false,
+                text = stringResource(MR.strings.member_archive_load_failed)
+            )
+        }
+        if (archiveState == MembersAgentArchiveUiState.Failed || archive == null) {
+            // Fallback: the same block the pre-archive detail rendered.
+            MembersDetailField(
+                stringResource(MR.strings.member_label_status),
+                stringResource(MR.strings.member_status_deleted)
+            )
+            MembersDetailField(
+                stringResource(MR.strings.member_label_deleted_at),
+                archivedAtIso.orDash()
+            )
+        } else {
+            val byName = archivedByName
+            MembersDetailField(
+                stringResource(MR.strings.member_archive_archived_at),
+                if (byName != null && archivedAtText != null) {
+                    stringResource(MR.strings.member_archive_archived_at_by, archivedAtText, byName)
+                } else {
+                    archivedAtText.orDash()
+                }
+            )
+            MembersDetailField(stringResource(MR.strings.member_archive_workspace_label), workspaceText)
+            if (archive.waitingForComputer) {
+                Text(
+                    text = stringResource(MR.strings.member_archive_waiting_for_computer, computer),
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
+                )
+            }
+        }
+        val lastErrorText = archive?.let { membersArchiveLastErrorText(it, computer) }
+        if (lastErrorText != null) {
+            MembersLifecycleWarningBanner(destructive = false, text = lastErrorText)
+        }
+        val requestError = deleteError
+        if (requestError != null) {
+            MembersLifecycleWarningBanner(
+                destructive = false,
+                text = membersArchiveDeleteErrorText(requestError)
+            )
+        }
+        if (canDeleteWorkspace) {
+            RaftBrutalActionButton(
+                label = stringResource(MR.strings.member_archive_action_delete_workspace),
+                onClick = { confirmDelete = true },
+                enabled = !deleting,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+
+    // Drive the suspend delete off the dialog's sync confirm click: the
+    // dialog only owns the click, the section owns the request.
+    LaunchedEffect(deleting) {
+        if (!deleting) return@LaunchedEffect
+        when (val result = inputs.deleteWorkspace(agentId)) {
+            is DataResult.Content -> {
+                archiveState = MembersAgentArchiveUiState.Loaded(result.data)
+                confirmDelete = false
+            }
+            is DataResult.Error -> {
+                deleteError = result.error
+                confirmDelete = false
+            }
+            else -> {
+                deleteError = ScreenError(code = "agent_archive_workspace_delete_contract_mismatch", retryable = true)
+                confirmDelete = false
+            }
+        }
+        deleting = false
+    }
+
+    if (confirmDelete) {
+        // Web `ConfirmDialog`: action-label title, one message line, cancel +
+        // danger confirm (the irreversible red lives here, not on the trigger).
+        RaftUnifiedDialog(
+            title = stringResource(MR.strings.member_archive_action_delete_workspace),
+            dismissEnabled = !deleting,
+            contentPadding = 24.dp,
+            onDismiss = { confirmDelete = false }
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                Text(
+                    text = stringResource(MR.strings.member_archive_confirm_delete_workspace, computer),
+                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = RaftColor.TextBlack
+                )
+                RaftDialogFooter {
+                    RaftBrutalActionButton(
+                        label = stringResource(MR.strings.common_cancel),
+                        enabled = !deleting,
+                        onClick = { confirmDelete = false }
+                    )
+                    RaftBrutalActionButton(
+                        label = stringResource(MR.strings.member_archive_action_delete_workspace),
+                        enabled = !deleting,
+                        backgroundColor = RaftColor.AccentRed,
+                        leadingIcon = if (deleting) RaftLucideIconName.Loader else RaftLucideIconName.Trash2,
+                        onClick = {
+                            deleting = true
+                            deleteError = null
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One workspace-disposition row of the archive dialog — web renders a
+ * `RadioGroupItem` + 15px/600 label + 13px muted description; the closest
+ * shared primitive is the circle `RaftCheckMarker` used by
+ * `RaftUiRadioRow`, with the whole row tappable.
+ */
+@Composable
+private fun MembersArchiveWorkspaceOption(
+    label: String,
+    description: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (enabled) Modifier.clickable(onClick = onSelect) else Modifier)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        RaftCheckMarker(
+            checked = selected,
+            shape = RaftCheckMarkerShape.Circle,
+            tone = RaftCheckMarkerTone.YellowFill,
+            disabled = !enabled,
+            size = 16.dp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = label,
+                style = RaftType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp).withRaftFontWeight(FontWeight.SemiBold),
+                color = if (enabled) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.45f)
+            )
+            Text(
+                text = description,
+                style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextMutedGray
             )
         }
     }
@@ -6676,8 +7409,8 @@ private fun MembersAgentIssueReportDialog(
     var includeRuntimeTranscript by remember(agentName, runtimeTranscriptAvailable) {
         mutableStateOf(runtimeTranscriptAvailable)
     }
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_title).slockDisplayUppercase(),
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.member_report_issue_title).raftDisplayUppercase(),
         dismissEnabled = !busy,
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
@@ -6688,28 +7421,27 @@ private fun MembersAgentIssueReportDialog(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
         ) {
             item {
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .background(SlockColor.SurfaceWhite)
+                            .raftCardSurface(fill = RaftColor.Card)
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
+                    RaftAppSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
                     Text(
                         text = agentName,
-                        style = SlockType.ButtonBold,
-                        color = SlockColor.TextBlack
+                        style = RaftType.ButtonBold,
+                        color = RaftColor.TextBlack
                     )
                 }
             }
             item {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.member_report_issue_description_label),
                     value = description,
                     placeholder = stringResource(MR.strings.member_report_issue_description_placeholder),
@@ -6723,7 +7455,7 @@ private fun MembersAgentIssueReportDialog(
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
+                    RaftAppSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
                     MembersAgentIssueReportOption(
                         label = stringResource(MR.strings.member_report_issue_recent_messages),
                         checked = includeRecentMessages,
@@ -6752,8 +7484,8 @@ private fun MembersAgentIssueReportDialog(
                         Text(
                             text = stringResource(MR.strings.member_report_issue_runtime_transcript_unavailable),
                             modifier = Modifier.padding(start = 26.dp),
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                            color = RaftColor.TextMutedGray
                         )
                     }
                 }
@@ -6764,8 +7496,7 @@ private fun MembersAgentIssueReportDialog(
                         Modifier
                             .fillMaxWidth()
                             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .raftCardSurface(fill = RaftColor.WarningSoft)
                             .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -6773,16 +7504,16 @@ private fun MembersAgentIssueReportDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        SlockLucideIcon(
-                            SlockLucideIconName.TriangleAlert,
+                        RaftLucideIcon(
+                            RaftLucideIconName.TriangleAlert,
                             modifier = Modifier.size(18.dp),
-                            color = SlockColor.TextBlackArgb
+                            color = RaftColor.TextBlackArgb
                         )
                         Text(
                             text = stringResource(MR.strings.member_report_issue_disclosure),
                             modifier = Modifier.weight(1f),
-                            style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                            color = SlockColor.TextBlack
+                            style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                            color = RaftColor.TextBlack
                         )
                     }
                     Row(
@@ -6790,7 +7521,7 @@ private fun MembersAgentIssueReportDialog(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        SlockCheckbox(
+                        RaftAppCheckbox(
                             checked = consented,
                             onCheckedChange = { consented = it },
                             enabled = !busy,
@@ -6799,8 +7530,8 @@ private fun MembersAgentIssueReportDialog(
                         Text(
                             text = stringResource(MR.strings.member_report_issue_consent),
                             modifier = Modifier.weight(1f),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextBlack
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = RaftColor.TextBlack
                         )
                     }
                 }
@@ -6809,30 +7540,30 @@ private fun MembersAgentIssueReportDialog(
                 item {
                     Text(
                         text = stringResource(MR.strings.member_report_issue_failed, message),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.AccentRed
                     )
                 }
             }
         }
-        SlockDialogFooter {
-            SlockBrutalActionButton(
+        RaftDialogFooter {
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = RaftColor.SurfaceWhite,
                 onClick = onDismiss
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     if (busy) {
                         stringResource(MR.strings.member_report_issue_submitting)
                     } else {
                         stringResource(MR.strings.member_report_issue_submit)
                     },
-                leadingIcon = if (busy) SlockLucideIconName.Loader else SlockLucideIconName.Bug,
+                leadingIcon = if (busy) RaftLucideIconName.Loader else RaftLucideIconName.Bug,
                 enabled = consented && !busy,
                 // Web ReportIssueDialog submits with the pink primary action.
-                backgroundColor = SlockColor.AccentPink,
+                backgroundColor = RaftColor.AccentPink,
                 onClick = {
                     onSubmit(
                         description.text,
@@ -6859,7 +7590,7 @@ private fun MembersAgentIssueReportOption(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockCheckbox(
+        RaftAppCheckbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
@@ -6869,8 +7600,8 @@ private fun MembersAgentIssueReportOption(
             text = label,
             modifier = Modifier.weight(1f),
             // Web option labels are text-sm, regular weight.
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
         )
     }
 }
@@ -6895,14 +7626,14 @@ private fun MembersAgentIssueReportReferenceRow(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.6f)
+            text = label.raftDisplayUppercase(),
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+            color = RaftColor.TextBlack.copy(alpha = 0.6f)
         )
         Text(
             text = value,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack
+            style = RaftType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            color = RaftColor.TextBlack
         )
     }
 }
@@ -6914,8 +7645,8 @@ private fun MembersAgentIssueReportReceiptDialog(
     onCopyReference: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_success_title).slockDisplayUppercase(),
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.member_report_issue_success_title).raftDisplayUppercase(),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -6924,20 +7655,19 @@ private fun MembersAgentIssueReportReceiptDialog(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .background(SlockColor.AccentLime)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .raftCardSurface(fill = RaftColor.SuccessSoft),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.CircleCheckBig,
+                RaftLucideIcon(
+                    RaftLucideIconName.CircleCheckBig,
                     modifier = Modifier.size(24.dp),
-                    color = SlockColor.TextBlackArgb
+                    color = RaftColor.TextBlackArgb
                 )
             }
             Column(
@@ -6947,26 +7677,25 @@ private fun MembersAgentIssueReportReceiptDialog(
             ) {
                 Text(
                     text = stringResource(MR.strings.member_report_issue_success_body),
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
+                    style = RaftType.ButtonBold,
+                    color = RaftColor.TextBlack,
                     textAlign = TextAlign.Center
                 )
                 Text(
                     text = stringResource(MR.strings.member_report_issue_success_hint),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                    color = RaftColor.TextBlack.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center
                 )
             }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .raftCardSurface(fill = RaftColor.Card)
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_reference_label))
+                RaftAppSectionEyebrow(label = stringResource(MR.strings.member_report_issue_reference_label))
                 MembersAgentIssueReportReferenceRow(
                     label = stringResource(MR.strings.member_report_issue_report_id),
                     value = receipt.reportId
@@ -6987,23 +7716,23 @@ private fun MembersAgentIssueReportReceiptDialog(
                         value = stringResource(MR.strings.member_report_issue_runtime_transcript_queued)
                     )
                 }
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label =
                         if (referenceCopied) {
                             stringResource(MR.strings.member_report_issue_reference_copied)
                         } else {
                             stringResource(MR.strings.member_report_issue_copy_reference)
                         },
-                    leadingIcon = if (referenceCopied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    leadingIcon = if (referenceCopied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     minHeight = 28.dp,
                     onClick = onCopyReference
                 )
             }
-            SlockDialogFooter {
-                SlockBrutalActionButton(
+            RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_done),
-                    backgroundColor = SlockColor.AccentLime,
+                    backgroundColor = RaftColor.AccentLime,
                     onClick = onDismiss
                 )
             }
@@ -7021,7 +7750,7 @@ internal fun MembersRestartResetDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_restart_title).replace("%1\$s", agentName),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
@@ -7031,146 +7760,79 @@ internal fun MembersRestartResetDialog(
         titleFontSize = 18,
         titleLineHeight = 22,
         titleMaxLines = 2,
-        contentSpacing = SlockSpacing.Md
+        contentSpacing = RaftAppSpacing.Md
     ) {
+        // Web ResetAgentDialog: a raft-ui RadioGroup of plain rows (no option cards, no
+        // tint or offset shadow on the pick), a destructive Banner under the full reset,
+        // and the confirm colour stating the consequence (warning restarts, danger wipes).
+        val options =
+            listOf(
+                MembersAgentLifecycleAction.Restart,
+                MembersAgentLifecycleAction.ResetSession,
+                MembersAgentLifecycleAction.ResetFull
+            )
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             errorMessage?.takeIf { it.isNotBlank() }?.let {
                 item {
-                    MembersRestartResetNotice(
-                        text = stringResource(MR.strings.member_error_reset_agent, it),
-                        color = SlockColor.AccentOrange
+                    RaftBanner(
+                        description = stringResource(MR.strings.member_error_reset_agent, it),
+                        status = RaftBannerStatus.Destructive,
+                        size = RaftBannerSize.Sm
                     )
                 }
             }
             item {
-                MembersRestartResetActionCard(
-                    action = MembersAgentLifecycleAction.Restart,
-                    selected = selectedAction == MembersAgentLifecycleAction.Restart,
-                    enabled = !busy,
-                    onClick = { onSelectedActionChange(MembersAgentLifecycleAction.Restart) }
-                )
-            }
-            item {
-                MembersRestartResetActionCard(
-                    action = MembersAgentLifecycleAction.ResetSession,
-                    selected = selectedAction == MembersAgentLifecycleAction.ResetSession,
-                    enabled = !busy,
-                    onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetSession) }
-                )
-            }
-            item {
-                MembersRestartResetActionCard(
-                    action = MembersAgentLifecycleAction.ResetFull,
-                    selected = selectedAction == MembersAgentLifecycleAction.ResetFull,
-                    enabled = !busy,
-                    onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetFull) }
-                )
+                RaftRadioGroup {
+                    options.forEach { action ->
+                        RaftRadioRow(
+                            label = action.restartResetTitle(),
+                            description = action.restartResetDescription(),
+                            selected = selectedAction == action,
+                            enabled = !busy,
+                            onClick = { onSelectedActionChange(action) }
+                        )
+                    }
+                }
             }
             if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
                 item {
-                    MembersRestartResetNotice(
-                        text = stringResource(MR.strings.member_dialog_full_reset_warning),
-                        color = SlockColor.AccentOrange
+                    RaftBanner(
+                        description = stringResource(MR.strings.member_dialog_full_reset_warning),
+                        status = RaftBannerStatus.Destructive,
+                        size = RaftBannerSize.Sm
                     )
                 }
             }
         }
         // Same footer as the app's other confirm dialogs (and web ConfirmDialog):
-        // right-aligned buttons at their natural width. The old per-action min
-        // widths (124dp + up to 220dp) overflowed narrow phones.
-        SlockDialogFooter {
-            SlockBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
-                leadingIcon = SlockLucideIconName.X,
-                enabled = !busy,
-                backgroundColor = SlockColor.SurfaceWhite,
-                onClick = onDismiss
+        // right-aligned buttons at their natural width.
+        RaftDialogFooter {
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !busy
             )
-            SlockBrutalActionButton(
-                label = if (busy) stringResource(MR.strings.member_action_restarting) else selectedAction.restartResetButtonLabel(),
-                leadingIcon = SlockLucideIconName.RotateCcw,
-                enabled = !busy,
-                backgroundColor = selectedAction.restartResetAccentColor(),
-                onClick = onConfirm
-            )
-        }
-    }
-}
-
-@Composable
-private fun MembersRestartResetActionCard(
-    action: MembersAgentLifecycleAction,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    // Every card reserves the shadow gutter and keeps the shadow box; only its color
-    // follows selection. Reserving it only on the selected card made that card 4dp
-    // narrower than its siblings and shifted the list whenever the selection changed.
-    val shadowOffset = 4.dp
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(end = shadowOffset, bottom = shadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(if (selected) SlockColor.ShadowBlack else Color.Transparent)
-        )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(if (selected) action.restartResetTintColor() else SlockColor.SurfaceWhite)
-                    .border(
-                        if (selected) SlockStroke.Default else SlockStroke.Thin,
-                        if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.32f)
+            RaftButton(
+                text = selectedAction.restartResetButtonLabel(),
+                onClick = onConfirm,
+                variant = selectedAction.restartResetConfirmVariant(),
+                size = RaftButtonSize.Lg,
+                loading = busy,
+                loadingLabel = stringResource(MR.strings.member_action_restarting),
+                leadingIcon = {
+                    RaftLucideIcon(
+                        RaftLucideIconName.RotateCcw,
+                        modifier = Modifier.size(16.dp),
+                        color = raftArgbHex(LocalRaftContentColor.current)
                     )
-                    .clickable(enabled = enabled, onClick = onClick)
-                    .padding(horizontal = SlockSpacing.Md, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            Text(
-                text = action.restartResetTitle(),
-                style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = action.restartResetDescription(),
-                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
+                }
             )
         }
-    }
-}
-
-@Composable
-private fun MembersRestartResetNotice(text: String, color: Color) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(color)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-        verticalAlignment = Alignment.Top
-    ) {
-        SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
-        Text(
-            text = text,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack
-        )
     }
 }
 
@@ -7182,10 +7844,10 @@ private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
 @Composable
 private fun MembersAgentLifecycleAction.restartResetTitle(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent).slockDisplayUppercase()
-        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session).slockDisplayUppercase()
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart).slockDisplayUppercase()
-        else -> localizedLabel().slockDisplayUppercase()
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
+        else -> localizedLabel()
     }
 
 @Composable
@@ -7209,113 +7871,80 @@ private fun MembersAgentLifecycleAction.restartResetDescription(): String =
         else -> ""
     }
 
-private fun MembersAgentLifecycleAction.restartResetAccentColor(): Color =
-    when (this) {
-        MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed
-        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange
-        else -> SlockColor.AccentCyan
-    }
+private fun MembersAgentLifecycleAction.restartResetConfirmVariant(): RaftButtonVariant =
+    if (this == MembersAgentLifecycleAction.ResetFull) RaftButtonVariant.Danger else RaftButtonVariant.Warning
 
-private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
-    SlockColor.AppBgLightBlue
-
+/**
+ * The agent detail tab strip: raft-ui Tabs in a panel strip ([RaftTabStrip], web
+ * `SortableTabsList`): 32dp ghost tabs hugging their label, the selected one the yellow
+ * sticker, a 1dp seam under the strip. A long press drags a tab to reorder.
+ */
 @Composable
 private fun MembersAgentTabBar(
     tabs: List<MembersAgentDetailTab>,
     selectedTab: MembersAgentDetailTab,
     onSelectedTabChange: (MembersAgentDetailTab) -> Unit,
     onReorderTabs: ((List<MembersAgentDetailTab>) -> Unit)? = null,
-    autoScrollSelectedTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberLazyListState()
     var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
     var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
     var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
-    if (autoScrollSelectedTab) {
-        LaunchedEffect(tabs, selectedTab) {
-            if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
-                listState.animateScrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
-            }
-        }
-    }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(SlockTopTabBarDefaults.Height)
-            .background(SlockColor.SurfaceWhite)
-    ) {
-        LazyRow(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) {
-            items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
-                val tab = tabs[index]
-                val spec = tab.toSlockTabSpec()
-                val selected = tab == selectedTab
-                val dragging = tab == draggedTab
-                Row(
-                    modifier = Modifier
-                        .widthIn(min = spec.width)
-                        .fillMaxHeight()
-                        .background(
-                            when {
-                                dragging -> SlockColor.AccentCyan
-                                selected -> SlockColor.BrandYellow
-                                else -> SlockColor.SurfaceWhite
-                            }
+    RaftTabStrip(modifier = modifier) {
+        tabs.forEachIndexed { index, tab ->
+            key("members-agent-tab-${tab.name}") {
+                RaftTab(
+                    text = tab.localizedLabel(),
+                    selected = tab == selectedTab,
+                    onClick = { onSelectedTabChange(tab) },
+                    icon = {
+                        RaftLucideIcon(
+                            tab.iconName,
+                            modifier = Modifier.size(16.dp),
+                            color = raftArgbHex(LocalRaftContentColor.current)
                         )
-                        .clickable { onSelectedTabChange(tab) }
-                        .pointerInput(tabs, tab, onReorderTabs) {
-                            if (onReorderTabs == null) return@pointerInput
-                            val stepWidthPx = spec.width.toPx().coerceAtLeast(1f)
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    draggedTab = tab
-                                    dragStartIndex = index
-                                    dragOffsetX = 0f
-                                },
-                                onDragEnd = {
-                                    val fromIndex = dragStartIndex
-                                    val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
-                                        .coerceIn(0, tabs.lastIndex)
-                                    if (fromIndex in tabs.indices && toIndex != fromIndex) {
-                                        onReorderTabs(tabs.membersMoveTab(fromIndex, toIndex))
-                                    }
-                                    draggedTab = null
-                                    dragStartIndex = -1
-                                    dragOffsetX = 0f
-                                },
-                                onDragCancel = {
-                                    draggedTab = null
-                                    dragStartIndex = -1
-                                    dragOffsetX = 0f
+                    },
+                    modifier =
+                        Modifier
+                            .then(
+                                if (tab == draggedTab) {
+                                    Modifier.background(RaftColor.FillPressed, RoundedCornerShape(RaftAppRadius.Control))
+                                } else {
+                                    Modifier
                                 }
-                            ) { _, dragAmount ->
-                                dragOffsetX += dragAmount.x
+                            )
+                            .pointerInput(tabs, tab, onReorderTabs) {
+                                if (onReorderTabs == null) return@pointerInput
+                                val stepWidthPx = size.width.toFloat().coerceAtLeast(1f)
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggedTab = tab
+                                        dragStartIndex = index
+                                        dragOffsetX = 0f
+                                    },
+                                    onDragEnd = {
+                                        val fromIndex = dragStartIndex
+                                        val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
+                                            .coerceIn(0, tabs.lastIndex)
+                                        if (fromIndex in tabs.indices && toIndex != fromIndex) {
+                                            onReorderTabs(tabs.membersMoveTab(fromIndex, toIndex))
+                                        }
+                                        draggedTab = null
+                                        dragStartIndex = -1
+                                        dragOffsetX = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggedTab = null
+                                        dragStartIndex = -1
+                                        dragOffsetX = 0f
+                                    }
+                                ) { _, dragAmount ->
+                                    dragOffsetX += dragAmount.x
+                                }
                             }
-                        }
-                        .padding(horizontal = 10.dp, vertical = SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally)
-                ) {
-                    SlockLucideIcon(spec.iconName, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)
-                    Text(
-                        text = spec.label,
-                        style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .height(SlockTopTabBarDefaults.Height - SlockStroke.Default)
-                        .width(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
                 )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 
@@ -7336,25 +7965,6 @@ internal fun membersAgentRuntimeErrorBannerState(
         showViewLogs = selectedTab != MembersAgentDetailTab.Activity
     )
 }
-
-@Composable
-private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDetailTab> =
-    SlockTabSpec(
-        key = this,
-        label = localizedLabel(),
-        iconName = iconName,
-        width = membersAgentTabMinimumWidth(this)
-    )
-
-internal fun membersAgentTabMinimumWidth(tab: MembersAgentDetailTab): Dp =
-    when (tab) {
-        MembersAgentDetailTab.Profile,
-        MembersAgentDetailTab.Activity,
-        MembersAgentDetailTab.Apps -> SlockTopTabBarDefaults.TabWidth
-        MembersAgentDetailTab.Chat -> 78.dp
-        MembersAgentDetailTab.Reminders,
-        MembersAgentDetailTab.Workspace -> 112.dp
-    }
 
 @Composable
 private fun MembersAgentDetailStateNotice(
@@ -7379,15 +7989,14 @@ private fun MembersAgentDetailStateNotice(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            .background(SlockColor.SurfaceCream)
-            .border(SlockStroke.Default, SlockColor.BorderBlack),
+            .raftCardSurface(fill = RaftColor.FillMuted),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = resolved,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
-            modifier = Modifier.padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs)
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack,
+            modifier = Modifier.padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs)
         )
     }
 }
@@ -7406,31 +8015,31 @@ private fun MembersAgentRuntimeErrorBanner(
         modifier = modifier
             .fillMaxWidth()
             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
+            .background(RaftColor.AccentOrange.copy(alpha = 0.2f))
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = MembersPageInset, vertical = SlockSpacing.Sm),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = MembersPageInset, vertical = RaftAppSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalAlignment = Alignment.Top
         ) {
-            SlockStatusIndicator(
-                color = SlockColor.AccentOrange,
+            RaftStatusIndicator(
+                color = RaftColor.AccentOrange,
                 size = 9.dp,
                 pulsing = false
             )
             Text(
                 text = if (canViewPrivate) errorText else stringResource(MR.strings.member_state_agent_error),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                    .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             if (canViewPrivate) {
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
                     MembersAgentRuntimeErrorAction(
                         label = stringResource(MR.strings.member_action_copy_info),
@@ -7445,7 +8054,7 @@ private fun MembersAgentRuntimeErrorBanner(
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
     }
 }
 
@@ -7456,20 +8065,25 @@ private fun MembersAgentRuntimeErrorAction(
 ) {
     Text(
         text = label,
-        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-            .withSlockFontWeight(FontWeight.Bold)
+        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+            .withRaftFontWeight(FontWeight.Bold)
             .copy(textDecoration = TextDecoration.Underline),
-        color = SlockColor.TextBlack.copy(alpha = 0.6f),
+        color = RaftColor.TextBlack.copy(alpha = 0.6f),
         modifier = Modifier.clickable(onClick = onClick)
     )
 }
 
+// Web HumanDetailPanel (raft-ui ProfilePanelBody): each section is a full-bleed hairline
+// Separator over a `px-5 py-4` body; the hero row is `px-5 py-5 gap-4`.
+private val MembersHumanSectionPaddingX = 20.dp
+private val MembersHumanSectionPaddingY = 16.dp
+
 @Composable
 private fun MembersHumanDetailSections(
     member: MemberProfile,
-    timeContext: SlockTimeContext,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    timeContext: RaftTimeContext,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean = false,
     actorRole: String? = null,
     accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
@@ -7478,80 +8092,157 @@ private fun MembersHumanDetailSections(
     ownerCount: Int? = null,
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
     onRemoveMember: (() -> Unit)? = null,
+    onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        MembersHumanProfileSummary(member, memberAvatarResolver)
+    val departure = membersHumanDeparture(member.membershipStatus)
+    val isSelf = membersHumanIsSelf(member, currentUserId)
+    Column(modifier = modifier.fillMaxWidth()) {
+        MembersHumanProfileSummary(
+            member = member,
+            departure = departure,
+            isSelf = isSelf,
+            memberAvatarResolver = memberAvatarResolver
+        )
         MembersHumanDescriptionSection(member)
-        MembersHumanInfoSection(
-            member = member,
-            timeContext = timeContext,
-            actorRole = actorRole,
-            accessMode = accessMode,
-            currentUserId = currentUserId,
-            currentServerId = currentServerId,
-            ownerCount = ownerCount,
-            onUpdateRole = onUpdateRole
-        )
-        MembersHumanCreatedAgentsSection(
-            member = member,
-            agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = memberAvatarResolver,
-            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
-        )
+        // Web hides Info and Created Agents for a person seen through another server
+        // (`isRemoteJointHuman`) or a channel summary projection.
+        if (membersHumanShowsServerFacts(accessMode)) {
+            MembersHumanInfoSection(
+                member = member,
+                departure = departure,
+                timeContext = timeContext,
+                actorRole = actorRole,
+                accessMode = accessMode,
+                currentUserId = currentUserId,
+                currentServerId = currentServerId,
+                ownerCount = ownerCount,
+                onUpdateRole = onUpdateRole
+            )
+            MembersHumanCreatedAgentsSection(
+                member = member,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                onOpenCreatedAgent = onOpenCreatedAgent
+            )
+        }
         if (onRemoveMember != null) {
             MembersHumanActionsSection(onRemoveMember)
         }
     }
 }
 
+/** One profile section: a full-width hairline, then the eyebrow and [content] in `px-5 py-4`. */
+@Composable
+private fun MembersHumanSection(
+    title: String,
+    count: String? = null,
+    titleGap: Dp = 12.dp,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        RaftSeparator()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MembersHumanSectionPaddingX, vertical = MembersHumanSectionPaddingY)
+        ) {
+            RaftSectionEyebrow(text = title, count = count, modifier = Modifier.padding(bottom = titleGap))
+            content()
+        }
+    }
+}
+
+/** A Lucide glyph drawn in the enclosing raft-ui component's ink (`currentColor`). */
+@Composable
+private fun MembersHumanGlyph(name: RaftLucideIconName, size: Dp) {
+    val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
+    RaftLucideIcon(name, modifier = Modifier.size(size), color = raftArgbHex(ink))
+}
+
+/**
+ * raft-ui Avatar (the square sticker) around the member's resolved photo / pixel avatar.
+ * [RaftAvatarSize.Xl] is web `AvatarSlot context="profile-hero"`, Md the panel head and list rows.
+ */
+@Composable
+private fun MembersStickerAvatar(
+    member: MemberProfile,
+    size: RaftAvatarSize,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
+) {
+    val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
+    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+        member.avatarWireValueForAvatarSlot()
+    }
+    RaftAvatar(
+        type = if (member.kind == MemberKind.Agent) RaftAvatarType.Agent else RaftAvatarType.Human,
+        size = size,
+        image = {
+            RaftAppAvatar(
+                avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
+                label = member.avatarLabel,
+                // The face fills the inside of the sticker's two 1.5dp edges.
+                avatarSize = size.edge - RaftAppStroke.Control * 2,
+                borderWidth = 0.dp,
+                cacheSubject = member.raftAvatarCacheSubject(),
+                cacheServerId = member.serverId?.value
+            )
+        }
+    )
+}
+
 @Composable
 private fun MembersHumanProfileSummary(
     member: MemberProfile,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
+    departure: MembersHumanDeparture?,
+    isSelf: Boolean,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = SlockSpacing.Md),
+            .padding(horizontal = MembersHumanSectionPaddingX, vertical = 20.dp),
         verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        MembersAvatar(
-            member = member,
-            avatarSize = 74.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            Text(
+        MembersStickerAvatar(member, RaftAvatarSize.Xl, memberAvatarResolver)
+        Column(modifier = Modifier.weight(1f)) {
+            // raft-ui PanelTitle: the name reads the same in the head and the body.
+            RaftText(
                 text = member.displayName,
-                style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
-                color = SlockColor.TextBlack,
+                style = typography.headline,
+                color = colors.foreground,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Row(
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                modifier = Modifier.padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                RaftText(
                     text = member.detailHandle,
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextMutedGray,
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (member.membershipStatus == "removed") {
-                    MembersHumanRoleChip(stringResource(MR.strings.member_role_removed), SlockColor.EmptyStateGray)
+                if (departure != null) {
+                    RaftBadge(
+                        text = departure.localizedLabel(),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Muted
+                    )
+                }
+                if (isSelf) {
+                    RaftBadge(
+                        text = stringResource(MR.strings.member_label_you_suffix),
+                        appearance = RaftBadgeAppearance.Outline
+                    )
                 }
             }
         }
@@ -7560,25 +8251,14 @@ private fun MembersHumanProfileSummary(
 
 @Composable
 private fun MembersHumanDescriptionSection(member: MemberProfile) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description).slockDisplayUppercase())
-        val descriptionMissing = member.description.isNullOrBlank()
-        Text(
-            text = member.description?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_state_no_description),
-            style = SlockType.Body.copy(
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                fontStyle = if (descriptionMissing) FontStyle.Italic else FontStyle.Normal
-            ),
-            color = if (descriptionMissing) {
-                SlockColor.TextMutedGray.copy(alpha = 0.75f)
-            } else {
-                SlockColor.TextBlack
-            }
+    val colors = RaftTheme.colors
+    val description = member.description?.takeIf { it.isNotBlank() }
+    // Web: eyebrow `mb-1`, then `text-callout text-foreground-muted`; the empty state is hint ink.
+    MembersHumanSection(title = stringResource(MR.strings.member_section_description), titleGap = 4.dp) {
+        RaftText(
+            text = description ?: stringResource(MR.strings.member_state_no_description),
+            style = RaftTheme.typography.callout,
+            color = if (description == null) colors.foregroundHint else colors.foregroundMuted
         )
     }
 }
@@ -7586,7 +8266,8 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
 @Composable
 private fun MembersHumanInfoSection(
     member: MemberProfile,
-    timeContext: SlockTimeContext,
+    departure: MembersHumanDeparture?,
+    timeContext: RaftTimeContext,
     actorRole: String?,
     accessMode: MemberDetailAccessMode,
     currentUserId: String?,
@@ -7595,7 +8276,15 @@ private fun MembersHumanInfoSection(
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)?
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    val joined = member.joinedAt?.takeIf { it.isNotBlank() }?.membersAgentCreatedDate(timeContext)
+    val joinedDate = member.joinedAt.membersJoinedDateOrNull(timeContext)
+    val joined = joinedDate?.let { date ->
+        stringResource(
+            MR.strings.member_joined_date,
+            membersJoinedMonthLabel(stringResource(MR.strings.member_joined_date_months), date.month),
+            date.day.toString(),
+            date.year.toString()
+        )
+    }
     val initialRole = member.serverRole.toMembersHumanServerRoleOrNull()
         ?: member.roleDescription.toMembersHumanServerRoleOrNull()
     var displayedRole by remember(member.id.value, initialRole?.wireValue) { mutableStateOf(initialRole) }
@@ -7606,6 +8295,7 @@ private fun MembersHumanInfoSection(
     var roleMenuExpanded by remember(member.id.value) { mutableStateOf(false) }
     var savingRole by remember(member.id.value) { mutableStateOf(false) }
     var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
@@ -7620,40 +8310,86 @@ private fun MembersHumanInfoSection(
         currentServerId = currentServerId,
         ownerCount = ownerCount
     )
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-    ) {
-        MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).slockDisplayUppercase())
-        MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
-            if (editingRole) {
-                Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersServerRoleEditor(
-                        displayValue = draftRole.localizedLabel(),
-                        badgeBackgroundColor = draftRole.backgroundColor,
-                        expanded = roleMenuExpanded,
-                        enabled = !savingRole,
-                        saving = savingRole,
-                        saveEnabled = draftRole != displayedRole,
-                        options = editableRoles.map { role ->
-                            SlockRaftUiSelectionOption(
-                                id = role.wireValue,
-                                label = role.localizedLabel(),
-                                selected = role == draftRole
-                            )
-                        },
-                        selectedId = draftRole.wireValue,
-                        error = roleError,
-                        onToggle = { roleMenuExpanded = !roleMenuExpanded },
-                        onSelect = { roleId ->
-                            roleId.toMembersHumanServerRoleOrNull()?.let {
-                                draftRole = it
-                                roleMenuExpanded = false
-                                roleError = null
+    val canEditRole = departure == null && onUpdateRole != null && editableRoles.isNotEmpty()
+    val roleBadge = membersHumanRoleBadge(
+        serverRole = displayedRole?.wireValue ?: member.serverRole,
+        roleDescription = member.roleDescription
+    )
+    val roleHelpLabel = stringResource(MR.strings.member_title_human_roles)
+    val editRoleLabel = stringResource(MR.strings.member_action_edit_role)
+    MembersHumanSection(title = stringResource(MR.strings.member_section_info)) {
+        RaftDescriptionList {
+            Item(
+                term = if (departure != null) {
+                    stringResource(MR.strings.member_label_status)
+                } else {
+                    stringResource(MR.strings.member_label_role)
+                },
+                termAccessory = if (departure != null) {
+                    null
+                } else {
+                    {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RaftIconButton(
+                                onClick = { roleHelpOpen = true },
+                                tooltip = roleHelpLabel,
+                                variant = RaftButtonVariant.Ghost
+                            ) {
+                                RaftGlyphIcon(RaftGlyph.Info, size = 14.dp)
                             }
-                        },
-                        onSave = {
+                            if (canEditRole && !editingRole) {
+                                RaftIconButton(
+                                    onClick = {
+                                        draftRole = editableRoles.first()
+                                        roleError = null
+                                        roleMenuExpanded = true
+                                        editingRole = true
+                                    },
+                                    tooltip = editRoleLabel,
+                                    variant = RaftButtonVariant.Ghost
+                                ) {
+                                    MembersHumanGlyph(RaftLucideIconName.Pencil, 14.dp)
+                                }
+                            }
+                        }
+                    }
+                }
+            ) {
+                when {
+                    departure != null ->
+                        RaftBadge(
+                            text = departure.localizedLabel(),
+                            appearance = RaftBadgeAppearance.Soft,
+                            variant = RaftBadgeVariant.Muted
+                        )
+                    editingRole && canEditRole ->
+                        // TODO(human-profile): the inline role editor is shared with the agent
+                        // profile and still uses the older chip/button styling.
+                        MembersServerRoleEditor(
+                            displayValue = draftRole.localizedLabel(),
+                            badgeBackgroundColor = draftRole.backgroundColor,
+                            expanded = roleMenuExpanded,
+                            enabled = !savingRole,
+                            saving = savingRole,
+                            saveEnabled = draftRole != displayedRole,
+                            options = editableRoles.map { role ->
+                                RaftUiSelectionOption(
+                                    id = role.wireValue,
+                                    label = role.localizedLabel(),
+                                    selected = role == draftRole
+                                )
+                            },
+                            selectedId = draftRole.wireValue,
+                            error = roleError,
+                            onToggle = { roleMenuExpanded = !roleMenuExpanded },
+                            onSelect = { roleId ->
+                                roleId.toMembersHumanServerRoleOrNull()?.let {
+                                    draftRole = it
+                                    roleMenuExpanded = false
+                                    roleError = null
+                                }
+                            },
+                            onSave = {
                                 onUpdateRole?.let { update -> scope.launch {
                                     savingRole = true
                                     roleError = null
@@ -7689,102 +8425,84 @@ private fun MembersHumanInfoSection(
                                     }
                                     savingRole = false
                                 } }
-                        },
-                        onCancel = {
-                            draftRole = displayedRole ?: MembersHumanServerRole.Member
-                            roleError = null
-                            roleMenuExpanded = false
-                            editingRole = false
-                        }
-                    )
-                }
-            } else {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MembersHumanRoleChip(
-                        label = displayedRole?.localizedLabel()
-                            ?: member.roleDescription?.takeIf { it.isNotBlank() }
-                            ?: stringResource(MR.strings.member_role_member),
-                        backgroundColor = displayedRole?.backgroundColor ?: member.membersHumanRoleChipColor()
-                    )
-                    if (onUpdateRole != null && editableRoles.isNotEmpty()) {
-                        MembersProfilePencilButton(
-                            onClick = {
-                                draftRole = editableRoles.first()
+                            },
+                            onCancel = {
+                                draftRole = displayedRole ?: MembersHumanServerRole.Member
                                 roleError = null
-                                roleMenuExpanded = true
-                                editingRole = true
+                                roleMenuExpanded = false
+                                editingRole = false
                             }
                         )
-                    }
+                    else ->
+                        RaftBadge(
+                            text = roleBadge.localizedLabel(),
+                            appearance = RaftBadgeAppearance.Soft,
+                            variant = roleBadge.badgeVariant
+                        )
+                }
+            }
+            member.email?.takeIf { it.isNotBlank() }?.let { email ->
+                Item(term = stringResource(MR.strings.member_label_email)) {
+                    RaftDescriptionValue(email)
+                }
+            }
+            joined?.takeIf { it.isNotBlank() }?.let { joinedText ->
+                Item(term = stringResource(MR.strings.member_label_joined)) {
+                    RaftDescriptionValue(joinedText, mono = true)
                 }
             }
         }
-        member.email?.takeIf { it.isNotBlank() }?.let { email ->
-            MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
-                Text(
-                    text = email,
-                    style = SlockType.Input.copy(fontFamily = SlockMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        joined?.takeIf { it.isNotBlank() }?.let { joinedDate ->
-            MembersHumanInfoItem(label = stringResource(MR.strings.member_label_joined)) {
-                Text(
-                    text = joinedDate,
-                    style = SlockType.Input.copy(fontFamily = SlockMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+    }
+    if (roleHelpOpen) {
+        MembersHumanRoleHelpDialog(onDismiss = { roleHelpOpen = false })
     }
 }
 
 @Composable
-private fun MembersHumanInfoItem(
-    label: String,
-    content: @Composable () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        content()
+private fun MembersHumanDeparture.localizedLabel(): String =
+    when (this) {
+        MembersHumanDeparture.Left -> stringResource(MR.strings.member_status_left)
+        MembersHumanDeparture.Removed -> stringResource(MR.strings.member_role_removed)
     }
-}
 
 @Composable
-private fun MembersHumanRoleChip(
-    label: String,
-    backgroundColor: Color
-) {
-    Box(
-        modifier = Modifier
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(backgroundColor)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+private fun MembersHumanRoleBadge.localizedLabel(): String =
+    when (this) {
+        MembersHumanRoleBadge.Owner -> stringResource(MR.strings.member_role_owner)
+        MembersHumanRoleBadge.Admin -> stringResource(MR.strings.member_role_admin)
+        MembersHumanRoleBadge.Member -> stringResource(MR.strings.member_role_member)
+        MembersHumanRoleBadge.Guest -> stringResource(MR.strings.channel_member_role_guest)
+        MembersHumanRoleBadge.Unknown -> stringResource(MR.strings.member_role_unknown)
+    }
+
+@Composable
+private fun MembersHumanRoleHelpDialog(onDismiss: () -> Unit) {
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.member_title_human_roles),
+        onDismiss = onDismiss,
+        // Web RolePermissionHelpDialog: DialogCard max-w-md, rows stack-y-2.
+        maxWidth = 448.dp
     ) {
-        Text(
-            text = label,
-            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            MembersAgentRoleHelpRow(
+                role = stringResource(MR.strings.member_role_owner),
+                summary = stringResource(MR.strings.member_roles_help_owner_summary),
+                details = stringResource(MR.strings.member_roles_help_owner_details)
+            )
+            MembersAgentRoleHelpRow(
+                role = stringResource(MR.strings.member_role_admin),
+                summary = stringResource(MR.strings.member_roles_help_admin_summary),
+                details = stringResource(MR.strings.member_roles_help_human_admin_details)
+            )
+            MembersAgentRoleHelpRow(
+                role = stringResource(MR.strings.member_role_member),
+                summary = stringResource(MR.strings.member_roles_help_member_summary),
+                details = stringResource(MR.strings.member_roles_help_human_member_details)
+            )
+        }
     }
 }
 
@@ -7796,7 +8514,7 @@ private fun MembersServerRoleEditor(
     enabled: Boolean,
     saving: Boolean,
     saveEnabled: Boolean,
-    options: List<SlockRaftUiSelectionOption>,
+    options: List<RaftUiSelectionOption>,
     selectedId: String,
     error: String?,
     onToggle: () -> Unit,
@@ -7806,34 +8524,33 @@ private fun MembersServerRoleEditor(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         Row(
             modifier = Modifier
                 .widthIn(min = 160.dp)
                 .height(33.dp)
-                .background(badgeBackgroundColor)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftControlSurface(fill = raftSoftWash(badgeBackgroundColor), border = RaftColor.LineField)
                 .clickable(enabled = enabled, onClick = onToggle)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                .padding(horizontal = RaftAppSpacing.Sm, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = displayValue,
-                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack,
                 modifier = Modifier.weight(1f)
             )
-            SlockLucideIcon(
-                SlockLucideIconName.ChevronDown,
+            RaftLucideIcon(
+                RaftLucideIconName.ChevronDown,
                 modifier = Modifier.size(14.dp),
-                color = SlockColor.TextBlackArgb,
+                color = RaftColor.TextBlackArgb,
                 rotationDegrees = if (expanded) 180f else 0f
             )
         }
         if (expanded && enabled) {
-            SlockRaftUiSelectionPopover(
+            RaftUiSelectionPopover(
                 title = stringResource(MR.strings.member_label_role),
                 options = options,
                 selectedId = selectedId,
@@ -7842,26 +8559,26 @@ private fun MembersServerRoleEditor(
                 onSelect = { option -> onSelect(option.id) }
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            SlockBrutalActionButton(
+        Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+            RaftBrutalActionButton(
                 label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                 onClick = onSave,
                 enabled = enabled && saveEnabled,
-                backgroundColor = SlockColor.BrandYellow
+                backgroundColor = RaftColor.BrandYellow
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = onCancel,
                 enabled = enabled,
-                backgroundColor = SlockColor.SurfaceWhite
+                backgroundColor = RaftColor.SurfaceWhite
             )
         }
         error?.let {
             Text(
                 text = it,
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.AccentRed
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                    .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.AccentRed
             )
         }
     }
@@ -7899,17 +8616,16 @@ private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
             is MembersAgentServerRoleDisplay.Unrecognized -> display.rawName.membersRoleDisplayName()
             MembersAgentServerRoleDisplay.Hidden -> ""
         }
-    val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
+    val backgroundColor = role?.backgroundColor ?: RaftColor.EmptyStateGray
     Box(
         modifier = Modifier
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(backgroundColor)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+            .background(raftSoftWash(backgroundColor), RoundedCornerShape(RaftAppRadius.Chip))
+            .padding(horizontal = 6.dp, vertical = 3.dp)
     ) {
         Text(
             text = label,
-            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -7918,8 +8634,8 @@ private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
 
 @Composable
 private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_title_agent_roles).slockDisplayUppercase(),
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.member_title_agent_roles).raftDisplayUppercase(),
         onDismiss = onDismiss,
         // Web RolePermissionHelpDialog: DialogCard max-w-md, rows space-y-3.
         maxWidth = 448.dp
@@ -7951,36 +8667,36 @@ private fun MembersAgentRoleHelpRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.20f))
-            .background(SlockColor.SurfaceWhite)
+            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.20f))
+            .background(RaftColor.SurfaceWhite)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = role,
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                    .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = summary,
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack.copy(alpha = 0.60f),
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                    .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextBlack.copy(alpha = 0.60f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
         Text(
             text = details,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 22.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.75f)
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 22.sp),
+            color = RaftColor.TextBlack.copy(alpha = 0.75f)
         )
     }
 }
@@ -7988,49 +8704,33 @@ private fun MembersAgentRoleHelpRow(
 @Composable
 private fun MembersHumanCreatedAgentsSection(
     member: MemberProfile,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    fixtureStatusFallbackEnabled: Boolean = false
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    fixtureStatusFallbackEnabled: Boolean = false,
+    onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null
 ) {
     val createdAgents = member.createdAgents
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    MembersHumanSection(
+        title = stringResource(MR.strings.member_section_created_agents),
+        count = createdAgents.size.toString()
     ) {
-        MembersDetailSectionDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents).slockDisplayUppercase())
-            Text(
-                text = createdAgents.size.toString(),
-                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
-            )
-        }
         if (createdAgents.isEmpty()) {
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.member_state_no_created_agents),
-                style = SlockType.Body.copy(
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    fontStyle = FontStyle.Italic
-                ),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.75f)
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foregroundHint
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                createdAgents.forEach { agent ->
+            // Web: raft-ui ListRowGroup (the inset card) of AvatarListRows, hairlines between rows.
+            RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+                createdAgents.forEachIndexed { index, agent ->
                     MembersHumanCreatedAgentRow(
                         agent = agent,
+                        divider = index > 0,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
-                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                        onClick = onOpenCreatedAgent?.let { open -> { open(agent) } }
                     )
                 }
             }
@@ -8040,22 +8740,15 @@ private fun MembersHumanCreatedAgentsSection(
 
 @Composable
 private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-    ) {
-        MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).slockDisplayUppercase())
-        SlockBrutalActionButton(
-            label = stringResource(MR.strings.member_action_remove_member),
-            leadingIcon = SlockLucideIconName.Trash2,
-            minHeight = 40.dp,
-            backgroundColor = SlockColor.AccentRed,
-            textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = 3.dp),
-            onClick = onRemoveMember
+    MembersHumanSection(title = stringResource(MR.strings.member_section_actions)) {
+        // Web: raft-ui Button size="lg" variant="danger", full width, Trash2 18.
+        RaftButton(
+            text = stringResource(MR.strings.member_action_remove_member),
+            onClick = onRemoveMember,
+            variant = RaftButtonVariant.Danger,
+            size = RaftButtonSize.Lg,
+            leadingIcon = { MembersHumanGlyph(RaftLucideIconName.Trash2, 18.dp) },
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -8063,71 +8756,45 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
 @Composable
 private fun MembersHumanCreatedAgentRow(
     agent: AgentProfile,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    fixtureStatusFallbackEnabled: Boolean = false
+    divider: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    fixtureStatusFallbackEnabled: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
     val observedIndicatorState =
         resolveMembersAgentStatusIndicatorStateOrNull(
-            canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
+            canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
             fixtureFallback =
                 if (fixtureStatusFallbackEnabled) {
-                    agent.toFixtureSlockAgentStatusIndicatorState()
+                    agent.toFixtureRaftAgentStatusIndicatorState()
                 } else {
                     null
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
-    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
-    val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
     val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.25f))
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MembersAvatar(
-            member = profile,
-            avatarSize = 32.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = profile.displayName,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
-                    ?: profile.detailRoleLabel,
-                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+    // Web CreatedAgentRow: AvatarListRow with the list-row avatar, the name, the runtime as the
+    // mono subtitle and the StatusDot on the right; the row opens the agent's profile.
+    RaftListRow(
+        title = profile.displayName,
+        onClick = onClick,
+        divider = divider,
+        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+            ?: profile.detailRoleLabel,
+        leading = { MembersStickerAvatar(profile, RaftAvatarSize.Md, memberAvatarResolver) },
+        trailing = observedDisplayState?.let { observed ->
+            {
+                // Unknown is not Offline: no dot until something is observed (task #256).
+                RaftStatusIndicator(
+                    color = observed.color,
+                    size = 10.dp,
+                    pulsing = observed.pulsing
+                )
+            }
         }
-        // Unknown is not Offline: no dot until something is observed (task #256).
-        observedDisplayState?.let { observed ->
-            SlockStatusIndicator(
-                color = observed.color,
-                size = 10.dp,
-                pulsing = observed.pulsing
-            )
-        }
-    }
+    )
 }
 
 private val MembersAgentAvatarPickerCellSize = 40.dp
@@ -8144,7 +8811,7 @@ private fun MembersAgentAvatarChoiceGrid(
     // React parity: each cell renders the actual pixel art (or upload icon
     // for the first cell) inside a 40dp cell with a 2dp border, mirroring
     // `AgentDetailPanel.tsx`. Active selection gets a pink border
-    // + pink tint background (React `border-brutal-pink bg-brutal-pink/20`).
+    // + pink tint background (React `border-palette-pink bg-palette-pink/20`).
     val activeCustomAvatar = member.avatarUrl != null
     val activePixelKey = if (activeCustomAvatar) {
         null
@@ -8154,30 +8821,30 @@ private fun MembersAgentAvatarChoiceGrid(
     @OptIn(ExperimentalLayoutApi::class)
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         Box(
             modifier = Modifier
                 .size(MembersAgentAvatarPickerCellSize)
-                .border(SlockStroke.Default, if (activeCustomAvatar) SlockColor.AccentPink else SlockColor.BorderBlack)
+                .border(RaftAppStroke.Default, if (activeCustomAvatar) RaftColor.AccentPink else RaftColor.BorderBlack)
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                .background(if (activeCustomAvatar) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+                .background(if (activeCustomAvatar) RaftColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
                 .clickable(enabled = !uploading) { onUploadClick() },
             contentAlignment = Alignment.Center
         ) {
             if (activeCustomAvatar) {
-                SlockAvatar(
+                RaftAppAvatar(
                     avatarWireValue = member.avatarUrl,
                     label = stringResource(MR.strings.member_label_custom_avatar),
                     avatarSize = MembersAgentAvatarPickerAvatarSize,
                     borderWidth = 0.dp,
-                    cacheSubject = member.slockAvatarCacheSubject(),
+                    cacheSubject = member.raftAvatarCacheSubject(),
                     cacheServerId = member.serverId?.value
                 )
             } else {
-                SlockLucideIcon(
-                    if (uploading) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Upload,
+                RaftLucideIcon(
+                    if (uploading) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Upload,
                     modifier = Modifier.size(16.dp),
                     color = "#99000000",
                     spinning = uploading
@@ -8212,13 +8879,13 @@ private fun MembersAgentAvatarPickerCell(
     Box(
         modifier = modifier
             .size(MembersAgentAvatarPickerCellSize)
-            .border(SlockStroke.Default, if (active) SlockColor.AccentPink else SlockColor.BorderBlack)
+            .border(RaftAppStroke.Default, if (active) RaftColor.AccentPink else RaftColor.BorderBlack)
             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-            .background(if (active) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+            .background(if (active) RaftColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = wireValue,
             label = fallbackLabel,
             avatarSize = MembersAgentAvatarPickerAvatarSize,
@@ -8231,7 +8898,7 @@ private const val MembersAgentProfileDescriptionMaxLength = 3000
 
 // Web AgentDetailPanel's INFO block uses five different spacings here. They are
 // kept as five separate constants on purpose: collapsing them onto shared tokens
-// (SlockSpacing.Xs/Sm) reads as tidier and can even score better at 390dp, but it
+// (RaftAppSpacing.Xs/Sm) reads as tidier and can even score better at 390dp, but it
 // removes the ability to change one without the others, and the layout only holds
 // at narrow widths because these differ. See task #257.
 private val MembersInfoBlockGap = 6.dp // web space-y-1.5, within one field
@@ -8300,8 +8967,8 @@ private fun MembersAgentInfoField(
     Column(modifier = modifier) {
         Text(
             text = label,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = RaftColor.TextMutedGray,
             modifier = Modifier.padding(bottom = MembersInfoLabelGap)
         )
         content()
@@ -8313,9 +8980,9 @@ private fun MembersAgentProfileHeader(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     canEdit: Boolean,
-    agentStatusObservedState: SlockAgentStatusIndicatorState?,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusObservedState: RaftAgentStatusIndicatorState?,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     showAvatarPicker: Boolean,
     onToggleAvatarPicker: () -> Unit,
     onSelectAvatar: (String) -> Unit,
@@ -8340,12 +9007,12 @@ private fun MembersAgentProfileHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            .padding(bottom = RaftAppSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
             verticalAlignment = Alignment.Top
         ) {
             Box(
@@ -8366,30 +9033,30 @@ private fun MembersAgentProfileHeader(
             ) {
                 Text(
                     text = member.displayName,
-                    style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 22.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 18.sp, lineHeight = 22.sp)
+                        .withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = member.detailHandle,
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // A null resolution is Unknown/not-ready, and StatusNeutralGray is the
                     // Offline/Disconnected colour — falling back to it makes the dot claim
                     // offline while the label beside it says Unknown, the disagreement
-                    // SlockAgentStatusIndicator's own contract forbids. Render nothing until
+                    // RaftAgentStatusIndicator's own contract forbids. Render nothing until
                     // something authoritative arrives (task #253/#256).
                     agentStatusObservedState?.let { state ->
-                        SlockStatusIndicator(
+                        RaftStatusIndicator(
                             color = state.color,
                             size = 8.dp,
                             pulsing = state.pulsing
@@ -8397,8 +9064,8 @@ private fun MembersAgentProfileHeader(
                     }
                     Text(
                         text = statusLabel,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -8410,12 +9077,12 @@ private fun MembersAgentProfileHeader(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = SlockSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    .padding(top = RaftAppSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 MembersDetailSectionDivider()
-                SlockSectionEyebrow(
-                    label = stringResource(MR.strings.member_action_choose_avatar).slockDisplayUppercase(),
+                RaftAppSectionEyebrow(
+                    label = stringResource(MR.strings.member_action_choose_avatar).raftDisplayUppercase(),
                     fontSize = 11.sp,
                     lineHeight = 16.sp
                 )
@@ -8780,7 +9447,7 @@ private fun MembersAgentProfileFieldsSection(
     // state machine (mirrors React `editingDisplayName` + `editingRole`).
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         // Display Name field
         Row(
@@ -8788,7 +9455,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_label_display_name).slockDisplayUppercase(),
+                title = stringResource(MR.strings.member_label_display_name).raftDisplayUppercase(),
                 showEdit = canEdit && !editingDisplayName,
                 onEditClick = {
                     displayNameEditorAuthority = agentProfileEditAuthority
@@ -8807,14 +9474,14 @@ private fun MembersAgentProfileFieldsSection(
         if (editingDisplayName) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
-                SlockFormField(
+                RaftFormField(
                     label = stringResource(MR.strings.member_label_display_name),
                     error = displayNameError,
                     showLabel = false
                 ) {
-                    SlockBrutalInputField(
+                    RaftBrutalInputField(
                         value = draftDisplayName,
                         placeholder = stringResource(MR.strings.member_label_display_name),
                         onValueChange = {
@@ -8829,18 +9496,18 @@ private fun MembersAgentProfileFieldsSection(
                         },
                         enabled = !savingDisplayName,
                         autoFocus = true,
-                        borderColor = if (displayNameError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
-                        enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                        borderColor = if (displayNameError != null) RaftColor.AccentRed else RaftColor.BorderBlack,
+                        enabledBackgroundColor = if (displayNameError != null) Color(0xFFFFF4F4) else RaftColor.SurfaceWhite
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    SlockBrutalActionButton(
+                Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+                    RaftBrutalActionButton(
                         label = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                         onClick = { saveDisplayName() },
                         enabled = !savingDisplayName,
-                        backgroundColor = SlockColor.BrandYellow
+                        backgroundColor = RaftColor.BrandYellow
                     )
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_cancel),
                         onClick = {
                             if (storeBackedProfileEdit) {
@@ -8855,15 +9522,15 @@ private fun MembersAgentProfileFieldsSection(
                             displayNameEditorAuthority = null
                         },
                         enabled = !savingDisplayName,
-                        backgroundColor = SlockColor.SurfaceWhite
+                        backgroundColor = RaftColor.SurfaceWhite
                     )
                 }
             }
         } else {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
@@ -8871,11 +9538,11 @@ private fun MembersAgentProfileFieldsSection(
 
         // Description field (independent edit state machine)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+            modifier = Modifier.fillMaxWidth().padding(top = RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_description).slockDisplayUppercase(),
+                title = stringResource(MR.strings.member_section_description).raftDisplayUppercase(),
                 showEdit = canEdit && !editingRole,
                 onEditClick = {
                     roleEditorAuthority = agentProfileEditAuthority
@@ -8894,14 +9561,14 @@ private fun MembersAgentProfileFieldsSection(
         if (editingRole) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
-                SlockFormField(
+                RaftFormField(
                     label = stringResource(MR.strings.member_section_description),
                     error = roleError,
                     showLabel = false
                 ) {
-                    SlockBrutalInputField(
+                    RaftBrutalInputField(
                         value = draftRole,
                         placeholder = stringResource(MR.strings.member_placeholder_description),
                         onValueChange = {
@@ -8918,22 +9585,22 @@ private fun MembersAgentProfileFieldsSection(
                         autoFocus = true,
                         maxLines = 4,
                         fieldMinHeight = 86.dp,
-                        borderColor = if (roleError != null) SlockColor.AccentRed else SlockColor.BorderBlack,
-                        enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite
+                        borderColor = if (roleError != null) RaftColor.AccentRed else RaftColor.BorderBlack,
+                        enabledBackgroundColor = if (roleError != null) Color(0xFFFFF4F4) else RaftColor.SurfaceWhite
                     )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                         onClick = { saveRole() },
                         enabled = !savingRole,
-                        backgroundColor = SlockColor.BrandYellow
+                        backgroundColor = RaftColor.BrandYellow
                     )
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_cancel),
                         onClick = {
                             if (storeBackedProfileEdit) {
@@ -8947,13 +9614,13 @@ private fun MembersAgentProfileFieldsSection(
                             }
                         },
                         enabled = !savingRole,
-                        backgroundColor = SlockColor.SurfaceWhite
+                        backgroundColor = RaftColor.SurfaceWhite
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
                         text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextMutedGray
                     )
                 }
             }
@@ -8961,12 +9628,12 @@ private fun MembersAgentProfileFieldsSection(
             Text(
                 text = member.description?.takeIf { it.isNotBlank() }
                     ?: stringResource(MR.strings.member_state_no_description),
-                style = SlockType.Body.copy(
+                style = RaftType.Body.copy(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
                 ),
-                color = if (member.description.isNullOrBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                color = if (member.description.isNullOrBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis
             )
@@ -8986,8 +9653,8 @@ private fun MembersAgentInfoSection(
     edit: MembersAgentProfileEditInputs,
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     onOpenComputer: (() -> Unit)?,
-    timeContext: SlockTimeContext,
-    memberAvatarResolver: SlockMemberAvatarResolver
+    timeContext: RaftTimeContext,
+    memberAvatarResolver: RaftMemberAvatarResolver
 ) {
     val canEdit = edit.canEdit
     val agentProfileEditAuthority = edit.agentProfileEditAuthority
@@ -9102,32 +9769,32 @@ private fun MembersAgentInfoSection(
 
     // INFO section — mirrors React AgentDetailPanel's Computer / Created / Creator rows.
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        modifier = Modifier.fillMaxWidth().padding(top = RaftAppSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).raftDisplayUppercase())
         // Role row: React keeps this as a label affordance plus an inline role chip/editor,
         // not the compact two-column metadata row used by Computer/Created/Creator.
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = stringResource(MR.strings.member_label_role),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = RaftColor.TextMutedGray
                 )
-                SlockLucideIcon(
-                    SlockLucideIconName.Info,
+                RaftLucideIcon(
+                    RaftLucideIconName.Info,
                     modifier = Modifier
                         .size(14.dp)
                         .clickable { roleHelpOpen = true },
-                    color = SlockColor.TextMutedGrayArgb
+                    color = RaftColor.TextMutedGrayArgb
                 )
                 if (canEditServerRole && !editingServerRole) {
                     MembersProfilePencilButton(
@@ -9144,7 +9811,7 @@ private fun MembersAgentInfoSection(
             if (editingServerRole) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
                     MembersServerRoleEditor(
                         displayValue = draftServerRole.localizedLabel(),
@@ -9175,7 +9842,7 @@ private fun MembersAgentInfoSection(
                 }
             } else {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     MembersAgentServerRoleChip(serverRoleDisplay)
@@ -9193,8 +9860,8 @@ private fun MembersAgentInfoSection(
         MembersAgentInfoField(label = stringResource(MR.strings.member_label_computer)) {
             val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
             val machineNameStyle =
-                SlockType.Body.copy(
-                    fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
+                RaftType.Body.copy(
+                    fontFamily = raftMonoFamilyForWeight(FontWeight.SemiBold),
                     fontSize = MembersInfoValueFontSize,
                     lineHeight = MembersInfoValueLineHeight,
                     fontWeight = FontWeight.Normal
@@ -9207,7 +9874,7 @@ private fun MembersAgentInfoSection(
             Text(
                 text = machineName,
                 style = machineNameStyle,
-                color = SlockColor.TextBlack,
+                color = RaftColor.TextBlack,
                 // Web sets break-all on this specific value: machine names are
                 // unbroken tokens, so without it a long one overflows its box. No
                 // maxLines/ellipsis here on purpose — truncating a machine name
@@ -9228,12 +9895,12 @@ private fun MembersAgentInfoSection(
                 MembersMachineStatusRow.NoComputer ->
                     Text(
                         text = stringResource(MR.strings.member_machine_no_computer_assigned),
-                        style = SlockType.Caption.copy(
+                        style = RaftType.Caption.copy(
                             fontSize = MembersMachineStatusFontSize,
                             lineHeight = MembersMachineStatusLineHeight,
                             fontStyle = FontStyle.Italic
                         ),
-                        color = SlockColor.TextMutedGray,
+                        color = RaftColor.TextMutedGray,
                         modifier = Modifier.padding(top = MembersInfoBlockGap)
                     )
                 is MembersMachineStatusRow.Machine -> {
@@ -9248,7 +9915,7 @@ private fun MembersAgentInfoSection(
                             modifier = Modifier
                                 .size(MembersMachineStatusDotSize)
                                 .background(
-                                    if (statusRow.online) SlockColor.AccentLime else SlockColor.StatusNeutralGray,
+                                    if (statusRow.online) RaftColor.AccentLime else RaftColor.StatusNeutralGray,
                                     shape = RoundedCornerShape(MembersMachineStatusDotSize / 2)
                                 )
                                 // FlowRow in this fork has no per-item vertical alignment; the
@@ -9259,22 +9926,22 @@ private fun MembersAgentInfoSection(
                             text = stringResource(
                                 if (statusRow.online) MR.strings.member_label_connected else MR.strings.member_label_offline
                             ),
-                            style = SlockType.Caption.copy(
+                            style = RaftType.Caption.copy(
                                 fontSize = MembersMachineStatusFontSize,
                                 lineHeight = MembersMachineStatusLineHeight
                             ),
-                            color = SlockColor.TextMutedGray
+                            color = RaftColor.TextMutedGray
                         )
                         // web: <span class="font-mono">· {runLabel}</span> -- the separator is
                         // layout text inside the mono span, not part of any i18n string.
                         Text(
                             text = "· " + statusRow.runLabel.localized(),
-                            style = SlockType.Caption.copy(
-                                fontFamily = SlockMonoFamily,
+                            style = RaftType.Caption.copy(
+                                fontFamily = RaftMonoFamily,
                                 fontSize = MembersMachineStatusFontSize,
                                 lineHeight = MembersMachineStatusLineHeight
                             ),
-                            color = SlockColor.TextMutedGray
+                            color = RaftColor.TextMutedGray
                         )
                     }
                 }
@@ -9293,12 +9960,12 @@ private fun MembersAgentInfoSection(
                 MembersAgentInfoField(label = stringResource(MR.strings.member_label_created)) {
                     Text(
                         text = createdDate,
-                        style = SlockType.Body.copy(
-                            fontFamily = SlockMonoFamily,
+                        style = RaftType.Body.copy(
+                            fontFamily = RaftMonoFamily,
                             fontSize = MembersInfoValueFontSize,
                             lineHeight = MembersInfoValueLineHeight
                         ),
-                        color = SlockColor.TextBlack,
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -9321,11 +9988,11 @@ private fun MembersAgentInfoSection(
                         )
                         Text(
                             text = creatorProfile.displayName,
-                            style = SlockType.Body.copy(
+                            style = RaftType.Body.copy(
                                 fontSize = MembersInfoValueFontSize,
                                 lineHeight = MembersInfoValueLineHeight
-                            ).withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextBlack,
+                            ).withRaftFontWeight(FontWeight.Bold),
+                            color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             // fill = false so the name shrinks to its content and the
@@ -9335,12 +10002,12 @@ private fun MembersAgentInfoSection(
                         )
                         Text(
                             text = creatorProfile.detailHandle,
-                            style = SlockType.Caption.copy(
-                                fontFamily = SlockMonoFamily,
+                            style = RaftType.Caption.copy(
+                                fontFamily = RaftMonoFamily,
                                 fontSize = 11.sp,
                                 lineHeight = 16.sp
                             ),
-                            color = SlockColor.TextMutedGray,
+                            color = RaftColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -9348,12 +10015,12 @@ private fun MembersAgentInfoSection(
                 } else {
                     Text(
                         text = stringResource(MR.strings.member_state_no_creator_assigned),
-                        style = SlockType.Body.copy(
+                        style = RaftType.Body.copy(
                             fontSize = MembersInfoValueFontSize,
                             lineHeight = MembersInfoValueLineHeight,
                             fontStyle = FontStyle.Italic
                         ),
-                        color = SlockColor.TextMutedGray,
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -9371,7 +10038,7 @@ private fun MembersAgentInfoSection(
 private fun MembersAgentRuntimeConfigSection(
     member: MemberProfile,
     summary: AgentDetailSummary?,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     edit: MembersAgentProfileEditInputs,
     runtimeModels: MembersAgentRuntimeModelInputs,
     createAgentFormStore: SharedCreateAgentFormStore?,
@@ -9638,17 +10305,17 @@ private fun MembersAgentRuntimeConfigSection(
     // model-catalog prefetch only matters inside the editor dialog, which
     // re-requests on open and renders its own error + Retry (task #96).
     Column(
-        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        modifier = Modifier.fillMaxWidth().padding(top = RaftAppSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_runtime_config).slockDisplayUppercase(),
+                title = stringResource(MR.strings.member_section_runtime_config).raftDisplayUppercase(),
                 showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
                 onEditClick = {
                     runtimeConfigError = null
@@ -9734,13 +10401,12 @@ private fun MembersExternalAgentSetupSection(
     agentId: MemberId,
     profileName: String,
     serverUrl: String?,
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient?,
+    agentsApiClient: build.raft.app.data.RaftAgentsApiClient?,
     canManage: Boolean,
     onCopy: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    val tokenUnavailable = stringResource(MR.strings.member_external_setup_token_unavailable)
     val tokenFailed = stringResource(MR.strings.member_external_setup_token_failed)
     var token by remember(agentId) { mutableStateOf<String?>(null) }
     var tokenLoading by remember(agentId) { mutableStateOf(false) }
@@ -9758,29 +10424,31 @@ private fun MembersExternalAgentSetupSection(
     val startCommand =
         "RAFT_PROFILE=$profile claude --append-system-prompt 'You are connected to Raft, a shared workspace for humans and agents. Treat Raft as your primary collaboration surface.' --dangerously-load-development-channels plugin:raft-channel@raft"
     val hermesCommand = "hermes gateway setup"
+    // task #4 (Hands 1c6885d8): each external runtime is a separate harness with its own
+    // setup commands, so they are tabs rather than one flat list. Claude Code and Hermes
+    // share the CLI install and the login step, then diverge on how the runtime is started.
+    var selectedHarness by remember(agentId) {
+        mutableStateOf(MembersExternalHarness.ClaudeCode)
+    }
     Column(
-        modifier = modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.AccentCyan.copy(alpha = 0.12f)).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        modifier = modifier.fillMaxWidth().raftCardSurface(fill = RaftColor.InfoSoft).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
-        SlockSectionEyebrow(label = stringResource(MR.strings.member_external_setup_title))
-        Text(stringResource(MR.strings.member_external_setup_description), style = SlockType.Caption, color = SlockColor.TextBlack)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
+        RaftAppSectionEyebrow(label = stringResource(MR.strings.member_external_setup_title))
+        Text(stringResource(MR.strings.member_external_setup_description), style = RaftType.Caption, color = RaftColor.TextBlack)
+        // task #4: the bootstrap token gates every later step, so it comes first. The
+        // generate action must be reachable without scrolling past the copy commands.
         if (canManage && agentsApiClient != null) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(if (tokenLoading) MR.strings.member_external_setup_generating else MR.strings.member_external_setup_generate),
                 enabled = !tokenLoading,
                 onClick = {
                     tokenLoading = true
                     error = null
                     scope.launch {
-                        when (val result = agentsApiClient.issueBootstrapToken(agentId, build.raft.app.data.buildIssueAgentBootstrapTokenBody(build.raft.app.data.IssueAgentBootstrapTokenBody()))) {
+                        when (val result = agentsApiClient.issueAgentLoginToken(agentId)) {
                             is DataResult.Content -> {
-                                token = result.data.bootstrapToken
-                                if (token == null) error = tokenUnavailable
+                                token = result.data.apiKey
                             }
                             else -> error = tokenFailed
                         }
@@ -9789,21 +10457,47 @@ private fun MembersExternalAgentSetupSection(
                 }
             )
             token?.let { value ->
-                Text(stringResource(MR.strings.member_external_setup_token_once), style = SlockType.Caption, color = SlockColor.TextBlack)
+                Text(stringResource(MR.strings.member_external_setup_token_once), style = RaftType.Caption, color = RaftColor.TextBlack)
                 MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_token_label), value, onCopy)
             }
-            error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
+            error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
+        }
+        SegmentedControl(
+            selectedValue = selectedHarness.value,
+            options = MembersExternalHarness.entries.map { harness ->
+                SegmentedControlOption(
+                    value = harness.value,
+                    label = stringResource(harness.labelRes)
+                )
+            },
+            onValueSelected = { value ->
+                MembersExternalHarness.entries.firstOrNull { it.value == value }?.let { selectedHarness = it }
+            }
+        )
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
+        when (selectedHarness) {
+            MembersExternalHarness.ClaudeCode ->
+                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
+            MembersExternalHarness.Hermes ->
+                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
         }
     }
+}
+
+/** External runtimes offered in the setup section, one tab each (task #4). */
+internal enum class MembersExternalHarness(val value: String, val labelRes: StringResource) {
+    ClaudeCode("claude-code", MR.strings.member_external_setup_harness_claude),
+    Hermes("hermes", MR.strings.member_external_setup_harness_hermes)
 }
 
 @Composable
 private fun MembersExternalSetupCommand(label: String, command: String, onCopy: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            Text(command, modifier = Modifier.weight(1f), style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace), color = SlockColor.TextBlack)
-            SlockBrutalActionButton(label = stringResource(MR.strings.member_external_setup_copy), minHeight = 28.dp, onClick = { onCopy(command) })
+        Text(label, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+            Text(command, modifier = Modifier.weight(1f), style = RaftType.Caption.copy(fontFamily = FontFamily.Monospace), color = RaftColor.TextBlack)
+            RaftBrutalActionButton(label = stringResource(MR.strings.member_external_setup_copy), minHeight = 28.dp, onClick = { onCopy(command) })
         }
     }
 }
@@ -9816,10 +10510,10 @@ private fun MembersAgentProfileTab(
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
     canManage: Boolean,
-    agentStatusObservedState: SlockAgentStatusIndicatorState?,
-    agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusObservedState: RaftAgentStatusIndicatorState?,
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     showAvatarPicker: Boolean,
     onToggleAvatarPicker: () -> Unit,
     onSelectAvatar: (String) -> Unit,
@@ -9832,12 +10526,13 @@ private fun MembersAgentProfileTab(
     onApplyAgentProfileResult: (MemberProfile) -> Unit = {},
     onApplyAgentRuntimeConfigProjection:
         suspend (MembersAgentProfileEditAuthority, RuntimeConfig) -> Boolean = { _, _ -> false },
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
+    agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
+    archiveInputs: MembersAgentArchiveInputs = MembersAgentArchiveInputs(),
     externalSetupServerUrl: String? = null,
     onUnavailableAction: (String) -> Unit,
     lifecycle: MembersAgentLifecycleInputs = MembersAgentLifecycleInputs(),
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     fixtureStatusFallbackEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -9866,12 +10561,19 @@ private fun MembersAgentProfileTab(
             errorStrings = errorStrings
         )
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
         if (deleted) {
-            MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).slockDisplayUppercase()) {
-                MembersDetailField(stringResource(MR.strings.member_label_status), stringResource(MR.strings.member_status_deleted))
-                MembersDetailField(stringResource(MR.strings.member_label_deleted_at), summary.deletedAt.orDash())
-            }
+            // task #517 (web `AgentArchiveSection` parity): the archive block
+            // carries the workspace state + delete-later affordance; when the
+            // archive record can't be fetched it falls back to the same plain
+            // status + timestamp block the pre-archive detail rendered.
+            MembersAgentArchiveSection(
+                agentId = member.id,
+                canManage = canManage,
+                fallbackArchivedAt = summary?.deletedAt,
+                timeContext = timeContext,
+                inputs = archiveInputs
+            )
         }
 
         MembersAgentProfileHeader(
@@ -9957,7 +10659,7 @@ private fun MembersAgentProfileTab(
 private fun MembersAgentProfileActionsSection(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
-    resolvedStatus: SlockAgentStatusIndicatorState?,
+    resolvedStatus: RaftAgentStatusIndicatorState?,
     canManage: Boolean,
     lifecycleInFlight: String?,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
@@ -9993,12 +10695,12 @@ private fun MembersAgentProfileActionsSection(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).slockDisplayUppercase())
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).raftDisplayUppercase())
         if (primaryAction != null) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
                 leadingIcon = primaryAction.iconName,
                 enabled = lifecycleInFlight == null,
@@ -10007,36 +10709,36 @@ private fun MembersAgentProfileActionsSection(
                 onClick = { onRunLifecycleAction(primaryAction) }
             )
         }
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = stringResource(MR.strings.member_label_restart_reset),
-            leadingIcon = SlockLucideIconName.RotateCcw,
+            leadingIcon = RaftLucideIconName.RotateCcw,
             enabled = lifecycleInFlight == null,
             minHeight = 42.dp,
             modifier = Modifier.fillMaxWidth(),
             onClick = onOpenRestartReset
         )
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = copyState?.successLabel ?: stringResource(MR.strings.member_action_copy_diagnostic_info),
-            leadingIcon = if (copyState?.successLabel != null) SlockLucideIconName.Check else SlockLucideIconName.Clipboard,
+            leadingIcon = if (copyState?.successLabel != null) RaftLucideIconName.Check else RaftLucideIconName.Clipboard,
             enabled = !diagnosticBusy,
             minHeight = 42.dp,
             modifier = Modifier.fillMaxWidth(),
             onClick = onCopyDiagnostics
         )
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = if (reportState?.inProgress == true) stringResource(MR.strings.member_action_reporting) else stringResource(MR.strings.member_action_report_issue),
-            leadingIcon = SlockLucideIconName.Bug,
+            leadingIcon = RaftLucideIconName.Bug,
             enabled = !diagnosticBusy,
-            backgroundColor = SlockColor.AccentOrange,
+            backgroundColor = RaftColor.AccentOrange,
             minHeight = 42.dp,
             modifier = Modifier.fillMaxWidth(),
             onClick = onReportIssue
         )
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(MR.strings.member_action_deleting) else stringResource(MR.strings.member_action_delete_agent),
-            leadingIcon = SlockLucideIconName.Trash2,
+            leadingIcon = RaftLucideIconName.Trash2,
             enabled = lifecycleInFlight == null,
-            backgroundColor = SlockColor.AccentRed,
+            backgroundColor = RaftColor.AccentRed,
             minHeight = 42.dp,
             modifier = Modifier.fillMaxWidth(),
             onClick = { onRunLifecycleAction(MembersAgentLifecycleAction.Delete) }
@@ -10056,15 +10758,15 @@ private fun MembersAgentRuntimeConfigRows(
     if (runtimeConfig == null) {
         Text(
             text = stringResource(MR.strings.member_state_runtime_config_unavailable),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.AccentRed
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.AccentRed
         )
         Text(
             text = (resolution as MembersAgentRuntimeConfigResolution.Unavailable)
                 .code
                 .userFacingErrorCodeMessage(errorStrings),
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption,
+            color = RaftColor.TextMutedGray
         )
         return
     }
@@ -10077,8 +10779,8 @@ private fun MembersAgentRuntimeConfigRows(
         )
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_runtime)) {
             MembersAgentRuntimeUsageChip(
@@ -10126,12 +10828,12 @@ private fun MembersAgentRuntimeConfigRows(
                 val providerId = runtimeConfig.provider.membersBuiltInProviderId()
                 Text(
                     text = providerId.ifBlank { stringResource(MR.strings.member_label_default) },
-                    style = SlockType.Caption.copy(
-                        fontFamily = if (providerId.isBlank()) SlockType.Caption.fontFamily else SlockMonoFamily,
+                    style = RaftType.Caption.copy(
+                        fontFamily = if (providerId.isBlank()) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
                     ),
-                    color = if (providerId.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    color = if (providerId.isBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10143,12 +10845,12 @@ private fun MembersAgentRuntimeConfigRows(
                     (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
                 Text(
                     text = providerId ?: stringResource(MR.strings.member_label_default),
-                    style = SlockType.Caption.copy(
-                        fontFamily = if (providerId == null) SlockType.Caption.fontFamily else SlockMonoFamily,
+                    style = RaftType.Caption.copy(
+                        fontFamily = if (providerId == null) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
                     ),
-                    color = if (providerId == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    color = if (providerId == null) RaftColor.TextMutedGray else RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10159,13 +10861,13 @@ private fun MembersAgentRuntimeConfigRows(
                 val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
                 Text(
                     text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_label_default),
-                    style = SlockType.Caption.copy(
-                        fontFamily = if (provider == null) SlockType.Caption.fontFamily else SlockMonoFamily,
+                    style = RaftType.Caption.copy(
+                        fontFamily = if (provider == null) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
                         fontStyle = if (provider == null) FontStyle.Italic else FontStyle.Normal
                     ),
-                    color = if (provider == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    color = if (provider == null) RaftColor.TextMutedGray else RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10174,13 +10876,13 @@ private fun MembersAgentRuntimeConfigRows(
                 val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
                 Text(
                     text = command ?: stringResource(MR.strings.member_label_default),
-                    style = SlockType.Caption.copy(
-                        fontFamily = if (command == null) SlockType.Caption.fontFamily else SlockMonoFamily,
+                    style = RaftType.Caption.copy(
+                        fontFamily = if (command == null) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
                         fontStyle = if (command == null) FontStyle.Italic else FontStyle.Normal
                     ),
-                    color = if (command == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    color = if (command == null) RaftColor.TextMutedGray else RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10224,9 +10926,9 @@ private fun MembersAgentRuntimeConfigField(
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
+            text = label.raftDisplayUppercase(),
+            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -10243,7 +10945,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        SlockSectionEyebrow(
+        RaftAppSectionEyebrow(
             label = stringResource(MR.strings.member_section_environment_variables),
             fontSize = 11.sp,
             lineHeight = 16.sp
@@ -10251,43 +10953,42 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
         if (envVarNames.isEmpty()) {
             Text(
                 text = stringResource(MR.strings.member_state_no_environment_variables),
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                color = RaftColor.TextMutedGray,
                 fontStyle = FontStyle.Italic
             )
         } else {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 envVarNames.forEach { name ->
                     Box(
                         modifier = Modifier
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(horizontal = SlockSpacing.Sm, vertical = 3.dp)
+                            .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "$name=",
-                                style = SlockType.Caption.copy(
-                                    fontFamily = SlockMonoFamily,
+                                style = RaftType.Caption.copy(
+                                    fontFamily = RaftMonoFamily,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 ),
-                                color = SlockColor.TextBlack,
+                                color = RaftColor.TextBlack,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = membersMaskedEnvValue(envVars[name]),
-                                style = SlockType.Caption.copy(
-                                    fontFamily = SlockMonoFamily,
+                                style = RaftType.Caption.copy(
+                                    fontFamily = RaftMonoFamily,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 ),
-                                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                color = RaftColor.TextBlack.copy(alpha = 0.4f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -10699,33 +11400,33 @@ private fun MembersAgentRuntimeConfigDialog(
     val runtimeConfigScrollScope = rememberCoroutineScope()
     var runtimeConfigViewport by remember { mutableStateOf<Rect?>(null) }
     val runtimeConfigScrollCoordinator = remember {
-        SlockFocusedEditorScrollRequestCoordinator()
+        RaftFocusedEditorScrollRequestCoordinator()
     }
     DisposableEffect(runtimeConfigScrollCoordinator) {
         onDispose { runtimeConfigScrollCoordinator.invalidate() }
     }
 
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_edit_runtime_config).slockDisplayUppercase(),
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.member_dialog_edit_runtime_config).raftDisplayUppercase(),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        val focusedRuntimeEditorBounds = rememberSlockFocusedInputBoundsResolver()
-        val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+        val focusedRuntimeEditorBounds = rememberRaftFocusedInputBoundsResolver()
+        val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
 
         fun keepFocusedRuntimeEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
             val requestGeneration = runtimeConfigScrollCoordinator.begin()
             if (params.height <= 0f) return
             val job = runtimeConfigScrollScope.launch {
-                slockUnifiedDialogKeepFocusedEditorVisible(
+                raftUnifiedDialogKeepFocusedEditorVisible(
                     keyboardHeight = params.height,
                     awaitRelayoutFrame = { withFrameNanos { } },
                     focusedBounds = focusedRuntimeEditorBounds,
                     viewportBounds = { runtimeConfigViewport },
                     currentScrollPosition = {
-                        SlockUnifiedDialogListScrollPosition(
+                        RaftUnifiedDialogListScrollPosition(
                             index = runtimeConfigListState.firstVisibleItemIndex,
                             scrollOffset = runtimeConfigListState.firstVisibleItemScrollOffset
                         )
@@ -10743,7 +11444,7 @@ private fun MembersAgentRuntimeConfigDialog(
         }
 
         CompositionLocalProvider(
-            LocalSlockDialogKeyboardHeightChange provides ::keepFocusedRuntimeEditorVisible
+            LocalRaftDialogKeyboardHeightChange provides ::keepFocusedRuntimeEditorVisible
         ) {
         // Kuikly's row/column measure policy hands the remaining height to unweighted
         // children first, so a capped LazyColumn can swallow the whole keyboard-reduced
@@ -10816,15 +11517,15 @@ private fun MembersAgentRuntimeConfigDialog(
                         builtInFormError?.let { formError ->
                             Text(
                                 text = formError,
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
-                                    .copy(color = SlockColor.AccentRed),
-                                color = SlockColor.AccentRed
+                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
+                                    .copy(color = RaftColor.AccentRed),
+                                color = RaftColor.AccentRed
                             )
-                            SlockBrutalActionButton(
+                            RaftBrutalActionButton(
                                 label = stringResource(MR.strings.common_retry),
-                                leadingIcon = SlockLucideIconName.RefreshCw,
+                                leadingIcon = RaftLucideIconName.RefreshCw,
                                 enabled = !builtInFormLoading && !saving,
-                                backgroundColor = SlockColor.SurfaceWhite,
+                                backgroundColor = RaftColor.SurfaceWhite,
                                 onClick = { builtInFormReloadGeneration += 1 }
                             )
                         }
@@ -10947,17 +11648,17 @@ private fun MembersAgentRuntimeConfigDialog(
                 item {
                     Text(
                         text = stringResource(MR.strings.member_hint_runtime_restart),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextMutedGray
                     )
                 }
                 error?.takeIf { it.isNotBlank() }?.let { message ->
                     item {
                         Text(
                             text = message,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
-                                .copy(color = SlockColor.AccentRed),
-                            color = SlockColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
+                                .copy(color = RaftColor.AccentRed),
+                            color = RaftColor.AccentRed
                         )
                     }
                 }
@@ -10965,21 +11666,21 @@ private fun MembersAgentRuntimeConfigDialog(
                     item {
                         Text(
                             text = message,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
-                                .copy(color = SlockColor.AccentRed),
-                            color = SlockColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
+                                .copy(color = RaftColor.AccentRed),
+                            color = RaftColor.AccentRed
                         )
                     }
                 }
             }
-            SlockDialogFooter {
-                SlockBrutalActionButton(
+            RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !saving,
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     onClick = onDismiss
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
                     enabled =
                         !saving &&
@@ -10990,7 +11691,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             !providerUrlInvalid &&
                             !providerKeyInvalid &&
                             !piProviderKeyInvalid,
-                    backgroundColor = SlockColor.AccentPink,
+                    backgroundColor = RaftColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
                         val effectiveModel = if (customModelMode) customModelName.trim() else model
@@ -11002,7 +11703,7 @@ private fun MembersAgentRuntimeConfigDialog(
                             )
                         val nextConfig =
                             if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                builtInConfigForSave ?: return@SlockBrutalActionButton
+                                builtInConfigForSave ?: return@RaftBrutalActionButton
                             } else buildRuntimeConfig(
                                 runtime = runtime,
                                 model = if (customModelMode) customModelName else model,
@@ -11070,7 +11771,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                     requestGeneration = requestGeneration
                                 )
                             onRuntimeModelsRequest(runtime, true)
-                            return@SlockBrutalActionButton
+                            return@RaftBrutalActionButton
                         }
                         val validatedCatalogGeneration =
                             runtimeModelGenerationsByRuntime[runtime] ?: 0L
@@ -11233,7 +11934,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
     onConfirm: () -> Unit,
     onCancel: () -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = confirmation.title.localized(),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
@@ -11249,32 +11950,31 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                    .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .raftCardSurface(fill = RaftColor.WarningSoft)
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.Info,
+                RaftLucideIcon(
+                    RaftLucideIconName.Info,
                     modifier = Modifier.size(18.dp),
-                    color = SlockColor.TextBlackArgb
+                    color = RaftColor.TextBlackArgb
                 )
                 Text(
                     text = confirmation.message,
-                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = SlockColor.TextBlack
+                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = RaftColor.TextBlack
                 )
             }
-            SlockDialogFooter {
-                SlockBrutalActionButton(
+            RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     onClick = onCancel
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = confirmation.confirmLabel.localized(),
-                    backgroundColor = SlockColor.AccentOrange,
+                    backgroundColor = RaftColor.AccentOrange,
                     onClick = onConfirm
                 )
             }
@@ -11437,7 +12137,7 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
     val totalSkills = groups.sumOf { group -> group.paths.sumOf { path -> path.skills.size } }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
     ) {
         MembersDetailSectionDivider()
         MembersDetailSectionTitle(
@@ -11446,12 +12146,12 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
         if (groups.isEmpty()) {
             Text(
                 text = stringResource(MR.strings.member_state_no_skills),
-                style = SlockType.Body.copy(
+                style = RaftType.Body.copy(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     fontStyle = FontStyle.Italic
                 ),
-                color = SlockColor.TextMutedGray
+                color = RaftColor.TextMutedGray
             )
         } else {
             groups.forEach { group ->
@@ -11465,31 +12165,31 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
 private fun MembersAgentSkillSubSection(group: AgentSkillGroup) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(
+            RaftLucideIcon(
                 name = if (group.title.equals("workspace", ignoreCase = true)) {
-                    SlockLucideIconName.FolderOpen
+                    RaftLucideIconName.FolderOpen
                 } else {
-                    SlockLucideIconName.Globe
+                    RaftLucideIconName.Globe
                 },
                 modifier = Modifier.size(13.dp),
-                color = SlockColor.TextMutedGrayArgb
+                color = RaftColor.TextMutedGrayArgb
             )
             Text(
                 text = group.title,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextMutedGray
             )
             Text(
                 text = "(${group.paths.sumOf { path -> path.skills.size }})",
-                style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.6f)
+                style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = 0.6f)
             )
         }
         if (group.paths.isEmpty()) {
@@ -11499,17 +12199,17 @@ private fun MembersAgentSkillSubSection(group: AgentSkillGroup) {
                 } else {
                     stringResource(MR.strings.member_state_no_global_skills)
                 },
-                style = SlockType.Caption.copy(
+                style = RaftType.Caption.copy(
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
                     fontStyle = FontStyle.Italic
                 ),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+                color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
             )
         } else {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
             ) {
                 group.paths.forEach { pathGroup ->
                     MembersAgentSkillPathGroup(pathGroup)
@@ -11523,30 +12223,30 @@ private fun MembersAgentSkillSubSection(group: AgentSkillGroup) {
 private fun MembersAgentSkillPathGroup(pathGroup: AgentSkillPathGroup) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = pathGroup.path,
-                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.8f),
+                style = RaftType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = 0.8f),
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = "(${pathGroup.skills.size})",
-                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.6f)
+                style = RaftType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = 0.6f)
             )
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             pathGroup.skills.forEach { skill ->
                 MembersAgentSkillCard(skill)
@@ -11560,24 +12260,24 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
+            .background(RaftColor.SurfaceWhite)
+            .padding(horizontal = RaftAppSpacing.Md, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         Text(
             text = skill.name,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         skill.detail?.takeIf { it.isNotBlank() }?.let { detail ->
             Text(
                 text = detail,
-                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -11588,45 +12288,45 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
 @Composable
 private fun MembersAgentCreatedAgentsSection(
     detail: AgentDetailSnapshot?,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val createdAgents = detail?.summary?.createdAgents.orEmpty()
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_created_agents).slockDisplayUppercase(),
+                stringResource(MR.strings.member_section_created_agents).raftDisplayUppercase(),
                 modifier = Modifier.weight(1f)
             )
             Text(
                 text = createdAgents.size.toString(),
-                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+                style = RaftType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
             )
         }
         if (createdAgents.isEmpty()) {
             Text(
                 text = stringResource(MR.strings.member_state_no_created_agents),
-                style = SlockType.Body.copy(
+                style = RaftType.Body.copy(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     fontStyle = FontStyle.Italic
                 ),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+                color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
             )
         } else {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 createdAgents.forEach { agent ->
                     MembersAgentCreatedAgentRow(
@@ -11644,17 +12344,17 @@ private fun MembersAgentCreatedAgentsSection(
 @Composable
 private fun MembersAgentCreatedAgentRow(
     agent: AgentCreatedSummary,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
     val observedIndicatorState =
         resolveMembersAgentStatusIndicatorStateOrNull(
-            canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
+            canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, profile.id.value),
             fixtureFallback =
                 if (fixtureStatusFallbackEnabled) {
-                    agent.toFixtureSlockAgentStatusIndicatorState()
+                    agent.toFixtureRaftAgentStatusIndicatorState()
                 } else {
                     null
                 },
@@ -11666,10 +12366,10 @@ private fun MembersAgentCreatedAgentRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
+            .background(RaftColor.SurfaceWhite)
+            .padding(horizontal = 12.dp, vertical = RaftAppSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         MembersAvatar(
@@ -11685,24 +12385,24 @@ private fun MembersAgentCreatedAgentRow(
         ) {
             Text(
                 text = profile.displayName,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
                     ?: stringResource(MR.strings.member_label_agent),
-                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         // Unknown is not Offline: no dot until something is observed (task #256).
         observedDisplayState?.let { observed ->
-            SlockStatusIndicator(
+            RaftStatusIndicator(
                 color = observed.color,
                 size = 10.dp,
                 pulsing = observed.pulsing
@@ -11716,20 +12416,20 @@ private fun MembersAgentChatTab(
     detail: AgentDetailSnapshot?,
     currentServerId: String?,
     serverMembersState: SharedServerMembersState,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     pageVisibleTick: Int,
     modifier: Modifier = Modifier
 ) {
-    val inheritedTimeContextProvider = LocalSlockTimeContextProvider.current
-    val fallbackTimeCapabilities = remember(timeContext) { timeContext.toSlockTimeCapabilities() }
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
+    val fallbackTimeCapabilities = remember(timeContext) { timeContext.toRaftTimeCapabilities() }
     val fallbackTimeContextProvider =
-        rememberLiveSlockTimeContext(
+        rememberLiveRaftTimeContext(
             capabilities = fallbackTimeCapabilities,
             pageVisibleTick = pageVisibleTick,
             active = inheritedTimeContextProvider == null
         )
     val timeContextProvider = inheritedTimeContextProvider ?: fallbackTimeContextProvider
-    CompositionLocalProvider(LocalSlockTimeContextProvider provides timeContextProvider) {
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContextProvider) {
         MembersAgentChatTabContent(
             detail = detail,
             currentServerId = currentServerId,
@@ -11748,26 +12448,26 @@ private fun MembersAgentChatTabContent(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Text(
-            text = stringResource(MR.strings.member_section_agent_channels_dms).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
+            text = stringResource(MR.strings.member_section_agent_channels_dms).raftDisplayUppercase(),
+            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextMutedGray
         )
         Text(
-            text = stringResource(MR.strings.member_section_channels).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
+            text = stringResource(MR.strings.member_section_channels).raftDisplayUppercase(),
+            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextMutedGray
         )
         val channels = detail?.channels.orEmpty().filter { it.archivedAt.isNullOrBlank() }
         if (channels.isEmpty()) {
             Text(
                 text = stringResource(MR.strings.member_state_no_active_channels),
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextMutedGray
             )
         } else {
             channels.forEach { channel ->
@@ -11777,32 +12477,32 @@ private fun MembersAgentChatTabContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockStroke.Thin)
-                .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderBlack.copy(alpha = 0.15f))
         )
         Text(
-            text = stringResource(MR.strings.member_section_private_chats).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
+            text = stringResource(MR.strings.member_section_private_chats).raftDisplayUppercase(),
+            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextMutedGray
         )
         Text(
             text = stringResource(MR.strings.member_hint_chat_audit_only),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+            color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(SlockStroke.Thin)
-                .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderBlack.copy(alpha = 0.15f))
         )
         val rows = detail?.directMessages.orEmpty()
         if (rows.isEmpty()) {
             Text(
                 text = stringResource(MR.strings.member_state_no_agent_dms),
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextMutedGray
             )
         } else {
             rows.take(8).forEach { row ->
@@ -11817,8 +12517,8 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-            .background(SlockColor.SurfaceWhite)
+            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+            .background(RaftColor.SurfaceWhite)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -11827,39 +12527,39 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SlockLucideIcon(
+            RaftLucideIcon(
                 channel.type.threadChannelHeaderIcon(),
                 modifier = Modifier.size(15.dp),
-                color = SlockColor.TextBlackArgb
+                color = RaftColor.TextBlackArgb
             )
             Text(
                 text = channel.name,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withRaftFontWeight(FontWeight.Bold),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             if (channel.activityMuted) {
-                SlockLucideIcon(
-                    SlockLucideIconName.BellOff,
+                RaftLucideIcon(
+                    RaftLucideIconName.BellOff,
                     modifier = Modifier.size(15.dp),
-                    color = SlockColor.TextMutedGrayArgb
+                    color = RaftColor.TextMutedGrayArgb
                 )
                 Text(
-                    text = stringResource(MR.strings.member_label_muted).slockDisplayUppercase(),
-                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextMutedGray
+                    text = stringResource(MR.strings.member_label_muted).raftDisplayUppercase(),
+                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
+                        .withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextMutedGray
                 )
             }
         }
         channel.description?.takeIf { it.isNotBlank() }?.let { description ->
             Text(
                 text = description,
-                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -11890,7 +12590,7 @@ private fun MembersAgentDmRow(
         remember(row.peerId, currentServerId, serverMembersState) {
             serverMembersState
                 .membersAgentDmPeerProfile(row, currentServerId)
-                ?.slockAvatarCacheIdentity(currentServerId)
+                ?.raftAvatarCacheIdentity(currentServerId)
         }
     // React parity: subtle bordered card (alpha 0.2 border, no brutal shadow)
     // with avatar + name + handle + relative time on the top row, body text
@@ -11898,8 +12598,8 @@ private fun MembersAgentDmRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-            .background(SlockColor.SurfaceWhite)
+            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+            .background(RaftColor.SurfaceWhite)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -11910,52 +12610,52 @@ private fun MembersAgentDmRow(
         ) {
             Text(
                 text = stringResource(MR.strings.member_label_agent_dm),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.TextMutedGray
             )
-            SlockAvatar(
+            RaftAppAvatar(
                 avatarWireValue = row.peerAvatarUrl,
                 label = row.peerName.take(1).uppercase(),
                 avatarSize = 22.dp,
-                borderWidth = SlockStroke.Thin,
+                borderWidth = RaftAppStroke.Thin,
                 cacheSubject = avatarCacheIdentity?.subject,
                 cacheServerId = avatarCacheIdentity?.serverId
             )
             Text(
                 text = row.peerName,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             Text(
                 text = "@${row.peerName}",
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1
             )
-            SlockRelativeTimestampText(
+            RaftRelativeTimestampText(
                 value = row.lastMessageAt,
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1
             )
         }
         if (!row.lastMessagePreview.isNullOrBlank()) {
             Text(
                 text = row.lastMessagePreview,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
         }
         Text(
-            text = stringResource(MR.strings.member_label_activity_only).slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            text = stringResource(MR.strings.member_label_activity_only).raftDisplayUppercase(),
+            style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
         )
     }
 }
@@ -11963,7 +12663,7 @@ private fun MembersAgentDmRow(
 @Composable
 private fun MembersAgentRemindersTab(
     detail: AgentDetailSnapshot?,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     onOpenMessageRef: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -11973,10 +12673,10 @@ private fun MembersAgentRemindersTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (rows.isEmpty()) {
-            SlockEmptyState(
+            RaftEmptyState(
                 title = stringResource(MR.strings.member_state_no_reminders),
                 detail = stringResource(MR.strings.member_hint_no_scheduled_reminders),
-                iconName = SlockLucideIconName.BellRing,
+                iconName = RaftLucideIconName.BellRing,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 220.dp, max = 520.dp)
@@ -11992,52 +12692,52 @@ private fun MembersAgentRemindersTab(
 @Composable
 private fun MembersAgentReminderCard(
     reminder: AgentReminderSummary,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     onOpenMessageRef: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
-            .background(SlockColor.SurfaceWhite)
+            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
+            .background(RaftColor.SurfaceWhite)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         Text(
             text = reminder.title,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.Clock3,
+                RaftLucideIcon(
+                    RaftLucideIconName.Clock3,
                     modifier = Modifier.size(12.dp),
                     color = "#99000000"
                 )
                 Text(
                     text = reminder.fireAt.membersReminderRelativeTime(timeContext),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium)
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium)
                         .copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    color = RaftColor.TextBlack.copy(alpha = 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             Text(
                 text = reminder.fireAt.membersReminderShortDateTime(timeContext),
-                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextBlack.copy(alpha = 0.5f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -12045,24 +12745,24 @@ private fun MembersAgentReminderCard(
         }
         reminder.recurrenceDescription?.takeIf { it.isNotBlank() }?.let { recurrence ->
             MembersAgentReminderChip(
-                iconName = SlockLucideIconName.RefreshCw,
+                iconName = RaftLucideIconName.RefreshCw,
                 text = recurrence,
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                background = SlockColor.AccentLavender.copy(alpha = 0.3f),
-                textColor = SlockColor.TextBlack
+                background = RaftColor.AccentLavender.copy(alpha = 0.3f),
+                textColor = RaftColor.TextBlack
             )
         }
         reminder.messageRef?.takeIf { it.isNotBlank() }?.let { messageRef ->
             val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
             MembersAgentReminderChip(
-                iconName = SlockLucideIconName.Link2,
+                iconName = RaftLucideIconName.Link2,
                 text = messageRef,
-                background = SlockColor.SurfaceWhite,
+                background = RaftColor.SurfaceWhite,
                 textColor =
                     if (permalink != null) {
-                        SlockColor.TextBlack
+                        RaftColor.TextBlack
                     } else {
-                        SlockColor.TextBlack.copy(alpha = 0.7f)
+                        RaftColor.TextBlack.copy(alpha = 0.7f)
                     },
                 onClick = permalink?.let { link -> { onOpenMessageRef(link) } }
             )
@@ -12072,7 +12772,7 @@ private fun MembersAgentReminderCard(
 
 @Composable
 private fun MembersAgentReminderChip(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     text: String,
     background: Color,
     textColor: Color,
@@ -12086,16 +12786,16 @@ private fun MembersAgentReminderChip(
         }
     Row(
         modifier = interactionModifier
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
             .background(background)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(11.dp), color = SlockColor.TextBlackArgb)
+        RaftLucideIcon(iconName, modifier = Modifier.size(11.dp), color = RaftColor.TextBlackArgb)
         Text(
             text = text,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = textColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -12107,7 +12807,7 @@ private fun MembersAgentReminderChip(
 private fun MembersAgentWorkspaceTab(
     treeState: MembersAgentWorkspaceTreeState,
     expandedDirs: Set<String>,
-    loadedDirs: Map<String, List<SlockWorkspaceNode>>,
+    loadedDirs: Map<String, List<RaftWorkspaceNode>>,
     loadingDirs: Set<String>,
     dirErrors: Map<String, String>,
     onRefresh: () -> Unit,
@@ -12117,12 +12817,12 @@ private fun MembersAgentWorkspaceTab(
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(
-        title = stringResource(MR.strings.member_section_workspace).slockDisplayUppercase(),
+        title = stringResource(MR.strings.member_section_workspace).raftDisplayUppercase(),
         modifier = modifier,
         framed = false,
         trailingContent = {
-            SlockBrutalIconButton(
-                iconName = SlockLucideIconName.RefreshCw,
+            RaftBrutalIconButton(
+                iconName = RaftLucideIconName.RefreshCw,
                 onClick = onRefresh,
                 size = 30.dp,
                 shadowOffset = 2.dp
@@ -12170,9 +12870,9 @@ private fun MembersAgentWorkspaceTab(
 
 @Composable
 private fun MembersWorkspaceTreeView(
-    root: SlockWorkspaceNode,
+    root: RaftWorkspaceNode,
     expandedDirs: Set<String>,
-    loadedDirs: Map<String, List<SlockWorkspaceNode>>,
+    loadedDirs: Map<String, List<RaftWorkspaceNode>>,
     loadingDirs: Set<String>,
     dirErrors: Map<String, String>,
     onToggleDirectory: (String) -> Unit,
@@ -12190,7 +12890,6 @@ private fun MembersWorkspaceTreeView(
             .fillMaxWidth()
             .heightIn(min = 280.dp, max = 560.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
-        beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
     ) {
         items(rows.size, key = { "workspace-${rows[it].node.path}" }) { index ->
             val row = rows[index]
@@ -12222,7 +12921,7 @@ private fun MembersWorkspaceNodeRow(
                 .fillMaxWidth()
                 .heightIn(min = 30.dp)
                 .clickable {
-                    if (node.kind == SlockWorkspaceFileKind.Folder) {
+                    if (node.kind == RaftWorkspaceFileKind.Folder) {
                         onToggleDirectory(node.path)
                     } else {
                         onSelectFile(node.path)
@@ -12233,7 +12932,7 @@ private fun MembersWorkspaceNodeRow(
             horizontalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Spacer(Modifier.width((row.depth * 14).dp))
-            if (node.kind == SlockWorkspaceFileKind.Folder) {
+            if (node.kind == RaftWorkspaceFileKind.Folder) {
                 if (loading) {
                     // #70: replace the chevron with a rotating Loader spinner
                     // while the directory contents are being fetched. Mirrors
@@ -12241,22 +12940,22 @@ private fun MembersWorkspaceNodeRow(
                     // per @artin's 06-23 20:51 directive shows the spinner
                     // inline as the chevron substitute instead of alongside
                     // a "Loading..." text label).
-                    SlockSpinnerIcon(size = 13.dp)
+                    RaftSpinnerIcon(size = 13.dp)
                 } else {
-                    SlockLucideIcon(
-                        if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
+                    RaftLucideIcon(
+                        if (expanded) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
                         Modifier.size(13.dp),
                     )
                 }
             } else {
                 Spacer(Modifier.width(13.dp))
             }
-            SlockLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(14.dp))
+            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(14.dp))
             Text(
                 text = node.name.ifBlank { node.path },
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(if (node.name == "memory.md") FontWeight.Bold else FontWeight.Normal),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withRaftFontWeight(if (node.name == "memory.md") FontWeight.Bold else FontWeight.Normal),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -12264,16 +12963,16 @@ private fun MembersWorkspaceNodeRow(
             node.meta?.takeIf { it.isNotBlank() }?.let { meta ->
                 Text(
                     text = meta,
-                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1
                 )
             }
             if (loading) {
                 Text(
                     text = stringResource(MR.strings.common_loading),
-                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1
                 )
             }
@@ -12281,8 +12980,8 @@ private fun MembersWorkspaceNodeRow(
         errorMessage?.let {
             Text(
                 text = stringResource(MR.strings.member_error_workspace_child_load, it),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.AccentOrange,
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.AccentOrange,
                 modifier = Modifier.padding(start = ((row.depth + 1) * 14).dp)
             )
         }
@@ -12292,9 +12991,9 @@ private fun MembersWorkspaceNodeRow(
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField(stringResource(MR.strings.member_label_files), message)
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = stringResource(MR.strings.common_retry),
-        leadingIcon = SlockLucideIconName.RefreshCw,
+        leadingIcon = RaftLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh
@@ -12304,9 +13003,9 @@ private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
 @Composable
 private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
     MembersDetailField(stringResource(MR.strings.member_label_state), message)
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = stringResource(MR.strings.common_retry),
-        leadingIcon = SlockLucideIconName.RefreshCw,
+        leadingIcon = RaftLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh
@@ -12316,16 +13015,16 @@ private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
 @Composable
 private fun MembersAgentAppsTab(
     detail: AgentDetailSnapshot?,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).slockDisplayUppercase(), modifier = modifier) {
+    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).raftDisplayUppercase(), modifier = modifier) {
         Text(
             text = stringResource(MR.strings.member_hint_connected_apps),
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = RaftColor.TextMutedGray
         )
         val appLogins = detail?.appLogins
         when (appLogins?.loadState) {
@@ -12370,17 +13069,17 @@ private fun MembersAgentAppsTab(
 @Composable
 private fun MembersAgentAppLoginCard(
     item: AgentAppLoginItem,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit
 ) {
-    SlockBrutalCard(
+    RaftBrutalCard(
         shadowOffset = 3.dp,
-        contentPadding = SlockSpacing.Md,
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        contentPadding = RaftAppSpacing.Md,
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalAlignment = Alignment.Top
         ) {
             Column(
@@ -12389,8 +13088,8 @@ private fun MembersAgentAppLoginCard(
             ) {
                 Text(
                     text = item.clientName,
-                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -12400,8 +13099,8 @@ private fun MembersAgentAppLoginCard(
                             MR.strings.member_label_connected_since,
                             it.membersActivityDisplayTime(timeContext)
                         ),
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextMutedGray
                     )
                 }
             }
@@ -12410,8 +13109,8 @@ private fun MembersAgentAppLoginCard(
         item.clientDescription?.takeIf { it.isNotBlank() }?.let {
             Text(
                 text = it,
-                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = RaftColor.TextBlack
             )
         }
         item.clientAgentManifestUrl?.takeIf { it.isNotBlank() }?.let {
@@ -12421,8 +13120,8 @@ private fun MembersAgentAppLoginCard(
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
                 item.scopes.forEach { scope ->
                     MembersAgentAppLoginScopeChip(scope)
@@ -12430,11 +13129,11 @@ private fun MembersAgentAppLoginCard(
             }
         }
         item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.member_action_view_service),
-                leadingIcon = SlockLucideIconName.ExternalLink,
+                leadingIcon = RaftLucideIconName.ExternalLink,
                 enabled = true,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = RaftColor.SurfaceWhite,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = { onOpenUrl(homepageUrl) }
             )
@@ -12444,12 +13143,12 @@ private fun MembersAgentAppLoginCard(
 
 @Composable
 private fun MembersAgentAppLoginStatusBadge(label: String) {
-    SlockBrutalBadge(label = label, tone = SlockBrutalTone.Lime)
+    RaftBrutalBadge(label = label, tone = RaftBrutalTone.Lime)
 }
 
 @Composable
 private fun MembersAgentAppLoginScopeChip(scope: String) {
-    SlockBrutalBadge(label = scope, tone = SlockBrutalTone.White)
+    RaftBrutalBadge(label = scope, tone = RaftBrutalTone.White)
 }
 
 @Composable
@@ -12458,7 +13157,7 @@ private fun MembersAgentActivityTab(
     loadState: MembersAgentActivityLoadState,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
     autoScrollToLatest: Boolean = true
@@ -12469,7 +13168,7 @@ private fun MembersAgentActivityTab(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite),
+            .background(RaftColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Row(
@@ -12477,23 +13176,23 @@ private fun MembersAgentActivityTab(
                 .fillMaxWidth()
                 .padding(
                     horizontal = MembersPageInset,
-                    vertical = SlockSpacing.Xs
+                    vertical = RaftAppSpacing.Xs
                 ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             MembersDetailSectionTitle(
-                stringResource(MR.strings.member_section_activity_diagnostics).slockDisplayUppercase(),
+                stringResource(MR.strings.member_section_activity_diagnostics).raftDisplayUppercase(),
                 modifier = Modifier.weight(1f)
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = if (copySucceeded) stringResource(MR.strings.common_done) else stringResource(MR.strings.member_action_copy_info),
-                leadingIcon = if (copySucceeded) SlockLucideIconName.Check else SlockLucideIconName.Clipboard,
+                leadingIcon = if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Clipboard,
                 enabled = diagnosticActionState?.inProgress != true,
                 minHeight = 32.dp,
                 minWidth = 72.dp,
                 shadowOffset = 2.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
                 onClick = onCopyDiagnostics
             )
         }
@@ -12509,24 +13208,24 @@ private fun MembersAgentActivityTab(
             MembersAgentActivityLoadNotice(loadState)
         }
         if (!hasRows && (loadState is MembersAgentActivityLoadState.Loading || loadState is MembersAgentActivityLoadState.Refreshing)) {
-            SlockCenteredLoading(
+            RaftCenteredLoading(
                 message = stringResource(MR.strings.member_state_loading_activity),
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )
         } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
-            SlockEmptyState(
+            RaftEmptyState(
                 title = stringResource(MR.strings.member_error_load_activity),
                 detail = loadState.error.userFacingMessage(errorStrings),
-                iconName = SlockLucideIconName.Activity,
+                iconName = RaftLucideIconName.Activity,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             )
         } else if (rows.isEmpty()) {
-            SlockEmptyState(
+            RaftEmptyState(
                 title = stringResource(MR.strings.member_state_no_activity),
                 detail = stringResource(MR.strings.member_state_activity_start_agent),
-                iconName = SlockLucideIconName.Activity,
+                iconName = RaftLucideIconName.Activity,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -12568,7 +13267,6 @@ private fun MembersAgentActivityTab(
                         scrollDown = NestedScrollMode.SELF_FIRST
                     ),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
-                beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
                     MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
@@ -12595,15 +13293,15 @@ private fun MembersAgentActivityLoadNotice(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceCream)
-            .padding(horizontal = MembersPageInset, vertical = SlockSpacing.Xs),
+            .background(RaftColor.SurfaceCream)
+            .padding(horizontal = MembersPageInset, vertical = RaftAppSpacing.Xs),
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = message,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack
+            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack
         )
     }
 }
@@ -12611,7 +13309,7 @@ private fun MembersAgentActivityLoadNotice(
 @Composable
 private fun MembersAgentActivityRow(
     activity: AgentActivityEntry,
-    timeContext: SlockTimeContext,
+    timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit
 ) {
     val key = activity.activityTimelineKey()
@@ -12627,22 +13325,22 @@ private fun MembersAgentActivityRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
+            .background(RaftColor.SurfaceWhite)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Top
     ) {
         // Web: `shrink-0 font-mono text-xs whitespace-nowrap` — natural width, no fixed column.
         Text(
             text = activity.timestamp.membersActivityDisplayTime(timeContext),
-            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+            color = RaftColor.TextMutedGray,
             maxLines = 1
         )
         Box(
             modifier = Modifier.requiredWidth(MembersAgentActivityIndicatorLaneWidth),
             contentAlignment = Alignment.TopCenter
         ) {
-            SlockStatusIndicator(
+            RaftStatusIndicator(
                 color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
                 size = 8.dp,
                 pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
@@ -12662,38 +13360,38 @@ private fun MembersAgentActivityRow(
             ) {
                 Text(
                     text = activity.title,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
-                        .withSlockFontWeight(FontWeight.Medium),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+                        .withRaftFontWeight(FontWeight.Medium),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
                 activity.membersActivitySubagentBadgeLabel()?.let { subagentLabel ->
-                    SlockBrutalBadge(
+                    RaftBrutalBadge(
                         label = subagentLabel,
-                        tone = SlockBrutalTone.White,
+                        tone = RaftBrutalTone.White,
                         uppercase = false
                     )
                 }
             }
             if (displayBody.isNotBlank()) {
-                // #64 owner override (artin 06-23 17:41): '改成用 SlockMarkdownBody
+                // #64 owner override (artin 06-23 17:41): '改成用 RaftMarkdownBody
                 // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
                 // the activity body can render task refs / issue refs (e.g. `#225`,
                 // `#task-7`) as styled inline text + clickable onOpenUrl links
                 // when `refTextEnabled` is true.
                 if (activity.refTextEnabled) {
-                    SlockMarkdownBody(
+                    RaftMarkdownBody(
                         body = displayBody,
-                        textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        textStyle = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                         onOpenUrl = onOpenUrl,
                     )
                 } else {
                     Text(
                         text = displayBody,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextMutedGray,
                         maxLines = if (expanded) 12 else 3,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -12702,9 +13400,9 @@ private fun MembersAgentActivityRow(
             if (longBody) {
                 Text(
                     text = if (expanded) stringResource(MR.strings.member_label_show_less) else stringResource(MR.strings.member_label_show_more),
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                        .withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextBlack,
                     modifier = Modifier.clickable { expanded = !expanded }
                 )
             }
@@ -12907,7 +13605,7 @@ private fun MembersAgentPermissionsTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
-    agentsApiClient: build.raft.app.data.SlockAgentsApiClient?,
+    agentsApiClient: build.raft.app.data.RaftAgentsApiClient?,
     initialScopeSet: AgentScopeSet? = null,
     onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -13008,7 +13706,7 @@ private fun MembersAgentPermissionsTab(
     val currentDraft = draft
     val isDirty = currentServer != null && currentDraft != null && !currentDraft.toSet().equals(currentServer.granted.toSet())
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         if (error != null && currentServer == null) {
             // Initial-load error: brutal warning card + Retry button. Return
             // early after rendering so the rest of the panel is not drawn
@@ -13024,9 +13722,9 @@ private fun MembersAgentPermissionsTab(
             // Loading state: text "Loading permissions…"
             Text(
                 text = stringResource(MR.strings.member_state_loading_permissions),
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray,
-                modifier = Modifier.padding(SlockSpacing.Sm)
+                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = RaftColor.TextMutedGray,
+                modifier = Modifier.padding(RaftAppSpacing.Sm)
             )
             return
         }
@@ -13035,21 +13733,20 @@ private fun MembersAgentPermissionsTab(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceCream)
+                    .raftCardSurface(fill = RaftColor.FillMuted)
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.TriangleAlert,
+                RaftLucideIcon(
+                    RaftLucideIconName.TriangleAlert,
                     modifier = Modifier.size(16.dp),
                     color = "#FFD32F2F"
                 )
                 Text(
                     text = error ?: "",
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = RaftColor.TextBlack,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -13060,8 +13757,7 @@ private fun MembersAgentPermissionsTab(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite)
+                .raftCardSurface(fill = RaftColor.Card)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -13069,17 +13765,17 @@ private fun MembersAgentPermissionsTab(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = if (isCustom) stringResource(MR.strings.member_status_permissions_custom) else stringResource(MR.strings.member_status_permissions_default),
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                    color = SlockColor.TextBlack
+                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = RaftColor.TextBlack
                 )
                 Text(
                     text = if (isCustom) stringResource(MR.strings.member_hint_permissions_custom) else stringResource(MR.strings.member_hint_permissions_default),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = RaftColor.TextMutedGray
                 )
             }
             if (isCustom) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.member_action_use_default),
                     onClick = {
                         scope.launch { resetToDefault() }
@@ -13104,16 +13800,16 @@ private fun MembersAgentPermissionsTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = if (saving) stringResource(MR.strings.common_loading) else stringResource(MR.strings.member_action_save_permissions),
                 onClick = {
                     scope.launch { save() }
                 },
                 enabled = !saving && isDirty,
-                backgroundColor = SlockColor.AccentPink,
+                backgroundColor = RaftColor.AccentPink,
                 minWidth = 132.dp
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.member_action_discard),
                 onClick = ::discard,
                 enabled = !saving && isDirty,
@@ -13121,8 +13817,8 @@ private fun MembersAgentPermissionsTab(
             )
             Text(
                 text = stringResource(MR.strings.member_label_revision, currentServer.revision.toString()),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.4f),
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = 0.4f),
                 modifier = Modifier.padding(start = 4.dp)
             )
         }
@@ -13142,13 +13838,13 @@ private fun PermissionsSection(
         Column(modifier = Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = title,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = RaftColor.TextBlack
             )
             Text(
                 text = description,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = RaftColor.TextMutedGray
             )
         }
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -13169,23 +13865,22 @@ private fun PermissionsGroupBox(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
+            .raftCardSurface(fill = RaftColor.Card)
     ) {
         Column(modifier = Modifier.fillMaxWidth().border(width = 0.dp, color = Color.Transparent).padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
                 text = group.localizedLabel(),
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = RaftColor.TextBlack
             )
             Text(
                 text = group.localizedDescription(),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray.copy(alpha = 0.5f)
+                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = RaftColor.TextMutedGray.copy(alpha = 0.5f)
             )
         }
         // Hairline divider between header and rows.
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack.copy(alpha = 0.1f)))
         group.scopes.forEachIndexed { index, row ->
             Row(
                 modifier = Modifier
@@ -13201,7 +13896,7 @@ private fun PermissionsGroupBox(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SlockCheckbox(
+                RaftAppCheckbox(
                     checked = row.scope in draft,
                     onCheckedChange = { onToggle(row.scope) },
                     enabled = canManage,
@@ -13211,24 +13906,24 @@ private fun PermissionsGroupBox(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = row.localizedVerbLabel(),
-                            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextBlack
+                            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = RaftColor.TextBlack
                         )
                         Text(
                             text = row.scope,
-                            style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
-                            color = SlockColor.TextMutedGray.copy(alpha = 0.5f)
+                            style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
+                            color = RaftColor.TextMutedGray.copy(alpha = 0.5f)
                         )
                     }
                     Text(
                         text = row.localizedDescription(),
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextMutedGray.copy(alpha = 0.6f)
+                        style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                        color = RaftColor.TextMutedGray.copy(alpha = 0.6f)
                     )
                 }
             }
             if (index < group.scopes.lastIndex) {
-                Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack.copy(alpha = 0.1f)))
             }
         }
     }
@@ -13244,15 +13939,15 @@ private fun MemberKindBadge(kind: MemberKind) {
     Box(
         modifier = Modifier
             .background(kind.membersAvatarColor)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+            .padding(horizontal = RaftAppSpacing.Xs, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = kind.name.uppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Clip
         )
@@ -13262,18 +13957,18 @@ private fun MemberKindBadge(kind: MemberKind) {
 @Composable
 private fun MembersDetailActionButton(
     label: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         leadingIcon = iconName,
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        backgroundColor = SlockColor.AccentPink
+        backgroundColor = RaftColor.AccentPink
     )
 }
 
@@ -13288,10 +13983,10 @@ private fun MembersProfilePencilButton(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.Pencil,
+        RaftLucideIcon(
+            RaftLucideIconName.Pencil,
             modifier = Modifier.size(14.dp),
-            color = SlockColor.TextMutedGrayArgb
+            color = RaftColor.TextMutedGrayArgb
         )
     }
 }
@@ -13306,7 +14001,7 @@ private fun MembersEditableSectionTitleRow(
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         MembersDetailSectionTitle(title)
         if (showEdit) {
@@ -13321,8 +14016,8 @@ private fun MembersDetailSectionDivider(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(SlockStroke.Thin)
-            .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
+            .height(RaftAppStroke.Thin)
+            .background(RaftColor.BorderBlack.copy(alpha = 0.1f))
     )
 }
 
@@ -13331,7 +14026,7 @@ private fun MembersDetailSectionTitle(
     title: String,
     modifier: Modifier = Modifier
 ) {
-    SlockSectionEyebrow(label = title, modifier = modifier)
+    RaftAppSectionEyebrow(label = title, modifier = modifier)
 }
 
 @Composable
@@ -13342,12 +14037,12 @@ private fun MembersDetailSection(
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         MembersDetailSectionDivider()
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             MembersDetailSectionTitle(title, modifier = Modifier.weight(1f))
             trailingContent?.invoke()
@@ -13356,15 +14051,14 @@ private fun MembersDetailSection(
             if (framed) {
                 Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Md)
+                    .raftCardSurface(fill = RaftColor.Card)
+                    .padding(RaftAppSpacing.Md)
             } else {
                 Modifier.fillMaxWidth()
             }
         Column(
             modifier = contentModifier,
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             content()
         }
@@ -13375,19 +14069,19 @@ private fun MembersDetailSection(
 private fun MembersDetailField(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
+            text = label.raftDisplayUppercase(),
+            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             modifier = Modifier.width(86.dp)
         )
         Text(
             text = value.ifBlank { "—" },
-            style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = RaftColor.TextBlack,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -13401,14 +14095,14 @@ internal fun MembersPageHeader(
     refreshing: Boolean = false,
     onBack: (() -> Unit)? = null
 ) {
-    SlockMainTabPageHeader(
-        surface = SlockMainTabHeaderSurface.Members,
+    RaftMainTabPageHeader(
+        surface = RaftMainTabHeaderSurface.Members,
         title = title,
         subtitle = null,
         refreshing = refreshing,
         leadingContent = if (onBack != null) {
             {
-                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
             }
         } else {
             null
@@ -13423,13 +14117,13 @@ private fun MembersListRow(
     member: MemberProfile,
     selected: Boolean = false,
     modifier: Modifier = Modifier,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onClick: () -> Unit = {}
 ) {
     val agentStatusDisplayState =
         if (member.kind == MemberKind.Agent) {
-            rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
         } else {
             null
         }
@@ -13437,9 +14131,9 @@ private fun MembersListRow(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = MembersListRowMinHeight)
-            .background(if (selected) LocalSlockTheme.current.surfaceMuted else Color.Transparent)
+            .background(if (selected) LocalRaftTheme.current.surfaceMuted else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(vertical = SlockSpacing.Sm),
+            .padding(vertical = RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(MembersListContentGap)
     ) {
@@ -13454,12 +14148,12 @@ private fun MembersListRow(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
                 Text(
                     text = member.displayName,
                     style = MembersListNameTextStyle,
-                    color = SlockColor.TextBlack,
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = maxNameWidth)
@@ -13467,7 +14161,7 @@ private fun MembersListRow(
                 Text(
                     text = member.description ?: member.handle,
                     style = MembersListDescriptionTextStyle,
-                    color = SlockColor.TextMutedGray,
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -13478,7 +14172,7 @@ private fun MembersListRow(
             // Same contract as the detail header: null is Unknown, not Offline, so the row
             // shows no dot rather than a grey one until a resolution exists (task #253/#256).
             agentStatusDisplayState?.let { state ->
-                SlockStatusIndicator(
+                RaftStatusIndicator(
                     color = state.color,
                     size = MemberStatusDotSize,
                     pulsing = state.pulsing
@@ -13494,17 +14188,17 @@ private fun MembersAvatar(
     avatarSize: Dp = MembersListAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
     statusDisplayState: MembersAgentStatusDisplayState = MembersUnknownAgentStatusDisplayState,
-    statusIndicatorState: SlockAgentStatusIndicatorState? = null,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    statusIndicatorState: RaftAgentStatusIndicatorState? = null,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     showStatusOverlay: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val resolvedAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id.value)
+    val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
     val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
-    SlockAvatarWithStatus(
+    RaftAvatarWithStatus(
         modifier = modifier,
         statusColor =
             if (showStatusOverlay && member.kind == MemberKind.Agent) {
@@ -13516,11 +14210,11 @@ private fun MembersAvatar(
         statusSize = statusSize,
         statusPulsing = statusIndicatorState?.pulsing ?: statusDisplayState.pulsing
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = avatarWireValue,
             label = member.avatarLabel,
             avatarSize = avatarSize,
-            cacheSubject = member.slockAvatarCacheSubject(),
+            cacheSubject = member.raftAvatarCacheSubject(),
             cacheServerId = member.serverId?.value
         )
     }
@@ -13528,10 +14222,10 @@ private fun MembersAvatar(
 
 private val MemberKind.membersAvatarColor: Color
     get() = when (this) {
-        MemberKind.Human -> SlockColor.AccentLavender
-        MemberKind.Agent -> SlockColor.AccentPink
-        MemberKind.System -> SlockColor.AccentCyan
-        MemberKind.External -> SlockColor.AccentCyan
+        MemberKind.Human -> RaftColor.AccentLavender
+        MemberKind.Agent -> RaftColor.AccentPink
+        MemberKind.System -> RaftColor.AccentCyan
+        MemberKind.External -> RaftColor.AccentCyan
     }
 
 internal data class MembersAgentStatusDisplayState(
@@ -13544,7 +14238,7 @@ internal data class MembersAgentStatusDisplayState(
 private val MembersUnknownAgentStatusDisplayState =
     MembersAgentStatusDisplayState(
         status = null,
-        color = SlockColor.StatusNeutralGray,
+        color = RaftColor.StatusNeutralGray,
         pulsing = false,
         external = false
     )
@@ -13553,7 +14247,7 @@ internal fun MemberProfile.membersAgentStatusDisplayState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
 ): MembersAgentStatusDisplayState =
-    toFixtureSlockAgentStatusIndicatorState(
+    toFixtureRaftAgentStatusIndicatorState(
         summaryStatus = summaryStatus,
         summaryActivity = summaryActivity
     ).toMembersAgentStatusDisplayState()
@@ -13562,25 +14256,25 @@ internal fun MemberProfile.membersAgentStatusDisplayState(
  * Fixture fallback goes through the single canonical mapping so the external
  * short-circuit (task #1119) applies here exactly as it does to the live resolver.
  */
-private fun MemberProfile.toFixtureSlockAgentStatusIndicatorState(
+private fun MemberProfile.toFixtureRaftAgentStatusIndicatorState(
     summaryStatus: String? = null,
     summaryActivity: String? = null
-): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
+): RaftAgentStatusIndicatorState =
+    raftAgentStatusIndicatorState(
         status = membersResolvedAgentStatus(summaryStatus, summaryActivity),
         presence = presence,
         external = isExternal
     )
 
-private fun AgentCreatedSummary.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
+private fun AgentCreatedSummary.toFixtureRaftAgentStatusIndicatorState(): RaftAgentStatusIndicatorState =
+    raftAgentStatusIndicatorState(
         status = normalizedAgentRuntimeStatus(activity = null, lifecycleStatus = status),
         presence = Presence.Offline,
         external = isExternal
     )
 
-private fun AgentProfile.toFixtureSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
-    slockAgentStatusIndicatorState(
+private fun AgentProfile.toFixtureRaftAgentStatusIndicatorState(): RaftAgentStatusIndicatorState =
+    raftAgentStatusIndicatorState(
         status = agentStatus,
         presence = presence,
         statusLabel = statusLabel,
@@ -13599,14 +14293,6 @@ private val MemberProfile.detailRoleLabel: String
                 MemberKind.System -> "System"
                 MemberKind.External -> "External"
             }
-
-private fun MemberProfile.membersHumanRoleChipColor(): Color =
-    when (roleDescription?.trim()?.lowercase()) {
-        "owner" -> SlockColor.AccentOrange
-        "admin" -> SlockColor.AccentPink
-        "member" -> SlockColor.AccentLavender
-        else -> if (membershipStatus == "removed") SlockColor.EmptyStateGray else SlockColor.AccentLavender
-    }
 
 private fun MemberProfile.membersResolvedAgentStatus(
     summaryStatus: String?,
@@ -13637,7 +14323,7 @@ internal fun membersAgentStatusLabel(
  * with an outdated state (e.g. green Online dot labelled "Working").
  */
 internal fun membersLiveAgentStatusLabel(
-    indicatorState: SlockAgentStatusIndicatorState?,
+    indicatorState: RaftAgentStatusIndicatorState?,
     summaryStatus: String?,
     summaryActivity: String?,
     summaryActivityDetail: String?,
@@ -13665,7 +14351,7 @@ internal fun membersLiveAgentStatusLabel(
 
 private fun MemberProfile.membersAgentRuntimeErrorText(
     detail: AgentDetailSnapshot?,
-    statusIndicatorState: SlockAgentStatusIndicatorState?
+    statusIndicatorState: RaftAgentStatusIndicatorState?
 ): String? {
     if (kind != MemberKind.Agent) return null
     val summary = detail?.summary
@@ -13725,7 +14411,7 @@ private fun JsonElement?.membersAgentActivityStringOrNull(): String? =
 internal fun buildMembersAgentDiagnostics(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
-    statusIndicatorState: SlockAgentStatusIndicatorState?
+    statusIndicatorState: RaftAgentStatusIndicatorState?
 ): String {
     val summary = detail?.summary
     return listOf(
@@ -13846,20 +14532,20 @@ private fun AgentActivityEntry.activityTimelineKey(): String =
     id.ifBlank { "${type}:${timestamp.orEmpty()}:${body.orEmpty()}:${toolName.orEmpty()}" }
 
 private data class MembersWorkspaceFlatNode(
-    val node: SlockWorkspaceNode,
+    val node: RaftWorkspaceNode,
     val depth: Int
 )
 
 private fun membersWorkspaceRows(
-    nodes: List<SlockWorkspaceNode>,
+    nodes: List<RaftWorkspaceNode>,
     expandedDirs: Set<String>,
-    loadedDirs: Map<String, List<SlockWorkspaceNode>>
+    loadedDirs: Map<String, List<RaftWorkspaceNode>>
 ): List<MembersWorkspaceFlatNode> =
     buildList {
-        fun visit(current: List<SlockWorkspaceNode>, depth: Int) {
+        fun visit(current: List<RaftWorkspaceNode>, depth: Int) {
             current.forEach { node ->
                 add(MembersWorkspaceFlatNode(node, depth))
-                if (node.kind == SlockWorkspaceFileKind.Folder && node.path in expandedDirs) {
+                if (node.kind == RaftWorkspaceFileKind.Folder && node.path in expandedDirs) {
                     visit(loadedDirs[node.path] ?: node.children, depth + 1)
                 }
             }
@@ -13867,13 +14553,13 @@ private fun membersWorkspaceRows(
         visit(nodes, 0)
     }
 
-private fun SlockWorkspaceNode.membersWorkspaceIconName(expanded: Boolean): String =
+private fun RaftWorkspaceNode.membersWorkspaceIconName(expanded: Boolean): String =
     when (kind) {
-        SlockWorkspaceFileKind.Folder -> if (expanded) "folder-open" else "folder"
-        SlockWorkspaceFileKind.Markdown,
-        SlockWorkspaceFileKind.Text -> "file-text"
-        SlockWorkspaceFileKind.Image -> "image"
-        SlockWorkspaceFileKind.Unsupported -> "file"
+        RaftWorkspaceFileKind.Folder -> if (expanded) "folder-open" else "folder"
+        RaftWorkspaceFileKind.Markdown,
+        RaftWorkspaceFileKind.Text -> "file-text"
+        RaftWorkspaceFileKind.Image -> "image"
+        RaftWorkspaceFileKind.Unsupported -> "file"
     }
 
 private fun Long?.membersWorkspaceSizeLabel(): String? {
@@ -13886,18 +14572,18 @@ private fun Long?.membersWorkspaceSizeLabel(): String? {
 }
 
 private fun String?.membersActivitySortKey(): Long =
-    parseSlockTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
+    parseRaftTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
 
-private fun KuiklyMembersPayload.toSlockTimeContext(): SlockTimeContext =
-    SlockTimeContext(
+private fun RaftMembersPayload.toRaftTimeContext(): RaftTimeContext =
+    RaftTimeContext(
         localOffsetMinutes = localOffsetMinutes,
         todayEpochDay = todayEpochDay,
         nowEpochMillis = nowEpochMillis,
         timeFormat = timeFormat
     )
 
-private fun KuiklyMemberDetailPayload.toSlockTimeContext(): SlockTimeContext =
-    SlockTimeContext(
+private fun RaftMemberDetailPayload.toRaftTimeContext(): RaftTimeContext =
+    RaftTimeContext(
         localOffsetMinutes = localOffsetMinutes,
         todayEpochDay = todayEpochDay,
         nowEpochMillis = nowEpochMillis,
@@ -13955,16 +14641,16 @@ private fun String.toMemberDetailDiagnosticsLine(): String =
         .joinToString(" | ")
         .take(1200)
 
-private fun String?.membersActivityDisplayTime(timeContext: SlockTimeContext): String =
-    formatSlockTimestampClockWithSeconds(this, timeContext)
+private fun String?.membersActivityDisplayTime(timeContext: RaftTimeContext): String =
+    formatRaftTimestampClockWithSeconds(this, timeContext)
         .takeIf { it.isNotBlank() }
         ?: "No time"
 
-private fun String?.membersReminderRelativeTime(timeContext: SlockTimeContext): String {
+private fun String?.membersReminderRelativeTime(timeContext: RaftTimeContext): String {
     val trimmed = this?.trim().orEmpty()
     if (trimmed.isEmpty()) return ""
     val fireAtMillis =
-        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
+        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
     val nowMillis = timeContext.nowEpochMillis ?: return trimmed.membersReminderShortDateTime(timeContext)
     val diffMillis = fireAtMillis - nowMillis
     val absMillis = abs(diffMillis)
@@ -13987,11 +14673,11 @@ private fun String?.membersReminderRelativeTime(timeContext: SlockTimeContext): 
     return if (amount > 0L) "in $label" else "$label ago"
 }
 
-private fun String?.membersReminderShortDateTime(timeContext: SlockTimeContext): String {
+private fun String?.membersReminderShortDateTime(timeContext: RaftTimeContext): String {
     val trimmed = this?.trim().orEmpty()
     if (trimmed.isEmpty()) return ""
     val epochMillis =
-        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
+        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
     val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
     val epochDay = membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay)
     val millisOfDay = membersReminderFloorMod(localMillis, MembersReminderMillisPerDay)
@@ -14001,11 +14687,11 @@ private fun String?.membersReminderShortDateTime(timeContext: SlockTimeContext):
     return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${membersReminderClock(hour, minute, timeContext.timeFormat)}"
 }
 
-private fun String.membersAgentCreatedDate(timeContext: SlockTimeContext): String {
+private fun String.membersAgentCreatedDate(timeContext: RaftTimeContext): String {
     val trimmed = trim()
     if (trimmed.isEmpty()) return ""
     val epochMillis =
-        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
+        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
     val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
     val epochDay = membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay)
     val date = membersReminderCivilDateFromEpochDay(epochDay)
@@ -14013,7 +14699,7 @@ private fun String.membersAgentCreatedDate(timeContext: SlockTimeContext): Strin
 }
 
 private fun membersReminderClock(hour: Int, minute: Int, timeFormat: String): String {
-    if (timeFormat != SlockTimeFormat12Hour) {
+    if (timeFormat != RaftTimeFormat12Hour) {
         return "${hour.membersReminderTwoDigits()}:${minute.membersReminderTwoDigits()}"
     }
     val displayHour = (hour % 12).let { if (it == 0) 12 else it }
@@ -14062,14 +14748,14 @@ private const val MembersReminderMillisPerDay = 86_400_000L
 
 private fun String.membersActivityAccentColor(): Color =
     when (membersActivityStatusKey()) {
-        "error", "failed", "failure", "subagent_failed" -> SlockColor.AccentOrange
+        "error", "failed", "failure", "subagent_failed" -> RaftColor.AccentOrange
         "tool_start", "tool", "thinking", "working", "busy", "subagent_spawned", "subagent_started" ->
-            SlockColor.BrandYellow
-        "running", "active", "online", "compaction_finished", "subagent_completed" -> SlockColor.AccentLime
-        "text", "message", "output" -> SlockColor.AccentCyan
-        "offline", "disconnected", "subagent_suspended" -> SlockColor.StatusNeutralGray
-        "system", "slock_action", "compaction_started" -> SlockColor.AccentOrange
-        else -> SlockColor.BrandYellow
+            RaftColor.BrandYellow
+        "running", "active", "online", "compaction_finished", "subagent_completed" -> RaftColor.AccentLime
+        "text", "message", "output" -> RaftColor.AccentCyan
+        "offline", "disconnected", "subagent_suspended" -> RaftColor.StatusNeutralGray
+        "system", "slock_action", "compaction_started" -> RaftColor.AccentOrange
+        else -> RaftColor.BrandYellow
     }
 
 private fun String.membersActivityPulsing(): Boolean =
@@ -14146,25 +14832,24 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceCream)
+            .raftCardSurface(fill = RaftColor.FillMuted)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.TriangleAlert,
+        RaftLucideIcon(
+            RaftLucideIconName.TriangleAlert,
             modifier = Modifier.size(16.dp),
             color = "#FFD32F2F"
         )
         Text(
             text = text,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = RaftColor.TextBlack,
             modifier = Modifier.weight(1f)
         )
         if (action != null && onAction != null) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = action,
                 onClick = onAction,
                 minWidth = 72.dp,
@@ -14175,12 +14860,12 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
 }
 
 @Composable
-private fun SlockSpinnerIcon(
+private fun RaftSpinnerIcon(
     size: Dp = 14.dp,
-    color: String = SlockColor.TextBlackArgb
+    color: String = RaftColor.TextBlackArgb
 ) {
-    SlockLucideIcon(
-        SlockLucideIconName.LoaderCircle,
+    RaftLucideIcon(
+        RaftLucideIconName.LoaderCircle,
         modifier = Modifier.size(size),
         color = color,
         spinning = true

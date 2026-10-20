@@ -1,9 +1,9 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -13,7 +13,7 @@ class AuthTextFieldValueContractTest {
     fun authKeyboardViewportConvertsNativeDpHeightToRootPixels() {
         assertEquals(
             Rect(10f, 100f, 310f, 700f),
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = Rect(10f, 100f, 310f, 1000f),
                 keyboardHeightDp = 300f,
                 density = 1f
@@ -21,7 +21,7 @@ class AuthTextFieldValueContractTest {
         )
         assertEquals(
             Rect(10f, 100f, 310f, 400f),
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = Rect(10f, 100f, 310f, 1000f),
                 keyboardHeightDp = 300f,
                 density = 2f
@@ -35,7 +35,7 @@ class AuthTextFieldValueContractTest {
 
         assertEquals(
             viewport,
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = viewport,
                 keyboardHeightDp = 0f,
                 density = 2f
@@ -43,7 +43,7 @@ class AuthTextFieldValueContractTest {
         )
         assertEquals(
             Rect(10f, 100f, 310f, 100f),
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = viewport,
                 keyboardHeightDp = 300f,
                 density = 2f
@@ -55,7 +55,7 @@ class AuthTextFieldValueContractTest {
     fun authKeyboardViewportAddsBottomSafeAreaWhenNativeInsetExcludesIt() {
         assertEquals(
             Rect(10f, 100f, 310f, 352f),
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = Rect(10f, 100f, 310f, 1000f),
                 keyboardHeightDp = 300f,
                 density = 2f,
@@ -71,7 +71,7 @@ class AuthTextFieldValueContractTest {
 
         assertEquals(
             Rect(10f, 100f, 310f, 400f),
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = viewport,
                 keyboardHeightDp = 300f,
                 density = 2f,
@@ -81,7 +81,7 @@ class AuthTextFieldValueContractTest {
         )
         assertEquals(
             viewport,
-            slockAuthKeyboardReducedViewport(
+            raftAuthKeyboardReducedViewport(
                 viewport = viewport,
                 keyboardHeightDp = 0f,
                 density = 2f,
@@ -93,10 +93,10 @@ class AuthTextFieldValueContractTest {
 
     @Test
     fun effectiveKeyboardInsetClampsNegativeInputsAndSafeArea() {
-        assertEquals(0.dp, slockEffectiveKeyboardInsetDp(-1f, (-24).dp, true))
-        assertEquals(300.dp, slockEffectiveKeyboardInsetDp(300f, (-24).dp, true))
-        assertEquals(324.dp, slockEffectiveKeyboardInsetDp(300f, 24.dp, true))
-        assertEquals(300.dp, slockEffectiveKeyboardInsetDp(300f, 24.dp, false))
+        assertEquals(0.dp, raftEffectiveKeyboardInsetDp(-1f, (-24).dp, true))
+        assertEquals(300.dp, raftEffectiveKeyboardInsetDp(300f, (-24).dp, true))
+        assertEquals(324.dp, raftEffectiveKeyboardInsetDp(300f, 24.dp, true))
+        assertEquals(300.dp, raftEffectiveKeyboardInsetDp(300f, 24.dp, false))
     }
 
     @Test

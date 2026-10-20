@@ -3,14 +3,14 @@ package build.raft.app.data
 import com.tencent.kmm.network.export.NetworkByteStream
 import kotlinx.atomicfu.atomic
 
-interface SlockPlatformFileResolver {
-    suspend fun readFile(fileRef: String): SlockPlatformFileReadResult
+interface RaftPlatformFileResolver {
+    suspend fun readFile(fileRef: String): RaftPlatformFileReadResult
 
     /** Opens and closes the real file handle without materializing its bytes. */
-    suspend fun statFile(fileRef: String): SlockPlatformFileStatResult
+    suspend fun statFile(fileRef: String): RaftPlatformFileStatResult
 
     /** Every call owns a fresh platform source for one HTTP attempt. */
-    suspend fun openFileStream(fileRef: String, expectedSizeBytes: Long): SlockPlatformFileChunkSource
+    suspend fun openFileStream(fileRef: String, expectedSizeBytes: Long): RaftPlatformFileChunkSource
 }
 
 /**
@@ -19,16 +19,16 @@ interface SlockPlatformFileResolver {
  * not allowed to substitute a picker hint or a partially materialized byte array for a
  * file-reference length.
  */
-sealed interface SlockPlatformFilePreparationResult {
-    data class Ready(val sizeBytes: Long) : SlockPlatformFilePreparationResult
+sealed interface RaftPlatformFilePreparationResult {
+    data class Ready(val sizeBytes: Long) : RaftPlatformFilePreparationResult
 
     data class Rejected(
         val code: String,
         val retryable: Boolean = false,
-    ) : SlockPlatformFilePreparationResult
+    ) : RaftPlatformFilePreparationResult
 }
 
-data class SlockPlatformFileReadResult(
+data class RaftPlatformFileReadResult(
     val code: Int,
     val bytes: ByteArray,
     val sizeBytes: Long? = null,
@@ -41,7 +41,7 @@ data class SlockPlatformFileReadResult(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other == null || this::class != other::class) return false
-        other as SlockPlatformFileReadResult
+        other as RaftPlatformFileReadResult
         return code == other.code &&
             bytes.contentEquals(other.bytes) &&
             sizeBytes == other.sizeBytes &&
@@ -59,7 +59,7 @@ data class SlockPlatformFileReadResult(
     }
 }
 
-data class SlockPlatformFileStatResult(
+data class RaftPlatformFileStatResult(
     val code: Int,
     val sizeBytes: Long? = null,
     val errorCode: String = "",
@@ -71,14 +71,14 @@ data class SlockPlatformFileStatResult(
 
 const val PlatformFileStreamChunkBytes: Int = 64 * 1024
 
-interface SlockPlatformFileChunkSource {
+interface RaftPlatformFileChunkSource {
     suspend fun read(maxBytes: Int): ByteArray
     fun close()
 }
 
 fun boundedPlatformFileNetworkStream(
     expectedSizeBytes: Long,
-    source: SlockPlatformFileChunkSource
+    source: RaftPlatformFileChunkSource
 ): NetworkByteStream {
     val closed = atomic(false)
     fun closeOnce() {
@@ -116,20 +116,20 @@ fun boundedPlatformFileNetworkStream(
     )
 }
 
-object SlockSharedPlatformFileResolverProvider {
-    private var appScopeResolverFactory: (() -> SlockPlatformFileResolver)? = null
+object RaftSharedPlatformFileResolverProvider {
+    private var appScopeResolverFactory: (() -> RaftPlatformFileResolver)? = null
 
-    fun installAppScopeResolver(factory: () -> SlockPlatformFileResolver) {
+    fun installAppScopeResolver(factory: () -> RaftPlatformFileResolver) {
         appScopeResolverFactory = factory
     }
 
-    internal fun createBinding(): SlockPlatformFileResolverBinding {
+    internal fun createBinding(): RaftPlatformFileResolverBinding {
         val appScopeResolver = appScopeResolverFactory?.invoke()
         if (appScopeResolver != null) {
-            return SlockPlatformFileResolverBinding(appScopeResolver, "app")
+            return RaftPlatformFileResolverBinding(appScopeResolver, "app")
         }
         val platformResolver = createDefaultPlatformFileResolver()
-        return SlockPlatformFileResolverBinding(platformResolver, if (platformResolver == null) "missing" else "platform")
+        return RaftPlatformFileResolverBinding(platformResolver, if (platformResolver == null) "missing" else "platform")
     }
 
     internal fun clearAppScopeResolverForTests() {
@@ -137,9 +137,9 @@ object SlockSharedPlatformFileResolverProvider {
     }
 }
 
-internal data class SlockPlatformFileResolverBinding(
-    val resolver: SlockPlatformFileResolver?,
+internal data class RaftPlatformFileResolverBinding(
+    val resolver: RaftPlatformFileResolver?,
     val scope: String
 )
 
-internal expect fun createDefaultPlatformFileResolver(): SlockPlatformFileResolver?
+internal expect fun createDefaultPlatformFileResolver(): RaftPlatformFileResolver?

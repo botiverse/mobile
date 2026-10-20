@@ -1,23 +1,24 @@
 package build.raft.app
 
-import build.raft.app.components.SlockAnchoredMetaChip
-import build.raft.app.components.SlockAttachmentPreviewCard
-import build.raft.app.components.SlockAttachmentPreviewCardWidth
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockChipLoadingIndicator
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalSearchField
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockRaftUiBanner
-import build.raft.app.components.SlockRaftUiBannerSize
-import build.raft.app.components.SlockRaftUiBannerStatus
-import build.raft.app.components.SlockRaftUiControlledMenu
-import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+
+import build.raft.app.components.RaftAnchoredMetaChip
+import build.raft.app.components.RaftAttachmentPreviewCard
+import build.raft.app.components.RaftAttachmentPreviewCardWidth
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftChipLoadingIndicator
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.RaftToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
-import build.raft.app.base.bridgeModule
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -36,9 +37,9 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.NetworkSlockTasksApi
-import build.raft.app.data.NetworkSlockThreadApi
-import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.NetworkRaftTasksApi
+import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -48,7 +49,7 @@ import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SlockEventBus
+import build.raft.app.data.RaftEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -60,22 +61,22 @@ import build.raft.app.data.ThreadReadAnchorOwner
 import build.raft.app.data.ThreadReadAnchorStore
 import build.raft.app.data.ThreadUnreadAnchorMessage
 import build.raft.app.data.projectThreadUnreadJump
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.formatAttachmentSizeLabel
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
-import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
-import build.raft.app.data.isSlockHostVisible
+import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
@@ -112,9 +113,9 @@ import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -149,20 +150,20 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
-import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
-import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
-import build.raft.app.markdown.SlockMarkdownBody
-import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
-import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
+import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
 import build.raft.app.markdown.threadMarkdownLightGateInputsOrNull
-import build.raft.app.markdown.slockMarkdownProvidedValuesWith
-import build.raft.app.markdown.slockTraceDiagnosticsEnabled
-import build.raft.app.markdown.SlockMarkdownRenderConfig
+import build.raft.app.markdown.raftMarkdownProvidedValuesWith
+import build.raft.app.markdown.raftTraceDiagnosticsEnabled
+import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
-import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
-import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
+import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
+import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
@@ -175,16 +176,16 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
-import build.raft.app.model.formatSlockTimestampEpochMillis
-import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.model.formatRaftTimestampEpochMillis
+import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
-import build.raft.app.model.slockEpochMillisUtcIso
-import build.raft.app.model.SlockTimeFormat24Hour
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.raftEpochMillisUtcIso
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resources.MR
@@ -205,103 +206,102 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.animation.core.animateFloatAsState
-import com.tencent.kuikly.compose.animation.core.tween
-import com.tencent.kuikly.compose.coil3.AsyncImagePainter
-import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
-import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
-import com.tencent.kuikly.compose.foundation.gestures.awaitLongPressOrCancellation
-import com.tencent.kuikly.compose.foundation.gestures.scrollBy
-import com.tencent.kuikly.compose.foundation.hoverable
-import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
-import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
-import com.tencent.kuikly.compose.foundation.interaction.collectIsPressedAsState
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
-import com.tencent.kuikly.compose.foundation.layout.FlowRow
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
-import com.tencent.kuikly.compose.foundation.layout.wrapContentWidth
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.lazy.LazyRow
-import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.text.SelectableText
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.extension.keyboardDismissModeInteractiveIOS
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.resources.imageResource
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.drawWithContent
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
-import com.tencent.kuikly.compose.ui.input.pointer.PointerInputScope
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.semantics.testTag
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.zIndex
-import com.tencent.kuikly.compose.ui.unit.toIntSize
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.manager.PagerManager
-import com.tencent.kuikly.core.module.PerformanceModule
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IPagerEventObserver
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import coil3.compose.AsyncImagePainter
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.compat.ui.keyboardDismissModeInteractiveIOS
+import androidx.compose.material3.Text
+import build.raft.app.compat.ui.imageResource
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.toIntSize
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.PagerManager
+import build.raft.app.compat.module.PerformanceModule
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IPagerEventObserver
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -354,10 +354,18 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
         setContent { ThreadMessageVisualScreen() }
     }
 }
+private val ThreadMessageMenuVisualViewportWidth = 390.dp
+private val ThreadMessageMenuVisualViewportHeight = 844.dp
+
 @Composable
 internal fun ThreadMessageVisualScreen() {
+    val visualFixture = (LocalActivity.current.getPager() as Pager).pageData.params.optString("visualFixture")
     ThreadReactionAtlasProvider {
-        ThreadMessageVisualScreenContent()
+        CompositionLocalProvider(
+            LocalRaftMarkdownTaskStatuses provides threadVisualFixtureTaskStatuses(visualFixture)
+        ) {
+            ThreadMessageVisualScreenContent()
+        }
     }
 }
 @Composable
@@ -371,7 +379,7 @@ internal fun ThreadMessageVisualScreenContent() {
     val visualSingleMessage = params.optBoolean("visualSingleMessage", false)
     val messageBodyTextStyle =
         remember(params.optString("messageBodyFontSize")) {
-            slockMessageBodyTextStyle(params.optString("messageBodyFontSize"))
+            raftMessageBodyTextStyle(params.optString("messageBodyFontSize"))
         }
     val longPressReadyToken = params.optString("longPressReadyToken")
     val longPressMenuVisibleToken = params.optString("longPressMenuVisibleToken")
@@ -382,7 +390,7 @@ internal fun ThreadMessageVisualScreenContent() {
     val newMessageMenuEnabled =
         remember(visualFixture) {
             visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO &&
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readNewMessageMenuEnabledSync()
         }
     val payload =
@@ -397,6 +405,7 @@ internal fun ThreadMessageVisualScreenContent() {
     // composition is active; the capture harness requires this token before
     // accepting a screenshot for the regression case.
     val visualReadyBridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    var lastLoggedContentBottom by remember { mutableStateOf(-1) }
     LaunchedEffect(visualFixture, instanceId) {
         if (visualFixture.isNotBlank()) {
             visualReadyBridge.log("thread_visual_ready fixtureKey=$visualFixture")
@@ -474,17 +483,20 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
-        // task #415: measure unbounded (see the default fixture Column below).
+        // React docks the selection toolbar at the bottom of the 390x844
+        // viewport (web MessageList), so the rows sit at the top and the
+        // toolbar at the viewport bottom.
         Column(
             modifier =
                 Modifier
                     .width(390.dp)
-                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                    .background(SlockColor.SurfaceWhite)
+                    .height(844.dp)
+                    .background(RaftColor.SurfaceWhite)
         ) {
-            Column(modifier = Modifier.padding(SlockSpacing.Md)) {
+            Column(modifier = Modifier.padding(RaftAppSpacing.Md)) {
                 messages.forEach { selectedMessage ->
                     ThreadMessageCard(
+                        memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                         message = selectedMessage,
                         messageBodyTextStyle = messageBodyTextStyle,
                         agentStatusResolver = agentStatusResolver,
@@ -511,10 +523,11 @@ internal fun ThreadMessageVisualScreenContent() {
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        outerPadding = 0.dp
+                        outerPadding = RaftAppSpacing.Sm
                     )
                 }
             }
+            Spacer(modifier = Modifier.weight(1f))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
                 selectableCount = messages.size,
@@ -528,7 +541,7 @@ internal fun ThreadMessageVisualScreenContent() {
         return
     }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             ThreadSharePreviewModal(
                 messages = payload.toThreadTimelineSlice().messages,
                 image = null,
@@ -549,14 +562,15 @@ internal fun ThreadMessageVisualScreenContent() {
             modifier =
                 Modifier
                     .width(390.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Md)
+                    .background(RaftColor.SurfaceWhite)
+                    .padding(RaftAppSpacing.Md)
         ) {
             messages.forEachIndexed { index, visualMessage ->
                 if (index > 0) {
-                    Spacer(Modifier.height(SlockSpacing.Sm))
+                    Spacer(Modifier.height(RaftAppSpacing.Sm))
                 }
                 ThreadMessageCard(
+                    memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                     message = visualMessage,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,
@@ -579,7 +593,7 @@ internal fun ThreadMessageVisualScreenContent() {
                     onOpenAttachment = {},
                     onOpenMarkdownTag = { _, _ -> },
                     onOpenMarkdownUrl = {},
-                    outerPadding = 0.dp
+                    outerPadding = RaftAppSpacing.Sm
                 )
             }
         }
@@ -626,8 +640,9 @@ internal fun ThreadMessageVisualScreenContent() {
     }
     var actionsMenuVisible by remember(visualFixture, menuVariant) { mutableStateOf(menuVariant.isNotBlank()) }
     var compactMenuAnchor by remember(visualFixture, message?.id) {
-        mutableStateOf<SlockPopoverAnchor?>(null)
+        mutableStateOf<RaftPopoverAnchor?>(null)
     }
+    var menuRowBounds by remember(visualFixture, message?.id) { mutableStateOf<Rect?>(null) }
     val menuActions =
         remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId) {
             if (message == null || !actionsMenuVisible) {
@@ -655,6 +670,8 @@ internal fun ThreadMessageVisualScreenContent() {
                     showShareMessagesAction = true,
                     showCancelAction = false,
                     showDeleteAction = false,
+                    showForwardAction = true,
+                    showAddReactionAction = payload.showReactionActions,
                     onReply = {},
                     onCopyLink = {},
                     onCopy = {},
@@ -693,7 +710,7 @@ internal fun ThreadMessageVisualScreenContent() {
         }
     val visualMessagePermalinkLabelResolver =
         remember(visualFixture) {
-            { target: SlockMessagePermalinkTarget ->
+            { target: RaftMessagePermalinkTarget ->
                 when (target.channelId.value) {
                     "channel-proj-server-management" ->
                         if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW) {
@@ -713,16 +730,16 @@ internal fun ThreadMessageVisualScreenContent() {
     var inlineReplyTimestampBounds by remember(interactionProbe) {
         mutableStateOf<ThreadInlineReplyTimestampBounds?>(null)
     }
-    val inheritedTimeContextProvider = LocalSlockTimeContextProvider.current
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
     // A fixture that pins `nowEpochMillis` owns its clock, so every relative timestamp under it
     // resolves against that fixed instant: deterministic across runs AND rendered as real digits.
-    // Without a time context, resolveSlockRelativeTimeLabel() returns Unknown and the row shows the
+    // Without a time context, resolveRaftRelativeTimeLabel() returns Unknown and the row shows the
     // literal "unknown time" — which is how a non-monospace inline reply timestamp (#2074) shipped
     // past the case built to guard that row. Fixtures that pin no clock keep the Unknown behavior.
     val visualTimeContextProvider =
         remember(payload, interactionProbe) {
             if (interactionProbe == "reply-timestamp-owner" || payload.nowEpochMillis != null) {
-                SlockTimeContextProvider(payload.toSlockTimeContext())
+                RaftTimeContextProvider(payload.toRaftTimeContext())
             } else {
                 null
             }
@@ -741,17 +758,31 @@ internal fun ThreadMessageVisualScreenContent() {
             }
         }
     CompositionLocalProvider(
-        LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
-        LocalSlockMarkdownRenderConfig provides
-            SlockMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
-        LocalSlockTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
+        LocalRaftMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
+        LocalRaftMarkdownRenderConfig provides
+            RaftMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
+        LocalRaftTimeContextProvider provides (visualTimeContextProvider ?: inheritedTimeContextProvider),
         LocalThreadInlineReplyTimestampReporter provides inlineReplyTimestampReporter,
     ) {
-        Box {
+        Box(
+            modifier =
+                if (menuVariant.isNotBlank()) {
+                    // The web menu cases capture the whole bg-layer-canvas viewport around the
+                    // portal, so the page behind the open menu is the panel, not the host cream.
+                    Modifier
+                        .size(ThreadMessageMenuVisualViewportWidth, ThreadMessageMenuVisualViewportHeight)
+                        .background(RaftColor.Canvas)
+                } else {
+                    Modifier
+                }
+        ) {
             Column(
                 modifier =
                     Modifier
-                        .width(threadMessageVisualWidth(visualFixture))
+                        // React renders the row 390 wide inside a p-4 page (the
+                        // viewport clips its right 16px), so the padded host
+                        // keeps the row itself at the fixture width.
+                        .width(threadMessageVisualWidth(visualFixture) + threadMessageVisualHostPadding(visualFixture))
                         // task #415: the visual route's window gives BOUNDED height
                         // constraints (unlike production's LazyColumn, whose items
                         // measure unbounded). TextStringRichNode clamps the natively
@@ -760,22 +791,38 @@ internal fun ThreadMessageVisualScreenContent() {
                         // window overlapped the siblings placed at the clamped height.
                         // Measure unbounded like production.
                         .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                        .background(SlockColor.SurfaceWhite)
-                        .padding(SlockSpacing.Md)
+                        .onGloballyPositioned { coordinates ->
+                            // Component-bounds crop: the capture harness waits
+                            // for this bottom edge instead of guessing a fixed
+                            // height for content-sized rows.
+                            val bottom = (coordinates.positionInRoot().y + coordinates.size.height).toInt()
+                            if (bottom != lastLoggedContentBottom) {
+                                lastLoggedContentBottom = bottom
+                                visualReadyBridge.log(
+                                    "thread_visual_content_bounds instanceId=$instanceId contentBottomPx=$bottom"
+                                )
+                            }
+                        }
+                        .background(RaftColor.SurfaceWhite)
+                        .padding(
+                            start = threadMessageVisualHostPadding(visualFixture),
+                            top = threadMessageVisualHostPadding(visualFixture),
+                            bottom = threadMessageVisualHostPadding(visualFixture)
+                        )
             ) {
             if (interactionProbe == "reply-timestamp-owner") {
                 Spacer(modifier = Modifier.height(32.dp))
-                SlockRelativeTimestampText(
+                RaftRelativeTimestampText(
                     value = "2026-07-24T10:05:00Z",
-                    timeContext = payload.toSlockTimeContext(),
-                    displayGroup = SlockTimestampDisplayGroup.Conversation,
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
-                    color = SlockColor.TextBlack,
+                    timeContext = payload.toRaftTimeContext(),
+                    displayGroup = RaftTimestampDisplayGroup.Conversation,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     onToggle = { ordinaryTimestampToggleCount += 1 },
                 )
                 if (ordinaryTimestampToggleCount > 0) {
-                    Box(modifier = Modifier.size(12.dp).background(SlockColor.AccentCyan))
+                    Box(modifier = Modifier.size(12.dp).background(RaftColor.AccentCyan))
                 }
             }
             if (message != null) {
@@ -824,18 +871,34 @@ internal fun ThreadMessageVisualScreenContent() {
                                         // Keep the fixture's open-thread oracle distinct from colorful reactions.
                                         Color(0xFFFF00A8)
                                     } else {
-                                        SlockColor.BrandYellow
+                                        RaftColor.BrandYellow
                                     }
                                 )
                     )
                 }
+                Box(
+                    modifier =
+                        Modifier.onGloballyPositioned { coordinates ->
+                            val origin = coordinates.positionInRoot()
+                            val bounds =
+                                Rect(
+                                    left = origin.x,
+                                    top = origin.y,
+                                    right = origin.x + coordinates.size.width,
+                                    bottom = origin.y + coordinates.size.height
+                                )
+                            if (bounds != menuRowBounds) menuRowBounds = bounds
+                        }
+                ) {
                 ThreadMessageCard(
+                    memberAvatarResolver = ThreadVisualMemberAvatarResolver,
                     message = message,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
-                    inlineReplyParticipantsById = payload.members.associateBy(KuiklyThreadMemberItem::id),
+                    popupOpen = menuActions.isNotEmpty(),
+                    inlineReplyParticipantsById = payload.members.associateBy(RaftThreadMemberItem::id),
                     hasReplyDraft = visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     messageAlignmentModeEnabled = payload.alignOwnMessagesRight,
@@ -875,8 +938,9 @@ internal fun ThreadMessageVisualScreenContent() {
                     },
                     onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
                     onLongPressInputReady = onLongPressInputReady,
-                    outerPadding = 0.dp
+                    outerPadding = RaftAppSpacing.Sm
                 )
+                }
                 compactMenuAnchor?.let { anchor ->
                     ThreadNewMessageMenu(
                         anchor = anchor,
@@ -898,8 +962,38 @@ internal fun ThreadMessageVisualScreenContent() {
                         onMore = { compactMenuAnchor = null }
                     )
                 }
-                if (menuActions.isNotEmpty()) {
-                    Spacer(Modifier.height(SlockSpacing.Sm))
+            }
+            }
+            // web opens the message context menu at the right-click point -- the
+            // capture's `contextmenu` interaction lands on the row's center -- and
+            // places its top-left corner there through `placeFloatingOverlay` in the
+            // 390x844 viewport (8px inset), over the pressed row.
+            menuRowBounds?.takeIf { menuActions.isNotEmpty() }?.let { rowBounds ->
+                val density = LocalDensity.current
+                val menuWidthPx = with(density) { threadMessageMenuWidthDp(payload.showReactionActions).dp.toPx() }
+                val menuHeightPx =
+                    with(density) {
+                        threadMessageMenuContentHeightDp(
+                            actionGroups = menuActions.map { it.group },
+                            showReactionActions = payload.showReactionActions
+                        ).dp.toPx()
+                    }
+                val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
+                val menuX =
+                    raftContextMenuAxisPosition(
+                        anchor = rowBounds.center.x,
+                        contentSize = menuWidthPx,
+                        viewportSize = with(density) { ThreadMessageMenuVisualViewportWidth.toPx() },
+                        viewportGap = viewportGapPx
+                    )
+                val menuY =
+                    raftContextMenuAxisPosition(
+                        anchor = rowBounds.center.y,
+                        contentSize = menuHeightPx,
+                        viewportSize = with(density) { ThreadMessageMenuVisualViewportHeight.toPx() },
+                        viewportGap = viewportGapPx
+                    )
+                Box(modifier = Modifier.offset { IntOffset(menuX.toInt(), menuY.toInt()) }) {
                     ThreadMessageMenuChrome(
                         actions = menuActions,
                         showReactionActions = payload.showReactionActions,
@@ -908,7 +1002,6 @@ internal fun ThreadMessageVisualScreenContent() {
                         modifier = Modifier
                     )
                 }
-            }
             }
             inlineReplyTimestampBounds?.let { bounds ->
                 val density = LocalDensity.current.density
@@ -935,17 +1028,17 @@ internal fun ThreadMessageVisualScreenContent() {
 }
 @Composable
 internal fun ThreadNewMessageMenuCompactGroupVisual(
-    messages: List<KuiklyThreadMessageItem>,
+    messages: List<RaftThreadMessageItem>,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     messageBodyTextStyle: TextStyle,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     newMessageMenuEnabled: Boolean,
     singleTapOpensThreadEnabled: Boolean,
     composerBoundaryVisible: Boolean,
     longPressMenuVisibleToken: String = ""
 ) {
     var openedMessageId by remember { mutableStateOf<String?>(null) }
-    var compactMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var compactMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     // task #228: report the compact menu's own state the way the legacy menu
     // already does. The sibling case (preference-off) has always gated on this
     // token; the compact path simply never passed one, which is why its tests
@@ -967,7 +1060,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
         } else {
             messages
         }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         Box(
             modifier =
                 Modifier
@@ -975,12 +1068,14 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                     .fillMaxWidth()
         ) {
             LazyColumn(
-                modifier = Modifier.width(390.dp).fillMaxSize().padding(SlockSpacing.Md),
+                modifier = Modifier.width(390.dp).fillMaxSize().padding(RaftAppSpacing.Md),
                 verticalArrangement =
                     if (composerBoundaryVisible) Arrangement.Bottom else Arrangement.Top
             ) {
                 items(renderedMessages.size, key = { index -> renderedMessages[index].id }) { index ->
                     val message = renderedMessages[index]
+                    // No fixture avatar resolver here: the compact-menu oracle
+                    // needs a near-monochrome frame (task #228 saturated floor).
                     ThreadMessageCard(
                         message = message,
                         replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message),
@@ -1009,7 +1104,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         onOpenAttachment = {},
                         onOpenMarkdownTag = { _, _ -> },
                         onOpenMarkdownUrl = {},
-                        outerPadding = 0.dp
+                        outerPadding = RaftAppSpacing.Sm
                     )
                 }
             }
@@ -1051,7 +1146,7 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
             }
         }
         if (composerBoundaryVisible) {
-            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
             Box(
                 modifier =
                     Modifier
@@ -1060,11 +1155,11 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
                         // Composer host bounds, so compact-menu pixels are
                         // never counted as Composer overlap.
                         .height(150.dp)
-                        .padding(start = SlockSpacing.Sm, top = 12.dp, end = SlockSpacing.Sm, bottom = 14.dp)
+                        .padding(start = RaftAppSpacing.Sm, top = 12.dp, end = RaftAppSpacing.Sm, bottom = 14.dp)
             ) {
                 ThreadComposerContent(
                     payload =
-                        KuiklyThreadComposerPayload(
+                        RaftThreadComposerPayload(
                             instanceId = "visual-new-message-menu-composer",
                             placeholder = "Message",
                             streamChannelId = "visual-new-message-menu-thread"
@@ -1084,11 +1179,11 @@ internal fun ThreadNewMessageMenuCompactGroupVisual(
  *
  * Production message snapshots deliberately carry no volatile agent status. Keeping fixture
  * status here preserves deterministic status-dot coverage without reintroducing a snapshot
- * fallback into [KuiklyThreadMessageItem].
+ * fallback into [RaftThreadMessageItem].
  */
 private fun threadMessageVisualAgentStatusResolver(
     visualFixture: String
-): SlockAgentStatusResolver {
+): RaftAgentStatusResolver {
     val resolvedFixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }
     val cindyStatus =
         when (resolvedFixture) {
@@ -1096,12 +1191,21 @@ private fun threadMessageVisualAgentStatusResolver(
             THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO,
             THREAD_MESSAGE_VISUAL_FIXTURE_SAVED,
             THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD,
-            THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD -> AgentStatus.Working
+            THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD,
+            // Shared fixture data (fixtureData.json) has Cindy `working`; the
+            // React markdown specimens render her with that status badge.
+            THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607,
+            THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE -> AgentStatus.Working
             THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT -> AgentStatus.Online
-            else -> return EmptySlockAgentStatusResolver
+            else -> return EmptyRaftAgentStatusResolver
         }
     val cindyState =
-        slockAgentStatusIndicatorState(
+        raftAgentStatusIndicatorState(
             status = cindyStatus,
             presence = cindyStatus.presence,
             external = false
@@ -1112,14 +1216,14 @@ private fun threadMessageVisualAgentStatusResolver(
 }
 
 @Composable
-internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessageItem) {
+internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: RaftThreadMessageItem) {
     var result by remember(message.id) { mutableStateOf<Boolean?>(null) }
     Column(
         modifier =
             Modifier
                 .width(390.dp)
-                .background(SlockColor.SurfaceWhite)
-                .padding(SlockSpacing.Md)
+                .background(RaftColor.SurfaceWhite)
+                .padding(RaftAppSpacing.Md)
     ) {
         Box(
             modifier =
@@ -1134,7 +1238,7 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessage
                         }
                     )
         )
-        Spacer(Modifier.height(SlockSpacing.Md))
+        Spacer(Modifier.height(RaftAppSpacing.Md))
         ThreadMessageFooterMeta(
             message = message,
             taskOpenEnabled = false,
@@ -1156,9 +1260,9 @@ internal fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessage
  * so a capture case that exercises it has to say so. A count of zero returns the
  * payload untouched, keeping every case that omits the parameter unchanged.
  */
-internal fun KuiklyThreadScreenPayload.withNewMessageMenuTargetReplyCount(
+internal fun RaftThreadScreenPayload.withNewMessageMenuTargetReplyCount(
     count: Int
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     if (count <= 0) {
         this
     } else {

@@ -123,9 +123,15 @@ internal data class SharedAgentIssueReportRequest(
 )
 
 internal interface SharedAgentDetailActions {
+    /**
+     * `workspaceChoice` only applies to `MembersAgentLifecycleAction.Delete` —
+     * the archive workspace disposition (`keep`/`delete`). Callers omitting it
+     * archive with the workspace kept, which is also the server default.
+     */
     suspend fun runLifecycleAction(
         agentId: MemberId,
-        action: MembersAgentLifecycleAction
+        action: MembersAgentLifecycleAction,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult>
 
     fun copyDiagnostics(diagnostics: String)
@@ -481,12 +487,13 @@ internal class SharedAgentDetailStore(
     suspend fun runLifecycleAction(
         agentId: MemberId,
         action: MembersAgentLifecycleAction,
-        actions: SharedAgentDetailActions
+        actions: SharedAgentDetailActions,
+        workspaceChoice: AgentArchiveWorkspaceChoice = AgentArchiveWorkspaceChoice.Keep
     ): DataResult<AgentLifecycleActionResult> {
         dispatch(SharedAgentDetailIntent.StartLifecycleAction(action.actionKey))
         val result =
             try {
-                actions.runLifecycleAction(agentId, action)
+                actions.runLifecycleAction(agentId, action, workspaceChoice)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {

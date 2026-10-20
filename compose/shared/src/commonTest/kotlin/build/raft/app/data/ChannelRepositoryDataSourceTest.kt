@@ -589,8 +589,8 @@ class ChannelRepositoryDataSourceTest {
     private fun kotlinx.serialization.json.JsonObject.stringList(key: String): List<String> =
         get(key)?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
 
-    private fun sampleStore(): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun sampleStore(): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user =
                     StoredAuthUser(
@@ -622,7 +622,7 @@ class ChannelRepositoryDataSourceTest {
         var responseBody: String? = """{"id":"channel-1","name":"general","type":"channel","joined":true}""",
         private val pathResponses: Map<String, String> = emptyMap(),
         private val responseErrorBody: String? = null
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         val requests = mutableListOf<RecordedChannelRequest>()
         val bodies = mutableListOf<String>()
 

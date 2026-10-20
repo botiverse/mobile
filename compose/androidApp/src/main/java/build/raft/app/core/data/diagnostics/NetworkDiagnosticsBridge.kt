@@ -29,7 +29,7 @@ class NetworkDiagnosticsBridge(
         private val buildLabel: String? = null,
         private val nowMillis: () -> Long = System::currentTimeMillis,
         private val logger: (String) -> Unit = { message ->
-            SlockAppLog.d("SlockNetwork", message)
+            RaftAppLog.d("SlockNetwork", message)
         }
 ) : RealtimeClientDiagnostics {
     private val reducer = RealtimeConnectionReducer()

@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.SlockBrutalActionButton
+import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loaded
@@ -18,21 +18,21 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
@@ -82,7 +82,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     val errors = current?.let { validateRuntimeFormV2(it.form, it.sources, values, editing = true) }.orEmpty()
     val changed = form != null && values != initialValues
 
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
@@ -96,8 +96,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     if (form == null) {
                         Text(
                             text = stringResource(MR.strings.agent_create_state_computers_loading),
-                            style = SlockType.Caption,
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Caption,
+                            color = RaftColor.TextMutedGray
                         )
                     } else {
                         val shown = current ?: form
@@ -122,44 +122,44 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 item(key = "change-runtime") {
                     Text(
                         text = stringResource(MR.strings.runtime_form_v2_change_runtime),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = if (saving) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = if (saving) RaftColor.TextMutedGray else RaftColor.TextBlack,
                         modifier = Modifier.clickable(enabled = !saving) { onChangeRuntime() }.padding(vertical = 4.dp)
                     )
                 }
                 item(key = "restart-hint") {
                     Text(
                         text = stringResource(MR.strings.member_hint_runtime_restart),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextMutedGray
                     )
                 }
                 error?.takeIf { it.isNotBlank() }?.let { message ->
                     item(key = "save-error") {
                         Text(
                             text = message,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                            color = SlockColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                            color = RaftColor.AccentRed
                         )
                     }
                 }
             }
-            SlockDialogFooter {
-                SlockBrutalActionButton(
+            RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !saving,
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     onClick = onDismiss
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label =
                         if (saving) stringResource(MR.strings.member_action_saving)
                         else stringResource(MR.strings.member_action_save_runtime_config),
                     enabled = !saving && form != null && changed && errors.isEmpty(),
-                    backgroundColor = SlockColor.AccentPink,
+                    backgroundColor = RaftColor.AccentPink,
                     minWidth = 166.dp,
                     onClick = {
-                        val submitting = current ?: form ?: return@SlockBrutalActionButton
+                        val submitting = current ?: form ?: return@RaftBrutalActionButton
                         onSave(
                             RuntimeFormV2SubmitBody(
                                 runtimeId = submitting.form.runtimeId,

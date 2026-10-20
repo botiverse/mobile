@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockFilePreviewPayload
+import build.raft.app.RaftFilePreviewPayload
 import build.raft.app.englishErrorPresentationStringsForTest
 import build.raft.app.withAgentWorkspaceLoadError
 import build.raft.app.model.ChannelId
@@ -113,7 +113,7 @@ class MemberRepositoryDataSourceTest {
             DataRequestPriority.Foreground,
             AgentMachineAssignmentRequest(agentId, "machine-2")
         )
-        val delete = repository.deleteAgent(DataRequestPriority.Foreground, agentId)
+        val delete = repository.deleteAgent(DataRequestPriority.Foreground, agentId, AgentArchiveWorkspaceChoice.Delete)
 
         assertTrue(detail is DataResult.Content)
         assertEquals("agent-1", detail.data.summary?.id)
@@ -162,6 +162,7 @@ class MemberRepositoryDataSourceTest {
         assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/reset") })
         assertTrue(network.requests.any { it.matches("POST", "agents/agent-1/assign-machine") })
         assertTrue(network.requests.any { it.matches("DELETE", "agents/agent-1") })
+        assertTrue(network.calls.any { it == """DELETE agents/agent-1 body={"workspace":"delete"}""" })
     }
 
     @Test
@@ -398,7 +399,7 @@ class MemberRepositoryDataSourceTest {
                 )
             ).error
         val payload =
-            SlockFilePreviewPayload().withAgentWorkspaceLoadError(
+            RaftFilePreviewPayload().withAgentWorkspaceLoadError(
                 error,
                 englishErrorPresentationStringsForTest()
             )
@@ -565,7 +566,7 @@ class MemberRepositoryDataSourceTest {
             method == expectedMethod && path == expectedPath
     }
 
-    private class FakeMemberNetworkClient : SlockNetworkClient {
+    private class FakeMemberNetworkClient : RaftNetworkClient {
         companion object {
             val expectedDetailRequestStarts =
                 setOf(
@@ -732,7 +733,7 @@ class MemberRepositoryDataSourceTest {
                     ok("""{"ok":true}""")
                 }
                 normalized == "agents/agent-1" && method == "DELETE" -> {
-                    calls += "DELETE agents/agent-1"
+                    calls += "DELETE agents/agent-1 body=${bodyText.orEmpty()}"
                     ok("""{"ok":true}""")
                 }
                 normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse
@@ -746,8 +747,8 @@ class MemberRepositoryDataSourceTest {
             HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private fun sampleStore(session: StoredAuthSession = sampleSession()): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(session)
+    private fun sampleStore(session: StoredAuthSession = sampleSession()): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(session)
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(

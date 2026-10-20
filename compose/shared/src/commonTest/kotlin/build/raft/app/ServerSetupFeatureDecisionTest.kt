@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.SlockFeatureFlagsApi
+import build.raft.app.data.RaftFeatureFlagsApi
 import build.raft.app.data.WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import kotlin.test.Test
@@ -63,7 +63,7 @@ class ServerSetupFeatureDecisionTest {
         val started = CompletableDeferred<Unit>()
         val never = CompletableDeferred<HomeNetworkResponse>()
         val flags = SharedServerFeatureFlags(
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
                     started.complete(Unit)
                     return never.await()

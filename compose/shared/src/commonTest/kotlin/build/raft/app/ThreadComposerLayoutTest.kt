@@ -3,12 +3,12 @@ package build.raft.app
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.MemberKind
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.ImeAction
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,7 +28,7 @@ class ThreadComposerLayoutTest {
 
         assertEquals(TextRange(1), repaired.selection)
         assertEquals(
-            KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+            RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
             threadComposerSuggestionTrigger(repaired.text, repaired.selection.start),
         )
     }
@@ -132,20 +132,20 @@ class ThreadComposerLayoutTest {
     @Test
     fun suggestionPortalLeavesTheComposerAndToolbarHitPathUncovered() {
         assertFalse(ThreadComposerSuggestionOutsidePointerMode.installsOutsideDismissBarrier)
-        assertTrue(SlockFloatingOverlayOutsidePointerMode.Dismiss.installsOutsideDismissBarrier)
+        assertTrue(RaftFloatingOverlayOutsidePointerMode.Dismiss.installsOutsideDismissBarrier)
     }
 
     @Test
     fun suggestionFocusLossFencesStalePortalShowUntilEditingResumes() {
         val owner = ThreadComposerSuggestionPortalOwner()
         val otherOwner = ThreadComposerSuggestionPortalOwner()
-        val anchorRef = SlockLiveRootAnchorRef(owner)
+        val anchorRef = RaftLiveRootAnchorRef(owner)
         val generationOne = 0L
         val presentationOne =
             ThreadComposerSuggestionPresentation(
                 owner = owner,
                 generation = generationOne,
-                anchorResolver = anchorRef.resolver(SlockPopoverLocalPoint.Exact(Offset.Zero)),
+                anchorResolver = anchorRef.resolver(RaftPopoverLocalPoint.Exact(Offset.Zero)),
                 selectionContext =
                     requireNotNull(
                         threadComposerSuggestionSelectionContext(
@@ -157,14 +157,14 @@ class ThreadComposerLayoutTest {
                     ),
                 contentSize = Size(320f, 240f),
                 panelState = ThreadComposerSuggestionPanelState.MemberLoading,
-                surface = ThreadComposerSurface(kind = KuiklyThreadSurfaceKind.Channel, channelId = "channel-1"),
+                surface = ThreadComposerSurface(kind = RaftThreadSurfaceKind.Channel, channelId = "channel-1"),
                 memberSuggestions = emptyList(),
                 memberSelectedIndex = 0,
                 memberErrorCode = null,
                 channelSuggestions = emptyList(),
                 channelSelectedIndex = 0,
                 channelErrorCode = null,
-                agentStatusResolver = EmptySlockAgentStatusResolver,
+                agentStatusResolver = EmptyRaftAgentStatusResolver,
                 onDismiss = {},
                 onMemberClick = { _, _ -> },
                 onChannelClick = { _, _ -> }
@@ -247,8 +247,8 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun stableChannelCallbackUsesLatestDraftAfterInitialEmptyComposition() {
-        val channel = KuiklyComposerChannelItem(name = "design")
-        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val channel = RaftComposerChannelItem(name = "design")
+        val committed = mutableListOf<RaftComposerSuggestionEdit>()
         val dispatcher =
             ThreadComposerSuggestionSelectionDispatcher(
                 initialText = "",
@@ -276,13 +276,13 @@ class ThreadComposerLayoutTest {
             )
 
         assertTrue(stableCallback(context, channel))
-        assertEquals(listOf(KuiklyComposerSuggestionEdit(text = "#design ", cursor = 8)), committed)
+        assertEquals(listOf(RaftComposerSuggestionEdit(text = "#design ", cursor = 8)), committed)
     }
 
     @Test
     fun stableMemberCallbackUsesLatestDraftAfterInitialEmptyComposition() {
-        val member = KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
-        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val member = RaftComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
+        val committed = mutableListOf<RaftComposerSuggestionEdit>()
         val dispatcher =
             ThreadComposerSuggestionSelectionDispatcher(
                 initialText = "",
@@ -310,13 +310,13 @@ class ThreadComposerLayoutTest {
             )
 
         assertTrue(stableCallback(context, member))
-        assertEquals(listOf(KuiklyComposerSuggestionEdit(text = "@artin ", cursor = 7)), committed)
+        assertEquals(listOf(RaftComposerSuggestionEdit(text = "@artin ", cursor = 7)), committed)
     }
 
     @Test
     fun stalePresentationIsRejectedAfterTextOrRangeChanges() {
-        val channel = KuiklyComposerChannelItem(name = "design")
-        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val channel = RaftComposerChannelItem(name = "design")
+        val committed = mutableListOf<RaftComposerSuggestionEdit>()
         val dispatcher =
             ThreadComposerSuggestionSelectionDispatcher(
                 initialText = "#d",
@@ -349,9 +349,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun candidateRemovedFromLatestCompositionIsRejectedByIdentity() {
-        val member = KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
-        val replacement = KuiklyComposerMemberItem(displayName = "Other", handle = "other", memberId = "member-2")
-        val committed = mutableListOf<KuiklyComposerSuggestionEdit>()
+        val member = RaftComposerMemberItem(displayName = "Artin", handle = "artin", memberId = "member-1")
+        val replacement = RaftComposerMemberItem(displayName = "Other", handle = "other", memberId = "member-2")
+        val committed = mutableListOf<RaftComposerSuggestionEdit>()
         val dispatcher =
             ThreadComposerSuggestionSelectionDispatcher(
                 initialText = "@",
@@ -415,7 +415,7 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun mentionSuggestionInsertMovesCursorAfterInsertedMention() {
-        val edit = applyKuiklyComposerSuggestionEdit(
+        val edit = applyRaftComposerSuggestionEdit(
             text = "ping @ar",
             selectionStart = 8,
             selectionEnd = 8,
@@ -423,12 +423,12 @@ class ThreadComposerLayoutTest {
             replacement = "@artin "
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @artin ", cursor = 12), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "ping @artin ", cursor = 12), edit)
     }
 
     @Test
     fun mentionSuggestionInsertPreservesSuffixWithoutDoubleSpace() {
-        val edit = applyKuiklyComposerSuggestionEdit(
+        val edit = applyRaftComposerSuggestionEdit(
             text = "ping @ar world",
             selectionStart = 8,
             selectionEnd = 8,
@@ -436,67 +436,67 @@ class ThreadComposerLayoutTest {
             replacement = "@artin "
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @artin world", cursor = 12), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "ping @artin world", cursor = 12), edit)
     }
 
     @Test
     fun suggestionTokenCommitAddsTrailingSpaceAndMovesCursor() {
-        val edit = commitKuiklyComposerSuggestionToken(
+        val edit = commitRaftComposerSuggestionToken(
             text = "ping @ar",
             selectionStart = 8,
             selectionEnd = 8,
             triggerStart = 5
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @ar ", cursor = 9), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "ping @ar ", cursor = 9), edit)
     }
 
     @Test
     fun suggestionTokenCommitDoesNotDoubleExistingSpace() {
-        val edit = commitKuiklyComposerSuggestionToken(
+        val edit = commitRaftComposerSuggestionToken(
             text = "ping @ar world",
             selectionStart = 8,
             selectionEnd = 8,
             triggerStart = 5
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @ar world", cursor = 9), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "ping @ar world", cursor = 9), edit)
     }
 
     @Test
     fun directMentionInsertUsesCursorInsteadOfAppending() {
-        val edit = applyKuiklyComposerDirectMentionInsert(
+        val edit = applyRaftComposerDirectMentionInsert(
             text = "hello  world",
             selectionStart = 6,
             selectionEnd = 6,
             handle = "@artin"
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "hello @artin world", cursor = 12), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "hello @artin world", cursor = 12), edit)
     }
 
     @Test
     fun directMentionInsertReplacesSelectionAtCursor() {
-        val edit = applyKuiklyComposerDirectMentionInsert(
+        val edit = applyRaftComposerDirectMentionInsert(
             text = "hello middle world",
             selectionStart = 6,
             selectionEnd = 12,
             handle = "Android Developer"
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "hello @android-developer world", cursor = 24), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "hello @android-developer world", cursor = 24), edit)
     }
 
     @Test
     fun directMentionInsertAddsSeparatingSpacesWhenNeeded() {
-        val edit = applyKuiklyComposerDirectMentionInsert(
+        val edit = applyRaftComposerDirectMentionInsert(
             text = "helloworld",
             selectionStart = 5,
             selectionEnd = 5,
             handle = "artin"
         )
 
-        assertEquals(KuiklyComposerSuggestionEdit(text = "hello @artin world", cursor = 13), edit)
+        assertEquals(RaftComposerSuggestionEdit(text = "hello @artin world", cursor = 13), edit)
     }
 
     @Test
@@ -505,7 +505,7 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPanelState.MemberLoading,
             threadComposerSuggestionPanelState(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
                 memberCount = 0,
                 memberStatus = SharedMembersLoadStatus.InFlight,
                 channelCount = 0,
@@ -520,7 +520,7 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPanelState.MemberItems,
             threadComposerSuggestionPanelState(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
                 memberCount = 1,
                 memberStatus = SharedMembersLoadStatus.InFlight,
                 channelCount = 0,
@@ -535,7 +535,7 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPanelState.MemberEmpty,
             threadComposerSuggestionPanelState(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "missing", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "missing", triggerStart = 0),
                 memberCount = 0,
                 memberStatus = SharedMembersLoadStatus.Loaded,
                 channelCount = 0,
@@ -550,7 +550,7 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPanelState.MemberEmpty,
             threadComposerSuggestionPanelState(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0),
                 memberCount = 0,
                 memberStatus = SharedMembersLoadStatus.Idle,
                 channelCount = 0,
@@ -565,7 +565,7 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPanelState.ChannelItems,
             threadComposerSuggestionPanelState(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "home", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.ChannelTrigger(query = "home", triggerStart = 0),
                 memberCount = 0,
                 memberStatus = SharedMembersLoadStatus.Loaded,
                 channelCount = 1,
@@ -580,7 +580,7 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionPanelState.ChannelEmpty,
             threadComposerSuggestionPanelState(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0),
                 memberCount = 0,
                 memberStatus = SharedMembersLoadStatus.Loaded,
                 channelCount = 0,
@@ -630,8 +630,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun suggestionPanelContentHeightReservesRoomForMultipleRows() {
+        // p-1.5 inset (2 x 6) + 28dp group label + 3 x 38.
         assertEquals(
-            144.dp,
+            154.dp,
             composerSuggestionPanelContentHeight(
                 itemCount = 3,
                 rowMinHeight = 38.dp
@@ -663,8 +664,9 @@ class ThreadComposerLayoutTest {
 
     @Test
     fun suggestionPanelHeightCanOmitMemberHeaderForDirectMessages() {
+        // p-1.5 inset (2 x 6) + 3 x 36 (min-h-9).
         assertEquals(
-            114.dp,
+            120.dp,
             composerSuggestionPanelHeight(
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 3,
@@ -703,7 +705,7 @@ class ThreadComposerLayoutTest {
     @Test
     fun suggestionPanelContentHeightCanOmitHeaderForChannelRows() {
         assertEquals(
-            102.dp,
+            114.dp,
             composerSuggestionPanelContentHeight(
                 itemCount = 3,
                 rowMinHeight = 34.dp,
@@ -718,14 +720,14 @@ class ThreadComposerLayoutTest {
             ThreadComposerSuggestionRefreshRequest.Member,
             threadComposerSuggestionRefreshRequest(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
             )
         )
         assertEquals(
             ThreadComposerSuggestionRefreshRequest.Channel,
             threadComposerSuggestionRefreshRequest(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0)
+                trigger = RaftComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0)
             )
         )
     }
@@ -736,14 +738,14 @@ class ThreadComposerLayoutTest {
             null,
             threadComposerSuggestionRefreshRequest(
                 focused = false,
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
             )
         )
         assertEquals(
             null,
             threadComposerSuggestionRefreshRequest(
                 focused = true,
-                trigger = KuiklyComposerSuggestionTrigger.None
+                trigger = RaftComposerSuggestionTrigger.None
             )
         )
     }
@@ -779,7 +781,7 @@ class ThreadComposerLayoutTest {
         assertEquals(
             ThreadComposerEnterAction.AcceptMemberSuggestion,
             threadComposerEnterAction(
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "ar", triggerStart = 5),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "ar", triggerStart = 5),
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 1,
                 channelCount = 0,
@@ -816,19 +818,19 @@ class ThreadComposerLayoutTest {
     @Test
     fun firstMemberSuggestionCandidateMatchesVisualGrouping() {
         val outside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Outside",
                 handle = "outside",
                 inMentionChannel = false
             )
         val inside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Inside",
                 handle = "inside",
                 inMentionChannel = true
             )
         val inThread =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Thread",
                 handle = "thread",
                 inMentionChannel = false,
@@ -886,25 +888,25 @@ class ThreadComposerLayoutTest {
     @Test
     fun selectedMemberSuggestionCandidateSkipsSectionHeader() {
         val outside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Outside",
                 handle = "outside",
                 inMentionChannel = false
             )
         val insideOne =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Inside One",
                 handle = "inside-one",
                 inMentionChannel = true
             )
         val insideTwo =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Inside Two",
                 handle = "inside-two",
                 inMentionChannel = true
             )
         val threadParticipant =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Thread Participant",
                 handle = "thread-participant",
                 inMentionChannel = false,
@@ -922,7 +924,7 @@ class ThreadComposerLayoutTest {
     @Test
     fun memberSuggestionGroupsDeduplicateThreadParticipantsFromChannelSections() {
         val threadCopy =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Cindy",
                 handle = "cindy",
                 memberId = "u-cindy",
@@ -930,14 +932,14 @@ class ThreadComposerLayoutTest {
                 inThread = true
             )
         val channelCopy =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Cindy",
                 handle = "cindy",
                 memberId = "u-cindy",
                 inMentionChannel = true
             )
         val outside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Outside",
                 handle = "outside",
                 inMentionChannel = false
@@ -954,7 +956,7 @@ class ThreadComposerLayoutTest {
     @Test
     fun memberSuggestionGroupsKeepDistinctKindsAndMembersWithTheSameHandle() {
         val localAgent =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Builder",
                 handle = "builder",
                 memberId = "local-agent",
@@ -962,7 +964,7 @@ class ThreadComposerLayoutTest {
                 inMentionChannel = true
             )
         val remoteAgent =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Builder",
                 handle = "builder",
                 memberId = "remote-agent",
@@ -970,7 +972,7 @@ class ThreadComposerLayoutTest {
                 inMentionChannel = true
             )
         val humanWithCollidingId =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Builder Human",
                 handle = "builder",
                 memberId = "local-agent",
@@ -986,13 +988,13 @@ class ThreadComposerLayoutTest {
     @Test
     fun selectedMemberSuggestionCandidateCanUseFlatDirectMessageOrder() {
         val outside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Outside",
                 handle = "outside",
                 inMentionChannel = false
             )
         val inside =
-            KuiklyComposerMemberItem(
+            RaftComposerMemberItem(
                 displayName = "Inside",
                 handle = "inside",
                 inMentionChannel = true
@@ -1007,13 +1009,13 @@ class ThreadComposerLayoutTest {
     fun selectedChannelSuggestionCandidateUsesClampedIndex() {
         val channels =
             listOf(
-                KuiklyComposerChannelItem(name = "general"),
-                KuiklyComposerChannelItem(name = "design")
+                RaftComposerChannelItem(name = "general"),
+                RaftComposerChannelItem(name = "design")
             )
 
         val selectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex = 4, itemCount = channels.size)
 
-        assertEquals(KuiklyComposerChannelItem(name = "design"), channels.getOrNull(selectedIndex))
+        assertEquals(RaftComposerChannelItem(name = "design"), channels.getOrNull(selectedIndex))
     }
 
     @Test
@@ -1021,7 +1023,7 @@ class ThreadComposerLayoutTest {
         assertEquals(
             ThreadComposerEnterAction.AcceptChannelSuggestion,
             threadComposerEnterAction(
-                trigger = KuiklyComposerSuggestionTrigger.ChannelTrigger(query = "des", triggerStart = 5),
+                trigger = RaftComposerSuggestionTrigger.ChannelTrigger(query = "des", triggerStart = 5),
                 panelState = ThreadComposerSuggestionPanelState.ChannelItems,
                 memberCount = 0,
                 channelCount = 1,
@@ -1092,7 +1094,7 @@ class ThreadComposerLayoutTest {
         assertEquals(
             ThreadComposerEnterAction.CommitSuggestionToken,
             threadComposerEnterAction(
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "ar", triggerStart = 5),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "ar", triggerStart = 5),
                 panelState = ThreadComposerSuggestionPanelState.MemberLoading,
                 memberCount = 0,
                 channelCount = 0,
@@ -1107,7 +1109,7 @@ class ThreadComposerLayoutTest {
         assertEquals(
             ThreadComposerEnterAction.Send,
             threadComposerEnterAction(
-                trigger = KuiklyComposerSuggestionTrigger.None,
+                trigger = RaftComposerSuggestionTrigger.None,
                 panelState = ThreadComposerSuggestionPanelState.Hidden,
                 memberCount = 0,
                 channelCount = 0,
@@ -1122,7 +1124,7 @@ class ThreadComposerLayoutTest {
         assertEquals(
             ThreadComposerEnterAction.Noop,
             threadComposerEnterAction(
-                trigger = KuiklyComposerSuggestionTrigger.MemberTrigger(query = "pin", triggerStart = 0),
+                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "pin", triggerStart = 0),
                 panelState = ThreadComposerSuggestionPanelState.MemberItems,
                 memberCount = 1,
                 channelCount = 0,
@@ -1133,27 +1135,46 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun onlyHardwareEnterDefersToImeComposition() {
+        // Gboard keeps the Latin word in composition: the soft Send key must still send.
+        assertFalse(threadComposerEnterDeferredByComposition(fromHardwareEnter = false, composition = TextRange(0, 5)))
+        assertTrue(threadComposerEnterDeferredByComposition(fromHardwareEnter = true, composition = TextRange(0, 5)))
+        assertFalse(threadComposerEnterDeferredByComposition(fromHardwareEnter = true, composition = null))
+        assertEquals(
+            ThreadComposerEnterAction.Send,
+            threadComposerEnterAction(
+                trigger = RaftComposerSuggestionTrigger.None,
+                panelState = ThreadComposerSuggestionPanelState.Hidden,
+                memberCount = 0,
+                channelCount = 0,
+                canSend = true,
+                isImeComposing = threadComposerEnterDeferredByComposition(false, TextRange(0, 5)),
+            )
+        )
+    }
+
+    @Test
     fun composerAttachmentRowsUseReactImageAndFileWidths() {
         val rows =
             composerAttachmentRows(
                 listOf(
-                    KuiklyPendingAttachmentItem(
+                    RaftPendingAttachmentItem(
                         id = "image",
                         fileName = "composer-preview.png",
                         mimeType = "image/png",
                         previewUri = "data:image/png;base64,"
                     ),
-                    KuiklyPendingAttachmentItem(
+                    RaftPendingAttachmentItem(
                         id = "report",
                         fileName = "release-notes.pdf",
                         mimeType = "application/pdf"
                     ),
-                    KuiklyPendingAttachmentItem(
+                    RaftPendingAttachmentItem(
                         id = "logs",
                         fileName = "android-smoke-log.zip",
                         mimeType = "application/zip"
                     ),
-                    KuiklyPendingAttachmentItem(
+                    RaftPendingAttachmentItem(
                         id = "trace",
                         fileName = "oversized-trace.jsonl",
                         mimeType = "application/json"

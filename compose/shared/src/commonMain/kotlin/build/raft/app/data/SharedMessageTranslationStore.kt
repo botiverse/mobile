@@ -72,8 +72,8 @@ internal const val MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS = 30_000L
 private const val MESSAGE_TRANSLATION_PENDING_TIMEOUT_SLACK_MS = 250L
 
 class SharedMessageTranslationStore internal constructor(
-    private val authStore: SlockAuthSessionStore,
-    private val api: SlockMessageTranslationApi,
+    private val authStore: RaftAuthSessionStore,
+    private val api: RaftMessageTranslationApi,
     private val scope: CoroutineScope,
     private val translationMode: () -> TranslationModePreference = { TranslationModePreference.Default },
     private val translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
@@ -81,7 +81,7 @@ class SharedMessageTranslationStore internal constructor(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val pendingTimeoutMs: Long = MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS,
 ) {
-    private val _state = MutableStateFlow(SharedMessageTranslationState())
+    private val _state = raftStoreState(SharedMessageTranslationState(), "SharedMessageTranslationStore")
     val state: StateFlow<SharedMessageTranslationState> = _state.asStateFlow()
 
     private var settingsJob: Job? = null
@@ -129,19 +129,20 @@ class SharedMessageTranslationStore internal constructor(
         }
     }
 
+    // Public entry points are called from the UI (the main thread under CMP). Their state writes and
+    // the in-flight batch bookkeeping belong on the store scope (the serial store dispatcher in
+    // production, see RaftStoreThreading), so each one hops there before touching either.
+
     fun requestAutoTranslations(candidates: List<SharedMessageTranslationCandidate>) {
-        val settings = _state.value.settings
-        if (!settings.available) return
-        if (settings.translationMode != TranslationModePreference.Automatic) return
-        requestTranslations(candidates, force = false)
+        scope.launch { requestAutoTranslationsOnStoreScope(candidates) }
     }
 
     fun requestManualTranslation(candidate: SharedMessageTranslationCandidate) {
-        requestTranslations(listOf(candidate), force = true)
+        scope.launch { requestTranslations(listOf(candidate), force = true) }
     }
 
     fun retryTranslation(candidate: SharedMessageTranslationCandidate) {
-        requestTranslations(listOf(candidate), force = true)
+        scope.launch { requestTranslations(listOf(candidate), force = true) }
     }
 
     /**
@@ -150,6 +151,30 @@ class SharedMessageTranslationStore internal constructor(
      * batch. Either way the message flips to showing the translation.
      */
     fun translateNow(candidate: SharedMessageTranslationCandidate) {
+        scope.launch { translateNowOnStoreScope(candidate) }
+    }
+
+    fun setShowOriginal(messageId: String, showOriginal: Boolean) {
+        scope.launch { setShowOriginalOnStoreScope(messageId, showOriginal) }
+    }
+
+    fun reset() {
+        settingsJob?.cancel()
+        settingsJob = null
+        scope.launch {
+            inFlightBatchKeys.clear()
+            _state.value = SharedMessageTranslationState()
+        }
+    }
+
+    private fun requestAutoTranslationsOnStoreScope(candidates: List<SharedMessageTranslationCandidate>) {
+        val settings = _state.value.settings
+        if (!settings.available) return
+        if (settings.translationMode != TranslationModePreference.Automatic) return
+        requestTranslations(candidates, force = false)
+    }
+
+    private fun translateNowOnStoreScope(candidate: SharedMessageTranslationCandidate) {
         if (_state.value.settings.translationMode == TranslationModePreference.Original) return
         val entry = _state.value.entries[candidate.messageId]
         val hasFreshTranslation =
@@ -159,22 +184,15 @@ class SharedMessageTranslationStore internal constructor(
         if (!hasFreshTranslation) {
             requestTranslations(listOf(candidate), force = true)
         }
-        setShowOriginal(candidate.messageId, false)
+        setShowOriginalOnStoreScope(candidate.messageId, false)
     }
 
-    fun setShowOriginal(messageId: String, showOriginal: Boolean) {
+    private fun setShowOriginalOnStoreScope(messageId: String, showOriginal: Boolean) {
         updateState { state ->
             val entry = state.entries[messageId] ?: return@updateState state
             if (entry.showOriginal == showOriginal) return@updateState state
             state.copy(entries = state.entries + (messageId to entry.copy(showOriginal = showOriginal)))
         }
-    }
-
-    fun reset() {
-        settingsJob?.cancel()
-        settingsJob = null
-        inFlightBatchKeys.clear()
-        _state.value = SharedMessageTranslationState()
     }
 
     private fun requestTranslations(candidates: List<SharedMessageTranslationCandidate>, force: Boolean) {

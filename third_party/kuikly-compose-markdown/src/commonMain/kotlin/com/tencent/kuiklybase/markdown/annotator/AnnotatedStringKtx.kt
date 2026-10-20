@@ -1,20 +1,20 @@
 package com.tencent.kuiklybase.markdown.annotator
 
-import com.tencent.kuikly.compose.ui.text.font.FontStyle
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.foundation.text.appendInlineContent
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.runtime.Composable
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.utils.CJK_URL_BOUNDARY_PUNCTUATION
@@ -24,8 +24,8 @@ import com.tencent.kuiklybase.markdown.utils.findChildOfTypeRecursive
 import com.tencent.kuiklybase.markdown.utils.getUnescapedTextInNode
 import com.tencent.kuiklybase.markdown.utils.innerList
 import com.tencent.kuiklybase.markdown.utils.mapAutoLinkToType
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
-import com.tencent.kuikly.compose.ui.text.withLink
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.withLink
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
@@ -34,19 +34,20 @@ import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
-import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
-import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
-import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
-import build.raft.app.markdown.slockMarkdownInlineCodeEdgeStyle
-import build.raft.app.slockFirstComposedCharacterEnd
-import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
-import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
+import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
+import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
+import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
+import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
+import build.raft.app.markdown.raftMarkdownInlineCodeEdgeStyle
+import build.raft.app.raftFirstComposedCharacterEnd
+import build.raft.app.raftInlineCodeCharWrapBridgeThreshold
+import build.raft.app.raftInlineCodeUsesEdgePaddingBridge
 
 // task #401 A-bridge: interleave zero-width spaces into non-whitespace runs
 // longer than [threshold] so renders without native inline-code atomization
 // (OHOS/iOS) can wrap long code at any character boundary, matching web and
 // the Android render's char-level behavior. Never splits a surrogate pair.
-internal fun String.withSlockInlineCodeCharWrapBreaks(threshold: Int): String {
+internal fun String.withRaftInlineCodeCharWrapBreaks(threshold: Int): String {
     if (length <= threshold) return this
     val result = StringBuilder(length * 2)
     var index = 0
@@ -65,7 +66,7 @@ internal fun String.withSlockInlineCodeCharWrapBreaks(threshold: Int): String {
         if (run.length > threshold) {
             run.forEachIndexed { runIndex, runChar ->
                 if (runIndex > 0 && !runChar.isLowSurrogate()) {
-                    result.append(SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
+                    result.append(RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
                 }
                 result.append(runChar)
             }
@@ -99,7 +100,7 @@ fun String.buildMarkdownAnnotatedString(
     style: TextStyle,
     linkTextSpanStyle: SpanStyle = style.toSpanStyle(),
     codeSpanStyle: SpanStyle = style.toSpanStyle(),
-    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
     annotator: MarkdownAnnotator = markdownAnnotator(),
     referenceLinkHandler: ReferenceLinkHandler? = null,
     linkInteractionListener: LinkInteractionListener? = null,
@@ -130,7 +131,7 @@ fun String.buildMarkdownAnnotatedString(
 fun String.buildMarkdownAnnotatedString(
     style: TextStyle,
     annotatorSettings: AnnotatorSettings,
-    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
 ): AnnotatedString {
     val content = MarkdownParserContent.from(this).parserContent
     val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(content)
@@ -477,12 +478,12 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     MarkdownElementTypes.CODE_SPAN -> {
                         val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
-                        val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
-                        val usesEdgePaddingBridge = slockInlineCodeUsesEdgePaddingBridge()
+                        val charWrapThreshold = raftInlineCodeCharWrapBridgeThreshold()
+                        val usesEdgePaddingBridge = raftInlineCodeUsesEdgePaddingBridge()
                         val codeText =
                             if (charWrapThreshold != null) {
                                 // task #401 A-bridge (see the expect in
-                                // SlockKuiklyPlatformCapabilities.kt): on platforms whose
+                                // RaftPlatformCapabilities.kt): on platforms whose
                                 // native layout cannot atomize long inline-code runs, append
                                 // zero-width-space break opportunities so they wrap at
                                 // character boundaries. Code spans carry no
@@ -497,7 +498,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                             insideCodeSpan = true
                                         )
                                     }.toAnnotatedString().text
-                                rawCodeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold)
+                                rawCodeText.withRaftInlineCodeCharWrapBreaks(charWrapThreshold)
                             } else {
                                 AnnotatedString.Builder().apply {
                                     buildMarkdownAnnotatedString(
@@ -509,13 +510,13 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                 }.toAnnotatedString().text
                             }
                         if (usesEdgePaddingBridge) {
-                            appendSlockInlineCodeWithEdgeBoxes(codeText)
+                            appendRaftInlineCodeWithEdgeBoxes(codeText)
                         } else {
                             append(codeText)
                         }
                         pop()
                         addStringAnnotation(
-                            tag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                            tag = RAFT_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
                             annotation = "true",
                             start = codeStart,
                             end = length
@@ -633,7 +634,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         append(' ')
                         if (children.getOrNull(childIndex - 1)?.type == MarkdownElementTypes.CODE_SPAN) {
                             addStringAnnotation(
-                                tag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG,
+                                tag = RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG,
                                 annotation = "true",
                                 start = whitespaceStart,
                                 end = length
@@ -652,18 +653,20 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     }
 }
 
-private fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(codeText: String) =
-    appendSlockInlineCodeWithEdgeBoxes(codeText, slockFirstComposedCharacterEnd(codeText))
+private fun AnnotatedString.Builder.appendRaftInlineCodeWithEdgeBoxes(codeText: String) =
+    appendRaftInlineCodeWithEdgeBoxes(codeText, raftFirstComposedCharacterEnd(codeText))
 
-internal fun AnnotatedString.Builder.appendSlockInlineCodeWithEdgeBoxes(
+internal fun AnnotatedString.Builder.appendRaftInlineCodeWithEdgeBoxes(
     codeText: String,
     firstComposedCharacterEnd: Int?,
 ) {
     if (codeText.isEmpty()) return
-    pushStyle(
-        SpanStyle(
-            inlineBoxStyle = slockMarkdownInlineCodeEdgeStyle(leading = true, trailing = true)
-        )
+    // Raft (CMP switch): upstream SpanStyle has no inlineBoxStyle; the chip box is a string
+    // annotation painted by build.raft.app.markdown.raftInlineDecorations. Both pop() calls
+    // below close this annotation.
+    pushStringAnnotation(
+        tag = RAFT_INLINE_BOX_ANNOTATION_TAG,
+        annotation = raftMarkdownInlineCodeEdgeStyle(leading = true, trailing = true).encode()
     )
     // task #104: a platform without a composed-character segmenter (OHOS) must
     // still own the chip chrome. A single-child group is the exact shape a

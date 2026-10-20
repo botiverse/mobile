@@ -1,6 +1,9 @@
 package build.raft.app.data
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.opt
+import build.raft.app.optString
+import build.raft.app.parseRaftJsonObject
+
 
 /** Result of probing a candidate private deployment before it is saved as the custom environment. */
 sealed interface ServerVersionProbe {
@@ -64,7 +67,7 @@ internal object SharedServerVersionGate {
      */
     suspend fun probe(
         apiBaseUrl: String,
-        transportFactory: (String) -> SlockAuthTransport = { SharedSlockAuthTransport(baseUrl = it) }
+        transportFactory: (String) -> RaftAuthTransport = { SharedRaftAuthTransport(baseUrl = it) }
     ): ServerVersionProbe {
         val base = apiBaseUrl.trim().trimEnd('/')
         if (base.isEmpty()) return ServerVersionProbe.Unreachable
@@ -74,7 +77,7 @@ internal object SharedServerVersionGate {
         val json =
             (response.bodyText ?: response.errorBodyText)
                 ?.takeIf { it.isNotBlank() }
-                ?.let { body -> runCatching { JSONObject(body) }.getOrNull() }
+                ?.let { body -> runCatching { parseRaftJsonObject(body) }.getOrNull() }
         val buildIdentityUnavailable =
             response.code == 503 && json?.optString("code") == "build_identity_unavailable"
         // Raw values, not optString: Kuikly's optString stringifies numbers, booleans, objects and arrays (Ark).

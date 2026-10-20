@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.AgentDmSummary
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
-import build.raft.app.data.SlockAvatarCacheSubject
+import build.raft.app.data.RaftAvatarCacheSubject
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -22,11 +22,11 @@ class MembersAgentDmAvatarCacheIdentityTest {
         val resolved = state.membersAgentDmPeerProfile(row, "server-a")
         assertEquals(peer, resolved)
         assertEquals(
-            SlockMemberAvatarCacheIdentity(
-                subject = SlockAvatarCacheSubject.Member(MemberKind.Human, "peer-1"),
+            RaftMemberAvatarCacheIdentity(
+                subject = RaftAvatarCacheSubject.Member(MemberKind.Human, "peer-1"),
                 serverId = "server-a"
             ),
-            resolved?.slockAvatarCacheIdentity("server-a")
+            resolved?.raftAvatarCacheIdentity("server-a")
         )
     }
 
@@ -40,7 +40,7 @@ class MembersAgentDmAvatarCacheIdentityTest {
             .membersAgentDmPeerProfile(row, "server-a"))
         assertNull(state("server-b", profile("peer-1", MemberKind.Human, "server-b"))
             .membersAgentDmPeerProfile(row, "server-a"))
-        assertNull(profile("peer-1", MemberKind.Human, "server-b").slockAvatarCacheIdentity("server-a"))
+        assertNull(profile("peer-1", MemberKind.Human, "server-b").raftAvatarCacheIdentity("server-a"))
         assertNull(
             state("server-a", profile("peer-1", MemberKind.Human, "server-a"))
                 .membersAgentDmPeerProfile(row.copy(peerId = null), "server-a")
@@ -59,7 +59,7 @@ class MembersAgentDmAvatarCacheIdentityTest {
                 .membersAgentDmPeerProfile(row, "server-a")
 
         assertEquals(MemberKind.System, resolved?.kind)
-        assertNull(resolved?.slockAvatarCacheIdentity("server-a"))
+        assertNull(resolved?.raftAvatarCacheIdentity("server-a"))
     }
 
     private fun state(serverId: String, vararg members: MemberProfile): SharedServerMembersState =

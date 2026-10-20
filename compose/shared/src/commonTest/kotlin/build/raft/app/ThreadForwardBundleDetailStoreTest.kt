@@ -7,9 +7,9 @@ import build.raft.app.data.AuthenticatedRouteAuthorityReceipt
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemorySlockAuthSessionStore
-import build.raft.app.data.SlockExpectedAuthBinding
-import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.RaftExpectedAuthBinding
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -22,9 +22,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
-import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
@@ -67,9 +67,9 @@ class ThreadForwardBundleDetailStoreTest {
 
                 override suspend fun isCurrent(receipt: AuthenticatedRouteAuthorityReceipt): Boolean = false
 
-                override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): SlockNetworkClient {
+                override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): RaftNetworkClient {
                     networkClientCalls += 1
-                    return object : SlockNetworkClient {
+                    return object : RaftNetworkClient {
                         override suspend fun request(
                             priority: DataRequestPriority,
                             path: String,
@@ -84,7 +84,7 @@ class ThreadForwardBundleDetailStoreTest {
         val repository =
             AuthenticatedThreadForwardBundleDetailRepository(
                 messageStore = messageStore,
-                authStore = InMemorySlockAuthSessionStore(),
+                authStore = InMemoryRaftAuthSessionStore(),
                 owner =
                     AuthenticatedRouteOwner(
                         environmentId = "https://api.raft.build/api",
@@ -111,7 +111,7 @@ class ThreadForwardBundleDetailStoreTest {
         )
         var requestCalls = 0
         val networkClient =
-            object : SlockNetworkClient {
+            object : RaftNetworkClient {
                 override suspend fun request(
                     priority: DataRequestPriority,
                     path: String,
@@ -185,10 +185,10 @@ class ThreadForwardBundleDetailStoreTest {
         val hostInjectedPageData =
             JSONObject()
                 .put("localOffsetMinutes", 480)
-                .put("timeFormat", SlockTimeFormat24Hour)
+                .put("timeFormat", RaftTimeFormat24Hour)
         assertEquals(480, hostInjectedPageData.threadForwardBundleTimeCapabilitiesOrNull()?.localOffsetMinutes)
         assertEquals(
-            SlockTimeFormat24Hour,
+            RaftTimeFormat24Hour,
             hostInjectedPageData.threadForwardBundleTimeCapabilitiesOrNull()?.timeFormat
         )
         assertNull(JSONObject().threadForwardBundleTimeCapabilitiesOrNull())
@@ -279,8 +279,8 @@ class ThreadForwardBundleDetailStoreTest {
     private fun owner(): AuthenticatedRouteOwner =
         AuthenticatedRouteOwner("https://api.raft.build/api", "account-a", "server-1")
 
-    private fun authenticatedStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun authenticatedStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "account-a", email = "a@raft.build"),
                 accessToken = "access-a",
@@ -312,7 +312,7 @@ class ThreadForwardBundleDetailStoreTest {
 }
 
 private class FixedForwardBundleGateway(
-    private val client: SlockNetworkClient,
+    private val client: RaftNetworkClient,
 ) : AuthenticatedRouteAuthorityGateway {
     private val receipt =
         AuthenticatedRouteAuthorityReceipt(
@@ -321,7 +321,7 @@ private class FixedForwardBundleGateway(
             selectionGeneration = 1L,
             canManageSettings = false,
             expectedAuthBinding =
-                SlockExpectedAuthBinding(
+                RaftExpectedAuthBinding(
                     accountId = "account-a",
                     accessToken = "access-a",
                     refreshToken = "refresh-a",
@@ -336,5 +336,5 @@ private class FixedForwardBundleGateway(
     override suspend fun isCurrent(receipt: AuthenticatedRouteAuthorityReceipt): Boolean =
         receipt == this.receipt
 
-    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): SlockNetworkClient = client
+    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): RaftNetworkClient = client
 }

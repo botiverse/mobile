@@ -2,9 +2,9 @@ package build.raft.app.shared
 
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
-import build.raft.app.data.SlockLocalPreferenceStore
+import build.raft.app.data.RaftLocalPreferenceStore
 import com.tencent.mmkv.MMKV
 
 internal object AndroidRealtimeKeepAliveController {
@@ -14,7 +14,7 @@ internal object AndroidRealtimeKeepAliveController {
         val appContext = context.applicationContext
         if (!isForegroundKeepAliveEnabled(appContext)) {
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("preference_disabled")
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "start_skipped_preference_disabled source=$source"
             )
@@ -22,7 +22,7 @@ internal object AndroidRealtimeKeepAliveController {
         }
         if (!AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(appContext)) {
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("missing_session")
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "start_skipped_no_session source=$source"
             )
@@ -43,7 +43,7 @@ internal object AndroidRealtimeKeepAliveController {
         runCatching {
             val appContext = context.applicationContext
             AndroidAppScopeMMKV.ensureInitialized(appContext)
-            val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
+            val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
             val value =
                 store.decodeString(
                     localPreferenceKey(NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY),
@@ -51,7 +51,7 @@ internal object AndroidRealtimeKeepAliveController {
                 ) ?: store.decodeString(NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY, "false")
             value == "true"
         }.getOrElse { error ->
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "preference_read_failed message=${error.message.orEmpty()}"
             )
@@ -59,5 +59,5 @@ internal object AndroidRealtimeKeepAliveController {
         }
 
     internal fun localPreferenceKey(key: String): String =
-        "${SlockLocalPreferenceStore.KuiklyNamespace}:$key"
+        "${RaftLocalPreferenceStore.KuiklyNamespace}:$key"
 }

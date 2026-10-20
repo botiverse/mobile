@@ -6,20 +6,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
-import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.input.pointer.PointerEventPass
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.rememberOverscrollEffect
+import build.raft.app.raftPlatformTabPagerOverscrollEnabled
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import kotlin.math.abs
 
 /**
@@ -97,7 +101,7 @@ fun TabPager(
     // own failure: task #233 round-1 showed one throwing sync call kills the
     // effect scope and freezes ALL subsequent selection updates (page moved,
     // highlight never followed). scrollToPage is the fork-proven path
-    // (SlockPagerScrollProbePage); a cancellation mid-animation must not be
+    // (RaftPagerScrollProbePage); a cancellation mid-animation must not be
     // treated as failure, so CancellationException rethrows.
     LaunchedEffect(pagerState, selectedIndex) {
         onDebugEvent?.invoke("sel-effect sel=$selectedIndex cur=${pagerState.currentPage}")
@@ -184,11 +188,21 @@ fun TabPager(
     // consumed in the Initial pass, which descendants (the pager) observe.
     val density = LocalDensity.current
     val guardWidthPx = remember { mutableStateOf(0) }
+    // Full-page back swipe (iOS): on the first page a back-direction drag is left to the host's
+    // interactive pop instead of rubber-banding the pager (which made the Compose touch recogniser
+    // win against the pop); forward drags still turn the page with the pager's own snap fling. Past
+    // the first page the pager keeps every drag and tells the host so. Inert on Android.
+    val backSwipe = rememberRaftBackSwipeScroll(
+        state = pagerState,
+        flingBehavior = PagerDefaults.flingBehavior(pagerState),
+        enabled = gesturePolicy.swipeEnabled,
+    )
     Column(modifier = modifier) {
         tabBar()
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(backSwipe.modifier)
                 .onGloballyPositioned { guardWidthPx.value = it.size.width }
                 .pointerInput(gesturePolicy) {
                     if (!gesturePolicy.swipeEnabled) return@pointerInput
@@ -234,9 +248,13 @@ fun TabPager(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = gesturePolicy.swipeEnabled,
+                userScrollEnabled = gesturePolicy.swipeEnabled && backSwipe.userScrollEnabled,
                 key = { page -> page },
-                keepItemAlive = keepItemAlive,
+                // Kuikly keepItemAlive kept every page composed.
+                beyondViewportPageCount = if (keepItemAlive) pageCount else 0,
+                // Kuikly's pager had no edge bounce; on iOS the CMP rubber band could stay
+                // stuck at an offset (see raftPlatformTabPagerOverscrollEnabled).
+                overscrollEffect = if (raftPlatformTabPagerOverscrollEnabled()) rememberOverscrollEffect() else null,
             ) { page ->
                 // currentPage, not settledPage: the latter is frozen on the
                 // iOS port (round-4 evidence), which would leave every

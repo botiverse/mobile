@@ -253,7 +253,7 @@ internal fun replyPage(vararg nodes: String): String =
 internal fun replyPageArray(vararg seqs: Long): JsonArray = adjacentPageOf(*seqs.map { replyNode(it) }.toTypedArray())
 
 /** Answers exactly the paths in [bodies] (200), everything else 404; records every path asked. */
-internal class PathNetworkClient(val bodies: MutableMap<String, String>) : SlockNetworkClient {
+internal class PathNetworkClient(val bodies: MutableMap<String, String>) : RaftNetworkClient {
     val paths = mutableListOf<String>()
 
     /** Runs right before a `messages/channel/...` answer is produced (identity / partition change mid-fetch). */

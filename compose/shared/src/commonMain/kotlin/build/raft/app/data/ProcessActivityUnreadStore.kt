@@ -212,6 +212,15 @@ internal class ProcessActivityUnreadStore(
                 val entry = entries.getOrPut(owner) { Entry(projection = initialProjection(owner)) }
                 entry.factRevision += 1L
                 entry.canonicalDirty = !fact.authoritative
+                if (fact.authoritative) {
+                    entry.latestFactUnread = null
+                    entry.latestFactTotal = null
+                    entry.lastServerUnread = null
+                    entry.lastServerTotal = null
+                } else {
+                    entry.latestFactUnread = fact.totalUnreadCount.coerceAtLeast(0)
+                    entry.latestFactTotal = fact.totalCount.coerceAtLeast(0)
+                }
                 entry.projection =
                     entry.projection.copy(
                         totalUnreadCount = fact.totalUnreadCount.coerceAtLeast(0),
@@ -405,7 +414,46 @@ internal class ProcessActivityUnreadStore(
                     }
                     val factChanged = entry.factRevision != attempt.factRevision
                     if (!factChanged) {
-                        entry.projection = result.toProjection(entry.projection, nextProjectionRevision(), attempt.reason)
+                        if (result is DataResult.Content) {
+                            // Raw aggregates include suppressed rows; reuse the latest
+                            // non-authoritative fact (suppression-aware) to deduct the
+                            // suppressed delta so the badge stays consistent with the tab.
+                            val rawUnread = result.data.totalUnreadCount.coerceAtLeast(0)
+                            val rawTotal = result.data.totalCount.coerceAtLeast(0)
+                            // Delta is only meaningful while a non-authoritative
+                            // suppression fact is measured against a prior server
+                            // baseline; without one, raw aggregates pass through.
+                            val lastServerUnread = entry.lastServerUnread
+                            val lastServerTotal = entry.lastServerTotal
+                            val suppressedUnread =
+                                entry.latestFactUnread
+                                    ?.takeIf { lastServerUnread != null }
+                                    ?.let { factUnread -> (lastServerUnread!! - factUnread).coerceAtLeast(0) }
+                                    ?: 0
+                            val suppressedTotal =
+                                entry.latestFactTotal
+                                    ?.takeIf { lastServerTotal != null }
+                                    ?.let { factTotal -> (lastServerTotal!! - factTotal).coerceAtLeast(0) }
+                                    ?: 0
+                            entry.lastServerUnread = rawUnread
+                            entry.lastServerTotal = rawTotal
+                            entry.projection =
+                                entry.projection.copy(
+                                    totalUnreadCount = (rawUnread - suppressedUnread).coerceAtLeast(0),
+                                    totalCount = (rawTotal - suppressedTotal).coerceAtLeast(0),
+                                    hasValue = true,
+                                    freshness = ActivityUnreadSummaryFreshness.Fresh,
+                                    revision = nextProjectionRevision(),
+                                    errorCode = null,
+                                    source = attempt.reason
+                                )
+                        } else {
+                            entry.projection = result.toProjection(entry.projection, nextProjectionRevision(), attempt.reason)
+                            if (result is DataResult.Empty) {
+                                entry.lastServerUnread = 0
+                                entry.lastServerTotal = 0
+                            }
+                        }
                         publish(owner, entry)
                         if (result is DataResult.Content || result is DataResult.Empty) {
                             persist(owner, entry.projection)
@@ -533,7 +581,13 @@ internal class ProcessActivityUnreadStore(
         var acceptedForegroundEpoch: Long = 0L,
         var requestGeneration: Long = 0L,
         var factRevision: Long = 0L,
-        var canonicalDirty: Boolean = false
+        var canonicalDirty: Boolean = false,
+        // Latest non-authoritative fact counts (suppression-aware local view).
+        var latestFactUnread: Int? = null,
+        var latestFactTotal: Int? = null,
+        // Raw aggregate counts from the last Content/Empty fetch (include suppressed rows).
+        var lastServerUnread: Int? = null,
+        var lastServerTotal: Int? = null
     )
 }
 

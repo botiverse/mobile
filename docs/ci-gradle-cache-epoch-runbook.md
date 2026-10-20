@@ -54,7 +54,7 @@ the task thread. Audit trail = the PR history of the two policy files.
 
 ## What this does NOT cover
 
-- The 21 explicit `actions/cache*` usages (Kuikly mavenLocal, OHOS SDK, ...) — separate
+- The explicit `actions/cache*` usages (Kuikly mavenLocal, ...) — separate
   per-owner inventory; each has its own key literal to rotate.
 - True backend deletion of poisoned entries (no API access) — entries die by eviction or key
   rotation only.

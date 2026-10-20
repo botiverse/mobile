@@ -24,88 +24,88 @@ private val settingsRepositoryJson = Json {
 
 private const val PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH = 5_000
 
-private suspend fun SlockNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/me")
 
-private suspend fun SlockNetworkClient.updateSettingsAccount(
+private suspend fun RaftNetworkClient.updateSettingsAccount(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "auth/me", method = "PATCH", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsAccountAuthProviders(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsAccountAuthProviders(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/providers")
 
-private suspend fun SlockNetworkClient.settingsAccountAuthIdentities(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsAccountAuthIdentities(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/identities")
 
-private suspend fun SlockNetworkClient.startSettingsAccountProviderLink(
+private suspend fun RaftNetworkClient.startSettingsAccountProviderLink(
     priority: DataRequestPriority,
     providerId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "auth/${providerId.sanitizeAccountProviderId()}/link/start", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsConnectedAppClients(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsConnectedAppClients(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "integrations/clients")
 
-private suspend fun SlockNetworkClient.createSettingsConnectedAppClient(
+private suspend fun RaftNetworkClient.createSettingsConnectedAppClient(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "integrations/clients", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.updateSettingsConnectedAppClient(
+private suspend fun RaftNetworkClient.updateSettingsConnectedAppClient(
     priority: DataRequestPriority,
     clientRecordId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "integrations/clients/$clientRecordId", method = "PATCH", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.clearSettingsConnectedAppLogo(
+private suspend fun RaftNetworkClient.clearSettingsConnectedAppLogo(
     priority: DataRequestPriority,
     clientRecordId: String
 ): HomeNetworkResponse =
     request(priority, "integrations/clients/$clientRecordId/logo", method = "DELETE")
 
-private suspend fun SlockNetworkClient.deleteSettingsConnectedAppClient(
+private suspend fun RaftNetworkClient.deleteSettingsConnectedAppClient(
     priority: DataRequestPriority,
     clientRecordId: String
 ): HomeNetworkResponse =
     request(priority, "integrations/clients/$clientRecordId", method = "DELETE")
 
-private suspend fun SlockNetworkClient.requestSettingsConnectedAppPublish(
+private suspend fun RaftNetworkClient.requestSettingsConnectedAppPublish(
     priority: DataRequestPriority,
     clientRecordId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "integrations/clients/$clientRecordId/request-publish", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsConnectedAppBuiltIns(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsConnectedAppBuiltIns(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "integrations/built-in")
 
-private suspend fun SlockNetworkClient.settingsConnectedAppMarketplace(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsConnectedAppMarketplace(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "integrations/marketplace")
 
-private suspend fun SlockNetworkClient.installSettingsConnectedAppMarketplace(
+private suspend fun RaftNetworkClient.installSettingsConnectedAppMarketplace(
     priority: DataRequestPriority,
     clientRecordId: String
 ): HomeNetworkResponse =
     request(priority, "integrations/marketplace/$clientRecordId/install", method = "POST")
 
-private suspend fun SlockNetworkClient.uninstallSettingsConnectedAppMarketplace(
+private suspend fun RaftNetworkClient.uninstallSettingsConnectedAppMarketplace(
     priority: DataRequestPriority,
     clientRecordId: String
 ): HomeNetworkResponse =
     request(priority, "integrations/marketplace/$clientRecordId/install", method = "DELETE")
 
-private suspend fun SlockNetworkClient.settingsMachines(
+private suspend fun RaftNetworkClient.settingsMachines(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/machines", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.settingsMachineWorkspaces(
+private suspend fun RaftNetworkClient.settingsMachineWorkspaces(
     priority: DataRequestPriority,
     serverId: String,
     machineId: String
@@ -116,86 +116,86 @@ private suspend fun SlockNetworkClient.settingsMachineWorkspaces(
         serverIdOverride = ServerId(serverId)
     )
 
-private suspend fun SlockNetworkClient.settingsAgents(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsAgents(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "agents")
 
-private suspend fun SlockNetworkClient.serverMembers(
+private suspend fun RaftNetworkClient.serverMembers(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/members", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.settingsServerUsage(
+private suspend fun RaftNetworkClient.settingsServerUsage(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/usage", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.settingsBillingSubscription(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsBillingSubscription(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "billing/subscription")
 
-private suspend fun SlockNetworkClient.settingsServerOnboarding(
+private suspend fun RaftNetworkClient.settingsServerOnboarding(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/onboarding-settings", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.updateSettingsServerOnboarding(
+private suspend fun RaftNetworkClient.updateSettingsServerOnboarding(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/onboarding-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsServerAgreement(
+private suspend fun RaftNetworkClient.settingsServerAgreement(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/agreement", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.updateSettingsServerAgreement(
+private suspend fun RaftNetworkClient.updateSettingsServerAgreement(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/agreement", method = "PUT", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsServerTranslation(
+private suspend fun RaftNetworkClient.settingsServerTranslation(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/translation-settings", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.updateSettingsServerTranslation(
+private suspend fun RaftNetworkClient.updateSettingsServerTranslation(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/translation-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsServerSidebarOrder(
+private suspend fun RaftNetworkClient.settingsServerSidebarOrder(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/sidebar-order", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.updateSettingsServerSidebarOrder(
+private suspend fun RaftNetworkClient.updateSettingsServerSidebarOrder(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/sidebar-order", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsServerOrder(priority: DataRequestPriority): HomeNetworkResponse =
+private suspend fun RaftNetworkClient.settingsServerOrder(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "servers/order")
 
-private suspend fun SlockNetworkClient.updateSettingsServerOrder(
+private suspend fun RaftNetworkClient.updateSettingsServerOrder(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/order", method = "PATCH", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.updateSettingsServerMemberRole(
+private suspend fun RaftNetworkClient.updateSettingsServerMemberRole(
     priority: DataRequestPriority,
     serverId: String,
     memberId: String,
@@ -203,82 +203,82 @@ private suspend fun SlockNetworkClient.updateSettingsServerMemberRole(
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/members/$memberId", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-internal suspend fun SlockNetworkClient.settingsServerChannels(priority: DataRequestPriority): HomeNetworkResponse =
+internal suspend fun RaftNetworkClient.settingsServerChannels(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "channels")
 
-private suspend fun SlockNetworkClient.deleteSettingsServerMember(
+private suspend fun RaftNetworkClient.deleteSettingsServerMember(
     priority: DataRequestPriority,
     serverId: String,
     memberId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/members/$memberId", method = "DELETE", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.leaveSettingsServer(
+private suspend fun RaftNetworkClient.leaveSettingsServer(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/leave", method = "POST", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.updateSettingsServerProfile(
+private suspend fun RaftNetworkClient.updateSettingsServerProfile(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.createSettingsServerInvite(
+private suspend fun RaftNetworkClient.createSettingsServerInvite(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/invites", method = "POST", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsServerInvites(
+private suspend fun RaftNetworkClient.settingsServerInvites(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/invites", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.deleteSettingsServerInvite(
+private suspend fun RaftNetworkClient.deleteSettingsServerInvite(
     priority: DataRequestPriority,
     serverId: String,
     inviteId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/invites/$inviteId", method = "DELETE", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.createSettingsServerJoinLink(
+private suspend fun RaftNetworkClient.createSettingsServerJoinLink(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/join-links", method = "POST", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.settingsServerJoinLinks(
+private suspend fun RaftNetworkClient.settingsServerJoinLinks(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/join-links", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.deleteSettingsServerJoinLink(
+private suspend fun RaftNetworkClient.deleteSettingsServerJoinLink(
     priority: DataRequestPriority,
     serverId: String,
     linkId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/join-links/$linkId", method = "DELETE", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.deleteSettingsServer(
+private suspend fun RaftNetworkClient.deleteSettingsServer(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId", method = "DELETE", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.settingsNotificationSettings(
+private suspend fun RaftNetworkClient.settingsNotificationSettings(
     priority: DataRequestPriority,
     serverId: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/notification-settings", serverIdOverride = ServerId(serverId))
 
-private suspend fun SlockNetworkClient.updateSettingsNotificationSettings(
+private suspend fun RaftNetworkClient.updateSettingsNotificationSettings(
     priority: DataRequestPriority,
     serverId: String,
     bodyText: String
@@ -286,14 +286,14 @@ private suspend fun SlockNetworkClient.updateSettingsNotificationSettings(
     request(priority, "servers/$serverId/notification-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
 class RealSettingsRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {},
     private val channelRepository: ChannelRepository? = null,
     private val onAppearanceSnapshot: suspend (ownerId: String, snapshot: SettingsAppearanceSnapshot) -> Unit = { _, _ -> },
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
-    private val computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
+    private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
 
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
@@ -2336,17 +2336,17 @@ private suspend fun <T> executeTypedSettingsWithDiagnostics(
         val parseStartedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
             "settings_parse_start source=$source responseBytes=$responseBytes " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         val result =
-            withContext(SlockJsonParseDispatcher) {
+            withContext(RaftJsonParseDispatcher) {
                 mapper(body)
             }
         val dataResult = DataResult.Content(result)
         diagnosticsLogger(
             "settings_parse_result source=$source ${dataResult.settingsDiagnosticsResult()} " +
                 "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         dataResult
     } catch (exception: SettingsContractMismatch) {
@@ -2386,17 +2386,17 @@ private suspend fun <T> executeSettingsWithDiagnostics(
         val parseStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
             "settings_parse_start source=$sourceLabel responseBytes=$responseBytes " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         val result =
-            withContext(SlockJsonParseDispatcher) {
+            withContext(RaftJsonParseDispatcher) {
                 mapper(body)
             }
         val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
         warningLogger(
             "settings_parse_result source=$sourceLabel ${dataResult.settingsDiagnosticsResult()} " +
                 "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         dataResult
     } catch (cancellation: CancellationException) {
@@ -2838,7 +2838,7 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
     }
 }
 
-private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
+internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
     SettingsComputerSnapshot(
         id = id,
         name = name,
@@ -2854,7 +2854,11 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         createdAt = createdAt,
         lastHeartbeat = lastHeartbeat,
         apiKeyPrefix = apiKeyPrefix,
-        statusVersion = statusVersion
+        statusVersion = statusVersion,
+        creatorUserId = creatorUserId,
+        attachedByCurrentUser = attachedByCurrentUser,
+        agentCount = agentCount,
+        upgradeAvailable = isComputer && computerUpgradeAvailable == true
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =
@@ -3105,6 +3109,7 @@ private fun SettingsServerSidebarOrderUpdateRequest.hasAtLeastOneField(): Boolea
         agentOrder != null ||
         dmOrder != null ||
         channelSortMode != null ||
+        jointChannelSortMode != null ||
         dmSortMode != null ||
         pinnedSortMode != null ||
         pinned != null ||
@@ -3297,6 +3302,7 @@ data class SettingsServerSidebarOrderUpdateRequestBody(
     val agentOrder: List<String>? = null,
     val dmOrder: List<String>? = null,
     val channelSortMode: String? = null,
+    val jointChannelSortMode: String? = null,
     val dmSortMode: String? = null,
     val pinnedSortMode: String? = null,
     val pinned: List<SettingsServerSidebarPinnedItem>? = null,
@@ -3324,6 +3330,7 @@ fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSideb
             agentOrder = request.agentOrder,
             dmOrder = request.dmOrder,
             channelSortMode = request.channelSortMode,
+            jointChannelSortMode = request.jointChannelSortMode,
             dmSortMode = request.dmSortMode,
             pinnedSortMode = request.pinnedSortMode,
             pinned = request.pinned,

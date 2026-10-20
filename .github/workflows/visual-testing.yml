@@ -42,6 +42,10 @@ on:
         description: "Allow the publish guard to accept a reduced case count (intentional retirement only, e.g. slock #4792/#4995) — never set for ordinary runs"
         type: boolean
         default: false
+      include_ios:
+        description: "Also run the iOS simulator capture (macOS runners are expensive: off for dispatched rounds, on for the nightly schedule)"
+        type: boolean
+        default: false
       ios_shards:
         description: "iOS capture parallelism: N job-owned simulators each take a slice of the case list. 1 = legacy serial behaviour. Suggested max on the single self-hosted Mac: 4."
         type: number
@@ -58,7 +62,7 @@ jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
     name: React capture (playwright)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     timeout-minutes: 45
     defaults:
       run:
@@ -144,7 +148,8 @@ jobs:
     name: Android build (connected test APKs)
     # ubuntu-latest-m (org larger runner, 4 cores / 15GB): the standard 7GB
     # runner forces emulator and gradle to fight for memory. (task #418)
-    runs-on: ubuntu-latest
+    # Gradle is CPU-bound: a large Blacksmith runner (as android-release.yml) cuts the build most.
+    runs-on: blacksmith-16vcpu-ubuntu-2204
     timeout-minutes: 60
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
@@ -186,9 +191,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
-
       - name: Build connected test APKs
         working-directory: ./compose
         run: |
@@ -318,7 +320,8 @@ jobs:
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
-    runs-on: ubuntu-latest
+    # Blacksmith runners expose /dev/kvm for the emulator (the Enable KVM step below still applies).
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
@@ -339,6 +342,14 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
+
+      # sdkmanager needs JDK 17+; Blacksmith images default to 11.
+      - name: Setup JDK 17
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup Android SDK
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
@@ -460,8 +471,11 @@ jobs:
   # lists everything else as pending — no silent coverage gaps.
   ios-capture:
     name: iOS capture (simulator)
-    if: ${{ !inputs.site_only }}
-    runs-on: macos-latest
+    # macOS minutes are the expensive part: nightly runs always capture iOS,
+    # dispatched rounds only when include_ios is set (report degrades to react__android).
+    if: ${{ !inputs.site_only && (github.event_name == 'schedule' || inputs.include_ios) }}
+    # Same macOS pool as ios-release.yml.
+    runs-on: blacksmith-12vcpu-macos-latest
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
@@ -492,8 +506,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-      - name: Verify complete immutable Kuikly release
-        run: scripts/ci/verify_kuikly_release_manifest.sh
+      - name: Shared Kotlin/Native Gradle settings
+        uses: ./.github/actions/ios-kn-gradle
 
       - name: Generate shared framework placeholder
         working-directory: compose
@@ -503,11 +517,43 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
-      - name: Boot job-owned simulator
-        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
+      # Compile the simulator target on its own first, as test.yml's iOS job does.
+      # When the framework sync is the job's first Kotlin/Native compile, its
+      # input snapshot is taken before the K/N distribution under ~/.konan is
+      # complete ("Input property 'libraries' ... has been added") and the link
+      # sees a different konanCacheKind, so Xcode's "Copy kmmresource MR bundle"
+      # phase (:shared:copyFrameworkResourcesToApp) recompiled and relinked the
+      # whole framework again (~15-20 min; info log of diagnostic run 39212776556).
+      - name: Compile shared iOS simulator target
+        working-directory: compose
+        run: |
+          ./gradlew :shared:compileKotlinIosSimulatorArm64 \
+            -PslockVisualFixtures=true \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
 
-      # Built AFTER simulator boot, pinned to its udid: an unmatched named
-      # destination makes xcodebuild silently fall back to a device build.
+      # Sync the K/N framework as its own step (same as test.yml's iOS job) so
+      # Gradle output is visible and cached, instead of running nested and
+      # silent inside xcodebuild's [CP-User] Build shared phase — that nested
+      # build is where single-shard runs sat until the job timeout.
+      - name: Sync shared framework (simulator arm64)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            -PslockVisualFixtures=true \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
+      # Concrete destination (any available iPhone UDID, not booted): avoids
+      # "Unable to find a device" while CoreSimulator boots N shards, and — unlike
+      # "generic/platform=iOS Simulator" — keeps Xcode's MR-bundle phase from
+      # recompiling the framework (see scripts/ci/ios_build_sim_udid.sh).
+      # Simulators are booted after the build.
       - name: Build iOS app for simulator
         working-directory: compose/iosApp
         run: |
@@ -517,15 +563,18 @@ jobs:
           # phase behind the Pods compile spew, hiding the real cause of build
           # breaks — capture the whole log and grep the errors out on failure.
           log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          udid=$(bash "$GITHUB_WORKSPACE/scripts/ci/ios_build_sim_udid.sh")
+          echo "build destination UDID=$udid"
           set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${UDID}" \
+            -destination "platform=iOS Simulator,id=$udid" \
             -derivedDataPath "$IOS_CAPTURE_TEMP/DerivedData" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             build > "$log" 2>&1
           status=$?
           tail -200 "$log"
@@ -536,6 +585,9 @@ jobs:
             cp "$log" "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics/xcodebuild-ios.log" || true
           fi
           exit "$status"
+
+      - name: Boot job-owned simulator
+        run: bash scripts/ci/ios_visual_runner.sh boot --shards "${{ inputs.ios_shards || 1 }}"
 
       - name: Generate case manifest
         run: |
@@ -707,7 +759,7 @@ jobs:
     # with an empty android side (react__android missing 89). iOS stays
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     # AI analysis moved to the ai-analysis job (images publish first, per
     # artin 2026-07-09); without it diff/report/site fits well inside 30.
     timeout-minutes: 30
@@ -756,7 +808,7 @@ jobs:
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
 
       # Pixel avatar drift gate (task #352): mobile's generated
-      # SlockPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
+      # RaftPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
       - name: Check pixel avatar drift
         working-directory: mobile
         env:
@@ -907,7 +959,7 @@ jobs:
     needs: [report]
     # Only meaningful when the report actually published a site to update.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 60
     # A rerun/new publish supersedes the in-flight analysis of the previous
     # one: cancel it instead of letting it burn model calls and a runner

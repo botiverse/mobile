@@ -16,7 +16,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotSame
 
 /**
- * Focused regression coverage for [ThreadRenderSignature] / [KuiklyThreadScreenPayload.toRenderSignature].
+ * Focused regression coverage for [ThreadRenderSignature] / [RaftThreadScreenPayload.toRenderSignature].
  *
  * The signature is the key used to drive the `thread_render` perf marker
  * in `ThreadPage`. These tests pin the equivalence classes we care about:
@@ -36,7 +36,7 @@ class ThreadRenderSignatureTest {
         id: String,
         replyCount: Int = 0,
         unreadReplyCount: Int = 0
-    ): KuiklyThreadMessageItem = KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem = RaftThreadMessageItem(
         id = id,
         authorId = "user-$id",
         authorName = "User $id",
@@ -50,12 +50,12 @@ class ThreadRenderSignatureTest {
         sourceThreadId: String? = "src",
         status: String = "content",
         selectedTab: String = "chat",
-        messages: List<KuiklyThreadMessageItem> = emptyList(),
-        tasks: List<KuiklyThreadTaskItem> = emptyList(),
+        messages: List<RaftThreadMessageItem> = emptyList(),
+        tasks: List<RaftThreadTaskItem> = emptyList(),
         showReplyActions: Boolean = true,
-        members: List<KuiklyThreadMemberItem> = emptyList(),
-        settingsActions: List<KuiklyThreadSettingsAction> = emptyList()
-    ): KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(
+        members: List<RaftThreadMemberItem> = emptyList(),
+        settingsActions: List<RaftThreadSettingsAction> = emptyList()
+    ): RaftThreadScreenPayload = RaftThreadScreenPayload(
         instanceId = instanceId,
         sourceThreadId = sourceThreadId,
         status = status,
@@ -71,13 +71,13 @@ class ThreadRenderSignatureTest {
     fun membersOnlyChange_keepsSignatureEqual() {
         val a = payload(
             messages = listOf(message("m1", replyCount = 1)),
-            members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"))
+            members = listOf(RaftThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"))
         )
         val b = payload(
             messages = listOf(message("m1", replyCount = 1)),
             members = listOf(
-                KuiklyThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"),
-                KuiklyThreadMemberItem(id = "u2", displayName = "User 2", kind = "human")
+                RaftThreadMemberItem(id = "u1", displayName = "User 1", kind = "human"),
+                RaftThreadMemberItem(id = "u2", displayName = "User 2", kind = "human")
             )
         )
         assertEquals(a.toRenderSignature(), b.toRenderSignature())
@@ -92,8 +92,8 @@ class ThreadRenderSignatureTest {
         val b = payload(
             messages = listOf(message("m1")),
             settingsActions = listOf(
-                KuiklyThreadSettingsAction(id = "leave"),
-                KuiklyThreadSettingsAction(id = "archive")
+                RaftThreadSettingsAction(id = "leave"),
+                RaftThreadSettingsAction(id = "archive")
             )
         )
         assertEquals(a.toRenderSignature(), b.toRenderSignature())
@@ -104,7 +104,7 @@ class ThreadRenderSignatureTest {
         val a = payload(
             messages = listOf(message("m1")),
             tasks = listOf(
-                KuiklyThreadTaskItem(
+                RaftThreadTaskItem(
                     id = "task-1",
                     title = "old",
                     status = "Todo"
@@ -114,12 +114,12 @@ class ThreadRenderSignatureTest {
         val b = payload(
             messages = listOf(message("m1")),
             tasks = listOf(
-                KuiklyThreadTaskItem(
+                RaftThreadTaskItem(
                     id = "task-1",
                     title = "new",
                     status = "Done"
                 ),
-                KuiklyThreadTaskItem(
+                RaftThreadTaskItem(
                     id = "task-2",
                     title = "other",
                     status = "Todo"
@@ -159,8 +159,8 @@ class ThreadRenderSignatureTest {
         val a = payload(messages = sharedContent)
         // Different list reference (a new ArrayList copy), identical content.
         val b = payload(messages = sharedContent.toList())
-        val aRef: List<KuiklyThreadMessageItem> = sharedContent
-        val bRef: List<KuiklyThreadMessageItem> = b.messages
+        val aRef: List<RaftThreadMessageItem> = sharedContent
+        val bRef: List<RaftThreadMessageItem> = b.messages
         assertNotSame(aRef, bRef)
         assertEquals(a.toRenderSignature(), b.toRenderSignature())
     }
@@ -197,7 +197,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun inactiveAuthorsExposeHistoryBadgesAndDisableProfileNavigation() {
         val deletedAgent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "agent-message",
                 authorId = "agent-deleted",
                 authorName = "Deleted Agent",
@@ -206,7 +206,7 @@ class ThreadRenderSignatureTest {
                 authorDeletedAt = "2026-06-06T00:00:00.000Z"
             )
         val removedHuman =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "human-message",
                 authorId = "user-removed",
                 authorName = "Removed Human",
@@ -224,7 +224,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun threadMentionHandle_prefersMemberHandleOverDisplayName() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "agent-1",
                 authorName = "Android Developer",
@@ -258,7 +258,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun threadMentionHandle_resolvesFromScopedRosterEntry() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "agent-1",
                 authorName = "Android Developer",
@@ -284,7 +284,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun threadMentionHandle_usesExplicitAuthorHandleWhenMemberMissing() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "user-1",
                 authorName = "Cindy",
@@ -297,7 +297,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun threadMentionHandle_failsClosedInsteadOfUsingAuthorIdOrDisplayName() {
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "agent-1",
                 authorName = "Android Developer",
@@ -312,7 +312,7 @@ class ThreadRenderSignatureTest {
     fun threadMentionHandle_prefersCanonicalJointChannelHandleOverOpaqueRosterHandle() {
         val authorId = "b8f607a0-d819-49e5-bdc7-59bc3a86fd37"
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = authorId,
                 authorName = "王小明",
@@ -366,7 +366,7 @@ class ThreadRenderSignatureTest {
     fun threadMentionHandle_rejectsOpaqueFirstFrameAuthorHandleWhenCanonicalMemberIsMissing() {
         val authorId = "b8f607a0-d819-49e5-bdc7-59bc3a86fd37"
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = authorId,
                 authorName = "王小明",
@@ -380,7 +380,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun threadMentionHandle_ignoresInactiveAuthors() {
         val deletedAgent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "message-1",
                 authorId = "agent-1",
                 authorName = "Android Developer",
@@ -395,7 +395,7 @@ class ThreadRenderSignatureTest {
     @Test
     fun inactiveAgentStateSurvivesMessageRoundTrip() {
         val origin =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "origin-message",
                 authorId = "agent-deleted",
                 authorName = "Deleted KMP Agent",
@@ -412,7 +412,7 @@ class ThreadRenderSignatureTest {
                     channelId = ChannelId("parent-channel"),
                 ),
             )
-                .toKuiklyThreadMessageItem(currentUserId = null)
+                .toRaftThreadMessageItem(currentUserId = null)
 
         assertEquals("deleted", roundTripped.senderMembershipStatus)
         assertEquals("2026-06-06T00:00:00.000Z", roundTripped.authorDeletedAt)

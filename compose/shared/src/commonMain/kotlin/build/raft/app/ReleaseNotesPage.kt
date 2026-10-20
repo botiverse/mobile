@@ -8,8 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockRaftUiEmptyState
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftUiEmptyState
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.ScreenLoadState
@@ -18,18 +18,18 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.kmmResourceLocaleTag
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CancellationException
 
@@ -49,16 +49,16 @@ internal class ComposeReleaseNotesPage : AuthenticatedProductPager(Authenticated
 // opens still fall back to loading About locally when the value is absent.
 internal fun Pager.openReleaseNotesPage(
     versionCode: String = "",
-    storeScope: build.raft.app.data.SlockShellStoreScope,
+    storeScope: build.raft.app.data.RaftShellStoreScope,
 ) {
-    acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-        com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
+    acquireModule<build.raft.app.compat.module.RouterModule>(
+        build.raft.app.compat.module.RouterModule.MODULE_NAME
     ).openPage(
         RELEASE_NOTES_PAGE,
         JSONObject().apply {
             put("pageName", RELEASE_NOTES_PAGE)
-            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+            put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
             releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
                 put("versionCode", it)
             }
@@ -81,7 +81,7 @@ internal fun ReleaseNotesScreen() {
         pager = pager,
         surface = SettingsWebViewSurface.ReleaseNotes,
         title = stringResource(MR.strings.release_notes_title),
-        iconName = SlockLucideIconName.FileText,
+        iconName = RaftLucideIconName.FileText,
     ) { controller, onNavigationStateChange ->
         if (launchVersionCode.isNotBlank()) {
             val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -107,7 +107,7 @@ internal fun ReleaseNotesScreen() {
 @Composable
 private fun ReleaseNotesScreenBody(
     pager: Pager,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
 ) {
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -176,7 +176,7 @@ internal fun releaseNotesSanitizeVersionCode(value: String): String =
 internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
     val localeTag =
         try {
-            val locale = KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync()
+            val locale = KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync()
             when (locale) {
                 AppLocale.System -> null
                 else -> locale.kmmResourceLocaleTag
@@ -194,7 +194,7 @@ internal fun sharedSettingsReleaseNotesUrlForLocale(
     localeTag: String?
 ): String =
     sharedSettingsReleaseNotesUrlForLocaleWithSlug(
-        appSlug = slockReleaseNotesAppSlug(),
+        appSlug = raftReleaseNotesAppSlug(),
         versionCode = versionCode,
         localeTag = localeTag,
     )
@@ -268,7 +268,7 @@ private fun releaseNotesQueryEncode(value: String): String {
 @Composable
 internal fun ReleaseNotesWebViewBody(
     versionCode: String,
-    controller: SlockWebViewController = rememberSlockWebViewController(),
+    controller: RaftWebViewController = rememberRaftWebViewController(),
     handlesPageBack: Boolean = true,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
 ) {
@@ -284,7 +284,7 @@ internal fun ReleaseNotesWebViewBody(
     var navigationState by
         remember(url) {
             mutableStateOf(
-                SlockWebViewNavigationState(
+                RaftWebViewNavigationState(
                     url = url,
                     isLoading = true,
                 )
@@ -292,12 +292,12 @@ internal fun ReleaseNotesWebViewBody(
         }
 
     fun closePage() {
-        pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
-            com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
+        pager.acquireModule<build.raft.app.compat.module.RouterModule>(
+            build.raft.app.compat.module.RouterModule.MODULE_NAME
         ).closePage()
     }
 
-    SlockBackHandler(
+    RaftBackHandler(
         enabled = handlesPageBack,
         label = "release_notes_webview",
         onBack = {
@@ -331,25 +331,25 @@ internal fun ReleaseNotesWebViewBody(
 
 @Composable
 internal fun ReleaseNotesLoadingCover() {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
 }
 
 @Composable
 private fun ReleaseNotesErrorState(onRetry: () -> Unit) {
     Box(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream),
+        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream),
         contentAlignment = Alignment.Center,
     ) {
-        SlockRaftUiEmptyState(
+        RaftUiEmptyState(
             title = stringResource(MR.strings.release_notes_error_title),
             description = stringResource(MR.strings.release_notes_error_body),
             modifier = Modifier.fillMaxSize(),
             action = {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_retry),
                     onClick = onRetry,
-                    leadingIcon = SlockLucideIconName.RefreshCw,
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    leadingIcon = RaftLucideIconName.RefreshCw,
+                    backgroundColor = RaftColor.SurfaceWhite,
                 )
             },
         )

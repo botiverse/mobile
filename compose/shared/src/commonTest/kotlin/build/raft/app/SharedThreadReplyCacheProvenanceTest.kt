@@ -4,15 +4,15 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.SharedMessagesPayload
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.PendingMentionActionExecuteResult
-import build.raft.app.data.SlockThreadApi
+import build.raft.app.data.RaftThreadApi
 import build.raft.app.data.ProcessPresenceAuthContext
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SelectedServerStore
-import build.raft.app.data.SlockShellScopedStoreCache
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellScopedStoreCache
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -53,7 +53,7 @@ import kotlin.test.assertTrue
 class SharedThreadReplyCacheProvenanceTest {
     @Test
     fun staleVisibleParentFromAccountADoesNotSeedAccountBOnSameServer() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         val dataSource = dataSource(authStore, messageStore)
         val accountA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
@@ -96,7 +96,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun markdownStartedWithAccountAFailsClosedAfterAccountBPublication() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         val dataSource = dataSource(authStore, messageStore)
         val accountA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
@@ -134,7 +134,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun identitySourcePublicationInterleaveProducesCompleteAccountBToken() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         var environment = " https://prod.example.test/ "
         val dataSource =
@@ -168,7 +168,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun olderAuthorityCaptureCompletingLateCannotOverwriteNewerPublication() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         val firstHookEntered = CompletableDeferred<Unit>()
         val releaseFirstHook = CompletableDeferred<Unit>()
@@ -223,7 +223,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun sameIdentityReusesTokenAndAcceptsVisibleParentSeed() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         val dataSource = dataSource(authStore, messageStore)
         val first = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
@@ -284,7 +284,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun sameAccountAndServerWithNewAuthorityRevisionMintsFreshToken() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         var authGeneration = 7L
         var selectionGeneration = 11L
@@ -326,7 +326,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun visiblePageProvenanceAdvancesAfterSameRouteAuthorityRevisionWithoutReentry() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val messageStore = SharedThreadMessageStore()
         var accountId = "account-a"
         var authGeneration = 7L
@@ -406,7 +406,7 @@ class SharedThreadReplyCacheProvenanceTest {
         val published = mutableListOf<Pair<ReplyCacheProvenance, ConversationSummary>>()
         val dataSource =
             dataSource(
-                authStore = InMemorySlockAuthSessionStore(session("account-a")),
+                authStore = InMemoryRaftAuthSessionStore(session("account-a")),
                 messageStore = SharedThreadMessageStore(),
                 conversationRepository = repository,
                 canonicalConversationIdentityPublisher = { provenance, canonical ->
@@ -415,7 +415,7 @@ class SharedThreadReplyCacheProvenanceTest {
                 },
             )
 
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
             dataSource.fetchThreadPayload(directMessagePayload(), persistResult = false)
         )
 
@@ -429,7 +429,7 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun lateCanonicalConversationDetailFromRetiredReplyCacheScopeFailsClosedAndIsNotPublished() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val release = CompletableDeferred<Unit>()
         val repository =
             canonicalConversationRepository(directMessageDetail("Late Cindy", "pixel:late"))
@@ -462,9 +462,9 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun stableEnvironmentBSessionAHybridMintsNoTokenAndWritesNothing() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("environment-hybrid", "server-1"))
+            SelectedServerStore(RaftShellStoreScope.create("environment-hybrid", "server-1"))
         val authContext =
             MutableStateFlow(
                 ProcessPresenceAuthContext(
@@ -532,9 +532,9 @@ class SharedThreadReplyCacheProvenanceTest {
     @Test
     fun stablePrincipalASelectedServerOwnerBHybridMintsNoTokenAndWritesNothing() = runBlocking {
         val accountASession = session("account-a")
-        val authStore = InMemorySlockAuthSessionStore(accountASession)
+        val authStore = InMemoryRaftAuthSessionStore(accountASession)
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("selection-hybrid", "server-1"))
+            SelectedServerStore(RaftShellStoreScope.create("selection-hybrid", "server-1"))
         val authContext =
             MutableStateFlow(
                 ProcessPresenceAuthContext(
@@ -599,9 +599,9 @@ class SharedThreadReplyCacheProvenanceTest {
     @Test
     fun missingSessionOrContextCannotUseRetiredAnchorToRepairAuthority() = runBlocking {
         val accountA = session("account-a")
-        val authStore = InMemorySlockAuthSessionStore(accountA)
+        val authStore = InMemoryRaftAuthSessionStore(accountA)
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("missing-authority", "server-1"))
+            SelectedServerStore(RaftShellStoreScope.create("missing-authority", "server-1"))
         val authContext =
             MutableStateFlow<ProcessPresenceAuthContext?>(
                 ProcessPresenceAuthContext(
@@ -664,9 +664,9 @@ class SharedThreadReplyCacheProvenanceTest {
 
     @Test
     fun globalAccountBWaitsForContextAndRouteOwnerBeforeResumingSameInitialFetch() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(session("account-a"))
+        val authStore = InMemoryRaftAuthSessionStore(session("account-a"))
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("auth-revision-lag", "server-1"))
+            SelectedServerStore(RaftShellStoreScope.create("auth-revision-lag", "server-1"))
         val authContext =
             MutableStateFlow(
                 ProcessPresenceAuthContext(
@@ -805,9 +805,9 @@ class SharedThreadReplyCacheProvenanceTest {
     fun queuedClearedAfterGlobalLoginReconcilesNonNullSessionInsteadOfLeavingOwnerA() = runBlocking {
         val accountA = session("account-a")
         val accountB = session("account-b")
-        val authStore = InMemorySlockAuthSessionStore(accountA)
-        val scope = SlockShellStoreScope.create("queued-cleared-after-login", "server-1")
-        val selectedServerStores = SlockShellScopedStoreCache<SelectedServerStore>()
+        val authStore = InMemoryRaftAuthSessionStore(accountA)
+        val scope = RaftShellStoreScope.create("queued-cleared-after-login", "server-1")
+        val selectedServerStores = RaftShellScopedStoreCache<SelectedServerStore>()
         val selectedServerStore =
             selectedServerStores.getOrPut(scope) { SelectedServerStore(scope) }
         val authContext =
@@ -851,7 +851,7 @@ class SharedThreadReplyCacheProvenanceTest {
     }
 
     private fun dataSource(
-        authStore: InMemorySlockAuthSessionStore,
+        authStore: InMemoryRaftAuthSessionStore,
         messageStore: SharedThreadMessageStore,
         environment: () -> String = { "https://prod.example.test" },
         authority: (suspend () -> ThreadReplyCacheIdentitySnapshot?)? = null,
@@ -911,27 +911,27 @@ class SharedThreadReplyCacheProvenanceTest {
             presenceMemberId = MemberId("peer-1"),
         )
 
-    private fun directMessagePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun directMessagePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             status = "loading",
-            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-            channelKind = KuiklyThreadSurfaceKind.DirectMessage,
+            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+            channelKind = RaftThreadSurfaceKind.DirectMessage,
             sourceThreadId = "dm-1",
             streamChannelId = "dm-1",
         )
 
-    private fun channelPayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun channelPayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             status = "content",
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
-            channelKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
+            channelKind = RaftThreadSurfaceKind.Channel,
             sourceThreadId = "channel-1",
             streamChannelId = "channel-1",
             messages = listOf(parentMessage())
         )
 
-    private fun parentMessage(): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    private fun parentMessage(): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = ParentMessageId,
             authorId = "member-1",
             authorName = "Member",
@@ -978,7 +978,7 @@ class SharedThreadReplyCacheProvenanceTest {
         const val ParentMessageId = "5fbf9608-1111-2222-3333-444444444444"
 
         val UnusedThreadApi =
-            object : SlockThreadApi {
+            object : RaftThreadApi {
                 private fun <T> unused(): ThreadApiResult<T> = ThreadApiResult.Failure(500)
 
                 override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?, afterSeq: Long?): ThreadApiResult<ThreadMessagesPage> = unused()

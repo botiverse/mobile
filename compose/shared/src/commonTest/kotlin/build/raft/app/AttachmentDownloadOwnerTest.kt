@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -70,7 +70,7 @@ class AttachmentDownloadOwnerTest {
         assertNull(registry.current("missing"))
     }
 
-    private fun scope(id: String) = SlockShellStoreScope.create(id)
+    private fun scope(id: String) = RaftShellStoreScope.create(id)
 
     private fun session(accountId: String) =
         StoredAuthSession(

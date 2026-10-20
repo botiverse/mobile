@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadSurfaceKind
-import build.raft.app.SlockAdaptiveDetailIdentity
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftAdaptiveDetailIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -58,18 +58,18 @@ class SharedAdaptiveScrollAnchorStoreTest {
     }
 
     private val identity =
-        SlockAdaptiveDetailIdentity(
+        RaftAdaptiveDetailIdentity(
             serverId = "server-a",
             threadId = "stream-a",
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelId = "channel-a",
         )
 
     private val otherIdentity =
-        SlockAdaptiveDetailIdentity(
+        RaftAdaptiveDetailIdentity(
             serverId = "server-a",
             threadId = "stream-b",
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelId = "channel-b",
         )
 

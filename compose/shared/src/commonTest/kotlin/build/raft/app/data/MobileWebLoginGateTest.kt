@@ -1,10 +1,10 @@
 package build.raft.app.data
 
 import build.raft.app.network.MultipartFile
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockHttpExecutorResponse
-import build.raft.app.network.SlockRequestPriority
-import build.raft.app.network.SlockTransferProgress
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftHttpExecutorResponse
+import build.raft.app.network.RaftRequestPriority
+import build.raft.app.network.RaftTransferProgress
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,7 +17,7 @@ class MobileWebLoginGateTest {
     private val selfHosted = "https://raft.example.com/api"
 
     @Test fun webLoginUntilTheLegacyFlagIsFetchedOn() = runBlocking {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         var answer: Boolean? = null
         val gate = MobileWebLoginGate(store) { answer }
         assertTrue(gate.isEnabled(official))
@@ -32,7 +32,7 @@ class MobileWebLoginGateTest {
     }
 
     @Test fun eachApiServerKeepsItsOwnAnswer() = runBlocking {
-        val gate = MobileWebLoginGate(InMemorySlockKeyValueStore()) { url -> url == official }
+        val gate = MobileWebLoginGate(InMemoryRaftKeyValueStore()) { url -> url == official }
         assertFalse(gate.refresh(official))
         assertTrue(gate.refresh(selfHosted))
         assertFalse(gate.isEnabled("https://api.raft.build/api"), "trailing slash is the same server")
@@ -54,15 +54,15 @@ class MobileWebLoginGateTest {
     @Test fun requestsThePublicEndpointWithoutCredentialsAndTreats404AsNoAnswer() = runBlocking {
         val requests = mutableListOf<Pair<String, Map<String, String>>>()
         var code = 200
-        val executor = object : SlockHttpExecutor {
-            override suspend fun execute(priority: SlockRequestPriority, url: String, method: String,
-                headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): SlockHttpExecutorResponse {
+        val executor = object : RaftHttpExecutor {
+            override suspend fun execute(priority: RaftRequestPriority, url: String, method: String,
+                headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): RaftHttpExecutorResponse {
                 requests += url to headers
-                return SlockHttpExecutorResponse(code, """{"flags":{"$MOBILE_LEGACY_LOGIN_FEATURE_FLAG_KEY":true}}""", null)
+                return RaftHttpExecutorResponse(code, """{"flags":{"$MOBILE_LEGACY_LOGIN_FEATURE_FLAG_KEY":true}}""", null)
             }
-            override suspend fun executeMultipart(priority: SlockRequestPriority, url: String,
+            override suspend fun executeMultipart(priority: RaftRequestPriority, url: String,
                 fields: Map<String, String>, files: List<MultipartFile>, headers: Map<String, String>,
-                onUploadProgress: ((SlockTransferProgress) -> Unit)?): SlockHttpExecutorResponse = error("Unexpected multipart")
+                onUploadProgress: ((RaftTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
         }
         assertEquals(true, fetchPublicLegacyLoginFlag(executor, official))
         assertEquals(

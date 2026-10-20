@@ -3,10 +3,10 @@
  */
 package com.tencent.tmm.kmmresource.compose
 
-import build.raft.app.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import androidx.compose.runtime.Composable
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 @Composable
 actual fun StringDesc.localized(): String =
-    toString(SlockAndroidSqlDatabaseContext.require())
+    toString(RaftAndroidSqlDatabaseContext.require())

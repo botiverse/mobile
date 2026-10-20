@@ -1,37 +1,73 @@
 package build.raft.app.components
 
-import build.raft.app.SlockColor
-import build.raft.app.SlockStroke
-import build.raft.app.SlockType
+import build.raft.app.RaftColor
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.text.KeyboardActions
-import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.focus.FocusRequester
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.ImeAction
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
-private val SharedHomeSearchInputShadowOffset = 2.dp
+
+/**
+ * raft-ui Input / InputGroup metrics for the Home search field ([raftField]): 44dp tall,
+ * 12dp side padding, `text-field` 16/24, `foreground-hint` placeholder; the read-only
+ * stand-in draws the same control (card fill, 1.5dp `line-field` edge, control radius).
+ */
+private val RaftSearchFieldHeight = RaftMetrics.FieldHeight
+
+private fun raftSearchFieldTextStyle() = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
+
+@Composable
+private fun RaftSearchFieldPreview(
+    text: String,
+    placeholder: String,
+    modifier: Modifier
+) {
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    Box(
+        modifier =
+            modifier
+                .height(RaftSearchFieldHeight)
+                .background(RaftColor.Card, shape)
+                .border(RaftAppStroke.Control, RaftColor.LineField, shape)
+                .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = text.ifBlank { placeholder },
+            style = raftSearchFieldTextStyle(),
+            color = if (text.isBlank()) RaftColor.ForegroundHint else RaftColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 /**
  * Owns the complete editing state synchronously for one mounted search field.
@@ -87,18 +123,24 @@ internal fun SharedHomeSearchInput(
     placeholder: String,
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
+    raftField: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val raft = raftField && raftActive()
+    if (!interactive && raft) {
+        RaftSearchFieldPreview(query, placeholder, modifier)
+        return
+    }
     if (interactive) {
-        SlockBrutalInputField(
+        RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
+            textStyle = if (raft) raftSearchFieldTextStyle() else RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            fieldMinHeight = if (raft) RaftSearchFieldHeight else 38.dp,
+            horizontalPadding = if (raft) RaftMetrics.FieldPaddingHorizontal else 11.dp,
+            verticalPadding = if (raft) 0.dp else 5.dp,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(
@@ -116,21 +158,13 @@ internal fun SharedHomeSearchInput(
             modifier =
                 modifier
                     .height(38.dp)
-                    .padding(end = SharedHomeSearchInputShadowOffset, bottom = SharedHomeSearchInputShadowOffset)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
+            // raft field look (static placeholder): control radius, card fill, field ink.
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
@@ -138,8 +172,8 @@ internal fun SharedHomeSearchInput(
                 ) {
                     Text(
                         text = query.ifBlank { placeholder },
-                        style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                        color = if (query.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                        style = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        color = if (query.isBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -161,18 +195,24 @@ internal fun SharedHomeSearchInput(
     placeholder: String,
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
+    raftField: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val raft = raftField && raftActive()
+    if (!interactive && raft) {
+        RaftSearchFieldPreview(query.text, placeholder, modifier)
+        return
+    }
     if (interactive) {
-        SlockBrutalInputField(
+        RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
+            textStyle = if (raft) raftSearchFieldTextStyle() else RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            fieldMinHeight = if (raft) RaftSearchFieldHeight else 38.dp,
+            horizontalPadding = if (raft) RaftMetrics.FieldPaddingHorizontal else 11.dp,
+            verticalPadding = if (raft) 0.dp else 5.dp,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(
@@ -190,21 +230,13 @@ internal fun SharedHomeSearchInput(
             modifier =
                 modifier
                     .height(38.dp)
-                    .padding(end = SharedHomeSearchInputShadowOffset, bottom = SharedHomeSearchInputShadowOffset)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
+            // raft field look (static placeholder): control radius, card fill, field ink.
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
@@ -212,8 +244,8 @@ internal fun SharedHomeSearchInput(
                 ) {
                     Text(
                         text = query.text.ifBlank { placeholder },
-                        style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                        color = if (query.text.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                        style = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                        color = if (query.text.isBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)

@@ -47,16 +47,8 @@ in any channel (usually `#artifacts`). Lane assumptions:
    Use a `pi-perf-artifact-taskNN-<short-sha>` directory name so the lane
    ownership is obvious in `git worktree list` and the Hands worker logs.
 
-3. **Materialize submodules** with `materialize-submodules.sh` (the lane's
-   reusable script). It will:
-   - `cp` the canonical-checkout script into `<worktree>/.tools/`
-   - `sed` the `WT=...` path
-   - For the `.agents/skills/kuikly-ui-framework/references/KuiklyUI` skill
-     reference (the only remaining submodule; no build dependency is a
-     submodule any more), write the right `core.worktree` in
-     `~/.slock-checkout/.git/modules/...` and use `git archive <pinned-sha> |
-     tar -x` to materialize a clean tree (avoiding main-checkout dirty files).
-   See "Submodule strategy" below for the rationale.
+3. **Submodules**: the repository has none any more (the KuiklyUI skill
+   reference was removed in 2026-10), so there is nothing to materialize.
 
 4. **Build, sign, align, verify**.
    ```bash

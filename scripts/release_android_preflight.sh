@@ -63,19 +63,6 @@ version_code() {
   scripts/ci/version_code.sh "${major}" "${minor}" "${patch}" "${VERSION_BUILD}"
 }
 
-json_field() {
-  local file="$1"
-  local field="$2"
-  python3 - "${file}" "${field}" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as source:
-    payload = json.load(source)
-print(payload.get(sys.argv[2], ""))
-PY
-}
-
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --version)
@@ -127,8 +114,6 @@ require_cmd python3
 
 cd "${ROOT_DIR}"
 [ -f .github/workflows/android-release.yml ] || die "android release workflow not found"
-[ -f compose/ohosApp/entry/oh-package.json5 ] || die "OHOS package manifest is missing"
-[ -f compose/ohosApp/entry/oh-package-lock.json5 ] || die "OHOS package lock is missing"
 
 git fetch "${RELEASE_REMOTE}" "${RELEASE_BRANCH}" --prune
 REMOTE_REF="refs/remotes/${RELEASE_REMOTE}/${RELEASE_BRANCH}"
@@ -148,28 +133,7 @@ git diff --quiet || die "working tree has unstaged tracked changes"
 git diff --cached --quiet || die "working tree has staged changes"
 [ -z "$(git status --porcelain --untracked-files=normal)" ] || die "working tree has untracked or submodule changes"
 
-scripts/ci/verify_kuikly_release_manifest.sh ||
-  die "immutable Kuikly release manifest admission is incomplete or conflicting"
-
-HANDS_DEPENDENCY_METADATA="$(mktemp)"
-trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${HANDS_RESPONSE:-}"' EXIT
-python3 scripts/check_ohos_hands_dependency.py \
-  --manifest compose/ohosApp/entry/oh-package.json5 \
-  --lock compose/ohosApp/entry/oh-package-lock.json5 \
-  --legacy-har compose/ohosApp/entry/libs/hands.har \
-  --fetch-registry >"${HANDS_DEPENDENCY_METADATA}" ||
-    die "OHOS Hands dependency failed manifest/lock/artifact verification"
-HANDS_DEPENDENCY_MODE="$(json_field "${HANDS_DEPENDENCY_METADATA}" mode)"
-HANDS_DEPENDENCY_NAME="$(json_field "${HANDS_DEPENDENCY_METADATA}" name)"
-HANDS_DEPENDENCY_VERSION="$(json_field "${HANDS_DEPENDENCY_METADATA}" version)"
-HANDS_DEPENDENCY_SOURCE="$(json_field "${HANDS_DEPENDENCY_METADATA}" source)"
-HANDS_DEPENDENCY_SHA256="$(json_field "${HANDS_DEPENDENCY_METADATA}" artifact_sha256)"
-[ "${HANDS_DEPENDENCY_NAME}" = "@botiverse/hands" ] ||
-  die "Hands dependency identifies as '${HANDS_DEPENDENCY_NAME:-missing}', expected @botiverse/hands"
-[ -n "${HANDS_DEPENDENCY_VERSION}" ] || die "Hands dependency has no version"
-[ -n "${HANDS_DEPENDENCY_SHA256}" ] || die "Hands dependency has no verified artifact digest"
-
-trap 'rm -f "${HANDS_DEPENDENCY_METADATA}" "${HANDS_RESPONSE:-}"' EXIT
+trap 'rm -f "${HANDS_RESPONSE:-}"' EXIT
 
 for pr in "${REQUIRED_PRS[@]}"; do
   [[ "${pr}" =~ ^[0-9]+$ ]] || die "invalid PR number: ${pr}"
@@ -232,10 +196,6 @@ if [ -n "${REPORT_PATH}" ]; then
     printf -- '- Candidate version: `%s` (versionCode `%s`)\n' "${VERSION}" "${RELEASE_CODE}"
     printf -- '- Channel: `%s`\n' "${CHANNEL}"
     printf -- '- Release head: `%s`\n' "${HEAD_SHA}"
-    printf -- '- Kuikly release: immutable Raft manifest admission verified\n'
-    printf -- '- OHOS Hands dependency: `%s@%s` via `%s`; source `%s`; verified artifact SHA-256 `%s`\n' \
-      "${HANDS_DEPENDENCY_NAME}" "${HANDS_DEPENDENCY_VERSION}" "${HANDS_DEPENDENCY_MODE}" \
-      "${HANDS_DEPENDENCY_SOURCE}" "${HANDS_DEPENDENCY_SHA256}"
     printf -- '- Required CI: Android Release is the candidate build/test gate\n'
     if [ "${#REQUIRED_PRS[@]}" -gt 0 ]; then
       echo "- Included PRs: $(printf '#%s ' "${REQUIRED_PRS[@]}")"
@@ -255,9 +215,6 @@ fi
 echo "Android release preflight passed"
 echo "  candidate: ${VERSION} (${RELEASE_CODE})"
 echo "  head: ${HEAD_SHA}"
-echo "  Kuikly: immutable Raft release manifest admission verified"
-echo "  Hands dependency: ${HANDS_DEPENDENCY_NAME}@${HANDS_DEPENDENCY_VERSION} (${HANDS_DEPENDENCY_MODE})"
-echo "  Hands artifact SHA-256: ${HANDS_DEPENDENCY_SHA256}"
 if [ -n "${LIVE_CODE}" ]; then
   echo "  Hands active versionCode: ${LIVE_CODE}"
 else

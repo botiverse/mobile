@@ -17,9 +17,10 @@ import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.inspector.WindowInspector
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import build.raft.app.shared.SlockKuiklyActivity
+import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.VisualCaptureLocaleRestoreToken
@@ -27,7 +28,7 @@ import build.raft.app.data.applyVisualCaptureLocale
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.parseVisualCaptureLocale
 import build.raft.app.data.restoreVisualCaptureLocale
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -159,6 +160,7 @@ class KmpVisualScreenshotCaptureTest {
     private var lastCaptureClampedToShortWindow = false
 
     private var lastCaptureMethod: String? = null
+    private var lastCaptureCompositedWindowCount = 0
     private var lastStableFrameCount = 0
     private var lastReadyTokenObserved = false
     private var lastReadyTokenRequired = false
@@ -189,6 +191,31 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_bottom_tabbar_visual",
             crop = NAVIGATION_TABBAR_CROP
         )
+    }
+
+    @Test
+    fun captureNavigationTabbarMockup() {
+        // Approved activity-tab mockup A: 动态 selected with its count, then 任务 selected with
+        // the count on the unselected 动态 tab (bars at y=16 and y=16+58+24).
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.mockup",
+            pageName = "compose_bottom_tabbar_mockup_visual",
+            crop = NAVIGATION_TABBAR_MOCKUP_CROP
+        )
+    }
+
+    @Test
+    fun captureActivityTabSegments() {
+        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the three segments
+        // (All / Unread / Mentions) and the 5-tab bar with the Activity badge.
+        listOf("all", "unread", "mentions").forEach { segment ->
+            captureKmpComponentCase(
+                caseId = "screens.activity-tab.$segment",
+                pageName = "compose_activity_tab_visual",
+                pageData = JSONObject().put("segment", segment),
+                crop = FULL_VIEWPORT_CROP
+            )
+        }
     }
 
     @Test
@@ -273,9 +300,9 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Android-only theme-axis case: captures SlockBrutalActionButton under both
-    // SlockThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
-    // theme axis) — guards that the LocalSlockTheme switch keeps driving border/corner/
+    // Android-only theme-axis case: captures RaftBrutalActionButton under both
+    // RaftThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
+    // theme axis) — guards that the LocalRaftTheme switch keeps driving border/corner/
     // shadow/ink (brutal row must stay byte-identical to the shipping look).
     @Test
     fun captureUiButtonThemeStates() {
@@ -287,7 +314,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     // Elegant-register capture of the button (same content as button.states, under
-    // SlockThemeProvider(elegantTheme)). Paired against the React elegant render as
+    // RaftThemeProvider(elegantTheme)). Paired against the React elegant render as
     // components.ui.button.states.elegant → react-elegant <-> android-elegant parity.
     @Test
     fun captureUiButtonStatesElegant() {
@@ -307,7 +334,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register card capture (same content under SlockThemeProvider(elegantTheme)).
+    // Elegant-register card capture (same content under RaftThemeProvider(elegantTheme)).
     // Paired against the React elegant card render as components.ui.card.states.elegant.
     @Test
     fun captureUiCardStatesElegant() {
@@ -327,7 +354,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register form-field capture (same content under SlockThemeProvider(elegantTheme)):
+    // Elegant-register form-field capture (same content under RaftThemeProvider(elegantTheme)):
     // flat rounded #CACACE-hairline inputs, no brutal offset shadow. Paired against the React
     // elegant render as components.ui.form-field.states.elegant.
     @Test
@@ -348,8 +375,8 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register textarea capture (same content under SlockThemeProvider(elegantTheme)):
-    // inherits the SlockBrutalInputField elegant flat-field register. Paired against the React
+    // Elegant-register textarea capture (same content under RaftThemeProvider(elegantTheme)):
+    // inherits the RaftBrutalInputField elegant flat-field register. Paired against the React
     // elegant render as components.ui.textarea.states.elegant.
     @Test
     fun captureUiTextareaStatesElegant() {
@@ -369,7 +396,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register checkbox capture (same content under SlockThemeProvider(elegantTheme)):
+    // Elegant-register checkbox capture (same content under RaftThemeProvider(elegantTheme)):
     // rounded 4dp box + #CACACE hairline + #0A0A0A ink fill. Paired against the React elegant
     // render as components.ui.checkbox.states.elegant.
     @Test
@@ -984,7 +1011,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-row")
                     .put("visualFixture", "default"),
             crop = THREAD_MESSAGE_ROW_CROP,
-            requireReactionAtlas = true
+            requireReactionAtlas = true,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message.row", "visual-thread-message-row", widthDp = 374, insetDp = 16) }
         )
     }
 
@@ -1245,12 +1273,12 @@ class KmpVisualScreenshotCaptureTest {
         targetYDp: Float,
         composerBoundaryVisible: Boolean = false
     ) {
-        val backingStore = slockSharedPreferenceStore()
+        val backingStore = raftSharedPreferenceStore()
         val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
         var menuArtifact: Bitmap? = null
         try {
             backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
-            val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            val preferenceStore = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
             assertFalse(preferenceStore.readNewMessageMenuEnabledSync())
             runBlocking { preferenceStore.saveNewMessageMenuEnabled(true) }
             assertTrue(preferenceStore.readNewMessageMenuEnabledSync())
@@ -1613,7 +1641,7 @@ class KmpVisualScreenshotCaptureTest {
     // both the exact detector signal and visible classic-menu chrome.
     @Test
     fun captureThreadNewMessageMenuPreferenceOffFallback() {
-        val backingStore = slockSharedPreferenceStore()
+        val backingStore = raftSharedPreferenceStore()
         val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
         val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
         val longPressReadyToken = "thread_message_long_press_ready_$launchTokenSuffix"
@@ -1621,7 +1649,7 @@ class KmpVisualScreenshotCaptureTest {
         try {
             backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
             assertFalse(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readNewMessageMenuEnabledSync()
             )
             captureKmpComponentCase(
@@ -1715,7 +1743,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-deleted-human")
                     .put("visualFixture", "deleted_human"),
-            crop = THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP
+            crop = THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.deleted-human", "visual-thread-message-row-deleted-human", widthDp = 374, insetDp = 16) }
         )
     }
 
@@ -1784,7 +1813,7 @@ class KmpVisualScreenshotCaptureTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, RaftCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_forward_modal_visual")
                 .putExtra(
                     "pageData",
@@ -1794,8 +1823,8 @@ class KmpVisualScreenshotCaptureTest {
                             .put("fixture", "scroll_probe")
                     ).toString()
                 )
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+        val scenario = ActivityScenario.launch<RaftCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         var before: Bitmap? = null
         var afterSwipe: Bitmap? = null
@@ -2354,7 +2383,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-long-inline-code")
                     .put("visualFixture", "long_inline_code"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.long-inline-code", "visual-thread-message-row-long-inline-code", widthDp = 390) }
         )
     }
 
@@ -2385,7 +2415,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-link-ref")
                     .put("visualFixture", "md_link_ref"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-link-ref", "visual-thread-message-row-md-link-ref", widthDp = 390) }
         )
     }
 
@@ -2398,7 +2429,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-slice1")
                     .put("visualFixture", "md_wrap_slice1"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-slice1", "visual-thread-message-row-md-wrap-slice1", widthDp = 260) }
         )
     }
 
@@ -2411,7 +2443,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-status606")
                     .put("visualFixture", "md_wrap_status606"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-status606", "visual-thread-message-row-md-wrap-status606", widthDp = 390) }
         )
     }
 
@@ -2450,7 +2483,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-latest-release")
                     .put("visualFixture", "md_latest_release"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-latest-release", "visual-thread-message-row-md-latest-release", widthDp = 390) }
         )
     }
 
@@ -2595,7 +2629,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("visualFixture", "md_wrap_adjacent"),
             // Standard 390dp width: the '#31 / #521' adjacent pair must stay on
             // one line (task #60 acceptance), so no narrow wrap column here.
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-adjacent", "visual-thread-message-row-md-wrap-adjacent", widthDp = 390) }
         )
     }
 
@@ -2621,7 +2656,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-clarify")
                     .put("visualFixture", "md_wrap_clarify"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-clarify", "visual-thread-message-row-md-wrap-clarify", widthDp = 260) }
         )
     }
 
@@ -2634,7 +2670,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-wrap-task607")
                     .put("visualFixture", "md_wrap_task607"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-task607", "visual-thread-message-row-md-wrap-task607", widthDp = 260) }
         )
     }
 
@@ -2785,12 +2822,12 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureHomeTitlebarPreferencePersistenceStates() {
-        val store = slockSharedPreferenceStore()
+        val store = raftSharedPreferenceStore()
         val previous = store.getString(HOME_SERVER_AVATAR_PREFERENCE_KEY)
         try {
             store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
             assertTrue(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
@@ -2800,11 +2837,11 @@ class KmpVisualScreenshotCaptureTest {
             )
 
             runBlocking {
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .saveHomeServerAvatarEnabled(true)
             }
             assertTrue(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
@@ -2814,11 +2851,11 @@ class KmpVisualScreenshotCaptureTest {
             )
 
             runBlocking {
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .saveHomeServerAvatarEnabled(false)
             }
             assertFalse(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
@@ -2839,10 +2876,10 @@ class KmpVisualScreenshotCaptureTest {
                 .getString(HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG)
                 .orEmpty()
         assumeTrue("process-restart phase is opt-in", phase.isNotBlank())
-        val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         when (phase) {
             "seed-on" -> {
-                slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+                raftSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
                 runBlocking { preferenceStore.saveHomeServerAvatarEnabled(true) }
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
@@ -2864,7 +2901,7 @@ class KmpVisualScreenshotCaptureTest {
                     pageName = "compose_home_titlebar_preference_visual",
                     crop = HOME_TITLEBAR_PREFERENCE_CROP
                 )
-                slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+                raftSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
             }
             else -> error("Unknown $HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG=$phase")
@@ -3268,6 +3305,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeDmAgentActivityStates() {
+        captureKmpComponentCase(
+            caseId = "screens.home.dm-agent-activity-states",
+            pageName = "compose_home_dm_agent_activity_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeServerSwitcherBadgeStates() {
         captureKmpComponentCase(
             caseId = "screens.home.server-switcher-badge-states",
@@ -3373,6 +3420,95 @@ class KmpVisualScreenshotCaptureTest {
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
+    }
+
+    // React CREATE_AGENT_CASES counterparts (slock packages/web/visual-testing/
+    // VisualTestingCases.tsx). State comes from the gated
+    // compose_create_agent_state_visual fixture page; `variant` only selects it.
+    @Test
+    fun captureMembersCreateAgentDialogError() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-error",
+            variant = "error"
+        )
+    }
+
+    // React renders its onboarding ("Meet Cindy") step here; the shared dialog
+    // has no onboarding layout, so Android captures the standard form for the
+    // same seed and the product gap stays visible in the report.
+    @Test
+    fun captureMembersCreateAgentDialogOnboarding() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-onboarding",
+            variant = "onboarding"
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentDialogEmpty() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-empty",
+            variant = "empty",
+            // A blank initial name is replaced by a random suggestion, so clear
+            // the seeded name the way a user would to reach React's empty field.
+            beforeScreenshot = { clearEditableTextField("Product-QA-Bot") }
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentDialogNoComputer() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-no-computer",
+            variant = "no-computer"
+        )
+    }
+
+
+
+    private fun captureMembersCreateAgentStateCase(
+        caseId: String,
+        variant: String,
+        beforeScreenshot: (() -> Unit)? = null
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_create_agent_state_visual",
+            pageData = JSONObject().put("variant", variant),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+            beforeScreenshot = beforeScreenshot
+        )
+    }
+
+    /** Clear the editable field currently showing [text] through its accessibility SetText action. */
+    private fun clearEditableTextField(text: String) {
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
+        var field: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (field == null) {
+            val roots = listOfNotNull(uiAutomation.rootInActiveWindow) + uiAutomation.windows.mapNotNull { it.root }
+            field =
+                roots
+                    .asSequence()
+                    .flatMap { it.findAccessibilityNodeInfosByText(text).asSequence() }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isEditable } }
+                    .firstOrNull()
+            if (field != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(field) { "No editable field showing \"$text\" to clear" }
+        val cleared =
+            field.performAction(
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+                android.os.Bundle().apply {
+                    putCharSequence(
+                        android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        ""
+                    )
+                }
+            )
+        require(cleared) { "SetText(\"\") was rejected by the field showing \"$text\"" }
+        Thread.sleep(500)
     }
 
     @Test
@@ -3530,6 +3666,36 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "screens.members.agent-detail.profile.daemon-only",
             tab = "profile",
             memberId = "agent-daemon-only"
+        )
+    }
+
+    // task #261: no server membership row -> serverRole omitted -> role chip hidden.
+    @Test
+    fun captureMembersAgentDetailProfileNoMembershipScreen() {
+        captureMembersAgentDetailStateCase(
+            caseId = "screens.members.agent-detail.profile.no-membership",
+            state = "no-membership"
+        )
+    }
+
+    // task #259: computers still loading -> the Computer row must not render yet.
+    @Test
+    fun captureMembersAgentDetailProfileLoadingStateScreen() {
+        captureMembersAgentDetailStateCase(
+            caseId = "screens.members.agent-detail.profile.loading-state",
+            state = "loading-state"
+        )
+    }
+
+    // Seeds come from the gated compose_members_agent_detail_state_visual page,
+    // not from the production compose_member_detail route's pageData.
+    private fun captureMembersAgentDetailStateCase(caseId: String, state: String) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_members_agent_detail_state_visual",
+            pageData = JSONObject().put("state", state),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
         )
     }
 
@@ -3783,11 +3949,40 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpSettingsPageCase("screens.settings.server-danger-modal", "server-danger-modal")
     }
 
-    // NOTE (task #498): the native Settings Computers list/detail routes were
-    // removed by #920 (settings now embeds the canonical web surface), so the
-    // former screens.settings.computers{,.loading} / computer-detail cases were
-    // deleted — they only captured the Kuikly route-error page on Android and
-    // timed out the iOS leg awaiting a route that no longer exists.
+    // Settings > Computers is native again (RaftSettingsComputersPage). These
+    // cases render its production content from seeded store snapshots through
+    // the compose_settings_computers_visual fixture (no network, pinned clock).
+    // Ids reuse the retired React/Android pair ids (slock #5009:
+    // screens.settings.computers, screens.settings.computer-detail).
+    @Test
+    fun captureSettingsComputersList() {
+        captureSettingsComputersCase("screens.settings.computers", "list")
+    }
+
+    @Test
+    fun captureSettingsComputersEmpty() {
+        captureSettingsComputersCase("screens.settings.computers.empty", "empty")
+    }
+
+    @Test
+    fun captureSettingsComputersError() {
+        captureSettingsComputersCase("screens.settings.computers.error", "error")
+    }
+
+    @Test
+    fun captureSettingsComputerDetail() {
+        captureSettingsComputersCase("screens.settings.computer-detail", "detail")
+    }
+
+    private fun captureSettingsComputersCase(caseId: String, fixtureKey: String) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_settings_computers_visual",
+            pageData = JSONObject().put("fixtureKey", fixtureKey),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
 
     // Full-route Settings captures (task #398 / #388). These drive the real
     // Settings destination switch (SettingsAppShellContent) through the
@@ -3894,7 +4089,7 @@ class KmpVisualScreenshotCaptureTest {
                     .put("task139ReuseTrace", true),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 3_000,
-            assertBitmap = ::assertLargestFeedbackYellowRegionHasSquareCorners
+            assertBitmap = ::assertFeedbackRowsKeepRaftContainerCorners
         )
     }
 
@@ -3946,7 +4141,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureAuthLoginScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.login",
-            pageName = SlockKuiklyActivity.PAGE_LOGIN,
+            pageName = RaftCmpActivity.PAGE_LOGIN,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 12_000
         )
@@ -3956,7 +4151,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureAuthForgotPasswordScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.forgot-password",
-            pageName = SlockKuiklyActivity.PAGE_FORGOT_PASSWORD,
+            pageName = RaftCmpActivity.PAGE_FORGOT_PASSWORD,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 12_000
         )
@@ -4013,7 +4208,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     // React baselines have no device status bar, so captures must not inherit
-    // the host/native top inset. Read by slockTopSafeAreaPadding().
+    // the host/native top inset. Read by raftTopSafeAreaPadding().
     private fun withVisualCaptureParams(pageData: JSONObject?): JSONObject =
         (pageData ?: JSONObject()).apply {
             if (!has("slockVisualZeroSafeArea")) {
@@ -4085,7 +4280,7 @@ class KmpVisualScreenshotCaptureTest {
      * reported OK with the image it already produced.
      */
     private fun closeScenarioBounded(
-        scenario: ActivityScenario<SlockKuiklyActivity>,
+        scenario: ActivityScenario<RaftCmpActivity>,
         maxMs: Long = SCENARIO_CLOSE_TIMEOUT_MS
     ) {
         val closed = CountDownLatch(1)
@@ -4111,7 +4306,7 @@ class KmpVisualScreenshotCaptureTest {
 
     /**
      * Finish predecessor fixture activities leaked by an abandoned teardown
-     * (see [closeScenarioBounded]). Since #3043 gave SlockKuiklyActivity a
+     * (see [closeScenarioBounded]). Since #3043 gave RaftCmpActivity a
      * translucent window, a leaked predecessor is only PAUSED — never STOPPED —
      * when the next case launches on top of it: it stays visible underneath,
      * keeps receiving frames, and its churn starves the new case's main thread.
@@ -4149,11 +4344,11 @@ class KmpVisualScreenshotCaptureTest {
         lastReadyTokenObserved = false
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
-                .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
+            Intent(context, RaftCmpActivity::class.java)
+                .putExtra("pageName", RaftCmpActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+        val scenario = ActivityScenario.launch<RaftCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
@@ -4241,11 +4436,11 @@ class KmpVisualScreenshotCaptureTest {
         currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
-            Intent(context, SlockKuiklyActivity::class.java)
+            Intent(context, RaftCmpActivity::class.java)
                 .putExtra("pageName", pageName)
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        val scenario = ActivityScenario.launch<RaftCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it, hideKeyboard = suppressSoftKeyboard) }
@@ -4256,8 +4451,17 @@ class KmpVisualScreenshotCaptureTest {
                 waitForIdleBounded()
             }
             if (suppressSoftKeyboard) {
-                onActivityNoIdle { suppressVisualKeyboard(it) }
+                var fixtureOwnedWindows = 0
+                onActivityNoIdle {
+                    fixtureOwnedWindows = fixtureOwnedWindowViews(it).size
+                    suppressVisualKeyboard(it)
+                }
                 waitForIdleBounded()
+                if (fixtureOwnedWindows > 0) {
+                    // Let a dialog laid out above a dismissed IME settle back.
+                    Thread.sleep(DIALOG_IME_DISMISS_SETTLE_MS)
+                    waitForIdleBounded()
+                }
             }
             lastReadyTokenObserved = readyToken?.let { awaitVisualReadyToken(caseId, it) } ?: false
             lastReadyTokenRequired = readyToken != null
@@ -4337,21 +4541,37 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun assertLargestFeedbackYellowRegionHasSquareCorners(bitmap: Bitmap) {
+    /**
+     * task #139 regression guard, raft-ui edition. The submitted User row
+     * replaces the attachment row, and a retained native view used to keep the
+     * attachment's corner radius. Under raft-ui both feedback rows are cards
+     * with the container radius (10dp, same as web's feedback bubbles), so the
+     * guard now asserts every visible corner of both rows carries exactly that
+     * radius: a stale square corner (0dp) or a stale control/sticker radius
+     * (8dp/4dp) from the recycled attachment view fails it.
+     */
+    private fun assertFeedbackRowsKeepRaftContainerCorners(bitmap: Bitmap) {
         val width = bitmap.width
         val height = bitmap.height
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        // Measured on the 0.6.0 capture: the fill estimate lands at ~9.8dp and
+        // the outline inset at ~8.7dp for the 10dp container radius, while a
+        // stale 8dp control radius measures <= 8dp and a square corner ~0.
+        val expectedFillRadiusPx = 10f * density
+        val expectedOutlineRadiusPx = 10f * density
         val minY = height / 6
         val maxY = height * 4 / 5
         val yellow = BooleanArray(width * height)
-        fun isBrandYellow(color: Int): Boolean {
+        // raft primary-soft (#FFF0BD), the User feedback row fill.
+        fun isPrimarySoft(color: Int): Boolean {
             val red = android.graphics.Color.red(color)
             val green = android.graphics.Color.green(color)
             val blue = android.graphics.Color.blue(color)
-            return red >= 248 && green in 202..222 && blue in 48..82
+            return red >= 249 && green in 234..246 && blue in 181..197
         }
         for (y in minY until maxY) {
             for (x in 0 until width) {
-                yellow[y * width + x] = isBrandYellow(bitmap.getPixel(x, y))
+                yellow[y * width + x] = isPrimarySoft(bitmap.getPixel(x, y))
             }
         }
         val visited = BooleanArray(width * height)
@@ -4391,63 +4611,75 @@ class KmpVisualScreenshotCaptureTest {
                 }
             }
         }
-        val bounds = requireNotNull(bestBounds) { "No BrandYellow feedback region found" }
-        require(bestArea > 8_000) { "BrandYellow region too small for User row: area=$bestArea" }
-        fun isBorderBlack(color: Int): Boolean {
-            val red = android.graphics.Color.red(color)
-            val green = android.graphics.Color.green(color)
-            val blue = android.graphics.Color.blue(color)
-            return red <= 72 && green <= 72 && blue <= 72
-        }
-        fun borderBlackHitsNear(x: Int, y: Int): Int {
-            var hits = 0
-            for (dy in -4..4) {
-                for (dx in -4..4) {
-                    val px = (x + dx).coerceIn(0, width - 1)
-                    val py = (y + dy).coerceIn(0, height - 1)
-                    if (isBorderBlack(bitmap.getPixel(px, py))) hits += 1
+        val bounds = requireNotNull(bestBounds) { "No primary-soft User feedback row found" }
+        require(bestArea > 8_000) { "Primary-soft region too small for User row: area=$bestArea" }
+
+        // Corner radius estimate from the fill: a quarter-round corner of
+        // radius r leaves r^2 * (1 - pi/4) non-fill pixels in its corner
+        // square. The probe square stays inside the 12dp content padding.
+        val probe = (11f * density).toInt()
+        fun cornerRadiusPx(cornerX: Int, cornerY: Int, stepX: Int, stepY: Int): Double {
+            var outside = 0
+            for (dy in 0 until probe) {
+                for (dx in 0 until probe) {
+                    val px = (cornerX + dx * stepX).coerceIn(0, width - 1)
+                    val py = (cornerY + dy * stepY).coerceIn(0, height - 1)
+                    if (!isPrimarySoft(bitmap.getPixel(px, py))) outside += 1
                 }
             }
-            return hits
+            return kotlin.math.sqrt(outside / (1.0 - kotlin.math.PI / 4.0))
         }
-        val userCornerBorderHits =
+        val userCornerRadii =
             listOf(
-                bounds[0] to bounds[1],
-                bounds[2] to bounds[1],
-                bounds[0] to bounds[3],
-                bounds[2] to bounds[3]
-            ).map { (x, y) ->
-                // The yellow background itself still fills the rectangular
-                // layer bounds when a stale rounded border is retained. The
-                // regression is therefore visible in the black outline: a
-                // square row has border pixels at each geometric corner,
-                // while a rounded outline leaves this tight corner patch
-                // yellow/white and places its arc farther inward.
-                borderBlackHitsNear(x, y)
-            }
-        require(userCornerBorderHits.all { it >= 4 }) {
-            "User feedback row retained rounded corners: bounds=${bounds.joinToString()} " +
-                "cornerBorderBlackHits=${userCornerBorderHits.joinToString()} area=$bestArea"
+                cornerRadiusPx(bounds[0], bounds[1], 1, 1),
+                cornerRadiusPx(bounds[2], bounds[1], -1, 1),
+                cornerRadiusPx(bounds[0], bounds[3], 1, -1),
+                cornerRadiusPx(bounds[2], bounds[3], -1, -1)
+            )
+        require(userCornerRadii.all { kotlin.math.abs(it - expectedFillRadiusPx) <= 0.15 * expectedFillRadiusPx }) {
+            "User feedback row lost the raft container radius: bounds=${bounds.joinToString()} " +
+                "cornerRadiiPx=${userCornerRadii.joinToString { "%.1f".format(it) }} " +
+                "expectedFillRadiusPx=$expectedFillRadiusPx area=$bestArea"
         }
 
         // Depending on retained-view assignment, the stale attachment radius
         // can land on either the inserted User row or the following Hands
-        // success row. Find the latter's top outline at the shared center x
-        // and require both top corners to be square as well.
+        // success row (white card, hairline outline). Find the latter's top
+        // outline at the User row's center x, then measure how far the
+        // straight top edge stops short of the card's left/right edges.
+        fun isOutline(color: Int): Boolean {
+            val red = android.graphics.Color.red(color)
+            val green = android.graphics.Color.green(color)
+            val blue = android.graphics.Color.blue(color)
+            return maxOf(red, green, blue) <= 240
+        }
         val centerX = (bounds[0] + bounds[2]) / 2
         val handsTop =
             requireNotNull(
                 ((bounds[3] + 8).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
-                    isBorderBlack(bitmap.getPixel(centerX, y))
+                    isOutline(bitmap.getPixel(centerX, y))
                 }
-            ) { "No Hands success row top border found below User row" }
-        val handsTopCornerHits =
-            listOf(bounds[0] to handsTop, bounds[2] to handsTop).map { (x, y) ->
-                borderBlackHitsNear(x, y)
+            ) { "No Hands success row top outline found below User row" }
+        val sideProbeY = (handsTop + 2 * expectedOutlineRadiusPx).toInt().coerceAtMost(height - 1)
+        val handsLeft =
+            requireNotNull((0 until centerX).firstOrNull { x -> isOutline(bitmap.getPixel(x, sideProbeY)) }) {
+                "No Hands success row left outline found at y=$sideProbeY"
             }
-        require(handsTopCornerHits.all { it >= 4 }) {
-            "Hands success row retained rounded corners: userBounds=${bounds.joinToString()} " +
-                "handsTop=$handsTop topCornerBorderBlackHits=${handsTopCornerHits.joinToString()}"
+        val handsRight =
+            requireNotNull((width - 1 downTo centerX).firstOrNull { x -> isOutline(bitmap.getPixel(x, sideProbeY)) }) {
+                "No Hands success row right outline found at y=$sideProbeY"
+            }
+        val topEdgeLeft = (centerX downTo handsLeft).takeWhile { x -> isOutline(bitmap.getPixel(x, handsTop)) }.last()
+        val topEdgeRight = (centerX..handsRight).takeWhile { x -> isOutline(bitmap.getPixel(x, handsTop)) }.last()
+        val handsCornerInsets = listOf(topEdgeLeft - handsLeft, handsRight - topEdgeRight)
+        require(
+            handsCornerInsets.all {
+                it >= 0.75 * expectedOutlineRadiusPx && it <= 1.2 * expectedOutlineRadiusPx
+            }
+        ) {
+            "Hands success row lost the raft container radius: userBounds=${bounds.joinToString()} " +
+                "handsTop=$handsTop handsLeft=$handsLeft handsRight=$handsRight " +
+                "topCornerInsetsPx=${handsCornerInsets.joinToString()} expectedOutlineRadiusPx=$expectedOutlineRadiusPx"
         }
     }
 
@@ -4819,9 +5051,34 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun openPendingMentionDrawer() {
-        val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-        val viewAction = root?.findAccessibilityNodeInfosByText("View")?.firstOrNull()
-        requireNotNull(viewAction) { "Pending mention View action is not visible" }
+        // The accessibility snapshot can trail the first painted frame on a
+        // loaded CI emulator (the partial-batch fixture also composes the
+        // notice row above the banner), so poll the live tree instead of
+        // reading it exactly once.
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS
+        var viewAction: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (viewAction == null) {
+            viewAction =
+                uiAutomation.rootInActiveWindow
+                    ?.findAccessibilityNodeInfosByText("View")
+                    ?.firstOrNull()
+            if (viewAction != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(viewAction) {
+            // Name what the tree did hold, so a CI-only miss is diagnosable.
+            val texts = mutableListOf<String>()
+            fun collect(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+                if (node == null || depth > 40 || texts.size > 60) return
+                (node.text ?: node.contentDescription)?.toString()?.takeIf { it.isNotBlank() }?.let { texts += it.take(40) }
+                for (index in 0 until node.childCount) collect(node.getChild(index), depth + 1)
+            }
+            val root = uiAutomation.rootInActiveWindow
+            collect(root, 0)
+            "Pending mention View action is not visible; activeWindowPackage=${root?.packageName} " +
+                "windows=${uiAutomation.windows.size} texts=${texts.joinToString(" | ")}"
+        }
         val clickableAction = generateSequence(viewAction) { it.parent }.firstOrNull { it.isClickable }
         requireNotNull(clickableAction) { "Pending mention View action has no clickable ancestor" }
         val bounds = android.graphics.Rect()
@@ -4871,6 +5128,36 @@ class KmpVisualScreenshotCaptureTest {
         activity.currentFocus?.clearFocus()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity.window.insetsController?.hide(WindowInsets.Type.ime())
+        }
+        // Modal content lives in its own dialog window, which neither the
+        // activity's soft-input mode nor its immersive flags reach. An
+        // auto-focused field there (Create Agent's name input) raised the IME,
+        // shrank the dialog above it, and left a composing underline; the React
+        // baseline is captured unfocused with no keyboard or system bars.
+        fixtureOwnedWindowViews(activity).forEach { view ->
+            val params = view.layoutParams as WindowManager.LayoutParams
+            val hiddenSoftInput =
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            if (params.softInputMode != hiddenSoftInput) {
+                params.softInputMode = hiddenSoftInput
+                try {
+                    activity.windowManager.updateViewLayout(view, params)
+                } catch (t: IllegalArgumentException) {
+                    Log.w(VISUAL_LOG_TAG, "fixture window soft-input update skipped: ${t.message}")
+                }
+            }
+            view.findFocus()?.clearFocus()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                view.windowInsetsController?.let { controller ->
+                    controller.hide(
+                        WindowInsets.Type.statusBars() or
+                            WindowInsets.Type.navigationBars() or
+                            WindowInsets.Type.ime()
+                    )
+                    controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
         }
     }
 
@@ -4932,6 +5219,78 @@ class KmpVisualScreenshotCaptureTest {
                 Log.w(VISUAL_LOG_TAG, "onActivityNoIdle: no RESUMED activity (page may have crashed/finished)")
             }
         }
+    }
+
+    /**
+     * [captureActivityScreenshot] plus every window the fixture activity owns
+     * (Compose `Dialog` windows behind `Modal`, and popups anchored to them),
+     * composited in z-order. `Modal` rehosts its content in a separate native
+     * window, so drawing only the activity decor dropped open dialogs entirely
+     * (screens.settings.server-danger-modal captured the page with no modal) or
+     * left a blank frame that fell through to the UiAutomation screenshot, which
+     * carries the device status/navigation bars and the soft keyboard the React
+     * baseline never has (components.members.create-agent.*,
+     * components.home.create-channel.dialog, components.channel.*). System
+     * windows (bars, IME) are never part of the composite.
+     */
+    private fun captureAppWindowsScreenshot(caseId: String): Bitmap {
+        lastCaptureCompositedWindowCount = 0
+        var bitmap: Bitmap? = null
+        onActivityNoIdle { activity ->
+            val root = activity.window.decorView.rootView
+            if (root.width > 0 && root.height > 0) {
+                bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888).also { output ->
+                    val canvas = Canvas(output)
+                    root.draw(canvas)
+                    lastCaptureCompositedWindowCount = drawFixtureOwnedWindows(activity, canvas)
+                }
+            }
+        }
+        return bitmap ?: captureActivityScreenshot(caseId)
+    }
+
+    /** Windows (other than the activity decor) attached to [activity]'s app token, bottom to top. */
+    private fun fixtureOwnedWindowViews(activity: Activity): List<View> {
+        val activityRoot = activity.window.decorView.rootView
+        val ownerTokens = mutableSetOf<android.os.IBinder>()
+        activity.window.attributes.token?.let(ownerTokens::add)
+        activityRoot.windowToken?.let(ownerTokens::add)
+        // getGlobalWindowViews is in add order; a stable sort by window type keeps
+        // that order within a layer and puts sub-window panels above dialogs.
+        val candidates =
+            WindowInspector.getGlobalWindowViews()
+                .filter { it !== activityRoot && it.isAttachedToWindow }
+                .sortedBy { (it.layoutParams as? WindowManager.LayoutParams)?.type ?: 0 }
+        val owned = mutableListOf<View>()
+        for (view in candidates) {
+            val token = (view.layoutParams as? WindowManager.LayoutParams)?.token ?: continue
+            if (token !in ownerTokens) continue
+            view.windowToken?.let(ownerTokens::add)
+            owned += view
+        }
+        return owned
+    }
+
+    private fun drawFixtureOwnedWindows(activity: Activity, canvas: Canvas): Int {
+        val rootLocation = IntArray(2).also(activity.window.decorView.rootView::getLocationOnScreen)
+        var drawn = 0
+        for (view in fixtureOwnedWindowViews(activity)) {
+            if (view.visibility != View.VISIBLE || view.width <= 0 || view.height <= 0) continue
+            val params = view.layoutParams as WindowManager.LayoutParams
+            if (params.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) {
+                canvas.drawColor(Color.argb((params.dimAmount.coerceIn(0f, 1f) * 255f).toInt(), 0, 0, 0))
+            }
+            val location = IntArray(2).also(view::getLocationOnScreen)
+            val checkpoint = canvas.save()
+            canvas.translate(
+                (location[0] - rootLocation[0]).toFloat(),
+                (location[1] - rootLocation[1]).toFloat()
+            )
+            view.draw(canvas)
+            canvas.restoreToCount(checkpoint)
+            drawn += 1
+        }
+        return drawn
     }
 
     private fun captureActivityScreenshot(caseId: String): Bitmap {
@@ -5090,7 +5449,13 @@ class KmpVisualScreenshotCaptureTest {
 
         do {
             waitForIdleBounded()
-            val screenshot = captureActivityScreenshot(caseId)
+            val screenshot = captureAppWindowsScreenshot(caseId)
+            lastCaptureMethod =
+                if (lastCaptureCompositedWindowCount > 0) {
+                    crop.captureMethod + APP_DIALOG_WINDOWS_CAPTURE_SUFFIX
+                } else {
+                    crop.captureMethod
+                }
             val boundsProblem = cropBoundsProblem(screenshot, crop)
             if (boundsProblem != null) {
                 // Window not at full size yet (e.g. edge-to-edge not settled) —
@@ -5375,6 +5740,39 @@ class KmpVisualScreenshotCaptureTest {
             "$caseId full-height sentinel token '$FULL_HEIGHT_TOKEN' not seen within " +
                 "${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms — render hook missing or route never rendered"
         )
+    }
+
+    /**
+     * Component-bounds crop for the content-sized markdown message rows: the
+     * React baseline crops the MessageItem element itself, so wait for the
+     * host's reported bottom edge rather than cropping a full viewport.
+     */
+    private fun awaitThreadRowContentCrop(
+        caseId: String,
+        instanceId: String,
+        widthDp: Int,
+        insetDp: Int = 0
+    ): VisualCrop {
+        val token = "thread_visual_content_bounds instanceId=$instanceId "
+        val deadline = SystemClock.uptimeMillis() + FULL_HEIGHT_TOKEN_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            val bottomPx =
+                logcatLastTokenLine(token)
+                    ?.substringAfter("contentBottomPx=", "")
+                    ?.trim()
+                    ?.takeWhile { it.isDigit() }
+                    ?.toIntOrNull()
+            if (bottomPx != null && bottomPx > 0) {
+                val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+                // [insetDp]: the host's own padding around the row (React's p-4
+                // page), cropped away on the top/left and off the bottom.
+                val heightDp = (kotlin.math.ceil(bottomPx / density).toInt() - insetDp * 2).coerceIn(1, 844 - insetDp)
+                Log.i(VISUAL_LOG_TAG, "$caseId content bottom ${bottomPx}px -> ${widthDp}x${heightDp}dp crop")
+                return VisualCrop(leftDp = insetDp, topDp = insetDp, widthDp = widthDp, heightDp = heightDp)
+            }
+            Thread.sleep(FULL_HEIGHT_POLL_MS)
+        }
+        throw AssertionError("$caseId content-bounds token '$token' not seen within ${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms")
     }
 
     /** Last logcat line containing [token] (same tag-filtered snapshot read as [logcatContainsToken]). */
@@ -6061,6 +6459,7 @@ class KmpVisualScreenshotCaptureTest {
     )
 
     companion object {
+        private const val PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS = 10_000L
         private const val UI_AUTOMATION_CAPTURE_METHOD =
             "ui-automation-take-screenshot-viewport-crop"
 
@@ -6117,7 +6516,14 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 53
+                heightDp = 58
+            )
+        private val NAVIGATION_TABBAR_MOCKUP_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 172
             )
         private val ANDROID_FLOATING_TABBAR_CROP =
             VisualCrop(
@@ -6309,7 +6715,7 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 181
+                heightDp = 178
             )
         private val UI_SELECT_CROP =
             VisualCrop(
@@ -6556,7 +6962,7 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 260
             )
         // React's measured element rect is x=16,y=16,374x108dp (deleted-human
-        // 374x109dp) — the row card inside the fixture's SlockSpacing.Md (16dp)
+        // 374x109dp) — the row card inside the fixture's RaftAppSpacing.Md (16dp)
         // padding, from the paired validation run's metadata. The android
         // fixture is the same 390dp-wide Column with 16dp padding, so cropping
         // the identical rect makes both providers emit 374dp-wide images
@@ -6680,6 +7086,9 @@ class KmpVisualScreenshotCaptureTest {
 
         private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
         private const val STABLE_CAPTURE_RETRY_MS = 750L
+        private const val APP_DIALOG_WINDOWS_CAPTURE_SUFFIX = "+app-dialog-windows"
+        private const val DIALOG_IME_DISMISS_SETTLE_MS = 1_000L
+        private const val EDITABLE_FIELD_LOOKUP_TIMEOUT_MS = 10_000L
         private const val VISUAL_READY_TIMEOUT_MS = 10_000L
 
         // Reaction-glyph sprite atlas settle (task #379). The reaction atlas is
@@ -6697,8 +7106,8 @@ class KmpVisualScreenshotCaptureTest {
         // fallback frame, never a failure) so a signal regression can't break
         // the shard.
         private const val REACTION_ATLAS_READY_TOKEN = "thread_reaction_atlas_ready"
-        // Kuikly bridge host tag the token rides (SlockKuiklyActivity ->
-        // SlockAndroidLocalDiagnostics.recordLog(level, "SlockKuikly", content)).
+        // Kuikly bridge host tag the token rides (RaftCmpActivity ->
+        // RaftAndroidLocalDiagnostics.recordLog(level, "SlockKuikly", content)).
         private const val REACTION_ATLAS_LOG_TAG = "SlockKuikly"
         private const val REACTION_ATLAS_TIMEOUT_MS = 20_000L
         private const val REACTION_ATLAS_POLL_MS = 250L

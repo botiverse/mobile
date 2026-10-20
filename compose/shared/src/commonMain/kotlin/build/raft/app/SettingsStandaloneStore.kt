@@ -2,14 +2,14 @@ package build.raft.app
 
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
-import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.ChatLayoutPreferenceRepository
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KeyValueRealtimeTransportPreferenceStore
-import build.raft.app.network.currentSlockNetworkTransportController
+import build.raft.app.network.currentRaftNetworkTransportController
 import build.raft.app.data.KeyValueHttp3PreferenceStore
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
@@ -28,17 +28,18 @@ import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
-import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
-import build.raft.app.data.KuiklyNotificationPreferenceEvents
-import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
-import build.raft.app.data.kuiklyNotificationPreferenceRepository
+import build.raft.app.data.RaftChatLayoutPreferenceEvents
+import build.raft.app.data.RaftNotificationPreferenceEvents
+import build.raft.app.data.raftChatLayoutPreferenceRepository
+import build.raft.app.data.raftNotificationPreferenceRepository
 import build.raft.app.data.messageBodyFontSizeOwnerKey
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore
+import build.raft.app.data.RaftKeyValueNativePullToRefreshPreferenceStore
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
@@ -48,19 +49,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
     val authDataSource: SharedAuthDataSource,
-    val authStore: SlockAuthSessionStore,
+    val authStore: RaftAuthSessionStore,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository,
     val notificationPreferenceRepository: NotificationPreferenceRepository,
-    val storeScope: SlockShellStoreScope,
+    val storeScope: RaftShellStoreScope,
     val webBaseUrl: String,
     val serverPublicVisibilityRepository: ServerPublicVisibilityRepository,
 )
@@ -79,16 +80,16 @@ internal fun rememberStandaloneSettingsEnvironment(
     bridge: BridgeModule
 ): StandaloneSettingsEnvironment {
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val scope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, scope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = scope.kuiklyBridgeCallContext()
             )
@@ -99,7 +100,7 @@ internal fun rememberStandaloneSettingsEnvironment(
     val serverMembersStore = remember(sharedStores, storeScope) {
         sharedStores.serverMembersStore(storeScope)
     }
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
         remember(bridge, scope, linkNavigator, copiedMessage) {
@@ -110,12 +111,12 @@ internal fun rememberStandaloneSettingsEnvironment(
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
-    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
+    val sharedPreferenceStore = remember { raftSharedPreferenceStore() }
     val eventBus = remember(sharedStores) { sharedStores.eventBus }
-    val chatLayoutPreferenceEvents = remember(eventBus) { KuiklyChatLayoutPreferenceEvents(eventBus) }
+    val chatLayoutPreferenceEvents = remember(eventBus) { RaftChatLayoutPreferenceEvents(eventBus) }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore, chatLayoutPreferenceEvents) {
-            kuiklyChatLayoutPreferenceRepository(
+            raftChatLayoutPreferenceRepository(
                 delegate =
                     PersistentChatLayoutPreferenceRepository(
                         KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)
@@ -123,10 +124,10 @@ internal fun rememberStandaloneSettingsEnvironment(
                 events = chatLayoutPreferenceEvents,
             )
         }
-    val notificationPreferenceEvents = remember(eventBus) { KuiklyNotificationPreferenceEvents(eventBus) }
+    val notificationPreferenceEvents = remember(eventBus) { RaftNotificationPreferenceEvents(eventBus) }
     val notificationPreferenceRepository =
         remember(notificationPreferenceEvents) {
-            kuiklyNotificationPreferenceRepository(notificationPreferenceEvents)
+            raftNotificationPreferenceRepository(notificationPreferenceEvents)
         }
     val dataSource =
         remember(
@@ -169,8 +170,9 @@ internal fun rememberStandaloneSettingsEnvironment(
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") },
                 realtimeTransportPreferenceStore = KeyValueRealtimeTransportPreferenceStore(sharedPreferenceStore),
                 http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore),
-                onHttp3UserChoiceChanged = { currentSlockNetworkTransportController()?.onHttp3UserChoiceChanged() },
+                onHttp3UserChoiceChanged = { currentRaftNetworkTransportController()?.onHttp3UserChoiceChanged() },
                 threadReverseLayoutPreferenceStore = KeyValueThreadReverseLayoutPreferenceStore(sharedPreferenceStore),
+                nativePullToRefreshPreferenceStore = RaftKeyValueNativePullToRefreshPreferenceStore(sharedPreferenceStore),
                 threadReverseLayoutDefault = {
                     authStore.readSession()?.let { session ->
                         session.currentServerId?.let { serverId ->

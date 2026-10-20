@@ -8,45 +8,45 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.semantics.setProgress
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
-import com.tencent.kuikly.core.views.PlayState
+import build.raft.app.compat.ui.PlayState
 
 internal enum class ThreadInlineAudioPreviewStatus {
     Loading,
@@ -113,7 +113,7 @@ internal fun formatAudioTimeLabel(currentTimeMs: Int, totalTimeMs: Int): String 
 
 @Composable
 internal fun ThreadInlineAudioAttachmentCard(
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     onDownload: () -> Unit
 ) {
     val host = LocalThreadInlineAudioPreviewHost.current
@@ -127,31 +127,31 @@ internal fun ThreadInlineAudioAttachmentCard(
 
     Column(
         modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    .background(RaftColor.SurfaceWhite)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .padding(RaftAppSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        .background(RaftColor.SurfaceCream)
+                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
-                    SlockLucideIcon(
-                        name = SlockLucideIconName.FileMusic,
+                    RaftLucideIcon(
+                        name = RaftLucideIconName.FileMusic,
                         modifier = Modifier.size(20.dp),
                         color = "#000000"
                     )
@@ -162,8 +162,8 @@ internal fun ThreadInlineAudioAttachmentCard(
                 ) {
                     Text(
                         text = attachment.name.ifBlank { stringResource(MR.strings.thread_audio_attachment_fallback_name) },
-                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -175,17 +175,17 @@ internal fun ThreadInlineAudioAttachmentCard(
                     }
                     Text(
                         text = subtitle,
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption,
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Download,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.Download,
                     onClick = onDownload,
                     contentDescription = stringResource(MR.strings.file_preview_action_download),
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     size = 32.dp,
                     shadowOffset = 0.dp
                 )
@@ -216,33 +216,33 @@ private fun ThreadInlineAudioSurface(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Xs),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    .background(RaftColor.SurfaceCream)
+                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                    .padding(RaftAppSpacing.Xs),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_retry),
                     onClick = onRetry,
                     modifier = Modifier.weight(1f),
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     minWidth = 0.dp,
                     minHeight = 32.dp,
-                    leadingIcon = SlockLucideIconName.RefreshCw,
+                    leadingIcon = RaftLucideIconName.RefreshCw,
                     shadowOffset = 0.dp,
-                    textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+                    textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.file_preview_action_download),
                     onClick = onDownload,
                     modifier = Modifier.weight(1f),
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     minWidth = 0.dp,
                     minHeight = 32.dp,
-                    leadingIcon = SlockLucideIconName.Download,
+                    leadingIcon = RaftLucideIconName.Download,
                     shadowOffset = 0.dp,
-                    textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+                    textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
                 )
             }
         }
@@ -251,23 +251,23 @@ private fun ThreadInlineAudioSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(36.dp)
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(horizontal = SlockSpacing.Sm),
+                    .background(RaftColor.SurfaceCream)
+                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                    .padding(horizontal = RaftAppSpacing.Sm),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockLucideIcon(
-                    name = SlockLucideIconName.LoaderCircle,
+                RaftLucideIcon(
+                    name = RaftLucideIconName.LoaderCircle,
                     modifier = Modifier.size(16.dp),
                     color = "#000000",
                     spinning = true
                 )
                 Text(
                     text = stringResource(MR.strings.thread_audio_preview_loading),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.padding(start = SlockSpacing.Xs)
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextMutedGray,
+                    modifier = Modifier.padding(start = RaftAppSpacing.Xs)
                 )
             }
         }
@@ -284,7 +284,7 @@ private fun ThreadInlineAudioSurface(
 
             key(source, playerGeneration) {
                 Box(modifier = Modifier.size(1.dp).alpha(0f)) {
-                    SlockFilePreviewKuiklyVideo(
+                    RaftFilePreviewKuiklyVideo(
                         source = source,
                         playControl = playback.control,
                         seekRequest = playback.seekRequest,
@@ -304,33 +304,33 @@ private fun ThreadInlineAudioSurface(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .padding(SlockSpacing.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                        .background(RaftColor.SurfaceCream)
+                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                        .padding(RaftAppSpacing.Xs),
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_retry),
                         onClick = onRetry,
                         modifier = Modifier.weight(1f),
-                        backgroundColor = SlockColor.SurfaceWhite,
+                        backgroundColor = RaftColor.SurfaceWhite,
                         minWidth = 0.dp,
                         minHeight = 32.dp,
-                        leadingIcon = SlockLucideIconName.RefreshCw,
+                        leadingIcon = RaftLucideIconName.RefreshCw,
                         shadowOffset = 0.dp,
-                        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+                        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
                     )
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.file_preview_action_download),
                         onClick = onDownload,
                         modifier = Modifier.weight(1f),
-                        backgroundColor = SlockColor.SurfaceWhite,
+                        backgroundColor = RaftColor.SurfaceWhite,
                         minWidth = 0.dp,
                         minHeight = 32.dp,
-                        leadingIcon = SlockLucideIconName.Download,
+                        leadingIcon = RaftLucideIconName.Download,
                         shadowOffset = 0.dp,
-                        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+                        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
                     )
                 }
             } else {
@@ -373,20 +373,20 @@ internal fun ThreadInlineAudioControls(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceCream)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(SlockSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            .background(RaftColor.SurfaceCream)
+            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+            .padding(RaftAppSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockBrutalIconButton(
-            iconName = if (isPlaying) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+        RaftBrutalIconButton(
+            iconName = if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play,
             onClick = onTogglePlay,
             enabled = canPlay,
             size = 28.dp,
             iconSize = 14.dp,
             shadowOffset = 0.dp,
-            backgroundColor = SlockColor.SurfaceWhite
+            backgroundColor = RaftColor.SurfaceWhite
         )
         ThreadInlineAudioSeekBar(
             currentTimeMs = currentTimeMs,
@@ -412,12 +412,12 @@ internal fun ThreadInlineAudioControls(
         )
         Text(
             text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
-            style = SlockType.Caption.copy(
+            style = RaftType.Caption.copy(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 lineHeight = 14.sp
-            ).withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray,
+            ).withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.End,
             maxLines = 1,
             modifier = Modifier.width(76.dp)
@@ -491,22 +491,22 @@ private fun ThreadInlineAudioSeekBar(
                 .padding(horizontal = 6.dp)
                 .fillMaxWidth()
                 .height(8.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(RaftColor.SurfaceWhite)
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(fraction)
                     .height(8.dp)
-                    .background(SlockColor.AccentCyan)
+                    .background(RaftColor.AccentCyan)
             )
         }
         Box(
             modifier = Modifier
                 .offset { IntOffset((fraction * trackPx).roundToInt(), 0) }
                 .size(12.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(RaftColor.SurfaceWhite)
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
         )
     }
 }

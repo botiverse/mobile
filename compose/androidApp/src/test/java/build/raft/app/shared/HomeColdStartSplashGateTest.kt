@@ -17,20 +17,20 @@ class HomeColdStartSplashGateTest {
 
     @Test
     fun installsOnlyForHomeAppShellLaunches() {
-        assertTrue(shouldInstallHomeColdStartSplash(SlockKuiklyActivity.PAGE_APP_SHELL, null))
+        assertTrue(shouldInstallHomeColdStartSplash(RaftCmpActivity.PAGE_APP_SHELL, null))
         assertTrue(
             shouldInstallHomeColdStartSplash(
-                SlockKuiklyActivity.PAGE_APP_SHELL,
+                RaftCmpActivity.PAGE_APP_SHELL,
                 """{"slockInitialTab":"home"}"""
             )
         )
         assertFalse(
             shouldInstallHomeColdStartSplash(
-                SlockKuiklyActivity.PAGE_APP_SHELL,
+                RaftCmpActivity.PAGE_APP_SHELL,
                 """{"slockInitialTab":"tasks"}"""
             )
         )
-        assertFalse(shouldInstallHomeColdStartSplash(SlockKuiklyActivity.PAGE_THREAD, null))
+        assertFalse(shouldInstallHomeColdStartSplash(RaftCmpActivity.PAGE_THREAD, null))
     }
 
     @Test
@@ -74,22 +74,22 @@ class HomeColdStartSplashGateTest {
     @Test
     fun appShellUsesStartingThemeHostWithoutAffectingStandalonePages() {
         assertEquals(
-            SlockAppShellActivity::class.java,
-            slockKuiklyHostActivityClass(SlockKuiklyActivity.PAGE_APP_SHELL)
+            RaftAppShellActivity::class.java,
+            raftHostActivityClass(RaftCmpActivity.PAGE_APP_SHELL)
         )
         assertEquals(
-            SlockKuiklyActivity::class.java,
-            slockKuiklyHostActivityClass(SlockKuiklyActivity.PAGE_THREAD)
+            RaftCmpActivity::class.java,
+            raftHostActivityClass(RaftCmpActivity.PAGE_THREAD)
         )
         assertEquals(
-            SlockAppShellActivity::class.java,
-            slockAppShellHostActivityClass(
+            RaftAppShellActivity::class.java,
+            raftAppShellHostActivityClass(
                 AndroidShellLaunchTarget("android-default-app-shell", null, documentShell = false)
             )
         )
         assertEquals(
-            SlockDocumentShellActivity::class.java,
-            slockAppShellHostActivityClass(
+            RaftDocumentShellActivity::class.java,
+            raftAppShellHostActivityClass(
                 AndroidShellLaunchTarget("server-shell:server-a", "server-a", documentShell = true)
             )
         )

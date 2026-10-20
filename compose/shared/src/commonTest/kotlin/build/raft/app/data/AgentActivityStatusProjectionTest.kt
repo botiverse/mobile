@@ -1,6 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.RealtimeEventMapper
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.MemberPresenceUpdated
+import kotlin.test.assertIs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -27,6 +31,42 @@ class AgentActivityStatusProjectionTest {
 
         assertEquals(AgentStatus.Working, projection?.status)
         assertEquals("Running command...", projection?.detail)
+        assertEquals("run_command", projection?.toolName)
+        assertNull(projection?.detailKind)
+    }
+
+    @Test
+    fun toolStartCarriesTheNormalizedToolNameForLocalization() {
+        val projection = projectAgentActivityStatus(kind = "tool_start", toolName = "mcp__chat__send_message")
+        assertEquals("send_message", projection?.toolName)
+        assertEquals("Using send_message...", projection?.detail)
+        assertNull(projectAgentActivityStatus(kind = "tool_start", toolName = "  ")?.toolName)
+    }
+
+    @Test
+    fun compactionStartedIsTheCompactingContextKind() {
+        val projection = projectAgentActivityStatus(kind = "compaction_started")
+        assertEquals(AgentStatus.Working, projection?.status)
+        assertEquals("compacting_context", projection?.detailKind)
+        assertNull(projection?.toolName)
+    }
+
+    @Test
+    fun statusEntryCarriesServerDetailKind() {
+        val projection =
+            listOf(
+                AgentActivityEntry(
+                    id = "1",
+                    type = "status",
+                    title = "Starting",
+                    statusActivity = "working",
+                    statusDetail = "Starting…",
+                    statusDetailKind = "starting"
+                )
+            ).latestAgentActivityStatusProjection()
+        assertEquals(AgentStatus.Working, projection?.status)
+        assertEquals("starting", projection?.detailKind)
+        assertEquals("starting", projection?.toMemberPresenceUpdated(build.raft.app.model.MemberId("a"))?.detailKind)
     }
 
     @Test
@@ -101,5 +141,21 @@ class AgentActivityStatusProjectionTest {
                 activity = "active"
             )
         )
+    }
+
+    @Test
+    fun realtimeAgentActivityCarriesDetailKind() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {"agentId":"agent-1","activity":"working","activityKind":"working","detail":"Compacting context…","detailKind":"compacting_context","timestamp":"2026-10-20T00:00:00.000Z","serverSeq":7}
+                """.trimIndent(),
+            )
+        val presence = assertIs<MemberPresenceUpdated>(event)
+        assertEquals(AgentStatus.Working, presence.agentStatus)
+        assertEquals("Compacting context…", presence.statusLabel)
+        assertEquals("compacting_context", presence.detailKind)
+        assertNull(presence.activityToolName)
     }
 }

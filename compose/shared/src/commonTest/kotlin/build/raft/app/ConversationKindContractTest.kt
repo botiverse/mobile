@@ -52,7 +52,7 @@ class ConversationKindContractTest {
             val legacy =
                 ThreadLaunchConversationIdentity(threadId = ThreadId("t"), kind = kind)
                     .threadSurfaceKind()
-            assertEquals(legacy, kind.toKuiklySurfaceKind(), "kind=$kind")
+            assertEquals(legacy, kind.toRaftSurfaceKind(), "kind=$kind")
         }
     }
 
@@ -72,21 +72,21 @@ class ConversationKindContractTest {
         // caller's explicit decision instead of a table omission.
         val legacyParentSurfaceTable =
             mapOf(
-                "dm" to KuiklyThreadSurfaceKind.DirectMessage,
-                "direct_message" to KuiklyThreadSurfaceKind.DirectMessage,
-                "direct-message" to KuiklyThreadSurfaceKind.DirectMessage,
-                "directmessage" to KuiklyThreadSurfaceKind.DirectMessage,
-                "direct" to KuiklyThreadSurfaceKind.DirectMessage,
-                "channel" to KuiklyThreadSurfaceKind.Channel,
-                "public" to KuiklyThreadSurfaceKind.Channel,
-                "private" to KuiklyThreadSurfaceKind.Channel,
-                "joint" to KuiklyThreadSurfaceKind.Channel,
-                "group" to KuiklyThreadSurfaceKind.Channel
+                "dm" to RaftThreadSurfaceKind.DirectMessage,
+                "direct_message" to RaftThreadSurfaceKind.DirectMessage,
+                "direct-message" to RaftThreadSurfaceKind.DirectMessage,
+                "directmessage" to RaftThreadSurfaceKind.DirectMessage,
+                "direct" to RaftThreadSurfaceKind.DirectMessage,
+                "channel" to RaftThreadSurfaceKind.Channel,
+                "public" to RaftThreadSurfaceKind.Channel,
+                "private" to RaftThreadSurfaceKind.Channel,
+                "joint" to RaftThreadSurfaceKind.Channel,
+                "group" to RaftThreadSurfaceKind.Channel
             )
         legacyParentSurfaceTable.forEach { (raw, expectedSurface) ->
             assertEquals(
                 expectedSurface,
-                parseConversationKindOrNull(raw)?.toKuiklySurfaceKind(),
+                parseConversationKindOrNull(raw)?.toRaftSurfaceKind(),
                 "raw=$raw"
             )
         }
@@ -99,16 +99,16 @@ class ConversationKindContractTest {
         // the deleted tables, including "direct" -> dm (which those tables accepted) and the
         // parent-shape rejections ("thread"/"system"/unknown -> null).
         mapOf(
-            "dm" to KuiklyThreadSurfaceKind.DirectMessage,
-            "direct_message" to KuiklyThreadSurfaceKind.DirectMessage,
-            "direct-message" to KuiklyThreadSurfaceKind.DirectMessage,
-            "directmessage" to KuiklyThreadSurfaceKind.DirectMessage,
-            "direct" to KuiklyThreadSurfaceKind.DirectMessage,
-            "channel" to KuiklyThreadSurfaceKind.Channel,
-            "public" to KuiklyThreadSurfaceKind.Channel,
-            "private" to KuiklyThreadSurfaceKind.Channel,
-            "joint" to KuiklyThreadSurfaceKind.Channel,
-            "group" to KuiklyThreadSurfaceKind.Channel
+            "dm" to RaftThreadSurfaceKind.DirectMessage,
+            "direct_message" to RaftThreadSurfaceKind.DirectMessage,
+            "direct-message" to RaftThreadSurfaceKind.DirectMessage,
+            "directmessage" to RaftThreadSurfaceKind.DirectMessage,
+            "direct" to RaftThreadSurfaceKind.DirectMessage,
+            "channel" to RaftThreadSurfaceKind.Channel,
+            "public" to RaftThreadSurfaceKind.Channel,
+            "private" to RaftThreadSurfaceKind.Channel,
+            "joint" to RaftThreadSurfaceKind.Channel,
+            "group" to RaftThreadSurfaceKind.Channel
         ).forEach { (raw, expected) ->
             assertEquals(expected, raw.parsedThreadParentSurfaceKindOrNull(), "raw=$raw")
         }
@@ -130,8 +130,8 @@ class ConversationKindContractTest {
         // the contract documents that round-trips are only guaranteed via
         // toWireChannelKindOrNull. Pin the faithful subset.
         listOf(ConversationKind.Channel, ConversationKind.DirectMessage, ConversationKind.Thread).forEach { kind ->
-            assertEquals(kind, parseConversationKindOrNull(kind.toKuiklySurfaceKind()), "kind=$kind")
+            assertEquals(kind, parseConversationKindOrNull(kind.toRaftSurfaceKind()), "kind=$kind")
         }
-        assertEquals(ConversationKind.Channel, parseConversationKindOrNull(ConversationKind.Joint.toKuiklySurfaceKind()))
+        assertEquals(ConversationKind.Channel, parseConversationKindOrNull(ConversationKind.Joint.toRaftSurfaceKind()))
     }
 }

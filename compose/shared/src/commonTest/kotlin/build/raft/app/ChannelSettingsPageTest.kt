@@ -7,7 +7,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -107,7 +107,7 @@ class ChannelSettingsPageTest {
             )
 
         assertEquals(
-            SlockLucideIconName.GitBranch,
+            RaftLucideIconName.GitBranch,
             joint
                 .toThreadLaunchConversationIdentity()
                 .threadRouteChannelKind()

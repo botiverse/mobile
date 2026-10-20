@@ -125,8 +125,8 @@ internal fun constructThreadLaunchConversationIdentity(
                     channelType =
                         when (kind) {
                             ConversationKind.Joint -> JointChannelKindWireValue
-                            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-                            else -> normalizedChannelType ?: KuiklyThreadSurfaceKind.Channel
+                            ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+                            else -> normalizedChannelType ?: RaftThreadSurfaceKind.Channel
                         },
                     kind = kind,
                     dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage }
@@ -224,9 +224,9 @@ internal fun constructThreadLaunchConversationIdentity(
                             parentChannelKind =
                                 when (parentKind) {
                                     ConversationKind.Channel ->
-                                        normalizedParentChannelType ?: KuiklyThreadSurfaceKind.Channel
+                                        normalizedParentChannelType ?: RaftThreadSurfaceKind.Channel
                                     ConversationKind.Joint -> JointChannelKindWireValue
-                                    ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                                    ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
                                     else -> null
                                 }
                         ),

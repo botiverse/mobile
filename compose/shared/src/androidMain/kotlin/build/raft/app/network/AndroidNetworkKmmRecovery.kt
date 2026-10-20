@@ -1,16 +1,16 @@
 package build.raft.app.network
 
-import build.raft.app.data.SlockKeyValueStore
+import build.raft.app.data.RaftKeyValueStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import com.tencent.kmm.network.export.VBTransportAndroidEngine
 import com.tencent.kmm.network.export.VBTransportReusedHttp2Recovery
 
-internal const val SLOCK_NETWORK_KMM_CLIENT_SHARD_COUNT = 5
-internal const val SLOCK_NETWORK_KMM_RESPONSE_HEADERS_WATCHDOG_MILLIS = 7_000L
-internal const val SLOCK_NETWORK_KMM_MINIMUM_CONCURRENT_STALLED_REQUESTS = 2
-internal const val SLOCK_NETWORK_KMM_PING_INTERVAL_MILLIS = 3_000L
-private const val SLOCK_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY = "disabledEnvironmentIds.v1"
+internal const val RAFT_NETWORK_KMM_CLIENT_SHARD_COUNT = 5
+internal const val RAFT_NETWORK_KMM_RESPONSE_HEADERS_WATCHDOG_MILLIS = 7_000L
+internal const val RAFT_NETWORK_KMM_MINIMUM_CONCURRENT_STALLED_REQUESTS = 2
+internal const val RAFT_NETWORK_KMM_PING_INTERVAL_MILLIS = 3_000L
+private const val RAFT_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY = "disabledEnvironmentIds.v1"
 
 /**
  * Installs Raft's process-wide Android transport policy before the first app request.
@@ -20,12 +20,12 @@ private const val SLOCK_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY = "disabledEnviron
  * retired without replaying writes or blocking unrelated healthy shards.
  */
 fun installAndroidNetworkKmmReusedHttp2Recovery(
-    store: SlockKeyValueStore,
+    store: RaftKeyValueStore,
     environmentId: String
 ): String = AndroidNetworkKmmRecoveryController.install(store, environmentId)
 
 fun installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
-    store: SlockKeyValueStore,
+    store: RaftKeyValueStore,
     currentEnvironment: () -> SharedSettingsApiEnvironmentOption
 ): String {
     val environmentRead = runCatching(currentEnvironment)
@@ -34,7 +34,7 @@ fun installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
         installAndroidNetworkKmmReusedHttp2Recovery(
             store = store,
             environmentId =
-                slockNetworkKmmRecoveryEnvironmentId(
+                raftNetworkKmmRecoveryEnvironmentId(
                     environmentKey = environment.key,
                     apiBaseUrl = environment.apiBaseUrl
                 )
@@ -51,40 +51,40 @@ fun installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
     }
 }
 
-internal fun slockAndroidNetworkKmmRecoveryPolicy(
+internal fun raftAndroidNetworkKmmRecoveryPolicy(
     enabled: Boolean = true
 ): VBTransportReusedHttp2Recovery =
     VBTransportReusedHttp2Recovery(
         enabled = enabled,
-        clientShardCount = SLOCK_NETWORK_KMM_CLIENT_SHARD_COUNT,
-        responseHeadersWatchdogMillis = SLOCK_NETWORK_KMM_RESPONSE_HEADERS_WATCHDOG_MILLIS,
-        minimumConcurrentStalledRequests = SLOCK_NETWORK_KMM_MINIMUM_CONCURRENT_STALLED_REQUESTS,
-        pingIntervalMillis = SLOCK_NETWORK_KMM_PING_INTERVAL_MILLIS
+        clientShardCount = RAFT_NETWORK_KMM_CLIENT_SHARD_COUNT,
+        responseHeadersWatchdogMillis = RAFT_NETWORK_KMM_RESPONSE_HEADERS_WATCHDOG_MILLIS,
+        minimumConcurrentStalledRequests = RAFT_NETWORK_KMM_MINIMUM_CONCURRENT_STALLED_REQUESTS,
+        pingIntervalMillis = RAFT_NETWORK_KMM_PING_INTERVAL_MILLIS
     )
 
 private object AndroidNetworkKmmRecoveryController {
-    private var store: SlockKeyValueStore? = null
+    private var store: RaftKeyValueStore? = null
     private var currentEnvironmentId: String = "unknown|unknown"
     private var disabledEnvironmentIds: Set<String> = emptySet()
     private var activeServerByScope: Map<String, String> = emptyMap()
     private var activeSelectionTrackingStarted: Boolean = false
     private val latestAppliedEvaluationGenerationByEnvironment = mutableMapOf<String, Long>()
 
-    fun install(store: SlockKeyValueStore, environmentId: String): String = synchronized(this) {
+    fun install(store: RaftKeyValueStore, environmentId: String): String = synchronized(this) {
         this.store = store
         currentEnvironmentId = environmentId.toNormalizedEnvironmentId()
         activeServerByScope = emptyMap()
         activeSelectionTrackingStarted = false
         latestAppliedEvaluationGenerationByEnvironment.clear()
-        val persistedRead = runCatching { store.getString(SLOCK_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY) }
+        val persistedRead = runCatching { store.getString(RAFT_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY) }
         disabledEnvironmentIds = persistedRead.getOrNull().toDisabledEnvironmentIds()
         val policy = publishCurrentPolicy()
-        SlockNetworkKmmRecoveryRemoteFlagBridge.install(
+        RaftNetworkKmmRecoveryRemoteFlagBridge.install(
             onEvaluation = ::applyRemoteEvaluation,
             onCurrentEnvironmentChanged = ::updateCurrentEnvironment,
             onActiveSelectionChanged = ::updateActiveSelection
         )
-        policy.slockDiagnosticsSummary(
+        policy.raftDiagnosticsSummary(
             environmentId = currentEnvironmentId,
             persistedKillEnvironmentCount = disabledEnvironmentIds.size,
             remoteKillLatchReadSucceeded = persistedRead.isSuccess
@@ -222,10 +222,10 @@ private object AndroidNetworkKmmRecoveryController {
         repeat(2) {
             val persisted = runCatching {
                 currentStore.putString(
-                    SLOCK_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY,
+                    RAFT_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY,
                     disabledEnvironmentIds.toPersistedValue()
                 )
-                currentStore.getString(SLOCK_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY)
+                currentStore.getString(RAFT_NETWORK_KMM_DISABLED_ENVIRONMENTS_KEY)
                     .toDisabledEnvironmentIds() == disabledEnvironmentIds
             }.getOrDefault(false)
             if (persisted) return true
@@ -236,7 +236,7 @@ private object AndroidNetworkKmmRecoveryController {
     private fun currentRecoveryEnabled(): Boolean = currentEnvironmentId !in disabledEnvironmentIds
 
     private fun publishCurrentPolicy(): VBTransportReusedHttp2Recovery =
-        slockAndroidNetworkKmmRecoveryPolicy(enabled = currentRecoveryEnabled()).also { policy ->
+        raftAndroidNetworkKmmRecoveryPolicy(enabled = currentRecoveryEnabled()).also { policy ->
             VBTransportAndroidEngine.reusedHttp2Recovery = policy
         }
 
@@ -247,7 +247,7 @@ private object AndroidNetworkKmmRecoveryController {
         activeServerByScope = emptyMap()
         activeSelectionTrackingStarted = false
         latestAppliedEvaluationGenerationByEnvironment.clear()
-        SlockNetworkKmmRecoveryRemoteFlagBridge.clearForTests()
+        RaftNetworkKmmRecoveryRemoteFlagBridge.clearForTests()
     }
 }
 
@@ -277,7 +277,7 @@ private fun String.toEnvironmentDiagnostics(): String =
     "environmentKey=${substringBefore('|').toSafeDiagnosticsToken()} " +
         "environmentHash=${environmentHash()}"
 
-private fun VBTransportReusedHttp2Recovery.slockDiagnosticsSummary(
+private fun VBTransportReusedHttp2Recovery.raftDiagnosticsSummary(
     environmentId: String,
     persistedKillEnvironmentCount: Int,
     remoteKillLatchReadSucceeded: Boolean

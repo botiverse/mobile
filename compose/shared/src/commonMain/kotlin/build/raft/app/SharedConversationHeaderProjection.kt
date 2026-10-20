@@ -35,7 +35,7 @@ internal data class ThreadHeaderDisplayModel(
     /** Web ChatPanel.tsx:1366: the channel header icon carries the public-page globe. */
     val channelOnPublicPage: Boolean
         get() =
-            surfaceKind == KuiklyThreadSurfaceKind.Channel &&
+            surfaceKind == RaftThreadSurfaceKind.Channel &&
                 build.raft.app.components.channelOnPublicPage(
                     serverPublicPageLive = serverPublicPageLive,
                     channelKind = channelKind,
@@ -57,18 +57,18 @@ internal sealed interface ThreadHeaderProjectionInput {
 
     fun displayModel(
         projection: SharedConversationDirectoryProjection?,
-        contentPayload: KuiklyThreadScreenPayload
+        contentPayload: RaftThreadScreenPayload
     ): ThreadHeaderDisplayModel
 }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderProjectionInput(): ThreadHeaderProjectionInput =
+internal fun RaftThreadScreenPayload.threadHeaderProjectionInput(): ThreadHeaderProjectionInput =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage ->
+        RaftThreadSurfaceKind.DirectMessage ->
             DirectMessageThreadHeaderProjectionInput(
                 routePayload = this,
                 lookupIds = conversationHeaderLookupIds()
             )
-        KuiklyThreadSurfaceKind.Channel ->
+        RaftThreadSurfaceKind.Channel ->
             ChannelThreadHeaderProjectionInput(
                 routePayload = this,
                 lookupIds = conversationHeaderLookupIds()
@@ -80,7 +80,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderProjectionInput(): ThreadHead
             )
     }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderProjectionRoutePayload(): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.threadHeaderProjectionRoutePayload(): RaftThreadScreenPayload =
     copy(
         title = "",
         subtitle = null,
@@ -170,7 +170,7 @@ internal fun ThreadHeaderDisplayModel.headerDisplayDiagnostics(): String =
         append("}")
     }
 
-internal fun KuiklyThreadScreenPayload.headerRouteDiagnostics(): String =
+internal fun RaftThreadScreenPayload.headerRouteDiagnostics(): String =
     buildString {
         append("{instanceId=").append(instanceId.headerDiagnosticValue())
         append(" status=").append(status.headerDiagnosticValue())
@@ -192,10 +192,10 @@ internal fun KuiklyThreadScreenPayload.headerRouteDiagnostics(): String =
     }
 
 private data class DirectMessageThreadHeaderProjectionInput(
-    private val routePayload: KuiklyThreadScreenPayload,
+    private val routePayload: RaftThreadScreenPayload,
     override val lookupIds: List<String>
 ) : ThreadHeaderProjectionInput {
-    override val surfaceKind: String = KuiklyThreadSurfaceKind.DirectMessage
+    override val surfaceKind: String = RaftThreadSurfaceKind.DirectMessage
 
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
         routePayload.acceptsConversationHeaderProjection(projection)
@@ -206,7 +206,7 @@ private data class DirectMessageThreadHeaderProjectionInput(
 
     override fun displayModel(
         projection: SharedConversationDirectoryProjection?,
-        contentPayload: KuiklyThreadScreenPayload
+        contentPayload: RaftThreadScreenPayload
     ): ThreadHeaderDisplayModel =
         projection?.takeIf(::acceptsForDisplay)
             ?.let(routePayload::threadHeaderDisplayModelFromDirectory)
@@ -214,10 +214,10 @@ private data class DirectMessageThreadHeaderProjectionInput(
 }
 
 private data class ChannelThreadHeaderProjectionInput(
-    private val routePayload: KuiklyThreadScreenPayload,
+    private val routePayload: RaftThreadScreenPayload,
     override val lookupIds: List<String>
 ) : ThreadHeaderProjectionInput {
-    override val surfaceKind: String = KuiklyThreadSurfaceKind.Channel
+    override val surfaceKind: String = RaftThreadSurfaceKind.Channel
 
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
         routePayload.acceptsConversationHeaderProjection(projection)
@@ -228,7 +228,7 @@ private data class ChannelThreadHeaderProjectionInput(
 
     override fun displayModel(
         projection: SharedConversationDirectoryProjection?,
-        contentPayload: KuiklyThreadScreenPayload
+        contentPayload: RaftThreadScreenPayload
     ): ThreadHeaderDisplayModel =
         projection?.takeIf(::acceptsForDisplay)
             ?.let(routePayload::threadHeaderDisplayModelFromDirectory)
@@ -236,10 +236,10 @@ private data class ChannelThreadHeaderProjectionInput(
 }
 
 private data class ReplyThreadHeaderProjectionInput(
-    private val routePayload: KuiklyThreadScreenPayload,
+    private val routePayload: RaftThreadScreenPayload,
     override val lookupIds: List<String>
 ) : ThreadHeaderProjectionInput {
-    override val surfaceKind: String = KuiklyThreadSurfaceKind.ReplyThread
+    override val surfaceKind: String = RaftThreadSurfaceKind.ReplyThread
 
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
         routePayload.acceptsThreadHeaderDirectoryProjection(projection)
@@ -249,16 +249,16 @@ private data class ReplyThreadHeaderProjectionInput(
 
     override fun displayModel(
         projection: SharedConversationDirectoryProjection?,
-        contentPayload: KuiklyThreadScreenPayload
+        contentPayload: RaftThreadScreenPayload
     ): ThreadHeaderDisplayModel =
         projection?.takeIf(::acceptsForDisplay)
             ?.let(routePayload::threadHeaderDisplayModelFromDirectory)
             ?: contentPayload.threadHeaderFallbackDisplayModel()
 }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): ThreadHeaderDisplayModel {
+internal fun RaftThreadScreenPayload.threadHeaderFallbackDisplayModel(): ThreadHeaderDisplayModel {
     return when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> {
+        RaftThreadSurfaceKind.DirectMessage -> {
             val titleCandidate = loadedConversationHeaderTitleOrNull()
             val displayTitle = threadHeaderDisplayTitle(titleCandidate, surfaceKind)
             ThreadHeaderDisplayModel(
@@ -273,7 +273,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): Threa
                 dmPeerIdentity = dmPeerIdentity
             )
         }
-        KuiklyThreadSurfaceKind.Channel -> {
+        RaftThreadSurfaceKind.Channel -> {
             val titleCandidate = loadedConversationHeaderTitleOrNull()
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(titleCandidate, surfaceKind),
@@ -295,13 +295,13 @@ internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): Threa
     }
 }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
+internal fun RaftThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
     projection: SharedConversationDirectoryProjection?
 ): ThreadHeaderDisplayModel {
     val directory = projection?.takeIf(::acceptsThreadHeaderDirectoryProjection)
     if (directory == null) return threadHeaderFallbackDisplayModel()
     return when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> {
+        RaftThreadSurfaceKind.DirectMessage -> {
             val displayTitle = threadHeaderDisplayTitle(directory.title, surfaceKind)
             ThreadHeaderDisplayModel(
                 title = displayTitle,
@@ -315,7 +315,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 dmPeerIdentity = directory.peerIdentity
             )
         }
-        KuiklyThreadSurfaceKind.Channel ->
+        RaftThreadSurfaceKind.Channel ->
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(directory.title, surfaceKind),
                 subtitle = directory.subtitle?.takeIf { it.isNotBlank() },
@@ -325,7 +325,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 channelGuestVisible = directory.guestVisible,
                 channelArchived = directory.archived
             )
-        KuiklyThreadSurfaceKind.ReplyThread ->
+        RaftThreadSurfaceKind.ReplyThread ->
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(null, surfaceKind),
                 subtitle = directory.replyThreadParentSubtitle(),
@@ -339,42 +339,42 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
     }
 }
 
-private fun KuiklyThreadScreenPayload.loadedConversationHeaderTitleOrNull(): String? {
+private fun RaftThreadScreenPayload.loadedConversationHeaderTitleOrNull(): String? {
     if (!hasLoadedConversationHeaderContent()) return null
     return threadHeaderSafeTitleOrNull(title, conversationHeaderLookupIds().toSet())
         ?.takeUnless { it.isGenericThreadHeaderFallbackLabel() }
 }
 
-private fun KuiklyThreadScreenPayload.loadedConversationHeaderSubtitleOrNull(): String? {
+private fun RaftThreadScreenPayload.loadedConversationHeaderSubtitleOrNull(): String? {
     if (!hasLoadedConversationHeaderContent()) return null
     return subtitle?.takeIf { it.isNotBlank() }
 }
 
-private fun KuiklyThreadScreenPayload.hasLoadedConversationHeaderContent(): Boolean =
+private fun RaftThreadScreenPayload.hasLoadedConversationHeaderContent(): Boolean =
     status == "content" || status == "empty"
 
-internal fun KuiklyThreadScreenPayload.acceptsThreadHeaderDirectoryProjection(
+internal fun RaftThreadScreenPayload.acceptsThreadHeaderDirectoryProjection(
     projection: SharedConversationDirectoryProjection
 ): Boolean =
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
         acceptsReplyThreadParentHeaderProjection(projection)
     } else {
         acceptsConversationHeaderProjection(projection)
     }
 
-internal fun KuiklyThreadScreenPayload.acceptsConversationHeaderProjection(
+internal fun RaftThreadScreenPayload.acceptsConversationHeaderProjection(
     projection: SharedConversationDirectoryProjection
 ): Boolean {
     if (projection.surfaceKind != surfaceKind) return false
-    if (surfaceKind != KuiklyThreadSurfaceKind.Channel) return true
+    if (surfaceKind != RaftThreadSurfaceKind.Channel) return true
     val payloadChannelKind =
         resolveThreadRouteIdentity().channelKind.normalizedHeaderChannelKind()
             ?: channelKind.normalizedHeaderChannelKind()
-    if (payloadChannelKind == null || payloadChannelKind == KuiklyThreadSurfaceKind.Channel) return true
+    if (payloadChannelKind == null || payloadChannelKind == RaftThreadSurfaceKind.Channel) return true
     return projection.channelKind.normalizedHeaderChannelKind() == payloadChannelKind
 }
 
-private fun KuiklyThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
+private fun RaftThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
     projection: SharedConversationDirectoryProjection
 ): Boolean {
     // Parent shape parses through the #417 contract (accepts "direct" -> dm). An
@@ -386,15 +386,15 @@ private fun KuiklyThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
     if (projection.surfaceKind != resolvedParentSurfaceKind) return false
     val exactParentChannelId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return false
     if (projection.canonicalChannelId.trim() != exactParentChannelId) return false
-    if (resolvedParentSurfaceKind != KuiklyThreadSurfaceKind.Channel) return true
+    if (resolvedParentSurfaceKind != RaftThreadSurfaceKind.Channel) return true
     val parentKind = parentChannelKind.normalizedHeaderChannelKind()
-    if (parentKind == null || parentKind == KuiklyThreadSurfaceKind.Channel) return true
+    if (parentKind == null || parentKind == RaftThreadSurfaceKind.Channel) return true
     return projection.channelKind.normalizedHeaderChannelKind() == parentKind
 }
 
 private fun SharedConversationDirectoryProjection.replyThreadParentSubtitle(): String? =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> directMessageReplyThreadSubtitle(title)
+        RaftThreadSurfaceKind.DirectMessage -> directMessageReplyThreadSubtitle(title)
         else ->
             existingThreadChannelHeaderSubtitle(subtitle)
                 ?: threadChannelHeaderSubtitle(title)
@@ -408,21 +408,21 @@ private fun directMessageReplyThreadSubtitle(title: String?): String? {
 
 internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): String? =
     when (surfaceKind) {
-        KuiklyThreadSurfaceKind.ReplyThread ->
+        RaftThreadSurfaceKind.ReplyThread ->
             existingThreadChannelHeaderSubtitle(subtitle)
                 ?: threadChannelHeaderSubtitle(title)
-        KuiklyThreadSurfaceKind.DirectMessage ->
+        RaftThreadSurfaceKind.DirectMessage ->
             title.takeIf { it.isNotBlank() }?.let { raw ->
                 if (raw.startsWith("@")) raw else "@${raw.removePrefix("@")}"
             }
         else -> title.takeIf { it.isNotBlank() }
     }
 
-internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
+internal fun RaftThreadScreenPayload.withConversationAccessFallback(
     fallback: ConversationAccessCandidate?
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     fallback ?: return this
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return this
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) return this
     if (!acceptsConversationAccessCandidate(fallback)) return this
     return if (!fallback.joined) {
         copy(
@@ -435,15 +435,15 @@ internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
     }
 }
 
-internal fun KuiklyThreadScreenPayload.acceptsConversationAccessCandidate(
+internal fun RaftThreadScreenPayload.acceptsConversationAccessCandidate(
     candidate: ConversationAccessCandidate
 ): Boolean {
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || candidate.surfaceKind != surfaceKind) return false
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread || candidate.surfaceKind != surfaceKind) return false
     val lookupIds = conversationHeaderLookupIds()
     return lookupIds.any(candidate.ids::contains)
 }
 
-internal fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =
+internal fun RaftThreadScreenPayload.conversationHeaderLookupIds(): List<String> =
     listOfNotNull(
         parentChannelId,
         streamChannelId,

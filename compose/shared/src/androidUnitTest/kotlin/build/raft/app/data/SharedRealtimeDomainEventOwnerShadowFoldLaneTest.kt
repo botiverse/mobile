@@ -48,7 +48,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         scopeKind = "channel",
     )
 
-    private class FakeFlagsApi(private val enabled: Boolean) : SlockFeatureFlagsApi {
+    private class FakeFlagsApi(private val enabled: Boolean) : RaftFeatureFlagsApi {
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
             HomeNetworkResponse(
                 code = 200,
@@ -64,7 +64,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
 
     private fun resolvedReactionFlags(enabled: Boolean): SharedServerFeatureFlags {
         val flags = SharedServerFeatureFlags(
-            object : SlockFeatureFlagsApi {
+            object : RaftFeatureFlagsApi {
                 override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
                     HomeNetworkResponse(
                         code = 200,
@@ -77,16 +77,16 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         return flags
     }
 
-    private fun freshDatabase(): SlockSqlDatabase {
+    private fun freshDatabase(): RaftSqlDatabase {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
         driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
-        return SlockSqlDatabase(driver)
+        return RaftSqlDatabase(driver)
     }
 
     private fun ownerWith(lane: SyncCoreMessageShadowFoldLane): Pair<SharedRealtimeDomainEventOwner, MutableList<Pair<String, RealtimeEvent>>> {
         val owner = SharedRealtimeDomainEventOwner(
-            cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+            cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
         )
         owner.installMessageShadowFoldLane(lane)
         val homeEvents = mutableListOf<Pair<String, RealtimeEvent>>()
@@ -332,7 +332,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     @Test
     fun normalizedReactionShadowRunsBeforeSinkAndRemainsInvisible() {
         val owner = SharedRealtimeDomainEventOwner(
-            cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+            cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
         )
         val logs = mutableListOf<String>()
         val callOrder = mutableListOf<String>()
@@ -373,7 +373,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     @Test
     fun normalizedReactionShadowLoggerFailureCannotBlockLegacySink() {
         val owner = SharedRealtimeDomainEventOwner(
-            cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+            cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
         )
         owner.installReactionShadowLane(
             SyncCoreReactionShadowLane(

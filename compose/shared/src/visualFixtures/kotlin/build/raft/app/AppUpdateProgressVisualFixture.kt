@@ -4,12 +4,11 @@ import androidx.compose.runtime.Composable
 import build.raft.app.base.BasePager
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedUpdateDownloadProgress
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.Page
 
 @Page("compose_app_update_progress_visual", supportInLocal = true)
 internal class AppUpdateProgressVisualFixture : BasePager() {
@@ -21,7 +20,7 @@ internal class AppUpdateProgressVisualFixture : BasePager() {
 
 @Composable
 private fun UpdateProgressVisualContent() {
-    Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         val downloading = SharedSettingsUpdateCheckSnapshot(
             supported = true, updateAvailable = true, currentVersionLabel = "1.12.0", latestVersionLabel = "1.13.0",
             statusLabel = "Downloading", actionLabel = "Downloading"

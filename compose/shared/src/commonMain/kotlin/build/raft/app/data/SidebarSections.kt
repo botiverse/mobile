@@ -157,3 +157,23 @@ fun removeSidebarItemPlacement(
     if (placements.none { sidebarSectionItemKey(it.kind, it.id) == itemKey }) return placements
     return placements.filter { sidebarSectionItemKey(it.kind, it.id) != itemKey }
 }
+
+/**
+ * The section order after adding new custom section [sectionId]: inserted
+ * before [insertBeforeSectionId] when that id is in the (normalized) order,
+ * appended otherwise. Mirrors web Sidebar.tsx `createCustomSection`.
+ */
+fun insertSidebarSectionIntoOrder(
+    order: List<String>,
+    customSections: List<SettingsServerSidebarCustomSection>,
+    sectionId: String,
+    insertBeforeSectionId: String?
+): List<String> {
+    val normalized = normalizeSidebarSectionOrder(order, customSections).filter { it != sectionId }
+    val insertAt = insertBeforeSectionId?.let { normalized.indexOf(it) } ?: -1
+    return if (insertAt >= 0) {
+        normalized.subList(0, insertAt) + sectionId + normalized.subList(insertAt, normalized.size)
+    } else {
+        normalized + sectionId
+    }
+}

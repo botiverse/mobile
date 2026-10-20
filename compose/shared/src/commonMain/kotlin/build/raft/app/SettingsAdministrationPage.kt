@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.AppLocale
 import build.raft.app.data.StoredAuthSession
-import com.tencent.kuikly.core.pager.Pager
+import build.raft.app.compat.pager.Pager
 
 // Administration renders the WEB settings page in an in-app WebView instead of
 // a native re-implementation (artin, 2026-07-14): the admin surface (admins /
@@ -10,7 +10,7 @@ import com.tencent.kuikly.core.pager.Pager
 // translation) changes often on web and keeping a native mirror in visual
 // parity was a constant drift source. It uses the single production Settings
 // WebView page so attach, cover, lifecycle, and Back/history behavior cannot drift.
-internal fun Pager.openSettingsAdministrationPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsAdministrationPage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Administration, storeScope)
 }
 

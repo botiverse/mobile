@@ -24,7 +24,7 @@ class ServerFeatureFlagLastKnownTest {
     private val accountA = ServerFeatureFlagLastKnownBinding("https://api.example", "user-a")
     private val accountB = ServerFeatureFlagLastKnownBinding("https://api.example", "user-b")
 
-    private class ScriptedApi(var next: () -> HomeNetworkResponse) : SlockFeatureFlagsApi {
+    private class ScriptedApi(var next: () -> HomeNetworkResponse) : RaftFeatureFlagsApi {
         var gate: CompletableDeferred<Unit>? = null
         val entered = CompletableDeferred<Unit>()
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
@@ -45,11 +45,11 @@ class ServerFeatureFlagLastKnownTest {
     private val offline = HomeNetworkResponse(code = 0, bodyText = null)
 
     private class Device {
-        val disk = InMemorySlockKeyValueStore()
+        val disk = InMemoryRaftKeyValueStore()
         var binding: ServerFeatureFlagLastKnownBinding? = null
         val logs = mutableListOf<String>()
 
-        fun process(api: SlockFeatureFlagsApi): SharedServerFeatureFlags =
+        fun process(api: RaftFeatureFlagsApi): SharedServerFeatureFlags =
             SharedServerFeatureFlags(
                 api = api,
                 diagnosticsLogger = { logs += it },

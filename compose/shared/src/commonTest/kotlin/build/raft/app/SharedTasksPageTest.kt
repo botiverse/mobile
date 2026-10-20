@@ -8,9 +8,9 @@ import build.raft.app.model.Presence
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskStatus
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -184,19 +184,19 @@ class SharedTasksPageTest {
     }
 
     // #130 filter-search caller-local editor seed contract. The editor is the sole
-    // owner of its TextFieldValue within a filter session; slockFilterSearchSessionSeed
+    // owner of its TextFieldValue within a filter session; raftFilterSearchSessionSeed
     // is invoked only from a LaunchedEffect keyed on the openFilterId session token,
     // so these decisions are the only way the durable String reaches the local editor.
     @Test
     fun filterSearchSeedsFromDurableWithCaretAtEndOnSessionOpen() {
-        val seed = slockFilterSearchSessionSeed(openFilterId = "channel", thisFilterId = "channel", durableSearch = "design")
+        val seed = raftFilterSearchSessionSeed(openFilterId = "channel", thisFilterId = "channel", durableSearch = "design")
         assertEquals("design", seed?.text)
         assertEquals(TextRange("design".length), seed?.selection)
     }
 
     @Test
     fun filterSearchSeedCaretUsesCharacterCountForCjk() {
-        val seed = slockFilterSearchSessionSeed(openFilterId = "creator", thisFilterId = "creator", durableSearch = "设计师")
+        val seed = raftFilterSearchSessionSeed(openFilterId = "creator", thisFilterId = "creator", durableSearch = "设计师")
         assertEquals("设计师", seed?.text)
         // caret at end by character index (3), so mid-text CJK editing starts sane;
         // the live editor owns the selection/composition for the rest of the session.
@@ -207,7 +207,7 @@ class SharedTasksPageTest {
     fun filterSearchNewSessionSeedsFreshFromResetDurable() {
         // SetOpenFilter clears the non-active box on close; the reopened session
         // seeds an empty editor rather than reopening with stale local text.
-        val seed = slockFilterSearchSessionSeed(openFilterId = "assignee", thisFilterId = "assignee", durableSearch = "")
+        val seed = raftFilterSearchSessionSeed(openFilterId = "assignee", thisFilterId = "assignee", durableSearch = "")
         assertEquals("", seed?.text)
         assertEquals(TextRange(0), seed?.selection)
     }
@@ -216,17 +216,17 @@ class SharedTasksPageTest {
     fun filterSearchDoesNotReseedInactiveFilterFromStaleDurable() {
         // While "channel" owns the open session, a stale or echoed "creator" durable
         // String must never reseat the creator editor (would clobber its composition).
-        assertNull(slockFilterSearchSessionSeed(openFilterId = "channel", thisFilterId = "creator", durableSearch = "stale-echo"))
+        assertNull(raftFilterSearchSessionSeed(openFilterId = "channel", thisFilterId = "creator", durableSearch = "stale-echo"))
         // No open session at all → nothing is seeded.
-        assertNull(slockFilterSearchSessionSeed(openFilterId = null, thisFilterId = "channel", durableSearch = "x"))
+        assertNull(raftFilterSearchSessionSeed(openFilterId = null, thisFilterId = "channel", durableSearch = "x"))
     }
 
     @Test
     fun filterSearchSessionSeedTargetsOnlyTheOpenFilter() {
         val open = "creator"
-        assertNull(slockFilterSearchSessionSeed(open, "channel", "c"))
-        assertEquals("cr", slockFilterSearchSessionSeed(open, "creator", "cr")?.text)
-        assertNull(slockFilterSearchSessionSeed(open, "assignee", "a"))
+        assertNull(raftFilterSearchSessionSeed(open, "channel", "c"))
+        assertEquals("cr", raftFilterSearchSessionSeed(open, "creator", "cr")?.text)
+        assertNull(raftFilterSearchSessionSeed(open, "assignee", "a"))
     }
 
 }

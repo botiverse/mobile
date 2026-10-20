@@ -57,7 +57,7 @@ internal object PresenceNoopMemberRepository : MemberRepository {
     override suspend fun startAgent(priority: DataRequestPriority, agentId: MemberId) = unused()
     override suspend fun stopAgent(priority: DataRequestPriority, agentId: MemberId) = unused()
     override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest) = unused()
-    override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId) = unused()
+    override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId, workspaceChoice: AgentArchiveWorkspaceChoice) = unused()
 
     override suspend fun assignAgentMachine(
         priority: DataRequestPriority,

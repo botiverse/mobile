@@ -1,10 +1,10 @@
 package build.raft.app
 
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import com.tencent.kmm.network.export.NetworkAppIdentity
 import com.tencent.kmm.network.export.NetworkUserAgent
 import kotlin.test.Test
@@ -88,7 +88,7 @@ class SettingsStandaloneWebViewHostTest {
                 settingsWebViewPageData(
                     surface = surface,
                     storeScope =
-                        SlockShellStoreScope.create(
+                        RaftShellStoreScope.create(
                             shellInstanceId = "shell-${surface.diagnosticsName}",
                             initialServerId = "server-1",
                         ),
@@ -105,7 +105,7 @@ class SettingsStandaloneWebViewHostTest {
         val pageData =
             settingsWebViewPageData(
                 surface = SettingsWebViewSurface.ReleaseNotes,
-                storeScope = SlockShellStoreScope.create(shellInstanceId = "shell-release-notes"),
+                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-release-notes"),
                 versionCode = " 1010000 ",
             )
 
@@ -197,22 +197,33 @@ class SettingsStandaloneWebViewHostTest {
     }
 
     @Test
+    fun legacyComputersSurfaceStillResolvesSoOldRoutesRenderTheNativePage() {
+        val pageData =
+            settingsWebViewPageData(
+                surface = SettingsWebViewSurface.Computers,
+                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-legacy-computers"),
+            ).put(SETTINGS_COMPUTER_ID, "machine-42")
+
+        assertEquals(SettingsWebViewSurface.Computers, settingsWebViewSurfaceFromPageData(pageData))
+        assertEquals("machine-42", pageData.optString(SETTINGS_COMPUTER_ID))
+    }
+
+    @Test
     fun headerLayerIsAboveTheNativeWebViewBodySibling() {
         assertTrue(SETTINGS_WEB_VIEW_HEADER_Z_INDEX > SETTINGS_WEB_VIEW_BODY_Z_INDEX)
     }
 
     @Test
-    fun computersHeaderUsesFallbackUntilTheWebDocumentPublishesATitle() {
+    fun headerUsesFallbackUntilTheWebDocumentPublishesATitle() {
         val state =
             SettingsWebViewHeaderTitleState()
                 .accept(candidate = "Raft", navigationIsLoading = true)
 
-        assertTrue(settingsComputersWebViewSpec.headerFollowsDocumentTitle)
         assertEquals("Computers", state.displayTitle("Computers"))
     }
 
     @Test
-    fun computersHeaderTracksAgentDocumentTitle() {
+    fun headerTracksTheCommittedDocumentTitle() {
         val loadingState =
             SettingsWebViewHeaderTitleState()
                 .accept(candidate = "  Jony  ", navigationIsLoading = true)

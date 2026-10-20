@@ -3,7 +3,6 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
-import build.raft.app.base.BridgeModule
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
@@ -23,11 +22,11 @@ import platform.posix.open as posixOpen
 import platform.posix.pread
 import platform.posix.stat
 
-internal actual fun createSlockSqlDatabase(bridge: BridgeModule): SlockSqlDatabase =
-    SlockSqlDatabase(
+internal actual fun createRaftSqlDatabase(): RaftSqlDatabase =
+    RaftSqlDatabase(
         NativeSqliteDriver(
-            schema = SlockSqlDatabase.Schema,
-            name = SlockSqlDatabase.DatabaseName,
+            schema = RaftSqlDatabase.Schema,
+            name = RaftSqlDatabase.DatabaseName,
             onConfiguration = { configuration ->
                 configuration.copy(
                     extendedConfig =

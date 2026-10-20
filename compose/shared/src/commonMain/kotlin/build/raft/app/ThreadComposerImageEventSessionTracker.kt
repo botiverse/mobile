@@ -105,8 +105,8 @@ internal fun abortThreadComposerImageEventSessions(
     sessionIds: Collection<String>,
     threadKey: String,
     batches: MutableMap<ThreadComposerImageEventBatchKey, ThreadComposerImageEventBatchAccumulator>,
-    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
-    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger(),
+    registry: RaftFilePreviewEphemeralActionRegistry = raftFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: RaftFilePreviewEphemeralCleanupLedger = raftFilePreviewEphemeralCleanupLedger(),
     retire: (sessionId: String, fileRefs: Set<String>) -> Unit = { id, refs ->
         ThreadComposerTemporaryFileRetirement.retire(id, refs)
     }
@@ -119,7 +119,7 @@ internal fun abortThreadComposerImageEventSessions(
         batches.keys
             .filter { key -> key.sessionId == sessionId && key.threadKey == normalizedThreadKey }
             .forEach { key -> batches.remove(key)?.abort() }
-        val refs = slockFilePreviewAbortComposerImageEventSession(
+        val refs = raftFilePreviewAbortComposerImageEventSession(
             sessionId = sessionId,
             registry = registry,
             cleanupLedger = cleanupLedger

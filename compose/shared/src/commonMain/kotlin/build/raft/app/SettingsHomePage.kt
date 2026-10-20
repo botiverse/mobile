@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import androidx.compose.ui.draw.clip
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -15,13 +17,13 @@ import build.raft.app.data.foldSideThreadIntoDetail
 import build.raft.app.data.sideThreadColumnAvailable
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.AdaptiveSideThread
-import build.raft.app.data.SLOCK_SIDE_THREAD_COLUMN_DP
-import build.raft.app.data.SLOCK_LIST_PANE_DIVIDER_DP
-import build.raft.app.data.slockListPaneDraggedWidthDp
-import build.raft.app.data.slockListPanePreferredWidthDp
-import build.raft.app.data.slockListPaneStoredWidth
-import build.raft.app.data.slockListPaneWidthDp
-import build.raft.app.data.SLOCK_SIDE_THREAD_DIVIDER_DP
+import build.raft.app.data.RAFT_SIDE_THREAD_COLUMN_DP
+import build.raft.app.data.RAFT_LIST_PANE_DIVIDER_DP
+import build.raft.app.data.raftListPaneDraggedWidthDp
+import build.raft.app.data.raftListPanePreferredWidthDp
+import build.raft.app.data.raftListPaneStoredWidth
+import build.raft.app.data.raftListPaneWidthDp
+import build.raft.app.data.RAFT_SIDE_THREAD_DIVIDER_DP
 import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
@@ -29,49 +31,52 @@ import build.raft.app.data.detailListSelectionId
 import build.raft.app.data.selectedConversationWhenShellReturns
 import build.raft.app.data.hasVisibleDetailBackHistory
 
-import build.raft.app.data.NetworkSlockThreadApi
+import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
-import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalCard
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalListRow
-import build.raft.app.components.SlockAnchoredToolbarChip
-import build.raft.app.components.SlockBrutalReadOnlyField
-import build.raft.app.components.SlockBrutalReadOnlyValueField
-import build.raft.app.components.SlockBrutalSearchField
-import build.raft.app.components.SlockBrutalSectionLabel
-import build.raft.app.components.SlockBrutalSelectField
-import build.raft.app.components.SlockBrutalSelectOption
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockFormFieldSize
-import build.raft.app.components.SlockDisabledActionBorder
-import build.raft.app.components.SlockDisabledActionContent
-import build.raft.app.components.SlockDisabledActionContentArgb
-import build.raft.app.components.SlockDisabledActionShadow
-import build.raft.app.components.SlockRaftUiSelectField
-import build.raft.app.components.SlockRaftUiSelectionOption
-import build.raft.app.components.SlockSlugInput
+import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalCard
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftBrutalListRow
+import build.raft.app.components.RaftAnchoredToolbarChip
+import build.raft.app.components.RaftBrutalReadOnlyField
+import build.raft.app.components.RaftBrutalReadOnlyValueField
+import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.RaftBrutalSectionLabel
+import build.raft.app.components.RaftBrutalSelectField
+import build.raft.app.components.RaftBrutalSelectOption
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftFormFieldSize
+import build.raft.app.components.RaftDisabledActionBorder
+import build.raft.app.components.RaftDisabledActionContent
+import build.raft.app.components.RaftDisabledActionContentArgb
+import build.raft.app.components.RaftDisabledActionShadow
+import build.raft.app.components.RaftUiSelectField
+import build.raft.app.components.RaftUiSelectionOption
+import build.raft.app.components.RaftSlugInput
 import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.SlockLinkButton
-import build.raft.app.components.SlockSwitchButton
-import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.RaftLinkButton
+import build.raft.app.components.RaftSwitchButton
+import build.raft.app.components.RaftToolbarChip
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.slockDisabledActionBackgroundFor
-import build.raft.app.data.NetworkSlockHomeApi
+import build.raft.app.components.raftDisabledActionBackgroundFor
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.data.NetworkRaftHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
-import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.KuiklyHostNetworkEvents
-import build.raft.app.data.KuiklyAppUpdateEvents
-import build.raft.app.data.KuiklyNotificationPreferenceEvents
-import build.raft.app.data.KuiklyChatLayoutPreferenceEvents
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftHostNetworkEvents
+import build.raft.app.data.RaftAppUpdateEvents
+import build.raft.app.data.RaftNotificationPreferenceEvents
+import build.raft.app.data.RaftChatLayoutPreferenceEvents
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.isMachineHomeNotificationId
@@ -94,6 +99,7 @@ import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
 import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
+import build.raft.app.data.MOBILE_ACTION_NATIVE_PULL_TO_REFRESH
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -130,9 +136,9 @@ import build.raft.app.data.ServerPublicExposedChannel
 import build.raft.app.data.ServerPublicVisibilityRepository
 import com.tencent.tmm.kmmresource.resource.StringResource
 import build.raft.app.data.AnnouncementItem
-import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
-import build.raft.app.data.SlockAnnouncementsRemindersApiClient
-import build.raft.app.data.NetworkSlockTasksApi
+import build.raft.app.data.NetworkRaftAnnouncementsRemindersApi
+import build.raft.app.data.RaftAnnouncementsRemindersApiClient
+import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.SERVER_ACTION_INVITE_REVOKE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_CREATE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_REVOKE
@@ -158,7 +164,7 @@ import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.DEFAULT_HOME_SERVER_AVATAR_ENABLED
 import build.raft.app.data.DEFAULT_SERVER_DRAWER_ENABLED
 import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
-import build.raft.app.data.kuiklyChatLayoutPreferenceRepository
+import build.raft.app.data.raftChatLayoutPreferenceRepository
 import build.raft.app.data.reconcileConversationForwardGesturePreference
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthAuthorityChangedMessage
@@ -173,7 +179,7 @@ import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.authSessionTerminalSourceOrNull
 import build.raft.app.data.AuthSocialCompleteResponse
 import build.raft.app.data.ChannelRepository
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthGateIntent
@@ -182,7 +188,7 @@ import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedAuthGateViewModel
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.isColdStartCachedReadyEligible
-import build.raft.app.data.SlockAuthSessionTerminalSource
+import build.raft.app.data.RaftAuthSessionTerminalSource
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
@@ -198,7 +204,7 @@ import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.data.ConversationForwardAction
 import build.raft.app.data.toConversationForwardEntry
-import build.raft.app.data.SlockSystemNotificationContract
+import build.raft.app.data.RaftSystemNotificationContract
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
@@ -256,29 +262,30 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
-import build.raft.app.data.SlockAuthApi
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockDatabaseLaunchAttempt
-import build.raft.app.data.SlockEventBus
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockSharedStoreProvider
-import build.raft.app.data.SLOCK_SHELL_OVERLAY_REQUEST_EVENT
-import build.raft.app.data.SLOCK_SHELL_OVERLAY_RESULT_EVENT
+import build.raft.app.data.RaftAuthApi
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftDatabaseLaunchAttempt
+import build.raft.app.data.RaftEventBus
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
+import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_TYPE_CANCEL
-import build.raft.app.data.SlockShellOpenOverlay
-import build.raft.app.data.SlockShellOverlayResult
-import build.raft.app.data.SlockShellOverlayItem
-import build.raft.app.data.slockShellShouldDropOverlayRequest
-import build.raft.app.data.toSlockShellOverlayRequestOrNull
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.attemptSlockDatabaseLaunch
+import build.raft.app.data.RaftShellOpenOverlay
+import build.raft.app.data.RaftShellOverlayResult
+import build.raft.app.data.RaftShellOverlayItem
+import build.raft.app.data.raftShellShouldDropOverlayRequest
+import build.raft.app.data.shellOverlayRequestIdOrNull
+import build.raft.app.data.toRaftShellOverlayRequestOrNull
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.attemptRaftDatabaseLaunch
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
 import build.raft.app.data.isAuthSessionError
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.isSubmittableChannelName
-import build.raft.app.data.KuiklyAuthSessionEvents
+import build.raft.app.data.RaftAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -289,7 +296,7 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.authSessionClearFingerprint
 import build.raft.app.data.realtime.RealtimeEventMapper
-import build.raft.app.data.parseSlockHome
+import build.raft.app.data.parseRaftHome
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -317,11 +324,11 @@ import build.raft.app.data.SearchPersonalizationEntityKey
 import build.raft.app.data.SearchPersonalizationEntityKind
 import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SettingsServerSidebarPinnedItem
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
-import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedActivityIntent
@@ -372,7 +379,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.ConnectedAccountStatus
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.savedMessageIdOrNull
 import build.raft.app.data.SettingsAppearanceSnapshot
 import build.raft.app.data.SettingsAppearanceUpdateRequest
@@ -425,7 +432,7 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
-import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
@@ -460,7 +467,7 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
@@ -472,10 +479,10 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.SlockTimeFormat24Hour
-import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.slockEpochMillisUtcIso
-import build.raft.app.model.slockStartOfDayUtcIso
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.raftEpochMillisUtcIso
+import build.raft.app.model.raftStartOfDayUtcIso
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -492,103 +499,108 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.compose.coroutines.withKuiklyIdleContext
-import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
-import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.text.KeyboardActions
-import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
-import com.tencent.kuikly.compose.foundation.layout.FlowRow
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.ui.layout.onSizeChanged
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.foundation.layout.RowScope
-import com.tencent.kuikly.compose.foundation.layout.Spacer
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.extension.NestedScrollMode
-import com.tencent.kuikly.compose.extension.bouncesEnable
-import com.tencent.kuikly.compose.extension.nestedScroll
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.LazyListState
-import com.tencent.kuikly.compose.foundation.lazy.LazyRow
-import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.drawer.MoveableDrawer
-import com.tencent.kuikly.compose.foundation.drawer.rememberMoveableDrawerState
-import com.tencent.kuikly.compose.text.SelectionContainer
-import com.tencent.kuikly.compose.text.rememberSelectionContainerState
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.focus.FocusRequester
-import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
-import com.tencent.kuikly.compose.ui.layout.ContentScale
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.layout.boundsInRoot
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
-import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.semantics.Role
-import com.tencent.kuikly.compose.ui.semantics.clearAndSetSemantics
-import com.tencent.kuikly.compose.ui.semantics.invisibleToUser
-import com.tencent.kuikly.compose.ui.ExperimentalComposeUiApi
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.semantics.stateDescription
-import com.tencent.kuikly.compose.ui.semantics.traversalIndex
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextRange
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.text.input.ImeAction
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.zIndex
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.base.event.ClickParams
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.core.views.DivView
-import com.tencent.kuikly.core.views.KeyboardParams
+import build.raft.app.compat.ui.withKuiklyIdleContext
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import build.raft.app.compat.ui.NestedScrollMode
+import build.raft.app.compat.ui.bouncesEnable
+import build.raft.app.compat.ui.nestedScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftStickerTile
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Text
+import build.raft.app.components.RaftPullToRefreshBox
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import build.raft.app.components.RaftMetrics
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.ui.KeyboardParams
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -598,6 +610,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -634,9 +647,9 @@ const val HOME_SEARCH_SELECTED_CHANNEL_ID = "selectedChannelId"
 const val HOME_SEARCH_INITIAL_OPEN_FILTER_ID = "initialOpenFilterId"
 const val HOME_SEARCH_FOCUS_INPUT = "focusSearchInput"
 const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
-const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
-internal const val SLOCK_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
-internal const val SLOCK_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationForwardRequested"
+const val RAFT_APP_SHELL_PAGE = "compose_slock_app_shell"
+internal const val RAFT_APP_SHELL_CHILD_TAB_PAGE = "compose_app_shell_child_tab"
+internal const val RAFT_CONVERSATION_FORWARD_PAGER_EVENT = "slockConversationForwardRequested"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 internal const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
@@ -722,12 +735,12 @@ private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
 private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
-private val SearchPopoverBorderColor = SlockColor.BorderBlack
-private val SearchPopoverShadowColor = SlockColor.ShadowBlack
-private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
-private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
+private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
+private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack
+private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.62f)
 
-private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
+// artin 2026-10-20: Activity is the second bottom tab — 首页 · 动态 · 任务 · 成员 · 设置.
+private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
@@ -740,15 +753,15 @@ internal class AppShellChildTabRenderSlot(
 
 internal class AppShellChildTabEntry(
     val debugId: Int,
-    val timestampDisplayState: SlockTimestampDisplayState = SlockTimestampDisplayState(),
+    val timestampDisplayState: RaftTimestampDisplayState = RaftTimestampDisplayState(),
     initialSelectedTab: String = "home",
     initialParentVisible: Boolean = true,
     initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
-        SlockCenteredLoading()
+        RaftCenteredLoading()
     },
     initialTabKeys: List<String> = AppShellChildPageTabKeys,
-    initialModalHostState: SlockUnifiedDialogHostState? = null
+    initialModalHostState: RaftUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
     var parentVisible by mutableStateOf(initialParentVisible)
@@ -762,7 +775,7 @@ internal class AppShellChildTabEntry(
     // entry. Render slots therefore fail closed to the shell renderer (which itself falls back
     // to home content for unknown keys) instead of throwing on getValue.
     private val fallbackRenderer: AppShellChildTabRenderer = initialRenderer
-    var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
+    var modalHostState: RaftUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 
     fun rendererFor(tab: String): AppShellChildTabRenderer =
         renderSlots[tab]?.renderer ?: fallbackRenderer
@@ -842,39 +855,24 @@ internal fun sharedSettingsHostShellWebUrl(
 internal fun ScreenLoadState<SharedSettingsDeveloperSnapshot>.configuredWebBaseUrlOrNull(): String? =
     (this as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl
 
+// raft-ui search-entity leading slot: channels and computers take an IconTile `sm` (27dp
+// `fill-muted`, 14dp `foreground-muted` icon); people and agents an avatar `sm` (27dp) with
+// the 9dp activity square at the corner.
 @Composable
 private fun SharedHomeSearchEntityLeadingAvatar(
     result: SearchEntityResult,
-    agentStatusResolver: SlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver
+    agentStatusResolver: RaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
     when (result.type) {
-        SearchEntityType.Channel ->
-            Box(
-                modifier =
-                    Modifier
-                        .size(32.dp)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(
-                    result.homeSearchEntityLeadingIconName() ?: SlockLucideIconName.Hash,
-                    color = "#FF000000",
-                    modifier = Modifier.size(15.dp)
-                )
-            }
-
+        SearchEntityType.Channel,
         SearchEntityType.Computer ->
-            Box(
-                modifier =
-                    Modifier
-                        .size(32.dp)
-                        .background(SlockColor.AccentLime)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(SlockLucideIconName.Monitor, color = "#FF000000", modifier = Modifier.size(15.dp))
+            RaftIconTile(size = RaftIconTileSize.Sm) {
+                RaftLucideIcon(
+                    result.homeSearchEntityLeadingIconName() ?: RaftLucideIconName.Hash,
+                    color = raftArgbHex(RaftColor.TextMuted),
+                    modifier = Modifier.size(RaftIconTileSize.Sm.icon)
+                )
             }
 
         else ->
@@ -882,7 +880,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                 val memberAvatarWireValue =
                     result.memberId
                         ?.takeIf { it.isNotBlank() }
-                        ?.let { rememberSlockMemberAvatarWireValue(memberAvatarResolver, it) }
+                        ?.let { rememberRaftMemberAvatarWireValue(memberAvatarResolver, it) }
                     val status =
                         if (result.showPresence) {
                             result.memberId
@@ -891,30 +889,30 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                                     projectHomeAgentStatusIndicatorState(
                                         showPresence = true,
                                         memberId = it,
-                                        canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, it)
+                                        canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, it)
                                     )
                                 }
                         } else {
                             null
                         }
 
-                SlockAvatarWithStatus(
+                RaftAvatarWithStatus(
                     statusColor = status?.color,
-                    avatarSize = 32.dp,
-                    statusSize = 8.dp,
+                    avatarSize = RaftSearchMetrics.EntityLeading,
+                    statusSize = 9.dp,
                     statusPulsing = status?.pulsing == true
                 ) {
-                    SlockAvatar(
+                    RaftAppAvatar(
                         avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue ?: AvatarReference.Random(result.key).wireValue,
                         label = result.title.removePrefix("@").removePrefix("#"),
-                        // task #107: must match the SlockAvatarWithStatus wrapper's
+                        // task #107: must match the RaftAvatarWithStatus wrapper's
                         // avatarSize — the default (ChannelAvatarSize = 20.dp) leaves the
-                        // avatar centered in a 32dp slot while the status dot anchors to
-                        // the slot corner, floating ~8dp outside the visible avatar.
-                        avatarSize = 32.dp,
+                        // avatar centered in its slot while the status dot anchors to
+                        // the slot corner, floating outside the visible avatar.
+                        avatarSize = RaftSearchMetrics.EntityLeading,
                         cacheSubject =
                             result.memberIdentity?.let { identity ->
-                                slockMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
+                                raftMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
                             },
                         cacheServerId = result.memberIdentity?.sourceServerId?.value
                     )
@@ -923,33 +921,30 @@ private fun SharedHomeSearchEntityLeadingAvatar(
     }
 }
 
+// search-message `messageSender`: a 14dp avatar and the name in `text-callout` bold ink.
 @Composable
 private fun SharedHomeSearchSenderMeta(
     sender: String,
     avatarWireValue: String?,
-    avatarCacheIdentity: SlockMemberAvatarCacheIdentity? = null,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false
+    avatarCacheIdentity: RaftMemberAvatarCacheIdentity? = null,
+    modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = avatarWireValue ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
             label = sender,
-            avatarSize = if (compact) 12.dp else 16.dp,
+            avatarSize = RaftSearchMetrics.SenderAvatar,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
         )
-        Text(
+        RaftText(
             text = sender,
-            style =
-                SlockType.Caption
-                    .withSlockFontWeight(FontWeight.Medium)
-                    .copy(fontSize = if (compact) 10.sp else 11.sp, lineHeight = if (compact) 12.sp else 13.sp),
-            color = SlockColor.TextBlack,
+            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -957,7 +952,7 @@ private fun SharedHomeSearchSenderMeta(
 }
 
 @Serializable
-internal data class KuiklySettingsHomePayload(
+internal data class RaftSettingsHomePayload(
     val instanceId: String = "",
     val title: String = "Settings",
     val subtitle: String = "",
@@ -969,31 +964,31 @@ internal data class SettingsHomePageLinkPayload(
     val key: String,
     val title: String,
     val subtitle: String = "",
-    val iconName: SlockLucideIconName = SlockLucideIconName.Settings,
+    val iconName: RaftLucideIconName = RaftLucideIconName.Settings,
     val value: String? = null,
     val section: String? = null,
 )
 
 @Serializable
-internal data class KuiklySharedSettingsPayload(
+internal data class RaftSharedSettingsPayload(
     val instanceId: String = "",
     val title: String = "",
     val detail: String = "",
-    val heroIconName: SlockLucideIconName = SlockLucideIconName.Settings,
+    val heroIconName: RaftLucideIconName = RaftLucideIconName.Settings,
     val heroLabel: String = "",
-    val sections: List<KuiklySharedSettingsSection> = emptyList()
+    val sections: List<RaftSharedSettingsSection> = emptyList()
 )
 
 @Serializable
-internal data class KuiklySharedSettingsSection(
+internal data class RaftSharedSettingsSection(
     val title: String = "",
-    val rows: List<KuiklySharedSettingsRow> = emptyList()
+    val rows: List<RaftSharedSettingsRow> = emptyList()
 )
 
 @Serializable
-internal data class KuiklySharedSettingsRow(
+internal data class RaftSharedSettingsRow(
     val key: String = "",
-    val iconName: SlockLucideIconName = SlockLucideIconName.Settings,
+    val iconName: RaftLucideIconName = RaftLucideIconName.Settings,
     val title: String = "",
     val detail: String = "",
     val value: String = "",
@@ -1006,7 +1001,7 @@ internal data class KuiklySharedSettingsRow(
     val copyValue: String = ""
 )
 
-internal val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
+internal val settingsTabBarSmokePayload = RaftSettingsHomePayload(
     title = "Settings",
     subtitle = "Harmony smoke",
     items = listOf(
@@ -1014,124 +1009,124 @@ internal val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             key = "account",
             title = "Account",
             subtitle = "Profile, email, password, connected accounts",
-            iconName = SlockLucideIconName.User,
+            iconName = RaftLucideIconName.User,
             value = "Verified",
         ),
         SettingsHomePageLinkPayload(
             key = "computers",
             title = "Computers",
             subtitle = "Connected machines and workspaces",
-            iconName = SlockLucideIconName.Monitor
+            iconName = RaftLucideIconName.Monitor
         ),
         SettingsHomePageLinkPayload(
             key = "server",
             title = "Server",
             subtitle = "Workspace name, members, invites, permissions",
-            iconName = SlockLucideIconName.Users,
+            iconName = RaftLucideIconName.Users,
             value = "Owner"
         ),
         SettingsHomePageLinkPayload(
             key = "billing",
             title = "Billing",
             subtitle = "Plan, usage, invoices",
-            iconName = SlockLucideIconName.ShieldCheck
+            iconName = RaftLucideIconName.ShieldCheck
         ),
         SettingsHomePageLinkPayload(
             key = "language-region",
             title = "Language & Region",
             subtitle = "Language, timezone, translation",
-            iconName = SlockLucideIconName.Languages
+            iconName = RaftLucideIconName.Languages
         ),
         SettingsHomePageLinkPayload(
             key = "mobile",
             title = "Mobile",
             subtitle = "Push notifications, language, layout",
-            iconName = SlockLucideIconName.Smartphone
+            iconName = RaftLucideIconName.Smartphone
         ),
         SettingsHomePageLinkPayload(
             key = "storage",
             title = "Storage",
             subtitle = "Local cache and diagnostics",
-            iconName = SlockLucideIconName.Archive
+            iconName = RaftLucideIconName.Archive
         ),
         SettingsHomePageLinkPayload(
             key = "about",
             title = "About",
             subtitle = "Version and build information",
-            iconName = SlockLucideIconName.BadgeInfo
+            iconName = RaftLucideIconName.BadgeInfo
         ),
         SettingsHomePageLinkPayload(
             key = SettingsDestinationHandsFeedback,
             title = "Send feedback",
             subtitle = "Report a problem or suggestion",
-            iconName = SlockLucideIconName.MessageSquarePlus
+            iconName = RaftLucideIconName.MessageSquarePlus
         ),
         SettingsHomePageLinkPayload(
             key = SettingsDestinationReleaseNotes,
             title = "Release Notes",
             subtitle = "Product changes and migration notes",
-            iconName = SlockLucideIconName.FileText
+            iconName = RaftLucideIconName.FileText
         ),
         SettingsHomePageLinkPayload(
             key = "router",
             title = "Smoke previews",
             subtitle = "Open Kuikly router and shared test pages",
-            iconName = SlockLucideIconName.Route
+            iconName = RaftLucideIconName.Route
         )
     )
 )
 
 private val settingsVisualItems = listOf(
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "account",
         title = "Account",
         subtitle = "Profile, email, password, connected accounts",
-        iconName = SlockLucideIconName.User,
+        iconName = RaftLucideIconName.User,
         value = "Verified",
         selected = true
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "language-region",
         title = "Language & Region",
         subtitle = "Language, timezone, translation",
-        iconName = SlockLucideIconName.Languages
+        iconName = RaftLucideIconName.Languages
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "appearance",
         title = "Appearance",
         subtitle = "Message font size and reading density",
-        iconName = SlockLucideIconName.Type
+        iconName = RaftLucideIconName.Type
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "browser",
         title = "Device",
         subtitle = "Notifications and local device state",
-        iconName = SlockLucideIconName.AppWindow
+        iconName = RaftLucideIconName.AppWindow
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "server",
         title = "Server",
         subtitle = "Workspace, members, invites, permissions",
-        iconName = SlockLucideIconName.Building2,
+        iconName = RaftLucideIconName.Building2,
         value = "Owner"
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "computers",
         title = "Computers",
         subtitle = "Connected machines and workspaces",
-        iconName = SlockLucideIconName.Monitor
+        iconName = RaftLucideIconName.Monitor
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = SettingsDestinationHandsFeedback,
         title = "Send feedback",
         subtitle = "Report a problem or suggestion",
-        iconName = SlockLucideIconName.MessageSquarePlus
+        iconName = RaftLucideIconName.MessageSquarePlus
     ),
-    SlockTabItemPayload(
+    RaftTabItemPayload(
         key = "release-notes",
         title = "Release Notes",
         subtitle = "Product changes and migration notes",
-        iconName = SlockLucideIconName.FileText
+        iconName = RaftLucideIconName.FileText
     )
 )
 
@@ -1172,29 +1167,29 @@ internal object SettingsVisualFixtureBridge {
 internal val settingsVisualFixtureValues: SettingsVisualFixtureValues
     get() = SettingsVisualFixtureBridge.values
 
-private val settingsPageVisualPayload: KuiklySharedSettingsPayload
+private val settingsPageVisualPayload: RaftSharedSettingsPayload
     get() {
         val fixture = settingsVisualFixtureValues
-        return KuiklySharedSettingsPayload(
+        return RaftSharedSettingsPayload(
             instanceId = "visual-settings-page",
             title = "Account",
             detail = "Profile, email, password, connected accounts",
-            heroIconName = SlockLucideIconName.User,
+            heroIconName = RaftLucideIconName.User,
             heroLabel = fixture.ownerDisplayName,
             sections = listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Profile",
                     rows = listOf(
-                        KuiklySharedSettingsRow("displayName", SlockLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = fixture.ownerDisplayName),
-                        KuiklySharedSettingsRow("email", SlockLucideIconName.Mail, "Email", fixture.ownerEmail, status = "Verified"),
-                        KuiklySharedSettingsRow("avatar", SlockLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
+                        RaftSharedSettingsRow("displayName", RaftLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = fixture.ownerDisplayName),
+                        RaftSharedSettingsRow("email", RaftLucideIconName.Mail, "Email", fixture.ownerEmail, status = "Verified"),
+                        RaftSharedSettingsRow("avatar", RaftLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
                     )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Session",
                     rows = listOf(
-                        KuiklySharedSettingsRow("password", SlockLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
-                        KuiklySharedSettingsRow("logout", SlockLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
+                        RaftSharedSettingsRow("password", RaftLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
+                        RaftSharedSettingsRow("logout", RaftLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
                     )
                 )
             )
@@ -1202,10 +1197,11 @@ private val settingsPageVisualPayload: KuiklySharedSettingsPayload
     }
 
 private val bottomTabBarSmokeItems = listOf(
-    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = true),
-    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig),
-    SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users),
-    SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
+    RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
+    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, badgeCount = 12),
+    RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
+    RaftBottomTabItemPayload("members", "Members", RaftLucideIconName.Users),
+    RaftBottomTabItemPayload("settings", "Settings", RaftLucideIconName.Settings)
 )
 
 /** Rail-only inline destination key (task #13 three-pane): Search renders in the AppShell
@@ -1218,16 +1214,20 @@ internal const val AppShellRailSavedKey = "rail_saved"
 internal fun appShellBottomTabs(
     selectedKey: String,
     homeLabel: String,
+    activityLabel: String,
     tasksLabel: String,
     membersLabel: String,
-    settingsLabel: String
-): List<SlockBottomTabItemPayload> =
+    settingsLabel: String,
+    activityBadgeCount: Int = 0
+): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
         selectedKey = selectedKey,
         orderedTabKeys = AppShellChildPageTabKeys,
+        activityBadgeCount = activityBadgeCount,
         labelFor = { key ->
             when (key) {
                 "home" -> homeLabel
+                "activity" -> activityLabel
                 "tasks" -> tasksLabel
                 "members" -> membersLabel
                 "settings" -> settingsLabel
@@ -1240,18 +1240,24 @@ internal fun appShellBottomTabs(
  * task #94: builds bottom-tab payloads from the resolved ordered tab keys (legacy or
  * Slack-aligned) with per-key labels and icons. Icons follow the Slack-aligned preview:
  * Home=house, DMs=message circle, Activity=bell, More=ellipsis.
+ *
+ * This list is the single source of truth for every bottom-bar renderer, including the
+ * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
+ * appears there with its label, icon and badge count (Activity: [activityBadgeCount]).
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
     orderedTabKeys: List<String>,
+    activityBadgeCount: Int = 0,
     labelFor: (String) -> String
-): List<SlockBottomTabItemPayload> =
+): List<RaftBottomTabItemPayload> =
     orderedTabKeys.map { key ->
-        SlockBottomTabItemPayload(
+        RaftBottomTabItemPayload(
             key = key,
             label = labelFor(key),
             iconName = appShellTabIcon(key),
-            selected = selectedKey == key
+            selected = selectedKey == key,
+            badgeCount = if (key == "activity") activityBadgeCount.coerceAtLeast(0) else 0
         )
     }
 
@@ -1296,8 +1302,8 @@ internal fun appShellSharedDetailSurfaceVisible(
  * instead of a channel composer.
  */
 internal fun appShellDmsTabShowsDetail(surfaceKind: String?, parentSurfaceKind: String?): Boolean =
-    surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
-        (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && parentSurfaceKind == KuiklyThreadSurfaceKind.DirectMessage)
+    surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+        (surfaceKind == RaftThreadSurfaceKind.ReplyThread && parentSurfaceKind == RaftThreadSurfaceKind.DirectMessage)
 
 /**
  * task #13 two-step Back contract: while a rail surface (Activity tab or an inline secondary
@@ -1411,8 +1417,7 @@ internal data class DiagnosticsDeepLinkRequest(
 )
 
 internal fun JSONObject.appShellLaunchSelection(): AppShellLaunchSelection {
-    val selectedTab = retainedAppShellSelectedTab(optString(AppShellInitialTabKey))
-    return AppShellLaunchSelection(selectedTab = selectedTab)
+    return AppShellLaunchSelection(selectedTab = raftAppShellLaunchTab(optString(AppShellInitialTabKey)))
 }
 
 internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest? {
@@ -1457,6 +1462,14 @@ internal fun appShellChildPagePrewarmOrder(
 internal fun appShellChildPageRendersContent(active: Boolean, retained: Boolean): Boolean =
     active || retained
 
+/**
+ * Whether an app-shell child tab's content runs as active. [placedActive] is the tab pager's
+ * own placement decision (the child page's `LocalRaftPageActive`), which is synchronous with the
+ * selection; the selection mirrored into [AppShellChildTabEntry] trails it by a frame.
+ */
+internal fun appShellChildTabContentActive(parentVisible: Boolean, placedActive: Boolean): Boolean =
+    parentVisible && placedActive
+
 internal fun appShellChildTabIsActive(
     parentVisible: Boolean,
     selectedTab: String,
@@ -1494,20 +1507,20 @@ internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Bo
  * Exposed as a pure description (not a Modifier) so tests can pin the invariant: when focused the
  * pane is zero-width and carries no weight, and the weight used anywhere else is always > 0.
  */
-internal data class SlockParentPaneLayout(
+internal data class RaftParentPaneLayout(
     val widthDp: Float?,
     val weight: Float?,
 )
 
-internal fun slockParentPaneLayout(focused: Boolean): SlockParentPaneLayout =
+internal fun raftParentPaneLayout(focused: Boolean): RaftParentPaneLayout =
     if (focused) {
-        SlockParentPaneLayout(widthDp = 0f, weight = null)
+        RaftParentPaneLayout(widthDp = 0f, weight = null)
     } else {
-        SlockParentPaneLayout(widthDp = null, weight = SLOCK_PARENT_PANE_WEIGHT)
+        RaftParentPaneLayout(widthDp = null, weight = RAFT_PARENT_PANE_WEIGHT)
     }
 
 /** The only weight the parent pane may ever take. Must be > 0 -- Compose rejects zero. */
-internal const val SLOCK_PARENT_PANE_WEIGHT: Float = 1f
+internal const val RAFT_PARENT_PANE_WEIGHT: Float = 1f
 
 internal fun appShellAppearanceGeneration(
     pageVisibleTick: Int,
@@ -1535,8 +1548,8 @@ internal fun appShellLifecycleCanRefreshVisibleRoute(
 ): Boolean =
     pageVisible &&
         (
-            lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
-                lifecycleEvent == SlockRealtimeNotifyContract.LifecycleVisibleShow
+            lifecycleEvent == RaftRealtimeNotifyContract.LifecycleVisibleResume ||
+                lifecycleEvent == RaftRealtimeNotifyContract.LifecycleVisibleShow
             )
 
 internal data class AppShellForegroundResumePlan(
@@ -1745,7 +1758,6 @@ internal fun appShellBottomTabsVisible(
         // behind them so returning does not recreate it after the root is already visible.
         "home" ->
             selectedHomeDestination == null ||
-                retainedHomeSecondaryDestination(selectedHomeDestination) != HomeDestinationSaved &&
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
         else -> true
     }
@@ -1886,8 +1898,8 @@ private fun sharedHomeRenderBranch(content: SharedHomeContentState): String =
         is SharedHomeContentState.Content -> "content"
     }
 
-private fun sharedHomeErrorDisplay(code: String): SlockHomeInlineError =
-    SlockHomeInlineError(
+private fun sharedHomeErrorDisplay(code: String): RaftHomeInlineError =
+    RaftHomeInlineError(
         title =
             when {
                 ScreenError(code, retryable = false).isAuthSessionError() -> "Session expired"
@@ -1919,8 +1931,8 @@ private fun sharedHomeErrorDisplay(code: String): SlockHomeInlineError =
 internal fun sharedHomeSearchErrorDisplay(
     code: String,
     errorStrings: ErrorPresentationStrings
-): SlockHomeInlineError =
-    SlockHomeInlineError(
+): RaftHomeInlineError =
+    RaftHomeInlineError(
         title =
             when {
                 code.contains("permission", ignoreCase = true) -> "Search is unavailable"
@@ -1950,8 +1962,8 @@ internal fun sharedHomeSearchErrorDisplay(
 private fun localizedSharedHomeErrorDisplay(
     code: String,
     serverMessage: String? = null
-): SlockHomeInlineError =
-    SlockHomeInlineError(
+): RaftHomeInlineError =
+    RaftHomeInlineError(
         title =
             when {
                 serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.home_error_unavailable)
@@ -1980,8 +1992,8 @@ private fun localizedSharedHomeErrorDisplay(
 private fun localizedSharedHomeSearchErrorDisplay(
     code: String,
     action: SharedHomeSearchSavedIntent? = SharedHomeSearchSavedIntent.RefreshSearch
-): SlockHomeInlineError =
-    SlockHomeInlineError(
+): RaftHomeInlineError =
+    RaftHomeInlineError(
         title =
             when {
                 code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad)
@@ -2051,7 +2063,7 @@ private fun AppShellTabPager(
         if (activeChildTab != null) {
             retainedChildTabs.forEach { tab ->
                 key("app-shell-$tab") {
-                    SlockAppShellChildTabHost(
+                    RaftAppShellChildTabHost(
                         shellId = childHostShellId,
                         tab = tab,
                         active = tab == activeChildTab
@@ -2067,12 +2079,12 @@ private fun AppShellTabPager(
 }
 
 @Composable
-private fun SlockAppShellChildTabHost(
+private fun RaftAppShellChildTabHost(
     shellId: String,
     tab: String,
     active: Boolean
 ) {
-    val glassStyle = appShellChildPageGlassStyle(slockAppBottomTabBarOverlaysContent())
+    val glassStyle = appShellChildPageGlassStyle(raftAppBottomTabBarOverlaysContent())
     val pageData =
         remember(shellId, tab) {
             JSONObject().apply {
@@ -2081,8 +2093,8 @@ private fun SlockAppShellChildTabHost(
             }
         }
     key("app-shell-child-page-$tab") {
-        SlockKuiklyChildPage(
-            pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
+        RaftChildPage(
+            pageName = RAFT_APP_SHELL_CHILD_TAB_PAGE,
             pageData = pageData,
             modifier =
                 Modifier
@@ -2094,9 +2106,9 @@ private fun SlockAppShellChildTabHost(
 }
 
 @Composable
-internal fun rememberSlockServerDrawerUserHeader(
+internal fun rememberRaftServerDrawerUserHeader(
     readySession: StoredAuthSession?
-): SlockServerDrawerUserHeader =
+): RaftServerDrawerUserHeader =
     remember(
         readySession?.user?.id,
         readySession?.user?.displayName,
@@ -2107,7 +2119,7 @@ internal fun rememberSlockServerDrawerUserHeader(
     ) {
         val user = readySession?.user
         val displayName = user?.bestDisplayName ?: "Raft user"
-        SlockServerDrawerUserHeader(
+        RaftServerDrawerUserHeader(
             displayName = displayName,
             memberId = user?.id,
             serverId = readySession?.currentServerId,
@@ -2117,11 +2129,11 @@ internal fun rememberSlockServerDrawerUserHeader(
     }
 
 @Composable
-internal fun SlockAppShellContent(
+internal fun RaftAppShellContent(
     pageVisibleTick: Int = 0,
     initialAuthRestoreTick: Int = 0,
     pageVisible: Boolean = true,
-    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState(),
+    adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
     conversationForwardRequestTick: Int = 0
 ) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
@@ -2134,11 +2146,11 @@ internal fun SlockAppShellContent(
     var databaseLaunchRetryEpoch by remember { mutableStateOf(0) }
     val databaseLaunchAttempt =
         remember(bridge, databaseLaunchRetryEpoch) {
-            attemptSlockDatabaseLaunch { SlockSharedStoreRegistry.get(bridge) }
+            attemptRaftDatabaseLaunch { RaftSharedStoreRegistry.get(bridge) }
         }
     when (databaseLaunchAttempt) {
-        is SlockDatabaseLaunchAttempt.Ready ->
-            SlockAppShellReadyContent(
+        is RaftDatabaseLaunchAttempt.Ready ->
+            RaftAppShellReadyContent(
                 pageVisibleTick = pageVisibleTick,
                 initialAuthRestoreTick = initialAuthRestoreTick,
                 pageVisible = pageVisible,
@@ -2146,7 +2158,7 @@ internal fun SlockAppShellContent(
                 conversationForwardRequestTick = conversationForwardRequestTick,
                 sharedStores = databaseLaunchAttempt.value,
             )
-        is SlockDatabaseLaunchAttempt.UpgradeRequired -> {
+        is RaftDatabaseLaunchAttempt.UpgradeRequired -> {
             val mismatch = databaseLaunchAttempt.mismatch
             LaunchedEffect(mismatch) {
                 bridge.logWarn(
@@ -2155,7 +2167,7 @@ internal fun SlockAppShellContent(
                         "supportedVersion=${mismatch.supportedVersion}",
                 )
             }
-            SlockDatabaseLaunchRecoveryContent(
+            RaftDatabaseLaunchRecoveryContent(
                 mismatch = mismatch,
                 onRetry = {
                     bridge.logWarn(
@@ -2167,18 +2179,18 @@ internal fun SlockAppShellContent(
                 },
             )
         }
-        is SlockDatabaseLaunchAttempt.Fatal -> throw databaseLaunchAttempt.throwable
+        is RaftDatabaseLaunchAttempt.Fatal -> throw databaseLaunchAttempt.throwable
     }
 }
 
 @Composable
-private fun SlockAppShellReadyContent(
+private fun RaftAppShellReadyContent(
     pageVisibleTick: Int,
     initialAuthRestoreTick: Int,
     pageVisible: Boolean,
-    adaptivePane: SlockAdaptivePaneState,
+    adaptivePane: RaftAdaptivePaneState,
     conversationForwardRequestTick: Int,
-    sharedStores: SlockSharedStoreProvider,
+    sharedStores: RaftSharedStoreProvider,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
@@ -2189,7 +2201,7 @@ private fun SlockAppShellReadyContent(
     val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val timestampDisplayState =
-        LocalSlockTimestampDisplayState.current ?: remember { SlockTimestampDisplayState() }
+        LocalRaftTimestampDisplayState.current ?: remember { RaftTimestampDisplayState() }
     val launchSelection = remember(pager.pageData.params.toString()) {
         pager.pageData.params.appShellLaunchSelection()
     }
@@ -2217,7 +2229,7 @@ private fun SlockAppShellReadyContent(
     var prewarmedAppShellTabs by remember { mutableStateOf(emptySet<String>()) }
     val prewarmAdmissionGate = remember { sharedPrewarmAdmissionGate() }
     val childPagePrewarmPolicy =
-        remember { appShellChildPagePrewarmPolicy(slockPlatformAppShellChildPagePrewarmMode()) }
+        remember { appShellChildPagePrewarmPolicy(raftPlatformAppShellChildPagePrewarmMode()) }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
     var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
     var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
@@ -2229,13 +2241,13 @@ private fun SlockAppShellReadyContent(
     val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
     // task #401: Slack-nav More tab = action menu, not a hub page. The chosen destination is
     // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
-    var slackNavMoreDestination by remember { mutableStateOf(SlockSlackNavMoreDestination.Settings) }
+    var slackNavMoreDestination by remember { mutableStateOf(RaftSlackNavMoreDestination.Settings) }
     var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
     // More keeps selectedTab at "more" while rendering its destination inline.
     val tasksSurfaceActive =
         selectedTab == "tasks" ||
             (selectedTab == "more" &&
-                slackNavMoreDestination == SlockSlackNavMoreDestination.Tasks)
+                slackNavMoreDestination == RaftSlackNavMoreDestination.Tasks)
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
@@ -2248,11 +2260,11 @@ private fun SlockAppShellReadyContent(
     // not clamp a user-reached Activity selection back to Home.
     var railActivityReached by remember { mutableStateOf(false) }
     val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
-    var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
+    var hostNetworkStatus by remember { mutableStateOf(RaftAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     val adaptiveWorkspaceStore =
         remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
@@ -2382,7 +2394,7 @@ private fun SlockAppShellReadyContent(
     val appShellCoroutineScope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, appShellCoroutineScope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext()
             )
@@ -2396,13 +2408,24 @@ private fun SlockAppShellReadyContent(
      * The shell is the only place that can draw outside a child page's pane, which is why this
      * lives here rather than in the requesting page.
      */
-    var shellOverlayMenu by remember { mutableStateOf<SlockShellOpenOverlay?>(null) }
+    var shellOverlayMenu by remember { mutableStateOf<RaftShellOpenOverlay?>(null) }
+    var shellOverlayContent by remember { mutableStateOf<RaftShellOverlayContentEntry?>(null) }
     DisposableEffect(eventBus) {
         val subscription =
-            eventBus.observe(SLOCK_SHELL_OVERLAY_REQUEST_EVENT) { eventData ->
+            eventBus.observe(RAFT_SHELL_OVERLAY_REQUEST_EVENT) { eventData ->
                 // task #180 diagnostics (Argus): point 2 of 3 -- the shell saw a request (or why not).
-                val request = eventData.toSlockShellOverlayRequestOrNull()
-                slockTraceToPlatformLog(
+                val messageType = eventData?.optString(SHELL_OVERLAY_MESSAGE_TYPE)
+                val incomingRequestId = eventData?.shellOverlayRequestIdOrNull()
+                if (messageType == SHELL_OVERLAY_TYPE_CANCEL) {
+                    val current = shellOverlayMenu
+                    if (current != null && current.request.requestId == incomingRequestId) {
+                        shellOverlayContent = null
+                        shellOverlayMenu = null
+                    }
+                    return@observe
+                }
+                val request = eventData.toRaftShellOverlayRequestOrNull()
+                raftTraceToPlatformLog(
                     "SlockShellOverlay",
                     "shell_observe parsed=${request != null} requestId=${request?.requestId} " +
                         "pageKey=${request?.pageKey} anchor=${request?.anchor} items=${request?.items?.size} " +
@@ -2413,24 +2436,16 @@ private fun SlockAppShellReadyContent(
                 // Ignore a request superseded by another page, and honour a cancel from the page
                 // that owns the menu currently on screen.
                 val current = shellOverlayMenu
-                when (eventData?.optString(SHELL_OVERLAY_MESSAGE_TYPE)) {
-                    SHELL_OVERLAY_TYPE_CANCEL -> {
-                        if (current != null && current.request.requestId == request.requestId) {
-                            shellOverlayMenu = null
-                        }
-                    }
-                    else -> {
-                        if (!slockShellShouldDropOverlayRequest(current?.request?.requestId, request.requestId)) {
-                            shellOverlayMenu = SlockShellOpenOverlay(request)
-                        }
-                    }
+                if (!raftShellShouldDropOverlayRequest(current?.request?.requestId, request.requestId)) {
+                    shellOverlayContent = RaftShellOverlayContentRegistry.take(request.requestId)
+                    shellOverlayMenu = RaftShellOpenOverlay(request)
                 }
             }
         onDispose { subscription.close() }
     }
     val authSessionEvents =
         remember(eventBus, pager.pagerId) {
-            KuiklyAuthSessionEvents(
+            RaftAuthSessionEvents(
                 eventBus = eventBus,
                 source = "app-shell:${pager.pagerId}"
             )
@@ -2475,10 +2490,10 @@ private fun SlockAppShellReadyContent(
                 if (authSessionEvents.isLocalSource(signal)) {
                     return@addSessionClearedListener
                 }
-                slockLogInfo(
+                raftLogInfo(
                     "SlockSharedAuth",
                     "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}",
-                    SlockPlatformLogHint.AuthCritical
+                    RaftPlatformLogHint.AuthCritical
                 )
                 appShellCoroutineScope.launch {
                     runCatchingPreservingCancellation {
@@ -2487,18 +2502,18 @@ private fun SlockAppShellReadyContent(
                             previousSessionFingerprint = signal.previousSessionFingerprint
                         )
                     }.onSuccess { applied ->
-                        slockLogInfo(
+                        raftLogInfo(
                             "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
                                 "source=${signal.source} reason=${signal.reason}",
-                            SlockPlatformLogHint.AuthCritical
+                            RaftPlatformLogHint.AuthCritical
                         )
                     }.onFailure { throwable ->
-                        slockLogWarn(
+                        raftLogWarn(
                             "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
                                 "reason=${signal.reason} error=${throwable.message.orEmpty()}",
-                            SlockPlatformLogHint.AuthCritical
+                            RaftPlatformLogHint.AuthCritical
                         )
                     }
                 }
@@ -2718,9 +2733,9 @@ private fun SlockAppShellReadyContent(
         }
         return
     }
-    val shellScope = rememberSlockAppShellScope(adaptivePane)
+    val shellScope = rememberRaftAppShellScope(adaptivePane)
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
-    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
+    val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val copiedMessage = stringResource(MR.strings.common_copied)
     val settingsCapabilities =
         remember(bridge, appShellCoroutineScope, linkNavigator, copiedMessage) {
@@ -2731,7 +2746,7 @@ private fun SlockAppShellReadyContent(
                 openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
-    val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
+    val sharedPreferenceStore = remember { raftSharedPreferenceStore() }
     val notificationPreferenceRepository =
         remember(sharedPreferenceStore) {
             PersistentNotificationPreferenceRepository(
@@ -2743,7 +2758,7 @@ private fun SlockAppShellReadyContent(
             RealMemberRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                logger = slockLogger("SlockAppShell", "app_shell_member_repository")
+                logger = raftLogger("SlockAppShell", "app_shell_member_repository")
             )
         }
     val homeDataSource =
@@ -2755,9 +2770,9 @@ private fun SlockAppShellReadyContent(
         ) {
             SharedHomeDataSource(
                 sessionStore = shellAuthStore,
-                api = NetworkSlockHomeApi(appShellNetworkClient),
-                announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
-                computersApi = SlockComputersNetworkApi(appShellNetworkClient),
+                api = NetworkRaftHomeApi(appShellNetworkClient),
+                announcementsApi = NetworkRaftAnnouncementsRemindersApi(appShellNetworkClient),
+                computersApi = RaftComputersNetworkApi(appShellNetworkClient),
                 appUpdateStatusProvider = {
                     when (val result = settingsCapabilities.checkHandsUpdateStatus()) {
                         is DataResult.Content ->
@@ -2771,9 +2786,9 @@ private fun SlockAppShellReadyContent(
                 memberRepository = memberRepository,
                 serverMembersStore = appShellServerMembersStore,
                 parseHome = { payload, session ->
-                    parseSlockHome(payload, session, slockLogger("SlockHomeParse"))
+                    parseRaftHome(payload, session, raftLogger("SlockHomeParse"))
                 },
-                diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home")
+                diagnosticsLogger = raftLogger("SlockSharedHome", "shared_home")
             )
         }
     val channelRepository =
@@ -2781,7 +2796,7 @@ private fun SlockAppShellReadyContent(
             RealChannelRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = slockLogger("SlockChannelRepository", "shared_channel_repository", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockChannelRepository", "shared_channel_repository", RaftLogLevel.Warn)
             )
         }
     val homeReadReceiptRepository =
@@ -2789,7 +2804,7 @@ private fun SlockAppShellReadyContent(
             RealReadReceiptRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = slockLogger("SlockReadReceipt", "shared_home_read_receipt", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockReadReceipt", "shared_home_read_receipt", RaftLogLevel.Warn)
             )
         }
     val conversationRepository =
@@ -2798,19 +2813,19 @@ private fun SlockAppShellReadyContent(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 routeServerIdProvider = { selectedServerStore.selectedServerId.value },
-                warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockConversationRepository", "shared_conversation_repository", RaftLogLevel.Warn)
             )
         }
     val agentsApiClient =
         remember(appShellNetworkClient) {
-            SlockAgentsApiClient(
-                transport = SlockAgentsNetworkApi(appShellNetworkClient),
-                diagnosticsLogger = slockLogger("SlockAgentsApi", "app_shell_agents_api")
+            RaftAgentsApiClient(
+                transport = RaftAgentsNetworkApi(appShellNetworkClient),
+                diagnosticsLogger = raftLogger("SlockAgentsApi", "app_shell_agents_api")
             )
         }
     val computersApiClient =
         remember(appShellNetworkClient) {
-            SlockComputersApiClient(SlockComputersNetworkApi(appShellNetworkClient))
+            RaftComputersApiClient(RaftComputersNetworkApi(appShellNetworkClient))
         }
     val createAgentFormStore =
         remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
@@ -2819,7 +2834,7 @@ private fun SlockAppShellReadyContent(
             SharedCreateAgentCoordinator(
                 agentsApiClient = agentsApiClient,
                 computersApiClient = computersApiClient,
-                logger = slockLogger("SlockCreateAgent", "app_shell_thread_create_agent")
+                logger = raftLogger("SlockCreateAgent", "app_shell_thread_create_agent")
             )
         }
     val savedRepository =
@@ -2827,7 +2842,7 @@ private fun SlockAppShellReadyContent(
             RealSavedRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = slockLogger("SlockSavedRepository", "shared_saved_repository", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockSavedRepository", "shared_saved_repository", RaftLogLevel.Warn)
             )
         }
     val searchRepository =
@@ -2835,14 +2850,14 @@ private fun SlockAppShellReadyContent(
             RealSearchRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = slockLogger("SlockSearchRepository", "shared_search_repository", SlockLogLevel.Warn)
+                warningLogger = raftLogger("SlockSearchRepository", "shared_search_repository", RaftLogLevel.Warn)
             )
         }
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
-                api = NetworkSlockTasksApi(appShellNetworkClient),
-                diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
+                api = NetworkRaftTasksApi(appShellNetworkClient),
+                diagnosticsLogger = raftLogger("SlockTasks", "shared_tasks")
             )
         }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
@@ -2856,10 +2871,10 @@ private fun SlockAppShellReadyContent(
             KeyValueLocalePreferenceStore(sharedPreferenceStore)
         }
     val chatLayoutPreferenceEvents =
-        remember(eventBus) { KuiklyChatLayoutPreferenceEvents(eventBus) }
+        remember(eventBus) { RaftChatLayoutPreferenceEvents(eventBus) }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore, chatLayoutPreferenceEvents) {
-            kuiklyChatLayoutPreferenceRepository(
+            raftChatLayoutPreferenceRepository(
                 delegate =
                     PersistentChatLayoutPreferenceRepository(
                         KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)
@@ -2867,16 +2882,16 @@ private fun SlockAppShellReadyContent(
                 events = chatLayoutPreferenceEvents
             )
         }
-    val appUpdateEvents = remember(eventBus) { KuiklyAppUpdateEvents(eventBus) }
-    val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
-    val hostNetworkEvents = remember(eventBus) { KuiklyHostNetworkEvents(eventBus) }
+    val appUpdateEvents = remember(eventBus) { RaftAppUpdateEvents(eventBus) }
+    val realtimeEvents = remember(eventBus) { RaftRealtimeEvents(eventBus) }
+    val hostNetworkEvents = remember(eventBus) { RaftHostNetworkEvents(eventBus) }
     val homeActivityRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealInboxRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                logger = slockLogger("SlockHomeActivity", "shared_home_activity"),
-                warningLogger = slockLogger("SlockHomeActivity", "shared_home_activity_warning", SlockLogLevel.Warn)
+                logger = raftLogger("SlockHomeActivity", "shared_home_activity"),
+                warningLogger = raftLogger("SlockHomeActivity", "shared_home_activity_warning", RaftLogLevel.Warn)
             )
         }
     val homeSidebarOrderRepository =
@@ -2884,8 +2899,8 @@ private fun SlockAppShellReadyContent(
             RealSettingsRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                logger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order"),
-                warningLogger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order_warning", SlockLogLevel.Warn)
+                logger = raftLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order"),
+                warningLogger = raftLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order_warning", RaftLogLevel.Warn)
             )
         }
     val homeStore =
@@ -2901,7 +2916,7 @@ private fun SlockAppShellReadyContent(
             sharedStores.getOrCreateHomeStore(
                 scope = storeScope,
                 dataSource = homeDataSource,
-                diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home"),
+                diagnosticsLogger = raftLogger("SlockSharedHome", "shared_home"),
                 loadSidebarOrder = { serverId -> homeSidebarOrderRepository.getServerSidebarOrder(serverId) },
                 updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
                 loadServerOrder = { homeSidebarOrderRepository.getServerOrder() },
@@ -2918,7 +2933,7 @@ private fun SlockAppShellReadyContent(
             SharedDirectMessagePreviewPrefetchCoordinator(
                 conversationRepository = conversationRepository,
                 dispatchHome = { intent -> homeStore.dispatch(intent) },
-                diagnostics = slockLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", SlockLogLevel.Debug),
+                diagnostics = raftLogger("SlockDmPreviewPrefetch", "dm_preview_prefetch", RaftLogLevel.Debug),
             )
         }
     val homeActivityReplyThreadPrewarmDataSource =
@@ -2932,7 +2947,7 @@ private fun SlockAppShellReadyContent(
             sharedStores.apiEnvironmentStore
         ) {
             SharedThreadDataSource(
-                networkApi = NetworkSlockThreadApi(appShellNetworkClient),
+                networkApi = NetworkRaftThreadApi(appShellNetworkClient),
                 sessionStore = shellAuthStore,
                 pendingSendJournal = sharedStores.threadPendingSendJournal,
                 selectedServerStore = selectedServerStore,
@@ -2959,7 +2974,7 @@ private fun SlockAppShellReadyContent(
                 threadPageSizeProvider = { serverId ->
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
                 },
-                diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity_thread_prewarm")
+                diagnosticsLogger = raftLogger("SlockHomeActivity", "shared_home_activity_thread_prewarm")
             )
         }
     val homeActivityStore =
@@ -2995,8 +3010,8 @@ private fun SlockAppShellReadyContent(
             RealSettingsRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                logger = slockLogger("SlockSettingsRepository", "shared_settings_repository"),
-                warningLogger = slockLogger("SlockSettingsRepository", "shared_settings_repository_warning", SlockLogLevel.Warn),
+                logger = raftLogger("SlockSettingsRepository", "shared_settings_repository"),
+                warningLogger = raftLogger("SlockSettingsRepository", "shared_settings_repository_warning", RaftLogLevel.Warn),
                 channelRepository = channelRepository,
                 onAppearanceSnapshot = { ownerId, snapshot ->
                     messageBodyFontSizeOwnerKey(
@@ -3026,7 +3041,7 @@ private fun SlockAppShellReadyContent(
     // which the home store deliberately ignores — the modal is the sole consumer).
     val announcementsClient =
         remember(appShellNetworkClient) {
-            SlockAnnouncementsRemindersApiClient(NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient))
+            RaftAnnouncementsRemindersApiClient(NetworkRaftAnnouncementsRemindersApi(appShellNetworkClient))
         }
     var createChannelError by remember { mutableStateOf<String?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
@@ -3035,7 +3050,7 @@ private fun SlockAppShellReadyContent(
         pager.pageData.params.threadTimeCapabilities()
     }
     val hostThreadTimeContextProvider =
-        rememberLiveSlockTimeContext(
+        rememberLiveRaftTimeContext(
             capabilities = hostThreadTimeCapabilities,
             pageVisibleTick = pageVisibleTick
         )
@@ -3045,7 +3060,7 @@ private fun SlockAppShellReadyContent(
             pager.pageData.params.appShellWindowNavigationIntent(
                 fallbackServerId =
                     pager.pageData.params
-                        .slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+                        .raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
                         .initialServerId
             )
         }
@@ -3054,7 +3069,7 @@ private fun SlockAppShellReadyContent(
             pager.pageData.params.appShellDesktopShortcutNavigationIntent(
                 fallbackServerId =
                     pager.pageData.params
-                        .slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+                        .raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
                         .initialServerId
             )
         }
@@ -3062,15 +3077,15 @@ private fun SlockAppShellReadyContent(
     var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
-            eventBus.observe(build.raft.app.data.SlockDesktopShortcutContract.OpenEventName) { eventData ->
+            eventBus.observe(build.raft.app.data.RaftDesktopShortcutContract.OpenEventName) { eventData ->
                 // task #483: a shell-targeted event applies only to that shell;
                 // absent/blank slockShellInstanceId broadcasts to every shell.
                 val targetShellId =
-                    eventData?.optString(SLOCK_SHELL_INSTANCE_ID)?.trim().orEmpty()
+                    eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val intent = eventData.appShellDesktopShortcutEventNavigationIntent()
+                val intent = eventData?.toKuiklyJson().appShellDesktopShortcutEventNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=app_shortcut reason=invalid_identity")
                     return@observe
@@ -3083,13 +3098,13 @@ private fun SlockAppShellReadyContent(
                 desktopShortcutNavigationTick += 1
             }
         eventBus.post(
-            eventName = build.raft.app.data.SlockDesktopShortcutContract.OpenReadyEventName,
+            eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenReadyEventName,
             eventData = JSONObject(),
             source = "app_shell_desktop_shortcut_navigation_ready"
         )
         onDispose {
             eventBus.post(
-                eventName = build.raft.app.data.SlockDesktopShortcutContract.OpenNotReadyEventName,
+                eventName = build.raft.app.data.RaftDesktopShortcutContract.OpenNotReadyEventName,
                 eventData = JSONObject(),
                 source = "app_shell_desktop_shortcut_navigation_not_ready"
             )
@@ -3098,15 +3113,15 @@ private fun SlockAppShellReadyContent(
     }
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
-            eventBus.observe(SlockSystemNotificationContract.OpenEventName) { eventData ->
+            eventBus.observe(RaftSystemNotificationContract.OpenEventName) { eventData ->
                 // task #483: a shell-targeted event applies only to that shell;
                 // absent/blank slockShellInstanceId broadcasts to every shell.
                 val targetShellId =
-                    eventData?.optString(SLOCK_SHELL_INSTANCE_ID)?.trim().orEmpty()
+                    eventData?.optString(RAFT_SHELL_INSTANCE_ID)?.trim().orEmpty()
                 if (targetShellId.isNotEmpty() && targetShellId != storeScope.shellInstanceId) {
                     return@observe
                 }
-                val intent = eventData.appShellSystemNotificationNavigationIntent()
+                val intent = eventData?.toKuiklyJson().appShellSystemNotificationNavigationIntent()
                 if (intent == null) {
                     bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
                     return@observe
@@ -3119,13 +3134,13 @@ private fun SlockAppShellReadyContent(
                 systemNotificationNavigationTick += 1
             }
         eventBus.post(
-            eventName = SlockSystemNotificationContract.OpenReadyEventName,
+            eventName = RaftSystemNotificationContract.OpenReadyEventName,
             eventData = JSONObject(),
             source = "app_shell_notification_navigation_ready"
         )
         onDispose {
             eventBus.post(
-                eventName = SlockSystemNotificationContract.OpenNotReadyEventName,
+                eventName = RaftSystemNotificationContract.OpenNotReadyEventName,
                 eventData = JSONObject(),
                 source = "app_shell_notification_navigation_not_ready"
             )
@@ -3144,7 +3159,7 @@ private fun SlockAppShellReadyContent(
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
                 timeRangeBoundsProvider = { range -> currentHostThreadTimeContextProvider.value.current.toSearchIsoBounds(range) },
-                diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
+                diagnosticsLogger = raftLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )
         }
     val homeShellStore =
@@ -3173,7 +3188,7 @@ private fun SlockAppShellReadyContent(
                         ?.let { sharedStores.activityUnreadSummaryStore.refresh(ServerId(it), reason) }
                 },
                 resetActivity = homeActivityStore::reset,
-                diagnosticsLogger = slockLogger("SlockHomeShell", "shared_home_shell"),
+                diagnosticsLogger = raftLogger("SlockHomeShell", "shared_home_shell"),
                 scope = appShellCoroutineScope
             )
         }
@@ -3234,8 +3249,9 @@ private fun SlockAppShellReadyContent(
     val tasksRoute = tasksBinding.route
     val tasksViewModel = tasksRoute.viewModel
     val tasksState = tasksBinding.state
-    // Slack-aligned navigation was retired; persisted/flagged Slack tabs are ignored.
-    val slackNavTabKeys = listOf("home", "tasks", "members", "settings")
+    // Slack-aligned navigation was retired; persisted/flagged Slack tabs are ignored. The live
+    // ordered tab set is the app-shell bottom bar: Home, Activity, Tasks, Members, Settings.
+    val slackNavTabKeys = AppShellChildPageTabKeys
     val slackNavMode = false
     // Clamp a deep link / stale selection onto the active ordered key set: with the gate off
     // the Slack keys are not child pages, and with the gate on the legacy hidden keys (tasks/
@@ -3253,7 +3269,7 @@ private fun SlockAppShellReadyContent(
         // navRailActive is declared later in this composable, so inline the same
         // predicate here (rail = flag && LeftRail pref && DualPane).
         val railActive =
-            slockAdaptiveNavRailActive(
+            raftAdaptiveNavRailActive(
                 desktopModeEnabled = desktopModeOnLargeScreen,
                 paneState = shellScope.adaptivePane
             )
@@ -3313,7 +3329,7 @@ private fun SlockAppShellReadyContent(
         selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: homePreviewSession?.currentServerId
     val createChannelAgentStatusResolver =
         remember(appShellServerMembersStore, readyServerId) {
-            slockScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
+            raftScopedAgentStatusResolver(appShellServerMembersStore, readyServerId)
         }
     val appShellEnvironment = sharedStores.apiEnvironmentStore.current()
     val setupAdmissionHost =
@@ -3323,7 +3339,7 @@ private fun SlockAppShellReadyContent(
                 serverId = readyServerId,
                 environmentId =
                     appShellEnvironment.let { environment ->
-                        slockNetworkKmmRecoveryEnvironmentId(
+                        raftNetworkKmmRecoveryEnvironmentId(
                             environmentKey = environment.key,
                             apiBaseUrl = environment.apiBaseUrl,
                         )
@@ -3411,9 +3427,9 @@ private fun SlockAppShellReadyContent(
                 requestId = requestId,
             )
             sharedStores.eventBus.post(
-                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
                 eventData =
-                    SlockAdaptiveDetailOpenAck(
+                    RaftAdaptiveDetailOpenAck(
                         shellInstanceId = storeScope.shellInstanceId,
                         requestId = requestId,
                         accepted = false,
@@ -3438,7 +3454,7 @@ private fun SlockAppShellReadyContent(
         }
     }
     fun installAdaptiveHandoffLease(
-        selection: SlockAdaptiveDetailSelection,
+        selection: RaftAdaptiveDetailSelection,
         launchPayload: WireThreadLaunchPayload,
     ) {
         val nextOwner =
@@ -3467,16 +3483,16 @@ private fun SlockAppShellReadyContent(
     // task #37: the user's list column width (saved per device) and whether its divider is being
     // dragged. A drag that squeezes the detail below the column threshold folds the side thread
     // only when the finger lifts, so dragging across the threshold and back loses nothing.
-    val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore()) }
+    val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()) }
     var adaptiveListPanePreferredDp by remember {
-        mutableStateOf(slockListPanePreferredWidthDp(listPanePreferenceStore.readAdaptiveListPaneWidthSync()))
+        mutableStateOf(raftListPanePreferredWidthDp(listPanePreferenceStore.readAdaptiveListPaneWidthSync()))
     }
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
     // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
     // (The handle also reports the end when it goes inactive or leaves composition.)
     val listPaneResizeDefersFold =
         adaptiveListPaneResizing && desktopModeOnLargeScreen &&
-            adaptivePane.layout == SlockAdaptivePaneLayout.DualPane
+            adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
     val sideThreadNeedsFold =
         !listPaneResizeDefersFold &&
             adaptiveWorkspaceSession.visibleSideThread() != null &&
@@ -3504,7 +3520,7 @@ private fun SlockAppShellReadyContent(
     val tasksDetailOverlayKeepsOwnership =
         appShellTasksDetailOverlayStaysActive(
             desktopModeOnLargeScreen = desktopModeOnLargeScreen,
-            dualPane = adaptivePane.layout == SlockAdaptivePaneLayout.DualPane,
+            dualPane = adaptivePane.layout == RaftAdaptivePaneLayout.DualPane,
             selectedTab = selectedTab,
             selectionPresent = adaptiveWorkspaceState?.selection != null,
         )
@@ -3517,7 +3533,7 @@ private fun SlockAppShellReadyContent(
     val tasksDetailOverlayOpen =
         appShellTasksDetailOverlayOpen(
             desktopModeOnLargeScreen = desktopModeOnLargeScreen,
-            dualPane = adaptivePane.layout == SlockAdaptivePaneLayout.DualPane,
+            dualPane = adaptivePane.layout == RaftAdaptivePaneLayout.DualPane,
             selectedTab = selectedTab,
             selectionPresent = adaptiveWorkspaceState?.selection != null,
             overlayActive = tasksDetailOverlayActive,
@@ -3554,7 +3570,7 @@ private fun SlockAppShellReadyContent(
                 current.copy(
                     workspace =
                         current.workspace?.let { state ->
-                            reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
+                            reduceRaftAdaptiveWorkspace(state, RaftAdaptiveWorkspaceIntent.TerminalReset)
                         },
                     launchPayload = null,
                     pendingDetailOpens = emptyMap(),
@@ -3584,28 +3600,28 @@ private fun SlockAppShellReadyContent(
         adaptiveWorkspaceStore.update { current ->
             var next =
                 current.workspace
-                    ?: SlockAdaptiveWorkspaceState(
+                    ?: RaftAdaptiveWorkspaceState(
                         shellInstanceId = storeScope.shellInstanceId,
                         serverId = serverId,
                     )
             val changed = next.serverId != serverId
             if (changed) {
                 next =
-                    reduceSlockAdaptiveWorkspace(
+                    reduceRaftAdaptiveWorkspace(
                         next,
-                        SlockAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
+                        RaftAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
                     )
                 authorityChanged = true
             }
             next =
-                reduceSlockAdaptiveWorkspace(
+                reduceRaftAdaptiveWorkspace(
                     next,
-                    SlockAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
+                    RaftAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
                 )
             next =
-                reduceSlockAdaptiveWorkspace(
+                reduceRaftAdaptiveWorkspace(
                     next,
-                    SlockAdaptiveWorkspaceIntent.ParentVisibilityChanged(parentVisible),
+                    RaftAdaptiveWorkspaceIntent.ParentVisibilityChanged(parentVisible),
                 )
             current.copy(
                 workspace = next,
@@ -3648,10 +3664,10 @@ private fun SlockAppShellReadyContent(
     DisposableEffect(sharedStores, storeScope.shellInstanceId) {
         val openSubscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_OPEN_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val request = eventData?.toSlockAdaptiveDetailOpenRequestOrNull()
+                val request = eventData?.toRaftAdaptiveDetailOpenRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
                 postShellAdaptiveTrace(
@@ -3662,7 +3678,7 @@ private fun SlockAppShellReadyContent(
                 )
                 val session = adaptiveWorkspaceStore.snapshot()
                 val (nextSession, decision) =
-                    evaluateSlockAdaptiveDetailOpen(
+                    evaluateRaftAdaptiveDetailOpen(
                         request = request,
                         workspaceEnabled = desktopModeOnLargeScreen,
                         session = session,
@@ -3674,7 +3690,7 @@ private fun SlockAppShellReadyContent(
                     adaptiveWorkspaceStore.update { nextSession }
                 }
                 when (decision) {
-                    is SlockAdaptiveDetailOpenDecision.Rejected -> {
+                    is RaftAdaptiveDetailOpenDecision.Rejected -> {
                         postShellAdaptiveTrace(
                             hop = "open_rejected_ack",
                             identityKey = request.identity.key,
@@ -3682,9 +3698,9 @@ private fun SlockAppShellReadyContent(
                             requestId = request.requestId,
                         ) { put("reason", decision.reason) }
                         sharedStores.eventBus.post(
-                            eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                            eventName = RAFT_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
                             eventData =
-                                SlockAdaptiveDetailOpenAck(
+                                RaftAdaptiveDetailOpenAck(
                                     shellInstanceId = storeScope.shellInstanceId,
                                     requestId = request.requestId,
                                     accepted = false,
@@ -3701,10 +3717,10 @@ private fun SlockAppShellReadyContent(
                                 requestId = request.requestId,
                             )
                     }
-                    is SlockAdaptiveDetailOpenDecision.Accepted -> {
+                    is RaftAdaptiveDetailOpenDecision.Accepted -> {
                         // Ack is held until the destination pane child reports READY (mount +
                         // draft/viewport restore), not merely received. See the
-                        // SLOCK_ADAPTIVE_DETAIL_READY_EVENT subscription below.
+                        // RAFT_ADAPTIVE_DETAIL_READY_EVENT subscription below.
                         postShellAdaptiveTrace(
                             hop = "open_accepted",
                             identityKey = request.identity.key,
@@ -3716,15 +3732,15 @@ private fun SlockAppShellReadyContent(
             }
         val readySubscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_DETAIL_READY_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_READY_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val shellId = eventData?.optString(SLOCK_ADAPTIVE_DETAIL_SHELL_ID)?.trim()
+                val shellId = eventData?.optString(RAFT_ADAPTIVE_DETAIL_SHELL_ID)?.trim()
                     ?: return@observe
                 if (shellId != storeScope.shellInstanceId) return@observe
-                val identityKey = eventData.optString(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
+                val identityKey = eventData.optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY).trim()
                 val generation =
-                    eventData.optDouble(SLOCK_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
+                    eventData.optDouble(RAFT_ADAPTIVE_DETAIL_GENERATION, 0.0).toLong()
                 if (identityKey.isBlank() || generation <= 0L) return@observe
                 postShellAdaptiveTrace(
                     hop = "ready_received",
@@ -3733,7 +3749,7 @@ private fun SlockAppShellReadyContent(
                 )
                 val session = adaptiveWorkspaceStore.snapshot()
                 val (nextSession, pending) =
-                    completeSlockAdaptiveDetailOpen(
+                    completeRaftAdaptiveDetailOpen(
                         identityKey = identityKey,
                         generation = generation,
                         session = session,
@@ -3759,9 +3775,9 @@ private fun SlockAppShellReadyContent(
                     requestId = pending.requestId,
                 )
                 sharedStores.eventBus.post(
-                    eventName = SLOCK_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
+                    eventName = RAFT_ADAPTIVE_DETAIL_OPEN_ACK_EVENT,
                     eventData =
-                        SlockAdaptiveDetailOpenAck(
+                        RaftAdaptiveDetailOpenAck(
                             shellInstanceId = storeScope.shellInstanceId,
                             requestId = pending.requestId,
                             accepted = true,
@@ -3780,16 +3796,16 @@ private fun SlockAppShellReadyContent(
         // pending while the transaction is already dead on the source side.
         val cancelSubscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_DETAIL_CANCEL_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_CANCEL_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val cancel = eventData?.toSlockAdaptiveDetailCancelOrNull()
+                val cancel = eventData?.toRaftAdaptiveDetailCancelOrNull()
                     ?: return@observe
                 if (cancel.shellInstanceId != storeScope.shellInstanceId) return@observe
                 val session = adaptiveWorkspaceStore.snapshot()
                 val pending = session.pendingDetailOpens[cancel.requestId] ?: return@observe
                 adaptiveWorkspaceStore.update { current ->
-                    dropSlockAdaptiveDetailOpen(cancel.requestId, current)
+                    dropRaftAdaptiveDetailOpen(cancel.requestId, current)
                 }
                 sharedStores
                     .adaptiveScrollAnchorStore(storeScope)
@@ -3809,14 +3825,14 @@ private fun SlockAppShellReadyContent(
         // to the pending request so a stray commit receipt cannot settle it.
         val preparedSubscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_DETAIL_PREPARED_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_PREPARED_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val prepared = eventData?.toSlockAdaptiveDetailPreparedOrNull()
+                val prepared = eventData?.toRaftAdaptiveDetailPreparedOrNull()
                     ?: return@observe
                 if (prepared.shellInstanceId != storeScope.shellInstanceId) return@observe
                 adaptiveWorkspaceStore.update { current ->
-                    markSlockAdaptiveDetailOpenPrepared(
+                    markRaftAdaptiveDetailOpenPrepared(
                         requestId = prepared.requestId,
                         sourceControllerToken = prepared.sourceControllerToken,
                         targetControllerToken = prepared.targetControllerToken,
@@ -3831,14 +3847,14 @@ private fun SlockAppShellReadyContent(
         // page is still alive.
         val commitSubscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
+                eventName = RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val result = eventData?.toSlockAdaptiveNativeCommitResultOrNull()
+                val result = eventData?.toRaftAdaptiveNativeCommitResultOrNull()
                     ?: return@observe
                 val session = adaptiveWorkspaceStore.snapshot()
                 val (nextSession, pending) =
-                    settleSlockAdaptiveDetailOpen(
+                    settleRaftAdaptiveDetailOpen(
                         result = result,
                         session = session,
                     )
@@ -3862,10 +3878,10 @@ private fun SlockAppShellReadyContent(
             }
         val closeSubscription =
             sharedStores.eventBus.observe(
-                eventName = SLOCK_ADAPTIVE_DETAIL_CLOSE_EVENT,
+                eventName = RAFT_ADAPTIVE_DETAIL_CLOSE_EVENT,
                 crossProcess = true,
             ) { eventData ->
-                val request = eventData?.toSlockAdaptiveDetailCloseRequestOrNull()
+                val request = eventData?.toRaftAdaptiveDetailCloseRequestOrNull()
                     ?: return@observe
                 if (request.shellInstanceId != storeScope.shellInstanceId) return@observe
                 val before = adaptiveWorkspaceStore.snapshot()
@@ -3901,7 +3917,7 @@ private fun SlockAppShellReadyContent(
             readySession?.qaBootstrap != null &&
             (homeState.content is SharedHomeContentState.Content || homeState.content is SharedHomeContentState.Empty)
         ) {
-            slockPlatformCompleteQaBootstrapRouteReady(authDataSource)
+            raftPlatformCompleteQaBootstrapRouteReady(authDataSource)
         }
     }
     LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
@@ -3995,7 +4011,7 @@ private fun SlockAppShellReadyContent(
             selectedServerId,
             renderedHomeServerId
         ) {
-            SlockShellStoreScope.create(
+            RaftShellStoreScope.create(
                 shellInstanceId = storeScope.shellInstanceId,
                 initialServerId =
                     appShellNavigationServerId(
@@ -4008,7 +4024,7 @@ private fun SlockAppShellReadyContent(
     // The native shell can dispatch Back directly to popMainRoute, bypassing
     // a child Kuikly page's BackHandler. Keep the same selection in both hosts.
     val membersDetailSelection = remember(navigationStoreScope, readySession?.user?.id, readyServerId) {
-        mutableStateOf<KuiklyMemberDetailPayload?>(null)
+        mutableStateOf<RaftMemberDetailPayload?>(null)
     }
     val latestReadySession by rememberUpdatedState(readySession)
     val latestAuthoritativeHomeStartAllowed by rememberUpdatedState(authoritativeHomeStartAllowed)
@@ -4154,7 +4170,7 @@ private fun SlockAppShellReadyContent(
                     (setupAdmissionAllowsHome || cachedHomePreview)
             )
         )
-        slockLogInfo(
+        raftLogInfo(
             "SlockForegroundPerf",
             "surface_visible_wait plannedMs=$delayMs actualMs=${surfaceWaitMark.elapsedNow().inWholeMilliseconds} visible=$homeSurfaceVisible"
         )
@@ -4199,7 +4215,7 @@ private fun SlockAppShellReadyContent(
         remember(hostThreadTimeCapabilities, sessionTimeFormat) {
             hostThreadTimeCapabilities
                 ?.let {
-                    SlockTimeContext(
+                    RaftTimeContext(
                         localOffsetMinutes = it.localOffsetMinutes,
                         timeFormat = it.timeFormat
                     )
@@ -4245,7 +4261,7 @@ private fun SlockAppShellReadyContent(
         }
         bridge.log("diagnostics_deeplink_complete id=${request.id} opened=$opened")
     }
-    val appShellModalHostState = rememberSlockUnifiedDialogHostState()
+    val appShellModalHostState = rememberRaftUnifiedDialogHostState()
     val realtimeEventMapper =
         remember(sharedStores) {
             RealtimeEventMapper(
@@ -4267,9 +4283,9 @@ private fun SlockAppShellReadyContent(
     // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
     DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore) {
         val ownerId = "app-shell:${pager.pagerId}"
-        SlockVisibleConversationRegistry.register(ownerId) {
+        RaftVisibleConversationRegistry.register(ownerId) {
             if (!sharedStores.isActiveAppShellPager(pager.pagerId)) return@register null
-            SlockVisibleConversationSnapshot(
+            RaftVisibleConversationSnapshot(
                 currentServerId = selectedServerStore.selectedServerId.value,
                 visibleConversationKey =
                     appShellVisibleForegroundConversationKey(
@@ -4281,7 +4297,7 @@ private fun SlockAppShellReadyContent(
                 conversationDirectory = latestAppShellConversationDirectory
             )
         }
-        onDispose { SlockVisibleConversationRegistry.unregister(ownerId) }
+        onDispose { RaftVisibleConversationRegistry.unregister(ownerId) }
     }
     val visibleRefreshGate = remember { AppShellVisibleRefreshGate() }
 
@@ -4368,7 +4384,7 @@ private fun SlockAppShellReadyContent(
             current.copy(
                 workspace =
                     current.workspace?.let { state ->
-                        reduceSlockAdaptiveWorkspace(state, SlockAdaptiveWorkspaceIntent.TerminalReset)
+                        reduceRaftAdaptiveWorkspace(state, RaftAdaptiveWorkspaceIntent.TerminalReset)
                     },
                 launchPayload = null,
             )
@@ -4645,8 +4661,8 @@ private fun SlockAppShellReadyContent(
      * could write back parentVisible=false (pre-switch), leaving the new detail inactive while the
      * previous conversation (e.g. Home's #all) stayed on screen.
      */
-    fun openLaunchPayloadInAdaptiveDetail(launchPayload: WireThreadLaunchPayload): SlockAdaptiveDetailSelection? {
-        val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
+    fun openLaunchPayloadInAdaptiveDetail(launchPayload: WireThreadLaunchPayload): RaftAdaptiveDetailSelection? {
+        val adaptiveIdentity = readyServerId?.let(launchPayload::toRaftAdaptiveDetailIdentity)
         if (!desktopModeOnLargeScreen || adaptiveIdentity == null) return null
         var before: SharedAdaptiveWorkspaceSession? = null
         val after =
@@ -4724,7 +4740,7 @@ private fun SlockAppShellReadyContent(
                 "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
-        val adaptiveIdentity = readyServerId?.let(launchPayload::toSlockAdaptiveDetailIdentity)
+        val adaptiveIdentity = readyServerId?.let(launchPayload::toRaftAdaptiveDetailIdentity)
         if (openLaunchPayloadInAdaptiveDetail(launchPayload) != null) return
         // task #45: while desktop mode is OFF the standalone push still owns the screen,
         // but a parked workspace (same server) must track the user's current selection —
@@ -4734,9 +4750,9 @@ private fun SlockAppShellReadyContent(
                 val workspace = current.workspace ?: return@update current
                 if (workspace.serverId != adaptiveIdentity.serverId) return@update current
                 val next =
-                    reduceSlockAdaptiveWorkspace(
+                    reduceRaftAdaptiveWorkspace(
                         workspace,
-                        SlockAdaptiveWorkspaceIntent.ParkSelection(adaptiveIdentity),
+                        RaftAdaptiveWorkspaceIntent.ParkSelection(adaptiveIdentity),
                     )
                 current.copy(
                     workspace = next,
@@ -4785,7 +4801,7 @@ private fun SlockAppShellReadyContent(
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
         if (
             !desktopModeOnLargeScreen ||
-            workspace.pane.layout != SlockAdaptivePaneLayout.DualPane ||
+            workspace.pane.layout != RaftAdaptivePaneLayout.DualPane ||
             workspace.selection != null ||
             adaptiveDefaultLandingServerId == serverId
         ) {
@@ -4796,11 +4812,11 @@ private fun SlockAppShellReadyContent(
         val conversations: List<HomeConversationRow> =
             content.snapshot.channels + content.snapshot.directMessages
         val landingId =
-            resolveSlockAdaptiveHomeLandingId(
+            resolveRaftAdaptiveHomeLandingId(
                 selectedThreadId = selectedHomeConversationId,
                 candidates =
                     conversations.map { row ->
-                        SlockAdaptiveHomeLandingCandidate(
+                        RaftAdaptiveHomeLandingCandidate(
                             threadId = row.threadId.value,
                             name = row.name,
                         )
@@ -4902,7 +4918,7 @@ private fun SlockAppShellReadyContent(
     }
 
     // External sources only transport this typed identity envelope in pageData. The queue and
-    // its consumed/opened markers live with the window's SlockShellStoreScope, so an AppShell
+    // its consumed/opened markers live with the window's RaftShellStoreScope, so an AppShell
     // recreation or duplicate PendingIntent cannot replay the route.
     LaunchedEffect(
         notificationWindowNavigationIntent?.key,
@@ -5053,7 +5069,7 @@ private fun SlockAppShellReadyContent(
         )
         if (current == null) return
         val selection = current.selection ?: return
-        val request = SlockAdaptiveDetailCloseRequest(current.shellInstanceId, selection.identity.key, selection.generation)
+        val request = RaftAdaptiveDetailCloseRequest(current.shellInstanceId, selection.identity.key, selection.generation)
         val next = adaptiveWorkspaceStore.update { it.backFromDetail(request) }
         releaseAdaptiveHandoffLease(selection.generation)
         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(next.detailListSelectionId()))
@@ -5142,7 +5158,7 @@ private fun SlockAppShellReadyContent(
         }
         if (
             desktopModeOnLargeScreen &&
-            adaptiveWorkspaceState?.presentation == SlockAdaptiveWorkspacePresentation.DetailOnly
+            adaptiveWorkspaceState?.presentation == RaftAdaptiveWorkspacePresentation.DetailOnly
         ) {
             dismissAdaptiveDetailSelection()
             return true
@@ -5150,7 +5166,24 @@ private fun SlockAppShellReadyContent(
         return false
     }
 
+    fun openAppShellActivityTab(source: String) {
+        bridge.log("app_shell_activity_tab_open source=$source from=$selectedTab")
+        railInlineSecondaryDestination = null
+        if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, "activity")) {
+            homeFocusLossDismissEpoch += 1
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+        }
+        selectAppShellTab("activity", directChildSwitch = true)
+        retainedAppShellTabs = retainedAppShellTabs + "activity"
+    }
+
     fun openHomeSecondaryDestination(destination: String) {
+        if (retainedHomeSecondaryDestination(destination) == HomeDestinationActivity) {
+            // artin 2026-10-20: Activity is a bottom tab; the old Home 动态 destination (and any
+            // caller still asking for it) lands on the kept-alive Activity tab, not a pushed page.
+            openAppShellActivityTab(source = "home_secondary_destination")
+            return
+        }
         retainedHomeSecondaryDestination(destination)?.let { retainedDestination ->
             homeShellStore.dispatch(retainedDestination.toHomeSecondaryOpenIntent())
             pager.openHomeSecondaryPage(retainedDestination, threadTimeContext, navigationStoreScope)
@@ -5172,7 +5205,7 @@ private fun SlockAppShellReadyContent(
         }
     }
 
-    SlockAppShellRootBackHandler(
+    RaftAppShellRootBackHandler(
         onLifecycleLog = { event ->
             bridge.log(
                 "app_back_root_handler $event selectedTab=$selectedTab " +
@@ -5332,7 +5365,7 @@ private fun SlockAppShellReadyContent(
         }
     }
 
-    fun handleRealtimeAuthRefreshRequest(eventData: JSONObject) {
+    fun handleRealtimeAuthRefreshRequest(eventData: JsonObject) {
         val requestedServerId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
         val reason = eventData.optString("reason").takeIf { it.isNotBlank() } ?: "reconnect"
         val currentSession =
@@ -5371,26 +5404,26 @@ private fun SlockAppShellReadyContent(
                     pendingRealtimeAuthRefreshReason = null
                     pendingRealtimeAuthRefreshPreviousFamilyId = null
                     bridge.realtimeAuthRefreshFinished(reason, success = false)
-                    slockLogInfo(
+                    raftLogInfo(
                         "SlockSharedAuth",
                         "shared_realtime_auth_refresh_failed reason=$reason result=unauthenticated",
-                        SlockPlatformLogHint.AuthCritical
+                        RaftPlatformLogHint.AuthCritical
                     )
                 }
                 is SharedAuthResult.Failure -> {
                     pendingRealtimeAuthRefreshReason = null
                     pendingRealtimeAuthRefreshPreviousFamilyId = null
                     bridge.realtimeAuthRefreshFinished(reason, success = false)
-                    slockLogInfo(
+                    raftLogInfo(
                         "SlockSharedAuth",
                         "shared_realtime_auth_refresh_failed reason=$reason code=${result.code}",
-                        SlockPlatformLogHint.AuthCritical
+                        RaftPlatformLogHint.AuthCritical
                     )
                 }
             }
         }
     }
-    val latestRealtimeAuthRefreshHandler by rememberUpdatedState<(JSONObject) -> Unit>(
+    val latestRealtimeAuthRefreshHandler by rememberUpdatedState<(JsonObject) -> Unit>(
         { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
@@ -5460,7 +5493,7 @@ private fun SlockAppShellReadyContent(
                         )
                     }
                 },
-                log = slockLogger("SlockRealtimeDomain")
+                log = raftLogger("SlockRealtimeDomain")
             )
         activeAppShellCanonicalFinalSinks = sinks
         appShellRealtimeDomainEventOwner.registerGuardedSinks(sinks)
@@ -5478,9 +5511,9 @@ private fun SlockAppShellReadyContent(
                 appShellCoroutineScope.launch {
                     hostNetworkStatus =
                         if (signal.online) {
-                            SlockAppShellNetworkStatus.Online
+                            RaftAppShellNetworkStatus.Online
                         } else {
-                            SlockAppShellNetworkStatus.Offline
+                            RaftAppShellNetworkStatus.Offline
                         }
                 }
             }
@@ -5495,22 +5528,24 @@ private fun SlockAppShellReadyContent(
         authoritativeHomeStartAllowed,
     ) {
         var suppressedVisibleRefreshCount = 0
-        val onRealtimeEvent: (JSONObject) -> Unit = onRealtimeEvent@{ rawEventData ->
+        // Events arrive as immutable kotlinx JsonObjects, so they are shared with the launched
+        // coroutine as-is: no snapshot copy, no Kuikly JSONObject round trip.
+        val onRealtimeEvent: (JsonObject) -> Unit = onRealtimeEvent@{ eventData ->
             if (!latestAuthoritativeHomeStartAllowed) return@onRealtimeEvent
             if (
-                rawEventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
-                    SlockRealtimeNotifyContract.ActionPresenceTransportConnected
+                eventData.optString(RaftRealtimeNotifyContract.KeyAction) ==
+                    RaftRealtimeNotifyContract.ActionPresenceTransportConnected
             ) {
                 val serverId =
-                    rawEventData
-                        .optString(SlockRealtimeNotifyContract.KeyServerId)
+                    eventData
+                        .optString(RaftRealtimeNotifyContract.KeyServerId)
                         .trim()
                         .takeIf { it.isNotBlank() }
                 val transportEpoch =
-                    rawEventData
-                        .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                    eventData
+                        .optLong(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
                         .takeIf { it > 0L }
-                val witness = rawEventData.realtimeConnectionWitnessOrNull()
+                val witness = eventData.realtimeConnectionWitnessOrNull()
                 val authority = processRealtimeAuthorityFlow.value
                 val shellServerId =
                     selectedServerStore.selectedServerId.value
@@ -5543,33 +5578,31 @@ private fun SlockAppShellReadyContent(
                 }
                 return@onRealtimeEvent
             }
-                val eventDataSnapshot = rawEventData.toString()
                 val appearanceGenerationAtDelivery = latestVisibleAppearanceGeneration
                 appShellCoroutineScope.launch {
-                    val eventData = JSONObject(eventDataSnapshot)
                     if (
-                        eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
-                        SlockRealtimeNotifyContract.ActionAppLifecycle
+                        eventData.optString(RaftRealtimeNotifyContract.KeyAction) ==
+                        RaftRealtimeNotifyContract.ActionAppLifecycle
                     ) {
-                        val event = eventData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                        val event = eventData.optString(RaftRealtimeNotifyContract.KeyLifecycleEvent)
                         val foregroundEpoch =
                             eventData
-                                .optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L)
+                                .optLong(RaftRealtimeNotifyContract.KeyForegroundEpoch, 0L)
                                 .takeIf { it > 0L }
                         if (!appLifecycleEventTargetsShell(
-                                eventShellInstanceId = eventData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                                eventShellInstanceId = eventData.optString(RaftRealtimeNotifyContract.KeyShellInstanceId),
                                 routeShellInstanceId = storeScope.shellInstanceId
                             )
                         ) {
                             return@launch
                         }
-                        if (eventData.optString(SlockRealtimeNotifyContract.KeyPageName) != SLOCK_APP_SHELL_PAGE) {
+                        if (eventData.optString(RaftRealtimeNotifyContract.KeyPageName) != RAFT_APP_SHELL_PAGE) {
                             return@launch
                         }
                         if (
-                            event == SlockRealtimeNotifyContract.LifecycleHiddenPause ||
-                            event == SlockRealtimeNotifyContract.LifecycleHidden ||
-                            event == SlockRealtimeNotifyContract.LifecycleHiddenKeepAlive
+                            event == RaftRealtimeNotifyContract.LifecycleHiddenPause ||
+                            event == RaftRealtimeNotifyContract.LifecycleHidden ||
+                            event == RaftRealtimeNotifyContract.LifecycleHiddenKeepAlive
                         ) {
                             visibleRefreshGate.onLifecycleHidden(
                                 appearanceGeneration = appearanceGenerationAtDelivery,
@@ -5578,8 +5611,8 @@ private fun SlockAppShellReadyContent(
                             return@launch
                         }
                         val visibleLifecycleEvent =
-                            event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
-                                event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                            event == RaftRealtimeNotifyContract.LifecycleVisibleResume ||
+                                event == RaftRealtimeNotifyContract.LifecycleVisibleShow
                         if (visibleLifecycleEvent) {
                             foregroundEpoch?.let(visibleRefreshGate::observeLifecycleForegroundEpoch)
                         }
@@ -5630,9 +5663,9 @@ private fun SlockAppShellReadyContent(
                             if (refreshedVisibleRoute && plan?.refreshServerMembers == true) {
                                 sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                             }
-                            slockLogInfo(
+                            raftLogInfo(
                                 "SlockForegroundPerf",
-                                "fg_resume event=$event serverId=${eventData.optString(SlockRealtimeNotifyContract.KeyServerId)} epoch=${foregroundEpoch ?: 0L} routeRefreshed=$refreshedVisibleRoute suppressedVisibleRefresh=$suppressedVisibleRefreshCount elapsedMs=${fgResumeMark.elapsedNow().inWholeMilliseconds}"
+                                "fg_resume event=$event serverId=${eventData.optString(RaftRealtimeNotifyContract.KeyServerId)} epoch=${foregroundEpoch ?: 0L} routeRefreshed=$refreshedVisibleRoute suppressedVisibleRefresh=$suppressedVisibleRefreshCount elapsedMs=${fgResumeMark.elapsedNow().inWholeMilliseconds}"
                             )
                             suppressedVisibleRefreshCount = 0
                         }
@@ -5646,7 +5679,7 @@ private fun SlockAppShellReadyContent(
                         decodeSharedShellRealtimeEvent(
                             eventData,
                             realtimeEventMapper,
-                            slockLogger("SlockRealtimeDecode")
+                            raftLogger("SlockRealtimeDecode")
                         ) ?: return@launch
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
                     val witness = eventData.realtimeConnectionWitnessOrNull() ?: return@launch
@@ -5655,7 +5688,7 @@ private fun SlockAppShellReadyContent(
                     // canary decides reconnects by it, so frame/signal order across coroutines does not matter.
                     val frameTransportEpoch =
                         eventData
-                            .optLong(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
+                            .optLong(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, 0L)
                             .takeIf { it > 0L }
                     val activeSelectedServerId = selectedServerStore.selectedServerId.value
                     val processAccepted =
@@ -5724,7 +5757,7 @@ private fun SlockAppShellReadyContent(
                             isSelected = { candidate -> selectedServerStore.isSelected(candidate) },
                             runIfCurrentGrant = sharedStores.realtimeAuthorityProvider::runIfCurrentGrant,
                             disconnectAndReset = {
-                                slockLogWarn(
+                                raftLogWarn(
                                     "SlockRealtimeDomain",
                                     "shared_realtime_server_membership_removed serverId=${event.serverId.value}"
                                 )
@@ -5752,7 +5785,7 @@ private fun SlockAppShellReadyContent(
                             isSelected = { candidate -> selectedServerStore.isSelected(candidate) },
                             runIfCurrentGrant = sharedStores.realtimeAuthorityProvider::runIfCurrentGrant,
                             disconnectAndReset = {
-                                slockLogWarn(
+                                raftLogWarn(
                                     "SlockRealtimeDomain",
                                     "shared_realtime_server_deleted serverId=${event.serverId.value}"
                                 )
@@ -5796,7 +5829,7 @@ private fun SlockAppShellReadyContent(
                             }
                             if (latestForegroundMessageBannersEnabled) {
                                 val banner =
-                                    slockNotificationPushBannerOrNull(
+                                    raftNotificationPushBannerOrNull(
                                     event = event,
                                     currentServerId = activeSelectedServerId,
                                     visibleConversationKey =
@@ -5841,7 +5874,7 @@ private fun SlockAppShellReadyContent(
     }
 
     val navRailActive =
-        slockAdaptiveNavRailActive(
+        raftAdaptiveNavRailActive(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
@@ -5858,6 +5891,9 @@ private fun SlockAppShellReadyContent(
     val activityTabLabel = stringResource(MR.strings.tab_activity)
     val searchTabLabel = stringResource(MR.strings.home_nav_search)
     val moreTabLabel = stringResource(MR.strings.tab_more)
+    // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
+    // notification center keeps its own Bell dot in the Home head (task #18).
+    val activityTabBadgeCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
@@ -5867,11 +5903,13 @@ private fun SlockAppShellReadyContent(
         dmsTabLabel,
         activityTabLabel,
         moreTabLabel,
-        slackNavTabKeys
+        slackNavTabKeys,
+        activityTabBadgeCount
     ) {
         appShellBottomTabs(
             selectedKey = selectedTab,
             orderedTabKeys = slackNavTabKeys,
+            activityBadgeCount = activityTabBadgeCount,
             labelFor = { key ->
                 when (key) {
                     "home" -> homeTabLabel
@@ -5996,8 +6034,8 @@ private fun SlockAppShellReadyContent(
     }
     // MEMBERS_COMPUTERS_IDLE_PREWARM_END
 
-    val appShellHomeLabels = SlockHomeShellLabels.localized()
-    val serverDrawerUserHeader = rememberSlockServerDrawerUserHeader(readySession)
+    val appShellHomeLabels = RaftHomeShellLabels.localized()
+    val serverDrawerUserHeader = rememberRaftServerDrawerUserHeader(readySession)
     fun openServerDrawerHome(serverIdValue: String) {
         val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() } ?: return
         val session = latestReadySession
@@ -6037,7 +6075,7 @@ private fun SlockAppShellReadyContent(
                 homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
             }
             val targetStoreScope =
-                SlockShellStoreScope.create(
+                RaftShellStoreScope.create(
                     shellInstanceId = storeScope.shellInstanceId,
                     initialServerId = normalizedServerId
                 )
@@ -6144,7 +6182,7 @@ private fun SlockAppShellReadyContent(
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
         val targetStoreScope =
-            SlockShellStoreScope.create(
+            RaftShellStoreScope.create(
                 shellInstanceId = storeScope.shellInstanceId,
                 initialServerId = normalizedServerId
             )
@@ -6160,7 +6198,7 @@ private fun SlockAppShellReadyContent(
     val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
                 val nextTab = retainedAppShellSelectedTab(it)
-                if (slockSlackNavMoreTapOpensMenu(slackNavMode, nextTab)) {
+                if (raftSlackNavMoreTapOpensMenu(slackNavMode, nextTab)) {
                     // Every More tap (also when More is already selected) reopens the menu;
                     // the tab only switches once a destination is picked.
                     slackNavMoreMenuVisible = true
@@ -6214,7 +6252,7 @@ private fun SlockAppShellReadyContent(
             }
 
     val mainRouteSurface: @Composable () -> Unit = {
-        SlockAppShellSurface(
+        RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
             onBottomTabSelected = onAppShellTabSelected,
@@ -6236,16 +6274,16 @@ private fun SlockAppShellReadyContent(
                             val settingsTab =
                                 if (slackNavMode) "more" else "settings"
                             listOf(
-                                SlockBottomTabItemPayload(
+                                RaftBottomTabItemPayload(
                                     key = settingsTab,
                                     label = settingsTabLabel,
-                                    iconName = SlockLucideIconName.Settings,
+                                    iconName = RaftLucideIconName.Settings,
                                     selected =
                                         retainedAppShellSelectedTab(selectedTab) == "settings" ||
                                             (
                                                 slackNavMode &&
                                                     retainedAppShellSelectedTab(selectedTab) == "more" &&
-                                                    slackNavMoreDestination == SlockSlackNavMoreDestination.Settings
+                                                    slackNavMoreDestination == RaftSlackNavMoreDestination.Settings
                                             ),
                                 )
                             )
@@ -6283,10 +6321,10 @@ private fun SlockAppShellReadyContent(
                         // participates in retained-tab state.
                         val railSearchItem =
                             remember(searchTabLabel, railInlineSecondaryDestination) {
-                                SlockBottomTabItemPayload(
+                                RaftBottomTabItemPayload(
                                     key = AppShellRailSearchKey,
                                     label = searchTabLabel,
-                                    iconName = SlockLucideIconName.Search,
+                                    iconName = RaftLucideIconName.Search,
                                     selected = railInlineSecondaryDestination == AppShellRailSearchKey,
                                 )
                             }
@@ -6300,10 +6338,11 @@ private fun SlockAppShellReadyContent(
                                     // surface directly.
                                     if (none { it.key == "activity" }) {
                                         add(
-                                            SlockBottomTabItemPayload(
+                                            RaftBottomTabItemPayload(
                                                 key = "activity",
                                                 label = activityTabLabel,
-                                                iconName = SlockLucideIconName.Bell,
+                                                iconName = appShellTabIcon("activity"),
+                                                badgeCount = activityTabBadgeCount,
                                                 selected =
                                                     railInlineSecondaryDestination == null &&
                                                         retainedAppShellSelectedTab(selectedTab) == "activity",
@@ -6314,7 +6353,7 @@ private fun SlockAppShellReadyContent(
                                 }
                                 // task #49: same order as the web LeftRail.
                                 .orderedLikeWebRail { it.key }
-                        SlockNavigationRailTabBar(
+                        RaftNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
                                 // Any rail tap closes the rail switcher, including Search (an
@@ -6336,7 +6375,7 @@ private fun SlockAppShellReadyContent(
                             modifier = Modifier.fillMaxHeight(),
                             header =
                                 railServerItem?.let { server ->
-                                    SlockNavigationRailHeader(
+                                    RaftNavigationRailHeader(
                                         key = "server:${server.id}",
                                         label = server.name,
                                         unread = railServerUnread
@@ -6365,7 +6404,7 @@ private fun SlockAppShellReadyContent(
                                     // The rail's settings gear must land on the real Settings
                                     // destination — bypass the More tap→menu interception the
                                     // bottom bar path performs.
-                                    slackNavMoreDestination = SlockSlackNavMoreDestination.Settings
+                                    slackNavMoreDestination = RaftSlackNavMoreDestination.Settings
                                     if (shouldHandleAppShellTabSelection(selectedTab, key)) {
                                         if (
                                             shouldDismissHomeNotificationCenterForAppShellTabSelection(
@@ -6398,9 +6437,9 @@ private fun SlockAppShellReadyContent(
         ) {
                     val railSwitcherContent = homeState.content as? SharedHomeContentState.Content
                     if (navRailActive && railServerSwitcherOpen && railSwitcherContent != null) {
-                        SlockFloatingOverlayHost(
+                        RaftFloatingOverlayHost(
                             onDismiss = { railServerSwitcherOpen = false },
-                            dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+                            dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis
                         ) { _ ->
                             ServerSwitcherPanel(
                                 servers =
@@ -6415,7 +6454,7 @@ private fun SlockAppShellReadyContent(
                                 pendingServerId = homeState.serverSwitchState.pendingServerId,
                                 prefersChineseCommunity =
                                     localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
-                                labels = SlockHomeShellLabels.localized(),
+                                labels = RaftHomeShellLabels.localized(),
                                 onServerSelected = { serverId ->
                                     railServerSwitcherOpen = false
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
@@ -6433,12 +6472,12 @@ private fun SlockAppShellReadyContent(
                                     pager.openAuthChooseServerPage(
                                         storeScope = navigationStoreScope,
                                         documentShell =
-                                            pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
+                                            pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
                                     )
                                 },
                                 modifier =
                                     Modifier
-                                        .padding(top = shellScope.topSafeArea + SlockSpacing.Sm, start = SlockSpacing.Sm)
+                                        .padding(top = shellScope.topSafeArea + RaftAppSpacing.Sm, start = RaftAppSpacing.Sm)
                                         .clickable(onClick = {})
                             )
                         }
@@ -6451,49 +6490,77 @@ private fun SlockAppShellReadyContent(
                     // renders the menu. Same host pattern as the rail server switcher above.
                     shellOverlayMenu?.let { open ->
                         // task #180 diagnostics (Argus): point 3 of 3 -- the host is composing.
-                        slockTraceToPlatformLog(
+                        raftTraceToPlatformLog(
                             "SlockShellOverlay",
                             "shell_host_compose requestId=${open.request.requestId} " +
-                                "anchor=${open.request.anchor} items=${open.request.items.size}"
+                                "anchor=${open.request.anchor} items=${open.request.items.size} " +
+                                "content=${shellOverlayContent != null}"
                         )
+                        val customContent = shellOverlayContent?.takeIf {
+                            it.requestId == open.request.requestId
+                        }
                         val dismissShellOverlay = {
                             eventBus.post(
-                                SLOCK_SHELL_OVERLAY_RESULT_EVENT,
-                                SlockShellOverlayResult(
+                                RAFT_SHELL_OVERLAY_RESULT_EVENT,
+                                RaftShellOverlayResult(
                                     requestId = open.request.requestId,
                                     dismissed = true
                                 ).toJson()
                             )
+                            shellOverlayContent = null
                             shellOverlayMenu = null
                         }
-                        SlockBrutalDropdownMenu(
-                            // The anchor arrives already resolved in WINDOW space: the page owns the
-                            // conversion, and re-deriving it here is what produced four rounds of
-                            // wrong positions.
-                            anchor = SlockPopoverAnchor.forRootOffset(open.request.anchor),
-                            items =
-                                open.request.items.map { item ->
-                                    SlockBrutalDropdownMenuItem(
-                                        id = item.id,
-                                        label = item.label,
-                                        enabled = item.enabled
+                        if (customContent != null) {
+                            // The shell is the full-window composition. Keep the exact child menu
+                            // composable (including its reaction atlas and group dividers), but
+                            // mount it in this window-level Modal surface rather than the 400dp
+                            // child-page surface.
+                            RaftModalAnchoredPopover(
+                                anchor = RaftPopoverAnchor.forRootOffset(open.request.anchor),
+                                contentSize = customContent.contentSize,
+                                onDismiss = dismissShellOverlay,
+                                viewportGap = customContent.viewportGap,
+                                horizontalOffset = customContent.horizontalOffset,
+                                verticalOffset = customContent.verticalOffset,
+                                horizontalAutoFlip = true,
+                                verticalPlacement = RaftFloatingVerticalPlacement.Auto
+                            ) {
+                                customContent.content { id ->
+                                    customContent.onSelected(id)
+                                    shellOverlayContent = null
+                                    shellOverlayMenu = null
+                                }
+                            }
+                        } else {
+                            RaftBrutalDropdownMenu(
+                                // The anchor arrives already resolved in WINDOW space: the page owns the
+                                // conversion, and re-deriving it here is what produced four rounds of
+                                // wrong positions.
+                                anchor = RaftPopoverAnchor.forRootOffset(open.request.anchor),
+                                items =
+                                    open.request.items.map { item ->
+                                        RaftBrutalDropdownMenuItem(
+                                            id = item.id,
+                                            label = item.label,
+                                            enabled = item.enabled
+                                        )
+                                    },
+                                onSelect = { id ->
+                                    eventBus.post(
+                                        RAFT_SHELL_OVERLAY_RESULT_EVENT,
+                                        RaftShellOverlayResult(
+                                            requestId = open.request.requestId,
+                                            selectedId = id
+                                        ).toJson()
                                     )
+                                    shellOverlayMenu = null
                                 },
-                            onSelect = { id ->
-                                eventBus.post(
-                                    SLOCK_SHELL_OVERLAY_RESULT_EVENT,
-                                    SlockShellOverlayResult(
-                                        requestId = open.request.requestId,
-                                        selectedId = id
-                                    ).toJson()
-                                )
-                                shellOverlayMenu = null
-                            },
-                            onDismiss = dismissShellOverlay
-                        )
+                                onDismiss = dismissShellOverlay
+                            )
+                        }
                     }
                     if (slackNavMode && slackNavMoreMenuVisible) {
-                        SlockSlackNavMoreMenu(
+                        RaftSlackNavMoreMenu(
                             selected =
                                 slackNavMoreDestination.takeIf {
                                     retainedAppShellSelectedTab(selectedTab) == "more"
@@ -6559,8 +6626,8 @@ private fun SlockAppShellReadyContent(
                         // task #180: in Focus mode the thread owns the row and the parent channel/DM
                         // gets no space. It is collapsed by WIDTH, never by weight -- `weight(0f)` is
                         // illegal in Compose and threw IllegalArgumentException "invalid weight 0.0"
-                        // the moment Focus was entered. See slockParentPaneLayout.
-                        val paneLayout = slockParentPaneLayout(focused = sideThreadFocusActive)
+                        // the moment Focus was entered. See raftParentPaneLayout.
+                        val paneLayout = raftParentPaneLayout(focused = sideThreadFocusActive)
                         val modifier =
                             when {
                                 // Collapsed by width; a focused pane deliberately takes NO weight.
@@ -6576,7 +6643,7 @@ private fun SlockAppShellReadyContent(
                         val selection = workspace?.selection?.takeIf { detailAccepted }
                         val detailPayload = adaptiveDetailLaunchPayload?.takeIf { detailAccepted }
                         val childActive =
-                            active && workspace?.presentation != SlockAdaptiveWorkspacePresentation.Inactive
+                            active && workspace?.presentation != RaftAdaptiveWorkspacePresentation.Inactive
                         val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
                         val detailPageData =
                             remember(
@@ -6589,10 +6656,10 @@ private fun SlockAppShellReadyContent(
                                     null
                                 } else {
                                     threadLaunchPageData(detailPayload)
-                                        .withSlockShellStoreScope(navigationStoreScope)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, selection.generation)
+                                        .withRaftShellStoreScope(navigationStoreScope)
+                                        .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                        .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, selection.identity.key)
+                                        .put(RAFT_ADAPTIVE_DETAIL_GENERATION, selection.generation)
                                 }
                             }
                             if (detailPageData == null) {
@@ -6602,12 +6669,12 @@ private fun SlockAppShellReadyContent(
                                 ) {
                                     Text(
                                         text = adaptiveEmptyLabel,
-                                        color = SlockColor.TextMutedGray,
+                                        color = RaftColor.TextMutedGray,
                                         fontSize = 15.sp,
                                     )
                                 }
                             } else {
-                                SlockKuiklyChildPage(
+                                RaftChildPage(
                                     pageName = THREAD_PAGE,
                                     pageData = detailPageData,
                                     modifier = modifier.fillMaxSize(),
@@ -6627,28 +6694,28 @@ private fun SlockAppShellReadyContent(
                             val sidePageData =
                                 remember(sideThread, navigationStoreScope.shellInstanceId, navigationStoreScope.initialServerId) {
                                     threadLaunchPageData(sideThread.payload)
-                                        .withSlockShellStoreScope(navigationStoreScope)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
-                                        .put(SLOCK_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
+                                        .withRaftShellStoreScope(navigationStoreScope)
+                                        .put(RAFT_ADAPTIVE_DETAIL_SHELL_ID, workspace.shellInstanceId)
+                                        .put(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY, sideThread.identity.key)
+                                        .put(RAFT_ADAPTIVE_DETAIL_GENERATION, sideThread.generation)
                                 }
                             if (!sideThreadFocusActive) {
                                 Spacer(
                                     modifier =
                                         Modifier
-                                            .width(SLOCK_SIDE_THREAD_DIVIDER_DP.dp)
+                                            .width(RAFT_SIDE_THREAD_DIVIDER_DP.dp)
                                             .fillMaxHeight()
                                             .background(Color.Black),
                                 )
                             }
-                            SlockKuiklyChildPage(
+                            RaftChildPage(
                                 pageName = THREAD_PAGE,
                                 pageData = sidePageData,
                                 modifier =
                                     if (sideThreadFocusActive) {
                                         Modifier.weight(1f).fillMaxHeight()
                                     } else {
-                                        Modifier.width(SLOCK_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight()
+                                        Modifier.width(RAFT_SIDE_THREAD_COLUMN_DP.dp).fillMaxHeight()
                                     },
                                 active = childActive,
                             )
@@ -6709,7 +6776,7 @@ private fun SlockAppShellReadyContent(
                         )
                         }
                         if (tasksDetailOverlayOpen) {
-                            SlockTasksDetailOverlay(
+                            RaftTasksDetailOverlay(
                                 onDismiss = ::closeTasksDetailOverlay,
                                 bottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
                             ) { modifier ->
@@ -6738,12 +6805,12 @@ private fun SlockAppShellReadyContent(
                             adaptiveDetailPane(modifier, active, detailAccepted, true)
                         }
                         if (enabled) {
-                            val dualPane = workspace?.pane?.layout == SlockAdaptivePaneLayout.DualPane
+                            val dualPane = workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane
                             // task #37: the list width is the user's, clamped to this row so the
                             // detail keeps its minimum; the divider has a wider drag handle on top.
                             val density = LocalDensity.current
                             var rowWidthDp by remember { mutableStateOf<Float?>(null) }
-                            val listWidthDp = slockListPaneWidthDp(adaptiveListPanePreferredDp, rowWidthDp)
+                            val listWidthDp = raftListPaneWidthDp(adaptiveListPanePreferredDp, rowWidthDp)
                             Box(
                                 modifier =
                                     Modifier
@@ -6765,7 +6832,7 @@ private fun SlockAppShellReadyContent(
                                 Spacer(
                                     modifier =
                                         Modifier
-                                            .width(if (dualPane) SLOCK_LIST_PANE_DIVIDER_DP.dp else 0.dp)
+                                            .width(if (dualPane) RAFT_LIST_PANE_DIVIDER_DP.dp else 0.dp)
                                             .fillMaxHeight()
                                             .background(Color.Black),
                                 )
@@ -6792,7 +6859,7 @@ private fun SlockAppShellReadyContent(
                                 }
                             }
                             if (dualPane) {
-                                SlockListPaneResizeHandle(
+                                RaftListPaneResizeHandle(
                                     active = active,
                                     listWidthDp = listWidthDp,
                                     onDragStart = {
@@ -6801,12 +6868,12 @@ private fun SlockAppShellReadyContent(
                                     },
                                     onDrag = { startWidthDp, deltaDp ->
                                         adaptiveListPanePreferredDp =
-                                            slockListPaneDraggedWidthDp(startWidthDp, deltaDp, rowWidthDp)
+                                            raftListPaneDraggedWidthDp(startWidthDp, deltaDp, rowWidthDp)
                                     },
                                     onDragEnd = { reason ->
                                         adaptiveListPaneResizing = false
                                         listPanePreferenceStore.saveAdaptiveListPaneWidth(
-                                            slockListPaneStoredWidth(adaptiveListPanePreferredDp)
+                                            raftListPaneStoredWidth(adaptiveListPanePreferredDp)
                                         )
                                         bridge.log("adaptive_list_pane_resize end=$reason width=$adaptiveListPanePreferredDp row=$rowWidthDp")
                                     },
@@ -6903,7 +6970,7 @@ private fun SlockAppShellReadyContent(
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId =
                                     if (desktopModeOnLargeScreen) adaptiveWorkspaceSession.detailListSelectionId()
-                                    else resolveSlockHomeSelectedConversationId(
+                                    else resolveRaftHomeSelectedConversationId(
                                         adaptiveWorkspaceEnabled = false,
                                         adaptiveSelection = selection,
                                         shellSelectedConversationId = selectedHomeConversationId,
@@ -6937,7 +7004,7 @@ private fun SlockAppShellReadyContent(
                                 onOpenServerSelection = {
                                     pager.openAuthChooseServerPage(
                                         storeScope = navigationStoreScope,
-                                        documentShell = pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
+                                        documentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
                                     )
                                 },
                                 onCreateChannel = { openCreateChannelDialog() },
@@ -7021,7 +7088,8 @@ private fun SlockAppShellReadyContent(
                             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             externalSelectedThreadId =
-                                adaptiveWorkspaceState?.selection?.identity?.threadId
+                                adaptiveWorkspaceState?.selection?.identity?.threadId,
+                            mainTab = true
                         )
                     }
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -7117,9 +7185,9 @@ private fun SlockAppShellReadyContent(
                     // More menu directly (no intermediate hub page, no sub-page back bar).
                     val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         when (slackNavMoreDestination) {
-                            SlockSlackNavMoreDestination.Tasks -> tasksTabContent(active)
-                            SlockSlackNavMoreDestination.Members -> membersTabContent(active)
-                            SlockSlackNavMoreDestination.Settings -> settingsTabContent(active)
+                            RaftSlackNavMoreDestination.Tasks -> tasksTabContent(active)
+                            RaftSlackNavMoreDestination.Members -> membersTabContent(active)
+                            RaftSlackNavMoreDestination.Settings -> settingsTabContent(active)
                         }
                     }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
@@ -7131,7 +7199,7 @@ private fun SlockAppShellReadyContent(
                                     "homeRealtimeDirty=${homeState.homeRealtimeDirty}"
                             )
                         }
-                        CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
+                        CompositionLocalProvider(LocalRaftTimeContextProvider provides hostThreadTimeContextProvider) {
                             when (tab) {
                                 "home" -> homeTabContent(active)
                                 "tasks" -> tasksTabContent(active)
@@ -7267,7 +7335,7 @@ private fun SlockAppShellReadyContent(
                         childPageTabKeys = slackNavTabKeys,
                         log = { bridge.log(it) }
                     ) { tab, active ->
-                        CompositionLocalProvider(LocalSlockTimeContextProvider provides hostThreadTimeContextProvider) {
+                        CompositionLocalProvider(LocalRaftTimeContextProvider provides hostThreadTimeContextProvider) {
                             when (tab) {
                                 "settings" -> settingsTabContent(active)
                                 else -> childTabRenderer(tab, active)
@@ -7348,7 +7416,7 @@ private fun SlockAppShellReadyContent(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        SlockForegroundBannerHost(
+        RaftForegroundBannerHost(
             banner = foregroundMessageBanner,
             topSafeArea = shellScope.topSafeArea,
             serverMembersStore = appShellServerMembersStore,
@@ -7421,8 +7489,8 @@ private fun DrawerSettledObservation.isSettled(desiredOpen: Boolean): Boolean =
 private fun AppShellServerDrawerHost(
     homeShellStore: SharedHomeShellStore,
     bridge: build.raft.app.base.BridgeModule,
-    labels: SlockHomeShellLabels,
-    userHeader: SlockServerDrawerUserHeader,
+    labels: RaftHomeShellLabels,
+    userHeader: RaftServerDrawerUserHeader,
     topSafeArea: Dp,
     bottomSafeArea: Dp,
     serverMembersStore: SharedServerMembersStore?,
@@ -7467,7 +7535,7 @@ private fun AppShellServerDrawerHost(
             projection.activityUnread,
             serverActivityExpectedOwner,
         ) {
-            projection.drawer.toSlockHomeServerDrawerHostedSections(
+            projection.drawer.toRaftHomeServerDrawerHostedSections(
                 serverUnreadCounts = projection.unreadCounts,
                 activityExpectedOwner = serverActivityExpectedOwner,
                 activityProjection = projection.activityUnread,
@@ -7477,7 +7545,7 @@ private fun AppShellServerDrawerHost(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         val drawerState =
-            rememberMoveableDrawerState(
+            rememberRaftMoveableDrawerState(
                 initiallyOpen = false,
                 drawerWidth = drawerWidth
             )
@@ -7508,9 +7576,6 @@ private fun AppShellServerDrawerHost(
         DisposableEffect(programmaticCloseFence, onProgrammaticCloseFenceChanged) {
             onProgrammaticCloseFenceChanged(programmaticCloseFence)
             onDispose { onProgrammaticCloseFenceChanged(null) }
-        }
-        val closeDrawerEvent = remember(programmaticCloseFence) {
-            { _: ClickParams -> programmaticCloseFence("scrim_native") }
         }
 
         LaunchedEffect(drawerState, projection.commandIntent.generation) {
@@ -7570,7 +7635,7 @@ private fun AppShellServerDrawerHost(
         }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            MoveableDrawer(
+            RaftMoveableDrawer(
                 state = drawerState,
                 scrimColor = Color.Transparent,
                 userScrollEnabled = pointerPolicy.nativePagerEnabled,
@@ -7641,8 +7706,8 @@ private fun AppShellServerDrawerHost(
                                 .then(contentAccessibilityModifier)
                     ) {
                         CompositionLocalProvider(
-                            LocalSlockHomeDrawerOpenGesture provides
-                                SlockHomeDrawerOpenGesture(
+                            LocalRaftHomeDrawerOpenGesture provides
+                                RaftHomeDrawerOpenGesture(
                                     admission = openGestureAdmission,
                                     onOpen = {
                                         if (
@@ -7670,8 +7735,7 @@ private fun AppShellServerDrawerHost(
                 }
             )
             if (drawerState.progress > 0.01f) {
-                MakeKuiklyComposeNode<DivView>(
-                    factory = { DivView() },
+                Box(
                     modifier =
                         Modifier
                             .align(Alignment.CenterEnd)
@@ -7688,10 +7752,7 @@ private fun AppShellServerDrawerHost(
                                 role = Role.Button
                             ) {
                                 requestProgrammaticClose("scrim_compose")
-                            },
-                    viewInit = {
-                        getViewEvent().click(closeDrawerEvent)
-                    }
+                            }
                 )
             }
         }
@@ -7716,20 +7777,20 @@ internal fun SettingsNativeDetailScreen() {
         SettingsDetailShell(
             title = stringResource(MR.strings.settings_title),
             subtitle = "",
-            iconName = SlockLucideIconName.Settings,
+            iconName = RaftLucideIconName.Settings,
             onBack = closePage,
         ) {
             SettingsSharedPlaceholder(
                 title = stringResource(MR.strings.settings_title),
                 detail = stringResource(MR.strings.empty_no_settings_available),
-                iconName = SlockLucideIconName.Settings,
+                iconName = RaftLucideIconName.Settings,
             )
         }
         return
     }
 
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-native-${pager.pagerId}") {
             SharedSettingsViewModel(
@@ -7745,7 +7806,7 @@ internal fun SettingsNativeDetailScreen() {
     var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     val pageScope = rememberCoroutineScope()
     val notificationEvents = remember(sharedStores.eventBus) {
-        KuiklyNotificationPreferenceEvents(sharedStores.eventBus)
+        RaftNotificationPreferenceEvents(sharedStores.eventBus)
     }
 
     LaunchedEffect(environment.authStore) {
@@ -7822,7 +7883,7 @@ internal fun SettingsNativeDetailScreen() {
         },
         onServerDrawerSelected = {},
         onHomeServerAvatarSelected = {},
-        bottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg,
+        bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
         timeContext = null,
         diagnosticsLogger = { message -> bridge.log("settings_native_detail $message") },
         serverPublicVisibilityRepository = environment.serverPublicVisibilityRepository,
@@ -7875,7 +7936,7 @@ private fun SettingsNativeDetailPageContent(
     onServerDrawerSelected: (Boolean) -> Unit,
     onHomeServerAvatarSelected: (Boolean) -> Unit,
     bottomContentPadding: Dp,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     diagnosticsLogger: (String) -> Unit = {},
     onSessionCleared: (StoredAuthSession) -> Unit = {},
     serverPublicVisibilityRepository: ServerPublicVisibilityRepository? = null,
@@ -8069,7 +8130,7 @@ private fun SettingsNativeDetailPageContent(
                 SettingsSharedPlaceholder(
                     title = "Local Feature Overrides",
                     detail = "This internal-only feature override is unavailable in this build.",
-                    iconName = SlockLucideIconName.SlidersHorizontal,
+                    iconName = RaftLucideIconName.SlidersHorizontal,
                     bottomContentPadding = bottomContentPadding
                 )
             }
@@ -8135,7 +8196,7 @@ private fun SettingsNativeDetailPageContent(
                     activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     // Task #179: the observable face state is the source of truth for the picker, so
                     // the row reflects what is actually rendering.
-                    fontPreference = SlockFontFaceState.preference,
+                    fontPreference = RaftFontFaceState.preference,
                     bottomContentPadding = bottomContentPadding,
                     onFontSizeDraftChange = { appearanceMessageFontSizeDraft = it },
                     onActivitySenderAvatarsChange = onActivitySenderAvatarsSelected,
@@ -8308,6 +8369,9 @@ private fun SettingsNativeDetailPageContent(
                     onThreadReverseLayoutChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
                     },
+                    onNativePullToRefreshChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetNativePullToRefreshEnabled(enabled))
+                    },
                     diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
@@ -8322,7 +8386,7 @@ private fun SettingsNativeDetailPageContent(
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
                     webUrl = sharedSettingsResolvedWebBaseUrl(settingsState.developer.configuredWebBaseUrlOrNull()),
-                    onOpenSlock = { url -> settingsCapabilities.openUrl(url) },
+                    onOpenRaft = { url -> settingsCapabilities.openUrl(url) },
                     onCheckHandsUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckHandsUpdate)
                     },
@@ -8387,7 +8451,7 @@ private fun SettingsNativeDetailPageContent(
                     SettingsSharedPlaceholder(
                         title = "Local Feature Overrides",
                         detail = "This internal-only feature override page is unavailable in this build.",
-                        iconName = SlockLucideIconName.SlidersHorizontal,
+                        iconName = RaftLucideIconName.SlidersHorizontal,
                         bottomContentPadding = bottomContentPadding
                     )
                 }
@@ -8398,13 +8462,13 @@ private fun SettingsNativeDetailPageContent(
 
 @Composable
 private fun SharedSettingsSectionContent(
-    payload: KuiklySharedSettingsPayload,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    payload: RaftSharedSettingsPayload,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onCopyValue: ((String) -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         payload.sections.forEach { section ->
@@ -8454,13 +8518,13 @@ internal data class SettingsServerPublicAccessBinding(
 
 @Composable
 private fun SharedSettingsServerContent(
-    payload: KuiklySharedSettingsPayload,
+    payload: RaftSharedSettingsPayload,
     profileName: String,
     onProfileNameChange: (String) -> Unit,
     serverSnapshot: SettingsServerSnapshot?,
     serverRole: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     joinLinkMaxUses: String = "",
     onJoinLinkMaxUsesChange: (String) -> Unit = {},
     joinLinkExpiresAt: String = "",
@@ -8477,7 +8541,7 @@ private fun SharedSettingsServerContent(
     onOnboardingAgentIdChange: (String) -> Unit = {},
     onboardingGreetingEnabled: Boolean = true,
     onOnboardingGreetingEnabledChange: (Boolean) -> Unit = {},
-    timeContext: SlockTimeContext? = null,
+    timeContext: RaftTimeContext? = null,
     expectedServerSlug: String = "",
     deleteConfirmationName: String = "",
     onDeleteConfirmationNameChange: (String) -> Unit = {},
@@ -8489,7 +8553,7 @@ private fun SharedSettingsServerContent(
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (showProfileCard) {
@@ -8618,7 +8682,7 @@ private fun SharedSettingsServerContent(
 }
 
 /**
- * task #346: state payload of [SettingsConnectedAppsContent]. See SlockStructuralHomeShellData for why
+ * task #346: state payload of [SettingsConnectedAppsContent]. See RaftStructuralHomeShellData for why
  * the flat parameter list had to be grouped (Android dex verifier rejects the
  * un-minified giant composable frame on API 34/36 builds).
  */
@@ -8878,43 +8942,43 @@ private fun SettingsConnectedAppsContentContent(
     }
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.LoaderCircle, title = stringResource(MR.strings.common_loading)) {
+                    SettingsFormSectionCard(iconName = RaftLucideIconName.LoaderCircle, title = stringResource(MR.strings.common_loading)) {
                         SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_loading))
                     }
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.Blocks, title = stringResource(MR.strings.settings_connected_apps_empty)) {
+                    SettingsFormSectionCard(iconName = RaftLucideIconName.Blocks, title = stringResource(MR.strings.settings_connected_apps_empty)) {
                         SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_unavailable))
-                        SlockBrutalActionButton(
+                        RaftBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
-                            leadingIcon = SlockLucideIconName.RefreshCw,
-                            backgroundColor = SlockColor.SurfaceWhite
+                            leadingIcon = RaftLucideIconName.RefreshCw,
+                            backgroundColor = RaftColor.SurfaceWhite
                         )
                     }
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_connected_apps_error)) {
+                    SettingsFormSectionCard(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_connected_apps_error)) {
                         SettingsFormErrorText(state.error.localizedUserFacingMessage())
-                        SlockBrutalActionButton(
+                        RaftBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
-                            leadingIcon = SlockLucideIconName.RefreshCw,
-                            backgroundColor = SlockColor.SurfaceWhite
+                            leadingIcon = RaftLucideIconName.RefreshCw,
+                            backgroundColor = RaftColor.SurfaceWhite
                         )
                     }
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.Lock, title = stringResource(MR.strings.settings_connected_apps_permission_required)) {
+                    SettingsFormSectionCard(iconName = RaftLucideIconName.Lock, title = stringResource(MR.strings.settings_connected_apps_permission_required)) {
                         SettingsFormErrorText(settingsConnectedAppsPermissionCopy(state.blocker, stringResource(MR.strings.settings_connected_apps_permission_admin)))
                     }
                 }
@@ -9028,7 +9092,7 @@ private fun SettingsConnectedAppsOverviewCard(
     loading: Boolean,
     onRegister: () -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = stringResource(MR.strings.settings_connected_apps_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Link2, title = stringResource(MR.strings.settings_connected_apps_title)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -9037,24 +9101,24 @@ private fun SettingsConnectedAppsOverviewCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     stringResource(MR.strings.settings_connected_apps_overview_title),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack
                 )
                 Text(
                     stringResource(MR.strings.settings_connected_apps_overview_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_connected_apps_badge_experimental), SlockColor.BrandYellow)
-                    if (loading) SettingsConnectedAppsBadge(stringResource(MR.strings.settings_connected_apps_badge_loading), SlockColor.EmptyStateGray)
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_connected_apps_badge_experimental), RaftColor.BrandYellow)
+                    if (loading) SettingsConnectedAppsBadge(stringResource(MR.strings.settings_connected_apps_badge_loading), RaftColor.EmptyStateGray)
                 }
             }
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.settings_connected_apps_action_register),
                 onClick = onRegister,
-                leadingIcon = SlockLucideIconName.Plus,
-                backgroundColor = SlockColor.AccentPink,
+                leadingIcon = RaftLucideIconName.Plus,
+                backgroundColor = RaftColor.AccentPink,
                 minWidth = 118.dp
             )
         }
@@ -9082,19 +9146,19 @@ private fun SettingsConnectedAppsTabControl(
                 SegmentedControlOption(
                     value = "marketplace",
                     label = stringResource(MR.strings.settings_connected_apps_tab_marketplace),
-                    iconName = SlockLucideIconName.Store,
+                    iconName = RaftLucideIconName.Store,
                     count = snapshot?.let { it.builtIn.size + it.marketplace.size }
                 ),
                 SegmentedControlOption(
                     value = "installed",
                     label = stringResource(MR.strings.settings_connected_apps_tab_installed),
-                    iconName = SlockLucideIconName.CircleCheck,
+                    iconName = RaftLucideIconName.CircleCheck,
                     count = snapshot?.installed?.size
                 ),
                 SegmentedControlOption(
                     value = "myapps",
                     label = stringResource(MR.strings.settings_connected_apps_tab_my_apps),
-                    iconName = SlockLucideIconName.KeyRound,
+                    iconName = RaftLucideIconName.KeyRound,
                     count = snapshot?.registered?.size
                 )
             ),
@@ -9111,13 +9175,12 @@ private fun SettingsConnectedAppsMetric(
     Column(
         modifier =
             modifier
-                .background(SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
                 .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text(value, style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 20.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        Text(label, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 20.sp, color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+        Text(label, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -9129,15 +9192,16 @@ private fun SettingsConnectedAppsBadge(
     Box(
         modifier =
             Modifier
-                .background(backgroundColor)
-                .border(1.dp, SlockColor.BorderBlack)
+                // raft-ui Badge: sticker radius, 1.5dp sticker-ink edge.
+                .background(backgroundColor, RoundedCornerShape(RaftAppRadius.Sticker))
+                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
                 .padding(horizontal = 7.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
-            style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.TabLabel.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -9165,14 +9229,14 @@ private fun SettingsLanguageRegionContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
             ScreenLoadState.Loading ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.LoaderCircle,
+                        RaftLucideIconName.LoaderCircle,
                         stringResource(MR.strings.common_loading),
                         stringResource(MR.strings.settings_language_loading),
                         null,
@@ -9182,7 +9246,7 @@ private fun SettingsLanguageRegionContent(
             is ScreenLoadState.Empty ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.Languages,
+                        RaftLucideIconName.Languages,
                         stringResource(MR.strings.settings_state_unavailable),
                         state.reason.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
@@ -9192,7 +9256,7 @@ private fun SettingsLanguageRegionContent(
             is ScreenLoadState.Error ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.TriangleAlert,
+                        RaftLucideIconName.TriangleAlert,
                         stringResource(MR.strings.settings_error_language),
                         state.error.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
@@ -9202,7 +9266,7 @@ private fun SettingsLanguageRegionContent(
             is ScreenLoadState.NoPermission ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.Lock,
+                        RaftLucideIconName.Lock,
                         stringResource(MR.strings.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
@@ -9271,7 +9335,7 @@ private fun SettingsLanguagePreferenceCard(
             dirty &&
             ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS)
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = stringResource(MR.strings.settings_language_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(MR.strings.settings_language_title)) {
         SettingsSegmentedControlField(
             label = stringResource(MR.strings.settings_translation_mode),
             detail = stringResource(MR.strings.settings_translation_mode_detail),
@@ -9284,14 +9348,14 @@ private fun SettingsLanguagePreferenceCard(
             SettingsFormDetailText(snapshot.translationDisplay.detail)
         }
         if (selectedDisplay != "original") {
-            SlockBrutalSectionLabel(
+            RaftBrutalSectionLabel(
                 label = stringResource(MR.strings.settings_preferred_translation_language_title),
-                size = SlockFormFieldSize.Compact
+                size = RaftFormFieldSize.Compact
             )
             SettingsFormDetailText(
                 stringResource(MR.strings.settings_preferred_translation_language_detail)
             )
-            SlockBrutalSelectField(
+            RaftBrutalSelectField(
                 options = snapshot.browserLanguage.toTranslationTargetSelectOptions(),
                 selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
                 selectedLabel = snapshot.browserLanguage.translationTargetLabelFor(languageDraft),
@@ -9326,13 +9390,13 @@ private fun SettingsDateTimePreferenceCard(
     val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
     val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS)
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = stringResource(MR.strings.settings_date_time_title)) {
-        SlockBrutalSectionLabel(
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(MR.strings.settings_date_time_title)) {
+        RaftBrutalSectionLabel(
             label = stringResource(MR.strings.settings_timezone),
-            size = SlockFormFieldSize.Compact
+            size = RaftFormFieldSize.Compact
         )
         SettingsFormDetailText(stringResource(MR.strings.settings_timezone_detail))
-        SlockBrutalSelectField(
+        RaftBrutalSelectField(
             options = snapshot.timezone.toSelectOptions(),
             selectedId = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
             selectedLabel = snapshot.timezone.labelFor(timezoneDraft),
@@ -9345,8 +9409,8 @@ private fun SettingsDateTimePreferenceCard(
             selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
             options =
                 listOf(
-                    SegmentedControlOption("12h", stringResource(MR.strings.settings_time_format_12_hour), SlockLucideIconName.Clock3),
-                    SegmentedControlOption("24h", stringResource(MR.strings.settings_time_format_24_hour), SlockLucideIconName.Clock)
+                    SegmentedControlOption("12h", stringResource(MR.strings.settings_time_format_12_hour), RaftLucideIconName.Clock3),
+                    SegmentedControlOption("24h", stringResource(MR.strings.settings_time_format_24_hour), RaftLucideIconName.Clock)
                 ),
             onValueSelected = onTimeFormatDraftChange,
             enabled = snapshot.timeFormat.available && !busy
@@ -9389,9 +9453,9 @@ private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<Seg
             label = option.label,
             iconName =
                 when (option.key) {
-                    "automatic" -> SlockLucideIconName.Languages
-                    "manual" -> SlockLucideIconName.Pencil
-                    else -> SlockLucideIconName.FileText
+                    "automatic" -> RaftLucideIconName.Languages
+                    "manual" -> RaftLucideIconName.Pencil
+                    else -> RaftLucideIconName.FileText
                 }
         )
     }
@@ -9409,21 +9473,21 @@ private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLab
 
 @Composable
 private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, onClick: () -> Unit) {
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = label,
         onClick = onClick,
         enabled = enabled,
-        leadingIcon = SlockLucideIconName.Save,
-        backgroundColor = SlockColor.AccentPink,
-        disabledBackgroundColor = slockDisabledActionBackgroundFor(SlockColor.AccentPink),
-        disabledBorderColor = SlockDisabledActionBorder,
-        disabledShadowColor = SlockDisabledActionShadow,
-        disabledContentColor = SlockDisabledActionContent,
-        disabledIconColor = SlockDisabledActionContentArgb,
+        leadingIcon = RaftLucideIconName.Save,
+        backgroundColor = RaftColor.AccentPink,
+        disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentPink),
+        disabledBorderColor = RaftDisabledActionBorder,
+        disabledShadowColor = RaftDisabledActionShadow,
+        disabledContentColor = RaftDisabledActionContent,
+        disabledIconColor = RaftDisabledActionContentArgb,
         minWidth = 0.dp,
         minHeight = 34.dp,
         shadowOffset = 3.dp,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
     )
 }
 
@@ -9434,14 +9498,14 @@ private fun SettingsServerTranslationPreferenceCard(
     onServerTranslationChange: (Boolean) -> Unit
 ) {
     val busy = actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.inProgress
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Wand, title = stringResource(MR.strings.settings_workspace_translation)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Wand, title = stringResource(MR.strings.settings_workspace_translation)) {
         SettingsSegmentedControlField(
             detail = snapshot.serverTranslation.detail,
             selectedValue = if (snapshot.serverTranslation.enabled) "on" else "off",
             options =
                 listOf(
-                    SegmentedControlOption("on", stringResource(MR.strings.settings_option_on), SlockLucideIconName.CircleCheck),
-                    SegmentedControlOption("off", stringResource(MR.strings.settings_option_off), SlockLucideIconName.X)
+                    SegmentedControlOption("on", stringResource(MR.strings.settings_option_on), RaftLucideIconName.CircleCheck),
+                    SegmentedControlOption("off", stringResource(MR.strings.settings_option_off), RaftLucideIconName.X)
                 ),
             onValueSelected = { onServerTranslationChange(it == "on") },
             enabled = snapshot.serverTranslation.available && !busy
@@ -9467,7 +9531,7 @@ private fun SettingsAppearanceContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -9488,7 +9552,7 @@ private fun SettingsAppearanceContent(
             ScreenLoadState.Loading ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.LoaderCircle,
+                        RaftLucideIconName.LoaderCircle,
                         stringResource(MR.strings.common_loading),
                         stringResource(MR.strings.settings_appearance_loading),
                         null,
@@ -9498,7 +9562,7 @@ private fun SettingsAppearanceContent(
             is ScreenLoadState.Empty ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.Type,
+                        RaftLucideIconName.Type,
                         stringResource(MR.strings.settings_state_unavailable),
                         state.reason.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
@@ -9508,7 +9572,7 @@ private fun SettingsAppearanceContent(
             is ScreenLoadState.Error ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.TriangleAlert,
+                        RaftLucideIconName.TriangleAlert,
                         stringResource(MR.strings.settings_error_appearance),
                         state.error.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
@@ -9518,7 +9582,7 @@ private fun SettingsAppearanceContent(
             is ScreenLoadState.NoPermission ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.Lock,
+                        RaftLucideIconName.Lock,
                         stringResource(MR.strings.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
@@ -9546,7 +9610,7 @@ private fun SettingsActivitySenderAvatarsCard(
     onEnabledChange: (Boolean) -> Unit
 ) {
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.CircleUser,
+        iconName = RaftLucideIconName.CircleUser,
         title = stringResource(MR.strings.settings_appearance_activity_sender_avatars)
     ) {
         SettingsNotificationToggleRow(
@@ -9580,7 +9644,7 @@ private fun SettingsAppearanceFontCard(
     preference: FontPreference,
     onPreferenceChange: (FontPreference) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_font)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_font)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_appearance_font_detail))
         FontPreference.entries.forEach { option ->
             SettingsFontOptionRow(
@@ -9619,14 +9683,14 @@ private fun SettingsFontOptionRow(
     ) {
         Text(
             text = label,
-            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.Button.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         if (selected) {
-            SlockLucideIcon(SlockLucideIconName.CircleCheck, modifier = Modifier.size(16.dp))
+            RaftLucideIcon(RaftLucideIconName.CircleCheck, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -9647,7 +9711,7 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
@@ -9668,24 +9732,24 @@ private fun SettingsAppearanceFontSizeCard(
 
 @Composable
 private fun SettingsAppearancePreview(fontSizeKey: String) {
-    val bodyStyle = slockMessageBodyTextStyle(fontSizeKey)
+    val bodyStyle = raftMessageBodyTextStyle(fontSizeKey)
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
             stringResource(MR.strings.settings_appearance_preview),
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-            SlockAvatar(avatarWireValue = "letter:AI", label = "AI", avatarSize = 28.dp)
+            RaftAppAvatar(avatarWireValue = "letter:AI", label = "AI", avatarSize = 28.dp)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(stringResource(MR.strings.settings_appearance_preview_sender), style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(stringResource(MR.strings.settings_appearance_preview_sender), style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
                 Text(
                     stringResource(MR.strings.settings_appearance_preview_message),
                     style = bodyStyle,
-                    color = SlockColor.TextBlack
+                    color = RaftColor.TextBlack
                 )
             }
         }
@@ -9715,6 +9779,7 @@ private fun SettingsMobileContent(
     onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
     onHttp3Change: (Boolean) -> Unit = {},
     onThreadReverseLayoutChange: (Boolean) -> Unit = {},
+    onNativePullToRefreshChange: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
@@ -9723,7 +9788,7 @@ private fun SettingsMobileContent(
             else -> null
         }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
@@ -9808,7 +9873,7 @@ private fun SettingsMobileContent(
                     onComposerSendKeyChange = onComposerSendKeyChange
                 )
             }
-            if (slockPlatformSupportsMultiShellHost()) {
+            if (raftPlatformSupportsMultiShellHost()) {
                 item {
                     SettingsMultiShellHostCard(
                         snapshot = snapshot,
@@ -9839,6 +9904,15 @@ private fun SettingsMobileContent(
                     actionState = actionState,
                     onHomeServerAvatarChange = onHomeServerAvatarChange
                 )
+            }
+            if (snapshot.nativePullToRefresh.available) {
+                item {
+                    SettingsNativePullToRefreshCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onNativePullToRefreshChange = onNativePullToRefreshChange
+                    )
+                }
             }
             if (snapshot.realtimeCurlSocketIo.available) {
                 item {
@@ -9872,7 +9946,7 @@ private fun SettingsMultiShellHostCard(
     val busy = actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.inProgress
     val preference = snapshot.multiShellHost
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.AppWindow,
+        iconName = RaftLucideIconName.AppWindow,
         title = stringResource(MR.strings.settings_mobile_multi_shell_host)
     ) {
         Row(
@@ -9888,22 +9962,22 @@ private fun SettingsMultiShellHostCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), RaftColor.BrandYellow)
                     Text(
                         preference.localizedToggleStatus(),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
                     )
                 }
                 Text(
                     stringResource(MR.strings.settings_mobile_multi_shell_host_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -9927,7 +10001,7 @@ private fun SettingsDesktopModeCard(
         )
     }
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Monitor,
+        iconName = RaftLucideIconName.Monitor,
         title = stringResource(MR.strings.settings_mobile_desktop_mode)
     ) {
         Row(
@@ -9948,18 +10022,18 @@ private fun SettingsDesktopModeCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     preference.localizedToggleStatus(),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 Text(
                     stringResource(MR.strings.settings_mobile_desktop_mode_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_DESKTOP_MODE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -9983,7 +10057,7 @@ private fun SettingsServerDrawerCard(
         )
     }
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Menu,
+        iconName = RaftLucideIconName.Menu,
         title = stringResource(MR.strings.settings_mobile_server_drawer)
     ) {
         Row(
@@ -10003,22 +10077,22 @@ private fun SettingsServerDrawerCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), RaftColor.BrandYellow)
                     Text(
                         preference.localizedToggleStatus(),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
                     )
                 }
                 Text(
                     stringResource(MR.strings.settings_mobile_server_drawer_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -10035,7 +10109,7 @@ private fun SettingsHomeServerAvatarCard(
     val busy = actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.inProgress
     val preference = snapshot.homeServerAvatar
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Image,
+        iconName = RaftLucideIconName.Image,
         title = stringResource(MR.strings.settings_mobile_home_server_avatar)
     ) {
         Row(
@@ -10052,18 +10126,18 @@ private fun SettingsHomeServerAvatarCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     preference.localizedToggleStatus(),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 Text(
                     stringResource(MR.strings.settings_mobile_home_server_avatar_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HOME_SERVER_AVATAR && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -10081,7 +10155,7 @@ private fun SettingsRealtimeCurlSocketIoCard(
     val busy = actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.inProgress
     val preference = snapshot.realtimeCurlSocketIo
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Activity,
+        iconName = RaftLucideIconName.Activity,
         title = stringResource(MR.strings.settings_mobile_realtime_curl_socketio)
     ) {
         Row(
@@ -10098,18 +10172,18 @@ private fun SettingsRealtimeCurlSocketIoCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     preference.localizedToggleStatus(),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 Text(
                     stringResource(MR.strings.settings_mobile_realtime_curl_socketio_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -10126,7 +10200,7 @@ private fun SettingsThreadReverseLayoutCard(
     val busy = actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.inProgress
     val preference = snapshot.threadReverseLayout
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.MessageSquare,
+        iconName = RaftLucideIconName.MessageSquare,
         title = stringResource(MR.strings.settings_mobile_thread_reverse_layout)
     ) {
         Row(
@@ -10143,18 +10217,18 @@ private fun SettingsThreadReverseLayoutCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     preference.localizedToggleStatus(),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 Text(
                     stringResource(MR.strings.settings_mobile_thread_reverse_layout_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -10171,7 +10245,7 @@ private fun SettingsHttp3Card(
     val busy = actionState?.action == MOBILE_ACTION_HTTP3 && actionState.inProgress
     val preference = snapshot.http3
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Globe,
+        iconName = RaftLucideIconName.Globe,
         title = stringResource(MR.strings.settings_mobile_http3)
     ) {
         Row(
@@ -10188,20 +10262,65 @@ private fun SettingsHttp3Card(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     preference.localizedToggleStatus(),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 Text(
                     stringResource(MR.strings.settings_mobile_http3_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
+private fun SettingsNativePullToRefreshCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onNativePullToRefreshChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_NATIVE_PULL_TO_REFRESH && actionState.inProgress
+    val preference = snapshot.nativePullToRefresh
+    SettingsFormSectionCard(
+        iconName = RaftLucideIconName.RefreshCw,
+        title = stringResource(MR.strings.settings_mobile_native_pull_to_refresh)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onNativePullToRefreshChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
+                )
+                Text(
+                    stringResource(MR.strings.settings_mobile_native_pull_to_refresh_detail),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_NATIVE_PULL_TO_REFRESH && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -10216,7 +10335,7 @@ private fun SettingsAppLanguageCard(
     val preference = snapshot.localePreference
     val busy = actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.inProgress
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Languages,
+        iconName = RaftLucideIconName.Languages,
         title = stringResource(MR.strings.settings_app_language_title)
     ) {
         SettingsSegmentedControlField(
@@ -10258,7 +10377,7 @@ private fun SettingsMessageAlignmentCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.inProgress
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = stringResource(MR.strings.settings_message_alignment_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Columns3, title = stringResource(MR.strings.settings_message_alignment_title)) {
         SettingsSegmentedControlField(
             detail = stringResource(MR.strings.settings_message_alignment_detail),
             selectedValue = selectedKey.ifBlank { "left" },
@@ -10285,7 +10404,7 @@ private fun SettingsLinkOpenModeCard(
     val preference = snapshot.linkOpenMode
     val busy = actionState?.action == MOBILE_ACTION_LINK_OPEN_MODE && actionState.inProgress
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.ExternalLink,
+        iconName = RaftLucideIconName.ExternalLink,
         title = stringResource(MR.strings.settings_mobile_link_open_mode_title)
     ) {
         SettingsSegmentedControlField(
@@ -10319,7 +10438,7 @@ private fun SettingsCompactMessagesCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.inProgress
     val preference = snapshot.compactConsecutiveMessages
-    SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquare, title = stringResource(MR.strings.settings_mobile_compact_messages)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.MessageSquare, title = stringResource(MR.strings.settings_mobile_compact_messages)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_mobile_compact_detail))
         Row(
             modifier =
@@ -10335,8 +10454,8 @@ private fun SettingsCompactMessagesCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = preference.localizedToggleStatus(),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10347,13 +10466,13 @@ private fun SettingsCompactMessagesCard(
                         } else {
                             stringResource(MR.strings.settings_mobile_compact_disabled)
                         },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10372,7 +10491,7 @@ private fun SettingsLongMessageCollapseCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.inProgress
     val preference = snapshot.longMessageCollapse
-    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardList, title = stringResource(MR.strings.settings_mobile_long_message_collapse)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.ClipboardList, title = stringResource(MR.strings.settings_mobile_long_message_collapse)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_mobile_long_message_collapse_detail))
         Row(
             modifier =
@@ -10388,8 +10507,8 @@ private fun SettingsLongMessageCollapseCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = preference.localizedToggleStatus(),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack
                 )
                 Text(
                     text =
@@ -10398,11 +10517,11 @@ private fun SettingsLongMessageCollapseCard(
                         } else {
                             stringResource(MR.strings.settings_mobile_long_message_collapse_disabled)
                         },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10422,7 +10541,7 @@ private fun SettingsSingleTapOpensThreadCard(
     val busy = actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.inProgress
     val preference = snapshot.singleTapOpensThread
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.MessageSquare,
+        iconName = RaftLucideIconName.MessageSquare,
         title = stringResource(MR.strings.settings_mobile_single_tap_thread)
     ) {
         SettingsFormDetailText(stringResource(MR.strings.settings_mobile_single_tap_thread_detail))
@@ -10440,8 +10559,8 @@ private fun SettingsSingleTapOpensThreadCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = preference.localizedToggleStatus(),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack
                 )
                 Text(
                     text =
@@ -10450,11 +10569,11 @@ private fun SettingsSingleTapOpensThreadCard(
                         } else {
                             stringResource(MR.strings.settings_mobile_single_tap_thread_disabled)
                         },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10474,7 +10593,7 @@ private fun SettingsThreadUnreadJumpCard(
     val busy = actionState?.action == MOBILE_ACTION_THREAD_UNREAD_JUMP && actionState.inProgress
     val preference = snapshot.threadUnreadJump
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.ArrowUpDown,
+        iconName = RaftLucideIconName.ArrowUpDown,
         title = stringResource(MR.strings.settings_mobile_thread_unread_jump)
     ) {
         SettingsFormDetailText(stringResource(MR.strings.settings_mobile_thread_unread_jump_detail))
@@ -10499,16 +10618,16 @@ private fun SettingsThreadUnreadJumpCard(
                 ) {
                     SettingsConnectedAppsBadge(
                         stringResource(MR.strings.settings_badge_beta),
-                        SlockColor.BrandYellow
+                        RaftColor.BrandYellow
                     )
                     Text(
                         preference.localizedToggleStatus(),
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack
+                        style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack
                     )
                 }
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10528,7 +10647,7 @@ private fun SettingsNewMessageMenuCard(
     val busy = actionState?.action == MOBILE_ACTION_NEW_MESSAGE_MENU && actionState.inProgress
     val preference = snapshot.newMessageMenu
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.PanelBottomOpen,
+        iconName = RaftLucideIconName.PanelBottomOpen,
         title = stringResource(MR.strings.settings_mobile_new_message_menu)
     ) {
         Row(
@@ -10549,23 +10668,23 @@ private fun SettingsNewMessageMenuCard(
                 ) {
                     SettingsConnectedAppsBadge(
                         stringResource(MR.strings.settings_badge_beta),
-                        SlockColor.BrandYellow
+                        RaftColor.BrandYellow
                     )
                     Text(
                         preference.localizedToggleStatus(),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
                     )
                 }
                 Text(
                     stringResource(MR.strings.settings_mobile_new_message_menu_detail),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10589,7 +10708,7 @@ private fun SettingsConversationForwardGestureCard(
         stringResource(MR.strings.settings_mobile_conversation_forward_gesture_accessibility)
     val localizedStateDescription = preference.localizedToggleStatus()
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Redo2,
+        iconName = RaftLucideIconName.Redo2,
         title = stringResource(MR.strings.settings_mobile_conversation_forward_gesture)
     ) {
         SettingsFormDetailText(
@@ -10620,16 +10739,16 @@ private fun SettingsConversationForwardGestureCard(
                 ) {
                     SettingsConnectedAppsBadge(
                         stringResource(MR.strings.settings_badge_beta),
-                        SlockColor.BrandYellow
+                        RaftColor.BrandYellow
                     )
                     Text(
                         localizedStateDescription,
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack
+                        style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack
                     )
                 }
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10651,7 +10770,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.inProgress
     val preference = snapshot.activityTaskStatusBadges
-    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardCheck, title = stringResource(MR.strings.settings_mobile_activity_task_badges)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.ClipboardCheck, title = stringResource(MR.strings.settings_mobile_activity_task_badges)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_mobile_activity_task_badges_detail))
         Row(
             modifier =
@@ -10667,8 +10786,8 @@ private fun SettingsActivityTaskStatusBadgesCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = preference.localizedToggleStatus(),
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10679,13 +10798,13 @@ private fun SettingsActivityTaskStatusBadgesCard(
                         } else {
                             stringResource(MR.strings.settings_mobile_activity_task_badges_disabled)
                         },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10704,7 +10823,7 @@ private fun SettingsComposerSendKeyCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
     val preference = snapshot.composerSendKey
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = stringResource(MR.strings.settings_mobile_composer_key)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Send, title = stringResource(MR.strings.settings_mobile_composer_key)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_mobile_composer_key_detail))
         Row(
             modifier =
@@ -10725,8 +10844,8 @@ private fun SettingsComposerSendKeyCard(
                         } else {
                             stringResource(MR.strings.settings_mobile_composer_key_new_line)
                         },
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -10737,13 +10856,13 @@ private fun SettingsComposerSendKeyCard(
                         } else {
                             stringResource(MR.strings.settings_mobile_composer_key_disabled)
                         },
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockSwitchButton(
+            RaftSwitchButton(
                 checked = preference.enabled,
                 enabled = preference.available && !busy
             )
@@ -10784,14 +10903,14 @@ private fun SettingsNotificationsContent(
     onRetry: () -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
             ScreenLoadState.Loading ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.LoaderCircle,
+                        RaftLucideIconName.LoaderCircle,
                         stringResource(MR.strings.common_loading),
                         stringResource(MR.strings.settings_notifications_loading),
                         null,
@@ -10801,7 +10920,7 @@ private fun SettingsNotificationsContent(
             is ScreenLoadState.Empty ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.Bell,
+                        RaftLucideIconName.Bell,
                         stringResource(MR.strings.settings_state_unavailable),
                         state.reason.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
@@ -10811,7 +10930,7 @@ private fun SettingsNotificationsContent(
             is ScreenLoadState.Error ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.TriangleAlert,
+                        RaftLucideIconName.TriangleAlert,
                         stringResource(MR.strings.settings_error_notification),
                         state.error.localizedUserFacingMessage(),
                         stringResource(MR.strings.common_retry),
@@ -10821,7 +10940,7 @@ private fun SettingsNotificationsContent(
             is ScreenLoadState.NoPermission ->
                 item {
                     SettingsLoadStateCard(
-                        SlockLucideIconName.Lock,
+                        RaftLucideIconName.Lock,
                         stringResource(MR.strings.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
@@ -10855,7 +10974,7 @@ private fun SettingsNotificationsContent(
                         onServerNotificationModeChange = onServerNotificationModeChange
                     )
                 }
-                if (slockPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushMessagePreviews.available) {
+                if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushMessagePreviews.available) {
                     item {
                         SettingsPushPreviewModeCard(
                             snapshot = snapshot,
@@ -10872,7 +10991,7 @@ private fun SettingsNotificationsContent(
 
 @Composable
 private fun SettingsPwaInstallCard() {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = stringResource(MR.strings.settings_pwa_install_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.AppWindow, title = stringResource(MR.strings.settings_pwa_install_title)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_pwa_install_native_detail))
         SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_install_prompt))
     }
@@ -10927,7 +11046,7 @@ private fun SettingsPushStatusCard(
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
                 title = stringResource(MR.strings.settings_notifications_background_realtime_title),
-                detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, slockPlatformProductName()),
+                detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, raftPlatformProductName()),
                 checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
                 enabled = !foregroundKeepAliveBusy,
                 onCheckedChange = onForegroundKeepAlivePreferenceChange
@@ -11004,7 +11123,7 @@ private fun settingsNotificationPermissionDetail(
         SettingsNotificationPermissionCopy.Allowed ->
             stringResource(MR.strings.settings_notifications_permission_allowed_detail)
         SettingsNotificationPermissionCopy.Needed ->
-            stringResource(MR.strings.settings_notifications_permission_open_settings, slockPlatformProductName())
+            stringResource(MR.strings.settings_notifications_permission_open_settings, raftPlatformProductName())
         SettingsNotificationPermissionCopy.Unavailable ->
             stringResource(MR.strings.settings_notifications_permission_unavailable_detail)
     }
@@ -11053,9 +11172,10 @@ private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotifi
 @Composable
 private fun SettingsNotificationSectionLabel(label: String) {
     Text(
-        text = label.slockDisplayUppercase(),
-        style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-        color = SlockColor.TextMutedGray,
+        // raft-ui section titles keep source case.
+        text = label,
+        style = RaftType.SectionLabel.copy(color = RaftColor.ForegroundHint, letterSpacing = 0.sp),
+        color = RaftColor.ForegroundHint,
         modifier = Modifier.fillMaxWidth().padding(start = 2.dp, top = 4.dp, bottom = 2.dp)
     )
 }
@@ -11074,8 +11194,7 @@ private fun SettingsNotificationPermissionBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (permissionGranted) SlockColor.AccentLime else SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftCardSurface(fill = if (permissionGranted) RaftColor.SuccessSoft else RaftColor.BrandSoft)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -11087,8 +11206,8 @@ private fun SettingsNotificationPermissionBanner(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(
-                if (permissionGranted) SlockLucideIconName.ShieldCheck else SlockLucideIconName.Bell,
+            RaftLucideIcon(
+                if (permissionGranted) RaftLucideIconName.ShieldCheck else RaftLucideIconName.Bell,
                 modifier = Modifier.size(22.dp)
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -11099,28 +11218,28 @@ private fun SettingsNotificationPermissionBanner(
                         } else {
                             stringResource(MR.strings.settings_notifications_permission_needed)
                         },
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = detail,
-                    style = SlockType.Caption.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Caption.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(18.dp))
+            RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(18.dp))
         }
         if (!permissionGranted) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.settings_notifications_request_permission),
                 onClick = onPermission,
                 enabled = permissionAvailable && !busy,
-                leadingIcon = SlockLucideIconName.Bell,
-                backgroundColor = SlockColor.SurfaceWhite,
+                leadingIcon = RaftLucideIconName.Bell,
+                backgroundColor = RaftColor.SurfaceWhite,
                 minWidth = 0.dp,
                 minHeight = 36.dp,
                 shadowOffset = 0.dp
@@ -11132,7 +11251,7 @@ private fun SettingsNotificationPermissionBanner(
 @Composable
 private fun SettingsNotificationPreferenceGroup(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Thin, SlockColor.BorderBlack),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp),
         content = content
     )
@@ -11140,7 +11259,7 @@ private fun SettingsNotificationPreferenceGroup(content: @Composable ColumnScope
 
 @Composable
 private fun SettingsNotificationDivider() {
-    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
+    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
 }
 
 @Composable
@@ -11163,8 +11282,8 @@ private fun SettingsNotificationActionRow(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = title,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -11172,12 +11291,12 @@ private fun SettingsNotificationActionRow(
         }
         Text(
             text = status,
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        SlockLucideIcon(SlockLucideIconName.Send, modifier = Modifier.size(18.dp))
+        RaftLucideIcon(RaftLucideIconName.Send, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -11201,14 +11320,14 @@ private fun SettingsNotificationToggleRow(
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = title,
-                style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             SettingsFormDetailText(detail)
         }
-        SlockSwitchButton(checked = checked, enabled = enabled)
+        RaftSwitchButton(checked = checked, enabled = enabled)
     }
 }
 
@@ -11286,7 +11405,7 @@ private fun ServerPushMode.settingsNotificationModeDetail(): String =
 
 @Composable
 private fun SettingsLoadStateCard(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     title: String,
     detail: String,
     retryLabel: String?,
@@ -11295,27 +11414,27 @@ private fun SettingsLoadStateCard(
     SettingsFormSectionCard(iconName = iconName, title = title) {
         SettingsFormDetailText(detail)
         retryLabel?.let {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = it,
                 onClick = onRetry,
-                leadingIcon = SlockLucideIconName.RefreshCw,
-                backgroundColor = SlockColor.SurfaceWhite
+                leadingIcon = RaftLucideIconName.RefreshCw,
+                backgroundColor = RaftColor.SurfaceWhite
             )
         }
     }
 }
 
-private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalSelectOption> =
-    options.map { SlockBrutalSelectOption(it.key, it.label) }
+private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<RaftBrutalSelectOption> =
+    options.map { RaftBrutalSelectOption(it.key, it.label) }
 
 private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
     options.firstOrNull { it.key == key }?.label ?: selectedLabel
 
 @Composable
-private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): List<SlockBrutalSelectOption> {
+private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): List<RaftBrutalSelectOption> {
     val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_system_language)
     return options.map { option ->
-        SlockBrutalSelectOption(
+        RaftBrutalSelectOption(
             option.key,
             if (option.key == TranslationTargetLanguages.System) systemLanguageLabel else option.label
         )
@@ -11349,21 +11468,21 @@ private fun SettingsConnectedAppSecretCard(
     secret: SettingsConnectedAppSecretSnapshot,
     onCopySecret: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_client_secret_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_client_secret_title)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_client_secret_detail))
-        SlockBrutalReadOnlyField(label = stringResource(MR.strings.settings_connected_apps_label_client_id), value = secret.clientId)
-        SlockBrutalReadOnlyField(
+        RaftBrutalReadOnlyField(label = stringResource(MR.strings.settings_connected_apps_label_client_id), value = secret.clientId)
+        RaftBrutalReadOnlyField(
             label = stringResource(MR.strings.settings_connected_apps_label_client_secret),
             value = secret.clientSecret,
             maxLines = 2,
-            textStyle = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-            textColor = SlockColor.TextBlack
+            textStyle = RaftType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            textColor = RaftColor.TextBlack
         )
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = stringResource(MR.strings.settings_connected_apps_action_copy_secret),
             onClick = { onCopySecret(secret.clientSecret) },
-            leadingIcon = SlockLucideIconName.Copy,
-            backgroundColor = SlockColor.BrandYellow
+            leadingIcon = RaftLucideIconName.Copy,
+            backgroundColor = RaftColor.BrandYellow
         )
     }
 }
@@ -11380,7 +11499,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
     val action = if (app.installed) CONNECTED_APPS_ACTION_UNINSTALL else CONNECTED_APPS_ACTION_INSTALL
     val busy = actionState.connectedAppsBusyFor(action, app.id)
     val connectedAppError = actionState.connectedAppsErrorFor(action, app.id)
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = app.name,
         uppercaseTitle = false,
         onDismiss = onDismiss,
@@ -11389,7 +11508,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -11424,16 +11543,16 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
                 item { SettingsFormErrorText(connectedAppError) }
             }
         }
-        SlockDialogFooter {
+        RaftDialogFooter {
             app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_open),
                     onClick = { onOpenUrl(url) },
-                    leadingIcon = SlockLucideIconName.ExternalLink,
-                    backgroundColor = SlockColor.SurfaceWhite
+                    leadingIcon = RaftLucideIconName.ExternalLink,
+                    backgroundColor = RaftColor.SurfaceWhite
                 )
             }
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     actionState.connectedAppsLocalizedStatusFor(
                         action,
@@ -11448,8 +11567,8 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
                     }
                 },
                 enabled = !busy,
-                leadingIcon = if (app.installed) SlockLucideIconName.Trash2 else SlockLucideIconName.Download,
-                backgroundColor = if (app.installed) SlockColor.SurfaceWhite else SlockColor.BrandYellow
+                leadingIcon = if (app.installed) RaftLucideIconName.Trash2 else RaftLucideIconName.Download,
+                backgroundColor = if (app.installed) RaftColor.SurfaceWhite else RaftColor.BrandYellow
             )
         }
     }
@@ -11461,7 +11580,7 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
     onDismiss: () -> Unit,
     onOpenUrl: (String) -> Unit
 ) {
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = app.name,
         uppercaseTitle = false,
         onDismiss = onDismiss,
@@ -11484,12 +11603,12 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
         SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
         SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_agent_manifest), app.agentManifestUrl)
         app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
-            SlockDialogFooter {
-                SlockBrutalActionButton(
+            RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_open),
                     onClick = { onOpenUrl(url) },
-                    leadingIcon = SlockLucideIconName.ExternalLink,
-                    backgroundColor = SlockColor.SurfaceWhite
+                    leadingIcon = RaftLucideIconName.ExternalLink,
+                    backgroundColor = RaftColor.SurfaceWhite
                 )
             }
         }
@@ -11512,7 +11631,7 @@ private fun SettingsConnectedAppsConfirmDialog(
     val deleting = target.kind == SettingsConnectedAppsConfirmKind.DeleteClient
     val action = if (deleting) CONNECTED_APPS_ACTION_DELETE else CONNECTED_APPS_ACTION_UNINSTALL
     val busy = actionState.connectedAppsBusyFor(action, target.id)
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = if (deleting) stringResource(MR.strings.settings_connected_apps_delete_title) else stringResource(MR.strings.settings_connected_apps_uninstall_title),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
@@ -11525,22 +11644,22 @@ private fun SettingsConnectedAppsConfirmDialog(
             } else {
                 MR.strings.settings_connected_apps_uninstall_detail.format(listOf(appName)).localized()
             },
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = RaftColor.TextMutedGray
         )
         SettingsConnectedAppDetailField(
             label = stringResource(MR.strings.settings_connected_apps_label_client_id),
             value = client?.clientId ?: marketplaceApp?.clientId ?: installedApp?.clientId
         )
         actionState.connectedAppsErrorFor(action, target.id)?.let { SettingsFormErrorText(it) }
-        SlockDialogFooter {
-            SlockBrutalActionButton(
+        RaftDialogFooter {
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
                 enabled = !busy,
-                backgroundColor = SlockColor.SurfaceWhite
+                backgroundColor = RaftColor.SurfaceWhite
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = actionState.connectedAppsLocalizedStatusFor(action, if (deleting) stringResource(MR.strings.common_delete) else stringResource(MR.strings.settings_connected_apps_action_uninstall), target.id),
                 onClick = {
                     if (deleting) {
@@ -11550,8 +11669,8 @@ private fun SettingsConnectedAppsConfirmDialog(
                     }
                 },
                 enabled = !busy,
-                leadingIcon = SlockLucideIconName.Trash2,
-                backgroundColor = SlockColor.AccentRed
+                leadingIcon = RaftLucideIconName.Trash2,
+                backgroundColor = RaftColor.AccentRed
             )
         }
     }
@@ -11560,7 +11679,7 @@ private fun SettingsConnectedAppsConfirmDialog(
 @Composable
 private fun SettingsConnectedAppDetailField(label: String, value: String?) {
     value?.takeIf { it.isNotBlank() }?.let {
-        SlockBrutalReadOnlyField(label = label, value = it)
+        RaftBrutalReadOnlyField(label = label, value = it)
     }
 }
 
@@ -11569,11 +11688,11 @@ private fun SettingsConnectedAppsBuiltInBand(
     apps: List<SettingsConnectedAppBuiltInSnapshot>,
     onOpenDetail: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = stringResource(MR.strings.settings_connected_apps_builtin_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.PackageCheck, title = stringResource(MR.strings.settings_connected_apps_builtin_title)) {
         Text(
             stringResource(MR.strings.settings_connected_apps_builtin_detail),
-            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.Button.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         if (apps.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_built_in))
@@ -11583,8 +11702,8 @@ private fun SettingsConnectedAppsBuiltInBand(
                     title = app.name,
                     detail = listOfNotNull(stringResource(MR.strings.settings_connected_apps_builtin_item_detail), app.description, app.homepageDomain).joinToString(" · "),
                     buttonLabel = stringResource(MR.strings.common_open),
-                    buttonIcon = SlockLucideIconName.ExternalLink,
-                    buttonColor = SlockColor.AccentPink,
+                    buttonIcon = RaftLucideIconName.ExternalLink,
+                    buttonColor = RaftColor.AccentPink,
                     enabled = true,
                     onClick = { onOpenDetail(app.id) }
                 )
@@ -11615,8 +11734,8 @@ private fun SettingsConnectedAppsMarketplaceCard(
     var searchValue by remember { mutableStateOf(textFieldValueAtEnd(search)) }
     val filteredMarketplace =
         marketplace.settingsConnectedAppFilteredMarketplace(searchValue.text, resolvedCategory)
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = stringResource(MR.strings.settings_connected_apps_tab_marketplace)) {
-        SlockBrutalSearchField(
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Store, title = stringResource(MR.strings.settings_connected_apps_tab_marketplace)) {
+        RaftBrutalSearchField(
             value = searchValue,
             placeholder = stringResource(MR.strings.settings_connected_apps_marketplace_search),
             onValueChange = {
@@ -11624,7 +11743,7 @@ private fun SettingsConnectedAppsMarketplaceCard(
                 onSearchChange(it.text)
             }
         )
-        SlockRaftUiSelectField(
+        RaftUiSelectField(
             options = categoryOptions,
             selectedId = resolvedCategory,
             onSelect = { onCategoryChange(it.id) },
@@ -11647,8 +11766,8 @@ private fun SettingsConnectedAppsMarketplaceCard(
                             if (app.installed) stringResource(MR.strings.settings_connected_apps_state_installed) else null
                         ).joinToString(" · "),
                     buttonLabel = stringResource(MR.strings.settings_connected_apps_action_details),
-                    buttonIcon = SlockLucideIconName.Eye,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    buttonIcon = RaftLucideIconName.Eye,
+                    buttonColor = RaftColor.SurfaceWhite,
                     enabled = true,
                     onClick = { onOpenDetail(app.id) }
                 )
@@ -11667,7 +11786,7 @@ private fun SettingsConnectedAppsInstalledCard(
     onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
     onRequestUninstall: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.CircleCheck, title = stringResource(MR.strings.settings_connected_apps_installed_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.CircleCheck, title = stringResource(MR.strings.settings_connected_apps_installed_title)) {
         if (installed.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_installed_marketplace))
         } else {
@@ -11685,8 +11804,8 @@ private fun SettingsConnectedAppsInstalledCard(
                         } else {
                             actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_UNINSTALL, stringResource(MR.strings.settings_connected_apps_action_uninstall), app.id)
                         },
-                    buttonIcon = if (editableClient) SlockLucideIconName.Pencil else SlockLucideIconName.Trash2,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    buttonIcon = if (editableClient) RaftLucideIconName.Pencil else RaftLucideIconName.Trash2,
+                    buttonColor = RaftColor.SurfaceWhite,
                     enabled = editableClient || (marketplaceApp && !busy),
                     onClick = {
                         if (editableClient) {
@@ -11716,9 +11835,9 @@ private fun SettingsConnectedAppLogoEditor(
     val editing = editingClient != null
     val displayName = fallbackName.ifBlank { editingClient?.name.orEmpty().ifBlank { stringResource(MR.strings.settings_connected_apps_default_app) } }
     val seed = fallbackClientId.ifBlank { editingClient?.clientId.orEmpty().ifBlank { displayName } }
-    SlockBrutalSectionLabel(
+    RaftBrutalSectionLabel(
         label = stringResource(MR.strings.settings_connected_apps_label_logo),
-        size = SlockFormFieldSize.Compact
+        size = RaftFormFieldSize.Compact
     )
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         SettingsConnectedAppLogoBox(
@@ -11738,21 +11857,21 @@ private fun SettingsConnectedAppLogoEditor(
             if (editingClient != null) {
                 val client = editingClient
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_LOGO_UPLOAD, if (client.logoUrl.isNullOrBlank()) stringResource(MR.strings.settings_connected_apps_action_upload) else stringResource(MR.strings.settings_connected_apps_action_change), client.id),
                         onClick = onUploadLogo,
                         enabled = enabled && !busy,
-                        leadingIcon = SlockLucideIconName.Upload,
-                        backgroundColor = SlockColor.SurfaceWhite,
+                        leadingIcon = RaftLucideIconName.Upload,
+                        backgroundColor = RaftColor.SurfaceWhite,
                         minWidth = 0.dp
                     )
                     if (!client.logoUrl.isNullOrBlank()) {
-                        SlockBrutalActionButton(
+                        RaftBrutalActionButton(
                             label = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_LOGO_CLEAR, stringResource(MR.strings.settings_connected_apps_action_reset), client.id),
                             onClick = onClearLogo,
                             enabled = enabled && !busy,
-                            leadingIcon = SlockLucideIconName.RotateCcw,
-                            backgroundColor = SlockColor.SurfaceWhite,
+                            leadingIcon = RaftLucideIconName.RotateCcw,
+                            backgroundColor = RaftColor.SurfaceWhite,
                             minWidth = 0.dp
                         )
                     }
@@ -11774,12 +11893,12 @@ private fun SettingsConnectedAppLogoBox(
         modifier =
             Modifier
                 .size(size)
-                .background(if (hasLogo) SlockColor.SurfaceWhite else settingsConnectedAppLogoColor(seed))
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                .background(if (hasLogo) RaftColor.SurfaceWhite else settingsConnectedAppLogoColor(seed), RoundedCornerShape(RaftAppRadius.Sticker))
+                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
         contentAlignment = Alignment.Center
     ) {
         if (hasLogo) {
-            SlockCachedImage(
+            RaftCachedImage(
                 source = logoUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
@@ -11789,12 +11908,12 @@ private fun SettingsConnectedAppLogoBox(
             Text(
                 settingsConnectedAppInitials(name),
                 style =
-                    SlockType.PageTitle.copy(
+                    RaftType.PageTitle.copy(
                         fontSize = (size.value * 0.26f).sp,
                         lineHeight = (size.value * 0.30f).sp,
-                        color = SlockColor.TextBlack
+                        color = RaftColor.TextBlack
                     ),
-                color = SlockColor.TextBlack,
+                color = RaftColor.TextBlack,
                 textAlign = TextAlign.Center
             )
         }
@@ -11804,11 +11923,11 @@ private fun SettingsConnectedAppLogoBox(
 private fun settingsConnectedAppLogoColor(seed: String): Color {
     val colors =
         listOf(
-            SlockColor.AccentCyan,
-            SlockColor.AccentLime,
-            SlockColor.AccentLavender,
-            SlockColor.BrandYellow,
-            SlockColor.AccentPink
+            RaftColor.AccentCyan,
+            RaftColor.AccentLime,
+            RaftColor.AccentLavender,
+            RaftColor.BrandYellow,
+            RaftColor.AccentPink
         )
     val value = seed.ifBlank { "app" }.sumOf { it.code }
     return colors[value % colors.size]
@@ -11869,29 +11988,29 @@ private fun SettingsConnectedAppEditorCard(
         actionState?.inProgress == true &&
             actionState.action in setOf(CONNECTED_APPS_ACTION_LOGO_UPLOAD, CONNECTED_APPS_ACTION_LOGO_CLEAR) &&
             actionState.itemId == editingId
-    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = if (editing) stringResource(MR.strings.settings_connected_apps_edit_title) else stringResource(MR.strings.settings_connected_apps_register_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.KeyRound, title = if (editing) stringResource(MR.strings.settings_connected_apps_edit_title) else stringResource(MR.strings.settings_connected_apps_register_title)) {
         SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_register_detail))
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_app_name),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = name,
             placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_app_name),
             onValueChange = onNameChange,
             required = true,
             enabled = enabled
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_client_id),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = clientId,
             placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_client_id),
             onValueChange = onClientIdChange,
             optional = true,
             enabled = enabled && !editing
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.agent_create_label_description),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = description,
             placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_description),
             onValueChange = onDescriptionChange,
@@ -11900,27 +12019,27 @@ private fun SettingsConnectedAppEditorCard(
             maxLines = 3,
             fieldMinHeight = 78.dp
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_homepage_url),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = homepageUrl,
             placeholder = "https://example.com",
             onValueChange = onHomepageUrlChange,
             optional = true,
             enabled = enabled
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_return_url),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = returnUrl,
             placeholder = "https://example.com/oauth/callback",
             onValueChange = onReturnUrlChange,
             optional = true,
             enabled = enabled
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_manifest_url),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = manifestUrl,
             placeholder = "https://example.com/.well-known/slock-agent.json",
             onValueChange = onManifestUrlChange,
@@ -11938,18 +12057,18 @@ private fun SettingsConnectedAppEditorCard(
             onClearLogo = { editingClient?.id?.let(onClearLogo) }
         )
         if (editing && canRequestPublish) {
-            SlockBrutalTextField(
+            RaftBrutalTextField(
                 label = stringResource(MR.strings.settings_connected_apps_label_publish_category),
-                labelSize = SlockFormFieldSize.Compact,
+                labelSize = RaftFormFieldSize.Compact,
                 value = publishCategory,
                 placeholder = "productivity",
                 onValueChange = onPublishCategoryChange,
                 optional = true,
                 enabled = enabled
             )
-            SlockBrutalTextField(
+            RaftBrutalTextField(
                 label = stringResource(MR.strings.settings_connected_apps_label_data_access_summary),
-                labelSize = SlockFormFieldSize.Compact,
+                labelSize = RaftFormFieldSize.Compact,
                 value = publishDataAccess,
                 placeholder = "Profile and workspace metadata",
                 onValueChange = onPublishDataAccessChange,
@@ -11976,7 +12095,7 @@ private fun SettingsConnectedAppEditorCard(
             SettingsFormErrorText(actionState)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     actionState.connectedAppsLocalizedStatusFor(
                         if (editing) CONNECTED_APPS_ACTION_UPDATE else CONNECTED_APPS_ACTION_REGISTER,
@@ -12009,16 +12128,16 @@ private fun SettingsConnectedAppEditorCard(
                     }
                 },
                 enabled = enabled && trimmedName.isNotBlank(),
-                leadingIcon = if (editing) SlockLucideIconName.Save else SlockLucideIconName.Plus,
-                backgroundColor = SlockColor.BrandYellow
+                leadingIcon = if (editing) RaftLucideIconName.Save else RaftLucideIconName.Plus,
+                backgroundColor = RaftColor.BrandYellow
             )
             if (editing) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     onClick = onCancelEdit,
                     enabled = !busy,
-                    leadingIcon = SlockLucideIconName.X,
-                    backgroundColor = SlockColor.SurfaceWhite
+                    leadingIcon = RaftLucideIconName.X,
+                    backgroundColor = RaftColor.SurfaceWhite
                 )
             }
         }
@@ -12035,7 +12154,7 @@ private fun SettingsConnectedAppClientsCard(
     publishCategory: String,
     publishDataAccess: TextFieldValue
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_my_apps_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_my_apps_title)) {
         if (clients.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_oauth_clients))
         } else {
@@ -12047,8 +12166,8 @@ private fun SettingsConnectedAppClientsCard(
                     title = app.name,
                     detail = listOfNotNull(app.clientId, app.publishStatus, app.description).joinToString(" · "),
                     buttonLabel = stringResource(MR.strings.common_edit),
-                    buttonIcon = SlockLucideIconName.Pencil,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    buttonIcon = RaftLucideIconName.Pencil,
+                    buttonColor = RaftColor.SurfaceWhite,
                     enabled = !publishBusy && !deleteBusy,
                     onClick = { onStartEdit(app) }
                 )
@@ -12057,8 +12176,8 @@ private fun SettingsConnectedAppClientsCard(
                         title = MR.strings.settings_connected_apps_publish_title.format(listOf(app.name)).localized(),
                         detail = app.publishRejectionReason ?: stringResource(MR.strings.settings_connected_apps_publish_detail),
                         buttonLabel = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_PUBLISH, stringResource(MR.strings.settings_connected_apps_action_request_publish), app.id),
-                        buttonIcon = SlockLucideIconName.Send,
-                        buttonColor = SlockColor.AccentCyan,
+                        buttonIcon = RaftLucideIconName.Send,
+                        buttonColor = RaftColor.AccentCyan,
                         enabled = !publishBusy,
                         onClick = {
                             onPublish(
@@ -12083,8 +12202,8 @@ private fun SettingsConnectedAppClientsCard(
                     title = MR.strings.settings_connected_apps_delete_app_title.format(listOf(app.name)).localized(),
                     detail = stringResource(MR.strings.settings_connected_apps_delete_app_detail),
                     buttonLabel = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_DELETE, stringResource(MR.strings.common_delete), app.id),
-                    buttonIcon = SlockLucideIconName.Trash2,
-                    buttonColor = SlockColor.AccentRed,
+                    buttonIcon = RaftLucideIconName.Trash2,
+                    buttonColor = RaftColor.AccentRed,
                     enabled = !deleteBusy,
                     onClick = { onRequestDelete(app.id) }
                 )
@@ -12100,7 +12219,7 @@ private fun SettingsConnectedAppActionRow(
     title: String,
     detail: String,
     buttonLabel: String,
-    buttonIcon: SlockLucideIconName,
+    buttonIcon: RaftLucideIconName,
     buttonColor: Color,
     enabled: Boolean,
     onClick: () -> Unit
@@ -12121,19 +12240,19 @@ private fun SettingsConnectedAppInfoRow(
     title: String,
     detail: String,
     status: String,
-    iconName: SlockLucideIconName
+    iconName: RaftLucideIconName
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control).padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+        RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-            Text(detail.ifBlank { stringResource(MR.strings.settings_connected_apps_no_description) }, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+            Text(detail.ifBlank { stringResource(MR.strings.settings_connected_apps_no_description) }, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         }
-        Text(status, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(status, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
 
@@ -12156,17 +12275,17 @@ private fun SettingsServerProfileFormCard(
     val dirty = trimmedName.isNotBlank() && trimmedName != currentName
     val enabled = canSave && dirty && !busy
     val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(MR.strings.settings_server_action_save_profile) else stringResource(MR.strings.settings_server_state_read_only))
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
-        SlockBrutalTextField(
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_name),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = if (canSave) draftName else currentName,
             placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) },
             onValueChange = onNameChange,
             required = true,
             enabled = canSave && !busy
         )
-        SlockBrutalReadOnlyField(
+        RaftBrutalReadOnlyField(
             label = stringResource(MR.strings.settings_server_label_slug),
             value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) }
         )
@@ -12174,21 +12293,21 @@ private fun SettingsServerProfileFormCard(
             SettingsFormErrorText(actionState)
         }
         if (canSave) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = status,
                 onClick = onSubmit,
                 enabled = enabled,
-                leadingIcon = SlockLucideIconName.Save,
-                backgroundColor = SlockColor.AccentPink,
-                disabledBackgroundColor = slockDisabledActionBackgroundFor(SlockColor.AccentPink),
-                disabledBorderColor = SlockDisabledActionBorder,
-                disabledShadowColor = SlockDisabledActionShadow,
-                disabledContentColor = SlockDisabledActionContent,
-                disabledIconColor = SlockDisabledActionContentArgb,
+                leadingIcon = RaftLucideIconName.Save,
+                backgroundColor = RaftColor.AccentPink,
+                disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentPink),
+                disabledBorderColor = RaftDisabledActionBorder,
+                disabledShadowColor = RaftDisabledActionShadow,
+                disabledContentColor = RaftDisabledActionContent,
+                disabledIconColor = RaftDisabledActionContentArgb,
                 minWidth = 0.dp,
                 minHeight = 34.dp,
                 shadowOffset = 3.dp,
-                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
             )
         }
     }
@@ -12196,7 +12315,7 @@ private fun SettingsServerProfileFormCard(
 
 @Composable
 private fun SettingsServerSectionHeader(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     title: String
 ) {
     Row(
@@ -12204,13 +12323,13 @@ private fun SettingsServerSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(
+        RaftLucideIcon(
             iconName,
             modifier = Modifier.size(16.dp),
             color = "#FF000000",
-            spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
+            spinning = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
         )
-        Text(title, style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(title, style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
 
@@ -12239,22 +12358,22 @@ private fun SettingsServerDangerZoneCard(
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
     val trimmedModalSlug = modalConfirmationSlug.trim()
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
-    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_section_danger_zone_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_section_danger_zone_title)) {
         if (canLeave) {
             SettingsServerActionRow(
                 title = stringResource(MR.strings.settings_server_action_leave),
                 detail = MR.strings.settings_server_leave_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
                 buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
-                buttonIcon = SlockLucideIconName.LogOut,
-                buttonColor = SlockColor.AccentOrange,
+                buttonIcon = RaftLucideIconName.LogOut,
+                buttonColor = RaftColor.AccentOrange,
                 enabled = !leaveBusy,
                 onClick = onLeave
             )
             if (leaveConfirmed) {
                 Text(
                     stringResource(MR.strings.settings_server_leave_confirm),
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
         }
@@ -12263,8 +12382,8 @@ private fun SettingsServerDangerZoneCard(
                 title = stringResource(MR.strings.settings_server_action_delete),
                 detail = MR.strings.settings_server_delete_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
                 buttonLabel = stringResource(MR.strings.settings_server_action_delete),
-                buttonIcon = SlockLucideIconName.Trash2,
-                buttonColor = SlockColor.AccentRed,
+                buttonIcon = RaftLucideIconName.Trash2,
+                buttonColor = RaftColor.AccentRed,
                 enabled = !deleteBusy,
                 onClick = { showDeleteModal = true }
             )
@@ -12326,7 +12445,7 @@ private fun SettingsServerDeleteConfirmationDialog(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            SlockModalDismissBarrier(
+            RaftModalDismissBarrier(
                 overlayAlpha = 0.58f,
                 onDismiss = onDismiss,
                 dismissEnabled = !deleteBusy
@@ -12336,22 +12455,15 @@ private fun SettingsServerDeleteConfirmationDialog(
                     Modifier
                         .padding(horizontal = 18.dp)
                         .widthIn(max = 384.dp)
-                        .slockFloatingContentClickTarget()
+                        .raftFloatingContentClickTarget()
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(24.dp),
+                            .raftLookOverlaySurface(RaftAppRadius.Dialog)
+                            // raft-ui Dialog: p-5 insets.
+                            .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Row(
@@ -12359,24 +12471,26 @@ private fun SettingsServerDeleteConfirmationDialog(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // raft-ui Dialog title: 17/22 bold in source case (web
+                        // "Delete Server"), with the ghost 32dp close.
                         Text(
-                            stringResource(MR.strings.settings_delete_server),
+                            stringResource(MR.strings.settings_server_action_delete),
                             style =
-                                SlockType.PageTitle.copy(
-                                    fontSize = 18.sp,
-                                    lineHeight = 22.sp,
-                                    color = SlockColor.TextBlack
-                                ),
-                            color = SlockColor.TextBlack,
+                                RaftType.PageTitle
+                                    .copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack)
+                                    .withRaftFontWeight(FontWeight.Bold),
+                            color = RaftColor.TextBlack,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        SlockBrutalIconButton(
+                        RaftBrutalIconButton(
                             enabled = !deleteBusy,
-                            iconName = SlockLucideIconName.X,
+                            iconName = RaftLucideIconName.X,
                             onClick = onDismiss,
-                            size = 34.dp,
+                            backgroundColor = Color.Transparent,
+                            size = 32.dp,
+                            iconSize = 18.dp,
                             shadowOffset = 3.dp
                         )
                     }
@@ -12387,20 +12501,20 @@ private fun SettingsServerDeleteConfirmationDialog(
                     ) {
                         Text(
                             stringResource(MR.strings.settings_server_delete_type_prefix) + " ",
-                            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray
                         )
                         Text(
                             resolvedSlug,
-                            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                            color = SlockColor.TextBlack,
+                            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+                            color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             stringResource(MR.strings.settings_server_delete_confirm_suffix),
-                            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray
+                            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray
                         )
                     }
                     SettingsServerSlugInput(
@@ -12412,33 +12526,33 @@ private fun SettingsServerDeleteConfirmationDialog(
                     errorMessage?.takeIf { it.isNotBlank() }?.let {
                         SettingsServerDeleteWarningBanner(serverName = null, text = it)
                     }
-                    SlockDialogFooter {
-                        SlockBrutalActionButton(
+                    RaftDialogFooter {
+                        RaftBrutalActionButton(
                             label = stringResource(MR.strings.common_cancel),
                             onClick = onCancel,
                             enabled = !deleteBusy,
                             modifier = Modifier.widthIn(min = 72.dp),
-                            backgroundColor = SlockColor.SurfaceWhite,
+                            backgroundColor = RaftColor.SurfaceWhite,
                             minWidth = 0.dp,
                             minHeight = 34.dp,
                             shadowOffset = 3.dp,
-                            textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
                         )
-                        SlockBrutalActionButton(
+                        RaftBrutalActionButton(
                             label = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
                             onClick = onDelete,
                             enabled = deleteEnabled,
                             modifier = Modifier.widthIn(min = 112.dp),
-                            backgroundColor = SlockColor.AccentRed,
-                            disabledBackgroundColor = slockDisabledActionBackgroundFor(SlockColor.AccentRed),
-                            disabledBorderColor = SlockDisabledActionBorder,
-                            disabledShadowColor = SlockDisabledActionShadow,
-                            disabledContentColor = SlockDisabledActionContent,
-                            disabledIconColor = SlockDisabledActionContentArgb,
+                            backgroundColor = RaftColor.AccentRed,
+                            disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentRed),
+                            disabledBorderColor = RaftDisabledActionBorder,
+                            disabledShadowColor = RaftDisabledActionShadow,
+                            disabledContentColor = RaftDisabledActionContent,
+                            disabledIconColor = RaftDisabledActionContentArgb,
                             minWidth = 0.dp,
                             minHeight = 34.dp,
                             shadowOffset = 3.dp,
-                            textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
                         )
                     }
                 }
@@ -12469,21 +12583,20 @@ private fun SettingsServerDeleteWarningBanner(
             Modifier
                 .fillMaxWidth()
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-                .background(SlockColor.AccentRed.copy(alpha = 0.14f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftCardSurface(fill = RaftColor.AccentRed.copy(alpha = 0.14f))
                 .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.TriangleAlert,
+        RaftLucideIcon(
+            RaftLucideIconName.TriangleAlert,
             modifier = Modifier.padding(top = 1.dp).size(16.dp),
             color = "#FF000000"
         )
         Text(
             message,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             modifier = Modifier.weight(1f)
         )
     }
@@ -12504,7 +12617,7 @@ internal fun settingsServerDeleteWarningBannerText(
         append(suffix)
         if (serverName != null) {
             addStyle(
-                slockSpanStyleForWeight(FontWeight.Bold),
+                raftSpanStyleForWeight(FontWeight.Bold),
                 start = prefix.length,
                 end = prefix.length + resolvedName.length
             )
@@ -12522,11 +12635,11 @@ private fun SettingsServerSlugInput(
     // Caller-local TextFieldValue owns the confirmation-slug editor for this
     // modal's mount; the durable store keeps the String projection (task #130
     // Phase D). The slug path applies no per-keystroke filtering or truncation
-    // (both SlockSlugInput overloads pass the value straight through; the only
+    // (both RaftSlugInput overloads pass the value straight through; the only
     // normalisation is a .trim() at submit), so there is nothing to coerce the
     // selection against here — the editor value is forwarded verbatim.
     var slugValue by remember { mutableStateOf(textFieldValueAtEnd(value)) }
-    SlockSlugInput(
+    RaftSlugInput(
         value = slugValue,
         onValueChange = {
             slugValue = it
@@ -12539,7 +12652,7 @@ private fun SettingsServerSlugInput(
 
 @Composable
 private fun SettingsFormSectionCard(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     title: String,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -12548,7 +12661,7 @@ private fun SettingsFormSectionCard(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         SettingsServerSectionHeader(iconName = iconName, title = title)
-        SlockBrutalCard(
+        RaftBrutalCard(
             contentPadding = 14.dp,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -12569,7 +12682,7 @@ private fun SettingsSegmentedControlField(
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         label?.takeIf { it.isNotBlank() }?.let {
-            SlockBrutalSectionLabel(label = it, size = SlockFormFieldSize.Compact)
+            RaftBrutalSectionLabel(label = it, size = RaftFormFieldSize.Compact)
         }
         detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SegmentedControl(
@@ -12586,7 +12699,7 @@ private fun SettingsServerActionRow(
     title: String,
     detail: String,
     buttonLabel: String,
-    buttonIcon: SlockLucideIconName,
+    buttonIcon: RaftLucideIconName,
     buttonColor: Color,
     enabled: Boolean,
     onClick: () -> Unit
@@ -12597,10 +12710,10 @@ private fun SettingsServerActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-            Text(detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+            Text(detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         }
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = buttonLabel,
             onClick = onClick,
             enabled = enabled,
@@ -12646,22 +12759,22 @@ private fun SettingsServerAdminsCard(
             selectedRole = selectedRoleOptions.firstOrNull() ?: "admin"
         }
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = stringResource(MR.strings.settings_server_section_owners_admins)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Shield, title = stringResource(MR.strings.settings_server_section_owners_admins)) {
         section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (candidates.isNotEmpty()) {
             Text(
                 stringResource(MR.strings.settings_server_action_add_admin),
-                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
-                SlockBrutalSelectField(
+                RaftBrutalSelectField(
                     options =
                         candidates.map { candidate ->
-                            SlockBrutalSelectOption(
+                            RaftBrutalSelectOption(
                                 id = candidate.id,
                                 label =
                                     listOfNotNull(
@@ -12686,18 +12799,18 @@ private fun SettingsServerAdminsCard(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockBrutalSelectField(
+                    RaftBrutalSelectField(
                         options =
                             listOf(
-                                SlockBrutalSelectOption(
+                                RaftBrutalSelectOption(
                                     id = "owner",
                                     label = stringResource(MR.strings.settings_server_role_owner),
                                     enabled = "owner" in selectedRoleOptions
                                 ),
-                                SlockBrutalSelectOption(
+                                RaftBrutalSelectOption(
                                     id = "admin",
                                     label = stringResource(MR.strings.settings_server_role_admin),
                                     enabled = "admin" in selectedRoleOptions
@@ -12710,20 +12823,20 @@ private fun SettingsServerAdminsCard(
                         modifier = Modifier.weight(1f),
                         onSelect = { option -> selectedRole = option.id }
                     )
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label =
                             selectedCandidate
                                 ?.let { actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_ROLE, stringResource(MR.strings.settings_server_action_update_role), it.id) }
                                 ?: stringResource(MR.strings.settings_server_action_update_role),
                         onClick = {
-                            val candidateId = selectedCandidate?.id ?: return@SlockBrutalActionButton
+                            val candidateId = selectedCandidate?.id ?: return@RaftBrutalActionButton
                             onAction(SERVER_ACTION_MEMBER_ROLE, "$candidateId:$selectedRole")
                         },
                         enabled =
                             selectedCandidate != null &&
                                 selectedRole in selectedRoleOptions &&
                                 actionState?.inProgress != true,
-                        backgroundColor = SlockColor.AccentPink,
+                        backgroundColor = RaftColor.AccentPink,
                         minWidth = 112.dp
                     )
                 }
@@ -12747,8 +12860,8 @@ private fun SettingsServerAdminsCard(
                     title = admin.name,
                     detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: stringResource(MR.strings.settings_server_role_admin) },
                     buttonLabel = if (canDemote) actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
-                    buttonIcon = SlockLucideIconName.UserMinus,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    buttonIcon = RaftLucideIconName.UserMinus,
+                    buttonColor = RaftColor.SurfaceWhite,
                     enabled = canDemote && actionState?.inProgress != true,
                     onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${admin.id}:member") }
                 )
@@ -12765,10 +12878,10 @@ private fun SettingsServerInvitesCard(
     invites: List<SettingsServerInviteSnapshot>,
     section: SettingsServerSectionSnapshot?,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     onAction: (String, String?) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = stringResource(MR.strings.settings_section_pending_invites_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.MailPlus, title = stringResource(MR.strings.settings_section_pending_invites_title)) {
         section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (invites.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_pending_invites))
@@ -12782,8 +12895,8 @@ private fun SettingsServerInvitesCard(
                             relativeSettingsTimestampLabel(invite.createdAtLabel, timeContext)
                         ).joinToString(" · "),
                     buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_INVITE_REVOKE, stringResource(MR.strings.settings_server_action_revoke), invite.id),
-                    buttonIcon = SlockLucideIconName.X,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    buttonIcon = RaftLucideIconName.X,
+                    buttonColor = RaftColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
                     onClick = { onAction(SERVER_ACTION_INVITE_REVOKE, invite.id) }
                 )
@@ -12802,7 +12915,7 @@ private fun SettingsServerJoinLinksCard(
     maxUses: String,
     expiresAt: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     onMaxUsesChange: (String) -> Unit,
     onExpiresAtChange: (String) -> Unit,
     onCreate: (SettingsServerJoinLinkCreateRequest) -> Unit,
@@ -12813,20 +12926,20 @@ private fun SettingsServerJoinLinksCard(
     val maxUsesInvalid = trimmedMaxUses.isNotBlank() && (parsedMaxUses == null || parsedMaxUses <= 0)
     val createBusy = actionState?.action == SERVER_ACTION_JOIN_LINK_CREATE && actionState.inProgress
     val createEnabled = !createBusy && !maxUsesInvalid
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = stringResource(MR.strings.settings_section_join_links_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Link2, title = stringResource(MR.strings.settings_section_join_links_title)) {
         section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_max_uses),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = maxUses,
             placeholder = stringResource(MR.strings.settings_server_placeholder_unlimited),
             onValueChange = onMaxUsesChange,
             optional = true,
             enabled = !createBusy
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_expires_at),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = expiresAt,
             placeholder = "2026-06-01T09:00:00Z",
             onValueChange = onExpiresAtChange,
@@ -12836,7 +12949,7 @@ private fun SettingsServerJoinLinksCard(
         if (maxUsesInvalid) {
             SettingsFormErrorText(stringResource(MR.strings.settings_server_error_max_uses))
         }
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = actionState.serverLocalizedStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, stringResource(MR.strings.settings_server_action_create_join_link)),
             onClick = {
                 onCreate(
@@ -12847,8 +12960,8 @@ private fun SettingsServerJoinLinksCard(
                 )
             },
             enabled = createEnabled,
-            leadingIcon = SlockLucideIconName.Plus,
-            backgroundColor = SlockColor.AccentPink
+            leadingIcon = RaftLucideIconName.Plus,
+            backgroundColor = RaftColor.AccentPink
         )
         SettingsFormDivider()
         if (links.isEmpty()) {
@@ -12864,8 +12977,8 @@ private fun SettingsServerJoinLinksCard(
                             relativeSettingsTimestampLabel(link.expiresAtLabel, timeContext)
                         ).joinToString(" · "),
                     buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, stringResource(MR.strings.settings_server_action_revoke), link.id),
-                    buttonIcon = SlockLucideIconName.Unlink,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    buttonIcon = RaftLucideIconName.Unlink,
+                    buttonColor = RaftColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
                     onClick = { onAction(SERVER_ACTION_JOIN_LINK_REVOKE, link.id) }
                 )
@@ -12898,29 +13011,29 @@ private fun SettingsServerAgreementCard(
         agreement != null &&
             (enabled != agreement.enabled || title.text.trim() != agreement.title || bodyMarkdown.text != agreement.bodyMarkdown)
     val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
-    SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = stringResource(MR.strings.settings_section_pre_join_agreement_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.FileCheck, title = stringResource(MR.strings.settings_section_pre_join_agreement_title)) {
         section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SettingsSegmentedControlField(
             selectedValue = if (enabled) "enabled" else "disabled",
             options = listOf(
-                SegmentedControlOption("enabled", stringResource(MR.strings.settings_server_agreement_required), SlockLucideIconName.CircleCheck),
-                SegmentedControlOption("disabled", stringResource(MR.strings.settings_server_agreement_disabled), SlockLucideIconName.X)
+                SegmentedControlOption("enabled", stringResource(MR.strings.settings_server_agreement_required), RaftLucideIconName.CircleCheck),
+                SegmentedControlOption("disabled", stringResource(MR.strings.settings_server_agreement_disabled), RaftLucideIconName.X)
             ),
             onValueSelected = { onEnabledChange(it == "enabled") },
             enabled = canSave && !busy
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_title),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = title,
             placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_title),
             onValueChange = { onTitleChange(it.coerceTextLength(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH)) },
             required = enabled,
             enabled = canSave && !busy
         )
-        SlockBrutalTextField(
+        RaftBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_body_markdown),
-            labelSize = SlockFormFieldSize.Compact,
+            labelSize = RaftFormFieldSize.Compact,
             value = bodyMarkdown,
             placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_body),
             onValueChange = onBodyChange,
@@ -12941,12 +13054,12 @@ private fun SettingsServerAgreementCard(
             SettingsFormErrorText(actionState)
         }
         if (canSave) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = actionState.serverLocalizedStatusFor(SERVER_ACTION_AGREEMENT_SAVE, stringResource(MR.strings.settings_server_action_save_agreement)),
                 onClick = onSubmit,
                 enabled = saveEnabled,
-                leadingIcon = SlockLucideIconName.Save,
-                backgroundColor = SlockColor.BrandYellow
+                leadingIcon = RaftLucideIconName.Save,
+                backgroundColor = RaftColor.BrandYellow
             )
         }
     }
@@ -12956,20 +13069,20 @@ private fun SettingsServerAgreementCard(
 private fun SettingsAgreementPreview(bodyMarkdown: TextFieldValue) {
     val previewBody = bodyMarkdown.text
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             stringResource(MR.strings.settings_server_label_preview),
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         if (previewBody.isBlank()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_server_empty_agreement_preview))
         } else {
-            SlockMarkdownBody(
+            RaftMarkdownBody(
                 body = previewBody,
-                textStyle = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+                textStyle = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
             )
         }
     }
@@ -12992,12 +13105,12 @@ private fun SettingsServerOnboardingCard(
     val currentGreeting = onboarding?.agentAllChannelGreetingEnabled ?: true
     val dirty = onboarding != null && (selectedAgentId != currentAgentId || greetingEnabled != currentGreeting)
     val agents = onboarding?.agents.orEmpty()
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Bot, title = stringResource(MR.strings.settings_section_onboarding_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Bot, title = stringResource(MR.strings.settings_section_onboarding_title)) {
         section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         Text(
             stringResource(MR.strings.settings_server_label_onboarding_agent),
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         SettingsServerSelectRow(
             title = stringResource(MR.strings.settings_server_onboarding_disabled),
@@ -13022,14 +13135,14 @@ private fun SettingsServerOnboardingCard(
         SettingsFormDivider()
         Text(
             stringResource(MR.strings.settings_server_label_new_agent_greeting),
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         SettingsSegmentedControlField(
             selectedValue = if (greetingEnabled) "yes" else "no",
             options = listOf(
-                SegmentedControlOption("yes", stringResource(MR.strings.common_yes), SlockLucideIconName.MessageCircle),
-                SegmentedControlOption("no", stringResource(MR.strings.common_no), SlockLucideIconName.MessageCircleOff)
+                SegmentedControlOption("yes", stringResource(MR.strings.common_yes), RaftLucideIconName.MessageCircle),
+                SegmentedControlOption("no", stringResource(MR.strings.common_no), RaftLucideIconName.MessageCircleOff)
             ),
             onValueSelected = { onGreetingEnabledChange(it == "yes") },
             enabled = canSave && !busy
@@ -13038,12 +13151,12 @@ private fun SettingsServerOnboardingCard(
             SettingsFormErrorText(actionState)
         }
         if (canSave) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = actionState.serverLocalizedStatusFor(SERVER_ACTION_ONBOARDING_SAVE, stringResource(MR.strings.settings_server_action_save_onboarding)),
                 onClick = onSubmit,
                 enabled = dirty && !busy,
-                leadingIcon = SlockLucideIconName.Save,
-                backgroundColor = SlockColor.BrandYellow
+                leadingIcon = RaftLucideIconName.Save,
+                backgroundColor = RaftColor.BrandYellow
             )
         }
     }
@@ -13061,13 +13174,13 @@ private fun SettingsServerMemberPermissionsCard(
     val canSave = profile?.canSave == true
     val busy = actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.inProgress
     val dirty = profile != null && hideHumansFromMembers != profile.hideHumansFromMembers
-    SettingsFormSectionCard(iconName = SlockLucideIconName.UsersRound, title = stringResource(MR.strings.settings_section_member_permissions_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.UsersRound, title = stringResource(MR.strings.settings_section_member_permissions_title)) {
         section.localizedDetail()?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SettingsSegmentedControlField(
             selectedValue = if (hideHumansFromMembers) "hidden" else "visible",
             options = listOf(
-                SegmentedControlOption("hidden", stringResource(MR.strings.settings_server_option_hide_humans), SlockLucideIconName.EyeOff),
-                SegmentedControlOption("visible", stringResource(MR.strings.settings_server_option_visible), SlockLucideIconName.Eye)
+                SegmentedControlOption("hidden", stringResource(MR.strings.settings_server_option_hide_humans), RaftLucideIconName.EyeOff),
+                SegmentedControlOption("visible", stringResource(MR.strings.settings_server_option_visible), RaftLucideIconName.Eye)
             ),
             onValueSelected = { onHideHumansFromMembersChange(it == "hidden") },
             enabled = canSave && !busy
@@ -13077,12 +13190,12 @@ private fun SettingsServerMemberPermissionsCard(
             SettingsFormErrorText(actionState)
         }
         if (canSave) {
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label = actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, stringResource(MR.strings.settings_server_action_save_permissions)),
                 onClick = onSubmit,
                 enabled = dirty && !busy,
-                leadingIcon = SlockLucideIconName.Save,
-                backgroundColor = SlockColor.BrandYellow
+                leadingIcon = RaftLucideIconName.Save,
+                backgroundColor = RaftColor.BrandYellow
             )
         }
     }
@@ -13105,7 +13218,7 @@ private fun SettingsServerPublicAccessCard(
     val publicUrl = state.publicUrl(webBaseUrl)
     val channels = state.readback?.exposedChannels.orEmpty()
     SettingsFormSectionCard(
-        iconName = SlockLucideIconName.Globe,
+        iconName = RaftLucideIconName.Globe,
         title = stringResource(MR.strings.settings_public_visibility_section_label)
     ) {
         SettingsPublicAccessSwitchRow(
@@ -13119,22 +13232,22 @@ private fun SettingsServerPublicAccessCard(
         if (publicUrl != null) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    stringResource(MR.strings.settings_public_visibility_public_url).slockDisplayUppercase(),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextMutedGray
+                    stringResource(MR.strings.settings_public_visibility_public_url),
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextMutedGray
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    SlockBrutalReadOnlyValueField(
+                    RaftBrutalReadOnlyValueField(
                         value = publicUrl,
                         modifier = Modifier.weight(1f)
                     )
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.settings_public_visibility_copy_url),
                         onClick = { onCopyUrl(publicUrl) },
-                        leadingIcon = SlockLucideIconName.Copy,
+                        leadingIcon = RaftLucideIconName.Copy,
                         minWidth = 72.dp
                     )
                 }
@@ -13158,19 +13271,19 @@ private fun SettingsServerPublicAccessCard(
             nested = true,
             onToggle = { onIntent(ServerPublicVisibilityIntent.SearchToggled(!state.searchChecked)) }
         )
-        Box(Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.15f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderBlack.copy(alpha = 0.15f)))
         Text(
             stringResource(MR.strings.settings_public_visibility_channel_list_label),
-            style = SlockType.Button.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.Button.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         if (state.loading) {
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .background(SlockColor.EmptyStateGray)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.15f))
+                    .background(RaftColor.EmptyStateGray)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.15f))
             )
         } else {
             SettingsPublicAccessChannelList(channels)
@@ -13180,7 +13293,7 @@ private fun SettingsServerPublicAccessCard(
         }
     }
     if (state.confirmOpen) {
-        SlockUnifiedDialog(
+        RaftUnifiedDialog(
             title = stringResource(MR.strings.settings_public_visibility_confirm_title),
             onDismiss = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
             dismissEnabled = !state.saving,
@@ -13188,8 +13301,8 @@ private fun SettingsServerPublicAccessCard(
         ) {
             Text(
                 stringResource(MR.strings.settings_public_visibility_confirm_description),
-                style = SlockType.Body,
-                color = SlockColor.TextBlack
+                style = RaftType.Body,
+                color = RaftColor.TextBlack
             )
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -13203,12 +13316,12 @@ private fun SettingsServerPublicAccessCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     onClick = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
                     enabled = !state.saving
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label =
                         if (state.saving) {
                             stringResource(MR.strings.settings_public_visibility_confirm_saving)
@@ -13217,7 +13330,7 @@ private fun SettingsServerPublicAccessCard(
                         },
                     onClick = { onIntent(ServerPublicVisibilityIntent.ConfirmMakePublic) },
                     enabled = !state.saving,
-                    backgroundColor = SlockColor.AccentPink
+                    backgroundColor = RaftColor.AccentPink
                 )
             }
         }
@@ -13252,7 +13365,7 @@ private fun SettingsPublicAccessSwitchRow(
                     .padding(start = 4.dp, end = 14.dp)
                     .width(2.dp)
                     .heightIn(min = 40.dp)
-                    .background(SlockColor.BorderBlack.copy(alpha = 0.25f))
+                    .background(RaftColor.BorderBlack.copy(alpha = 0.25f))
             )
         }
         Row(
@@ -13265,10 +13378,10 @@ private fun SettingsPublicAccessSwitchRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
                 SettingsFormDetailText(detail)
             }
-            SlockSwitchButton(checked = checked, enabled = enabled)
+            RaftSwitchButton(checked = checked, enabled = enabled)
         }
     }
 }
@@ -13280,15 +13393,15 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.25f))
+                    .background(RaftColor.SurfaceCream)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.25f))
                     .padding(horizontal = 12.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 stringResource(MR.strings.settings_public_visibility_empty_channels),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 textAlign = TextAlign.Center
             )
         }
@@ -13298,12 +13411,11 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftCardSurface()
     ) {
         channels.forEachIndexed { index, channel ->
             if (index > 0) {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.15f)))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderBlack.copy(alpha = 0.15f)))
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -13314,25 +13426,25 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
                     modifier =
                         Modifier
                             .size(28.dp)
-                            .background(SlockColor.SurfaceCream)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                            .background(RaftColor.SurfaceCream)
+                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
-                    SlockLucideIcon(SlockLucideIconName.Hash, Modifier.size(14.dp))
+                    RaftLucideIcon(RaftLucideIconName.Hash, Modifier.size(14.dp))
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         channel.name,
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     channel.description?.let {
                         Text(
                             it,
-                            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
+                            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -13351,38 +13463,32 @@ private fun SettingsServerSelectRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val background = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite
-    val shadowOffset = if (selected) 3.dp else 0.dp
-    Box(modifier = Modifier.fillMaxWidth().padding(bottom = shadowOffset, end = shadowOffset)) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
+    // raft selection card: primary-soft with an ink edge when chosen, no offset shadow.
+    Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(background)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .raftControlSurface(
+                        fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
+                        border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                        radius = RaftAppRadius.Container,
+                        borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
+                    )
                     .clickable(enabled = enabled, onClick = onClick)
                     .padding(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(
-                if (selected) SlockLucideIconName.CircleCheck else SlockLucideIconName.Circle,
+            RaftLucideIcon(
+                if (selected) RaftLucideIconName.CircleCheck else RaftLucideIconName.Circle,
                 modifier = Modifier.size(16.dp),
                 color = "#FF000000",
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
                 detail.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+                    Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
                 }
             }
         }
@@ -13394,17 +13500,17 @@ private fun SettingsServerOnboardingAgentSnapshot.onboardingAgentLabel(): String
 
 @Composable
 private fun SettingsFormDetailText(text: String) {
-    Text(text, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+    Text(text, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
 }
 
 @Composable
 private fun SettingsFormEmptyText(text: String) {
-    Text(text, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+    Text(text, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
 }
 
 @Composable
 private fun SettingsFormErrorText(text: String) {
-    Text(text, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+    Text(text, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
 }
 
 @Composable
@@ -13416,23 +13522,24 @@ private fun SettingsFormErrorText(actionState: SharedSettingsActionState) {
 
 @Composable
 private fun SettingsFormDivider() {
-    Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
 }
 
 @Composable
 private fun SharedSettingsSectionCard(
-    section: KuiklySharedSettingsSection,
+    section: RaftSharedSettingsSection,
     onCopyValue: ((String) -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Text(
-            section.title.slockDisplayUppercase(),
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            // raft-ui section titles keep source case.
+            section.title,
+            style = RaftType.SectionLabel.copy(color = RaftColor.ForegroundHint, letterSpacing = 0.sp),
+            color = RaftColor.ForegroundHint,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
         )
         section.rows.forEachIndexed { index, row ->
@@ -13443,18 +13550,18 @@ private fun SharedSettingsSectionCard(
 
 @Composable
 private fun SharedSettingsRow(
-    row: KuiklySharedSettingsRow,
+    row: RaftSharedSettingsRow,
     showDivider: Boolean,
     onCopyValue: ((String) -> Unit)? = null,
     onAction: (String, String?) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (showDivider) {
-            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
+            Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
         }
         val copyable = row.copyValue.isNotBlank() && onCopyValue != null
         val gestureOwner =
-            rememberSlockGestureOwner(
+            rememberRaftGestureOwner(
                 surface = "settings-row",
                 semanticIdentity = row.key,
                 callbacks =
@@ -13466,8 +13573,8 @@ private fun SharedSettingsRow(
             )
         val rowGestureModifier =
             if (copyable) {
-                Modifier.slockGesturePointerInput(gestureOwner, row.copyValue, row.enabled) { owner ->
-                    var gesture: SlockGestureSession<SharedSettingsRowGestureCallbacks>? = null
+                Modifier.raftGesturePointerInput(gestureOwner, row.copyValue, row.enabled) { owner ->
+                    var gesture: RaftGestureSession<SharedSettingsRowGestureCallbacks>? = null
                     detectTapGestures(
                         onPress = {
                             gesture = owner.beginGesture()
@@ -13496,17 +13603,17 @@ private fun SharedSettingsRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.Card)
                 .then(rowGestureModifier)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
-                modifier = Modifier.size(34.dp).background(if (row.enabled) SlockColor.AccentCyan else SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+                modifier = Modifier.size(34.dp).background(if (row.enabled) RaftColor.AccentCyan else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
-                SlockLucideIcon(
+                RaftLucideIcon(
                     row.iconName,
                     modifier = Modifier.size(18.dp)
                 )
@@ -13516,34 +13623,34 @@ private fun SharedSettingsRow(
                     Text(
                         row.title,
                         modifier = Modifier.weight(1f, fill = false),
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     row.badgeLabel.takeIf { it.isNotBlank() }?.let {
-                        SettingsConnectedAppsBadge(it, SlockColor.BrandYellow)
+                        SettingsConnectedAppsBadge(it, RaftColor.BrandYellow)
                     }
                 }
                 row.detail.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 row.supportingDetail.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             row.status.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1)
+                Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1)
             }
             row.toggleValue?.let { enabled ->
-                SlockSwitchButton(checked = enabled, enabled = row.enabled)
+                RaftSwitchButton(checked = enabled, enabled = row.enabled)
             }
         }
     }
 }
 
 private data class SharedSettingsRowGestureCallbacks(
-    val row: KuiklySharedSettingsRow,
+    val row: RaftSharedSettingsRow,
     val onCopyValue: ((String) -> Unit)?,
     val onAction: (String, String?) -> Unit
 )
@@ -13556,11 +13663,11 @@ internal fun SharedSettingsAboutContent(
     includeDeveloperShortcuts: Boolean = false,
     updateCheck: SharedSettingsUpdateCheckSnapshot?,
     actionState: SharedSettingsActionState?,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onCopyBuild: (String) -> Unit,
     onCopyValue: ((String) -> Unit)? = null,
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
-    onOpenSlock: (String) -> Unit,
+    onOpenRaft: (String) -> Unit,
     onCheckHandsUpdate: () -> Unit,
     onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
@@ -13608,7 +13715,7 @@ internal fun SharedSettingsAboutContent(
             aboutPayload.copy(
                 sections =
                     aboutPayload.sections +
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = stringResource(MR.strings.settings_developer_section_api_server),
                             rows = settingsAboutDeveloperShortcutRows(
                                 environmentTitle = stringResource(MR.strings.settings_developer_api_environment),
@@ -13630,7 +13737,7 @@ internal fun SharedSettingsAboutContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
-            "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
+            "openSlock" -> onOpenRaft(value.orEmpty().ifBlank { webUrl })
             DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
@@ -13654,12 +13761,12 @@ internal fun settingsAboutDeveloperShortcutRows(
     feedbackDetail: String,
     openStatus: String,
     includeFeedback: Boolean
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     buildList {
         add(
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = DEVELOPER_ACTION_API_ENVIRONMENT,
-                iconName = SlockLucideIconName.Server,
+                iconName = RaftLucideIconName.Server,
                 title = environmentTitle,
                 detail = environmentDetail,
                 status = environmentStatus,
@@ -13668,9 +13775,9 @@ internal fun settingsAboutDeveloperShortcutRows(
             )
         )
         add(
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = "diagnostics",
-                iconName = SlockLucideIconName.ClipboardList,
+                iconName = RaftLucideIconName.ClipboardList,
                 title = diagnosticsTitle,
                 detail = diagnosticsDetail,
                 status = openStatus,
@@ -13679,9 +13786,9 @@ internal fun settingsAboutDeveloperShortcutRows(
         )
         if (includeFeedback) {
             add(
-                KuiklySharedSettingsRow(
+                RaftSharedSettingsRow(
                     key = SETTINGS_ABOUT_FEEDBACK_ACTION,
-                    iconName = SlockLucideIconName.MessageSquarePlus,
+                    iconName = RaftLucideIconName.MessageSquarePlus,
                     title = feedbackTitle,
                     detail = feedbackDetail,
                     status = openStatus,
@@ -13694,7 +13801,7 @@ internal fun settingsAboutDeveloperShortcutRows(
 @Composable
 private fun SharedSettingsOpenSourceLicensesContent(
     state: ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onOpenUrl: (String) -> Unit
 ) {
     val payload =
@@ -13714,7 +13821,7 @@ private fun SharedSettingsOpenSourceLicensesContent(
 internal fun SharedSettingsDeveloperContent(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onCopyValue: ((String) -> Unit)? = null,
     onOpenApiEnvironment: () -> Unit,
     onOpenDiagnostics: () -> Unit,
@@ -13741,7 +13848,7 @@ internal fun SharedSettingsDeveloperContent(
 internal fun SharedSettingsApiEnvironmentContent(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onSaveApiEnvironment: (SharedSettingsApiEnvironmentRequest) -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
@@ -13782,7 +13889,7 @@ internal fun SharedSettingsApiEnvironmentContent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_developer_presets)) {
+            SettingsFormSectionCard(iconName = RaftLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_developer_presets)) {
                 SettingsFormDetailText(stringResource(MR.strings.settings_developer_presets_detail))
                 snapshot?.options.orEmpty().forEach { option ->
                     SettingsApiEnvironmentPresetRow(
@@ -13805,11 +13912,11 @@ internal fun SharedSettingsApiEnvironmentContent(
             }
         }
         item {
-            SettingsFormSectionCard(iconName = SlockLucideIconName.Server, title = stringResource(MR.strings.settings_developer_environment_form)) {
+            SettingsFormSectionCard(iconName = RaftLucideIconName.Server, title = stringResource(MR.strings.settings_developer_environment_form)) {
                 SettingsFormDetailText(stringResource(MR.strings.settings_developer_environment_save_detail))
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_label),
-                    labelSize = SlockFormFieldSize.Compact,
+                    labelSize = RaftFormFieldSize.Compact,
                     value = label,
                     placeholder = customLabel,
                     onValueChange = {
@@ -13818,9 +13925,9 @@ internal fun SharedSettingsApiEnvironmentContent(
                     },
                     enabled = !busy
                 )
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_api_base_url),
-                    labelSize = SlockFormFieldSize.Compact,
+                    labelSize = RaftFormFieldSize.Compact,
                     value = apiBaseUrl,
                     placeholder = "https://api.example.com/api/",
                     onValueChange = {
@@ -13830,9 +13937,9 @@ internal fun SharedSettingsApiEnvironmentContent(
                     required = true,
                     enabled = !busy
                 )
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_socket_base_url),
-                    labelSize = SlockFormFieldSize.Compact,
+                    labelSize = RaftFormFieldSize.Compact,
                     value = socketBaseUrl,
                     placeholder = "https://api.example.com",
                     onValueChange = {
@@ -13842,9 +13949,9 @@ internal fun SharedSettingsApiEnvironmentContent(
                     required = true,
                     enabled = !busy
                 )
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_web_url),
-                    labelSize = SlockFormFieldSize.Compact,
+                    labelSize = RaftFormFieldSize.Compact,
                     value = webUrl,
                     placeholder = "https://app.raft.build",
                     onValueChange = {
@@ -13854,7 +13961,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     optional = true,
                     enabled = !busy
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = if (busy) stringResource(MR.strings.settings_developer_action_saving) else stringResource(MR.strings.settings_developer_action_save_environment),
                     onClick = {
                         onSaveApiEnvironment(
@@ -13868,8 +13975,8 @@ internal fun SharedSettingsApiEnvironmentContent(
                         )
                     },
                     enabled = canSave,
-                    leadingIcon = SlockLucideIconName.Save,
-                    backgroundColor = SlockColor.BrandYellow,
+                    leadingIcon = RaftLucideIconName.Save,
+                    backgroundColor = RaftColor.BrandYellow,
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (!canSave && !busy) {
@@ -13895,34 +14002,38 @@ private fun SettingsApiEnvironmentPresetRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(if (selected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftControlSurface(
+                    fill = if (selected) RaftColor.BrandSoft else RaftColor.Card,
+                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                    radius = RaftAppRadius.Container,
+                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
+                )
                 .clickable(enabled = enabled, role = Role.Button, onClick = onSelect)
                 .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(
-            name = if (selected) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Server,
+        RaftLucideIcon(
+            name = if (selected) RaftLucideIconName.CircleCheckBig else RaftLucideIconName.Server,
             modifier = Modifier.size(18.dp),
-            color = SlockColor.TextBlackArgb
+            color = RaftColor.TextBlackArgb
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = option.label,
-                style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = RaftColor.TextBlack
             )
             Text(
                 text = listOf(option.apiBaseUrl, option.socketBaseUrl).filter { it.isNotBlank() }.joinToString(" | "),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
         Text(
             text = if (selected) stringResource(MR.strings.settings_developer_state_current) else stringResource(MR.strings.settings_developer_state_preset),
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
     }
 }
@@ -13931,7 +14042,7 @@ private fun SettingsApiEnvironmentPresetRow(
 internal fun SharedSettingsDiagnosticsContent(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
     onSetDiagnosticFeatureFlagOverride: (String, String) -> Unit,
@@ -14051,14 +14162,14 @@ private fun parseDiagnosticFeatureFlagAction(action: String): Pair<String, Strin
 @Composable
 internal fun SharedHandsFeedbackContent(
     pager: Pager,
-    eventBus: SlockEventBus,
+    eventBus: RaftEventBus,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    sourceStoreScope: SlockShellStoreScope,
+    sourceStoreScope: RaftShellStoreScope,
     accountId: String,
     visualFixture: SettingsHandsFeedbackVisualFixture? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = RaftAppSpacing.Lg
 ) {
-    val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
+    val attachmentMaxBytes = raftFeedbackAttachmentMaxBytes()
     val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(attachmentMaxBytes)
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
@@ -14070,15 +14181,15 @@ internal fun SharedHandsFeedbackContent(
     }
     // The process send scope is used only for the NonCancellable disposal handoff.
     val stableCleanupScope =
-        SlockSharedStoreRegistry.currentOrNull()?.threadSendScope ?: imageEditEventScope
+        RaftSharedStoreRegistry.currentOrNull()?.threadSendScope ?: imageEditEventScope
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
         remember {
-            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         }
     val feedbackDraftStore =
         remember {
-            SettingsHandsFeedbackDraftStore(slockSharedPreferenceStore())
+            SettingsHandsFeedbackDraftStore(raftSharedPreferenceStore())
         }
     val feedbackPageGeneration =
         remember(accountId) {
@@ -14309,7 +14420,7 @@ internal fun SharedHandsFeedbackContent(
         // edit it in place; non-image previews stay read-only.
         val editRequest =
             if (
-                slockFilePreviewIsImageAttachment(
+                raftFilePreviewIsImageAttachment(
                     file.fileName.ifBlank { copy.attachment },
                     file.mimeType.orEmpty()
                 )
@@ -14326,7 +14437,7 @@ internal fun SharedHandsFeedbackContent(
         if (editRequest == null) {
             file.toSettingsHandsFeedbackAttachmentPreviewPayload(copy.attachment)
                 ?.let { payload ->
-                    pager.openSlockFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
+                    pager.openRaftFilePreviewPage(payload, sourceStoreScope = sourceStoreScope)
                 }
             return
         }
@@ -14336,7 +14447,7 @@ internal fun SharedHandsFeedbackContent(
         pendingImageEditSession = null
         var previewSessionId = ""
         if (
-            !pager.openSlockFilePreviewPage(
+            !pager.openRaftFilePreviewPage(
                 editRequest.previewPayload,
                 sourceStoreScope = editRequest.sourceStoreScope,
                 onEphemeralSessionRegistered = { registeredId ->
@@ -14371,7 +14482,7 @@ internal fun SharedHandsFeedbackContent(
         // stale Compose session and overwrite each other's index.
         val imageEditEventMutex = Mutex()
         val subscription =
-            eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
+            eventBus.observe(RAFT_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
                 val eventDataSnapshot = data?.toString() ?: return@observe
                 imageEditEventJobs.launch(imageEditEventScope) {
                     imageEditEventMutex.withLock {
@@ -14393,7 +14504,7 @@ internal fun SharedHandsFeedbackContent(
                     val event = parseSettingsHandsFeedbackImageEditEvent(eventData)
                     if (event == null) {
                         val cleanupRefs =
-                            slockFilePreviewAbortComposerImageEventSession(eventSessionId)
+                            raftFilePreviewAbortComposerImageEventSession(eventSessionId)
                         if (cleanupRefs.isNotEmpty()) {
                             bridge.retireFilePreviewTemporaryFiles(
                                 sessionId = eventSessionId,
@@ -14408,11 +14519,11 @@ internal fun SharedHandsFeedbackContent(
                         return@launch
                     }
                     val admission =
-                        slockFilePreviewClaimComposerImageEvent(
+                        raftFilePreviewClaimComposerImageEvent(
                             eventData = eventData,
                             expectedThreadKey = session?.threadKey ?: event.threadKey
                         )
-                    if (admission is SlockFilePreviewComposerImageEventAdmission.Rejected) {
+                    if (admission is RaftFilePreviewComposerImageEventAdmission.Rejected) {
                         if (admission.orphanedTemporaryFileRefs.isNotEmpty()) {
                             bridge.retireFilePreviewTemporaryFiles(
                                 sessionId = admission.sessionId,
@@ -14424,7 +14535,7 @@ internal fun SharedHandsFeedbackContent(
                         }
                         return@launch
                     }
-                    admission as SlockFilePreviewComposerImageEventAdmission.Accepted
+                    admission as RaftFilePreviewComposerImageEventAdmission.Accepted
                     fun eventSessionStillOwned(sessionId: String): Boolean {
                         val normalized = sessionId.trim()
                         return normalized.isNotBlank() &&
@@ -14434,7 +14545,7 @@ internal fun SharedHandsFeedbackContent(
                     fun finishEventSession(transferred: Boolean) {
                         try {
                             val cleanupRefs =
-                                slockFilePreviewFinishComposerImageEventSession(
+                                raftFilePreviewFinishComposerImageEventSession(
                                     sessionId = admission.sessionId,
                                     transferred = transferred
                                 )
@@ -14847,7 +14958,7 @@ internal fun SharedHandsFeedbackContent(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth().dismissInputFocusOnScrollableChrome(),
@@ -14887,13 +14998,13 @@ internal fun SharedHandsFeedbackContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
+                    .background(RaftColor.SurfaceWhite)
         ) {
             ThreadComposerContentLeaf(
                 attachmentPreviewEnabled = true,
                 surface =
                     ThreadComposerSurface(
-                        kind = KuiklyThreadSurfaceKind.Channel,
+                        kind = RaftThreadSurfaceKind.Channel,
                         channelId = "settings-feedback",
                         showTaskButton = false
                     ),
@@ -15001,7 +15112,7 @@ internal fun SharedHandsFeedbackContent(
                 },
                 contentPaddingTop = 10.dp,
                 contentPaddingBottom = 8.dp,
-                hostPaddingHorizontal = SlockSpacing.Sm,
+                hostPaddingHorizontal = RaftAppSpacing.Sm,
                 hostPaddingTop = 12.dp,
                 keyboardLiftBottomContentPadding = bottomContentPadding
             )
@@ -15249,9 +15360,9 @@ private fun SettingsHandsFeedbackSubmission.toHandsFeedbackEntry(
 
 private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
     copy: SettingsHandsFeedbackCopy
-): List<KuiklyPendingAttachmentItem> =
+): List<RaftPendingAttachmentItem> =
     map { file ->
-        KuiklyPendingAttachmentItem(
+        RaftPendingAttachmentItem(
             id = file.feedbackComposerAttachmentId(),
             fileName = file.fileName.ifBlank { copy.attachment },
             sizeLabel = "",
@@ -15293,13 +15404,13 @@ internal fun PlatformFile.feedbackComposerAttachmentId(): String =
 
 internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
     fallbackFileName: String
-): SlockFilePreviewPayload? {
+): RaftFilePreviewPayload? {
     val localUri = composerLocalPreviewUri()?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val displayName = fileName.ifBlank { fallbackFileName }
     val displayMimeType = mimeType.orEmpty()
-    val image = slockFilePreviewIsImageAttachment(displayName, displayMimeType)
+    val image = raftFilePreviewIsImageAttachment(displayName, displayMimeType)
     val previewKind = if (image) "image" else "file"
-    return SlockFilePreviewPayload(
+    return RaftFilePreviewPayload(
         kind = previewKind,
         requestedKind = previewKind,
         titleDesc =
@@ -15337,56 +15448,52 @@ private fun SettingsHandsFeedbackConversationRow(
             modifier =
                 Modifier
                     .widthIn(max = 560.dp)
-                    .background(
-                        when (entry.kind) {
-                            SettingsHandsFeedbackEntryKind.User -> SlockColor.BrandYellow
-                            SettingsHandsFeedbackEntryKind.Hands -> SlockColor.SurfaceWhite
+                    .raftCardSurface(fill = when (entry.kind) {
+                            SettingsHandsFeedbackEntryKind.User -> RaftColor.BrandSoft
+                            SettingsHandsFeedbackEntryKind.Hands -> RaftColor.Card
                             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-                            SettingsHandsFeedbackEntryKind.Error -> SlockColor.AccentRed.copy(alpha = 0.18f)
-                        }
-                    )
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            SettingsHandsFeedbackEntryKind.Error -> RaftColor.AccentRed.copy(alpha = 0.18f)
+                        })
                     .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = entry.title,
-                style = SlockType.SectionLabel,
-                color = SlockColor.TextBlack,
+                style = RaftType.SectionLabel,
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = entry.body,
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = RaftColor.TextBlack
             )
             entry.detail?.takeIf { it.isNotBlank() }?.let { detail ->
                 SelectionContainer(
-                    state = rememberSelectionContainerState(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = detail,
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray
                     )
                 }
             }
             entry.shareText?.takeIf { it.isNotBlank() }?.let { shareText ->
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = copy.copyResult,
                     onClick = { onCopy(shareText) },
-                    leadingIcon = SlockLucideIconName.Clipboard,
+                    leadingIcon = RaftLucideIconName.Clipboard,
                     modifier = Modifier.fillMaxWidth(),
                     minWidth = 0.dp
                 )
             }
             entry.retryRequest?.let { retryRequest ->
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = copy.retry,
                     onClick = { onRetry(retryRequest) },
-                    leadingIcon = SlockLucideIconName.RefreshCw,
+                    leadingIcon = RaftLucideIconName.RefreshCw,
                     modifier = Modifier.fillMaxWidth(),
                     minWidth = 0.dp
                 )
@@ -15399,19 +15506,19 @@ private fun SettingsHandsFeedbackConversationRow(
 internal fun SettingsDetailShell(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName? = null,
+    iconName: RaftLucideIconName? = null,
     applyTopSafeArea: Boolean = true,
-    headerHeight: Dp = SlockSize.PageHeaderHeight,
+    headerHeight: Dp = RaftAppSize.PageHeaderHeight,
     onBack: () -> Unit,
     trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        RaftTopPageHeader(
             title = title,
             subtitle = subtitle,
             iconName = iconName,
-            backgroundColor = SlockColor.SurfaceWhite,
+            backgroundColor = RaftColor.SurfaceWhite,
             applyTopSafeArea = applyTopSafeArea,
             headerHeight = headerHeight,
             leadingContent = {
@@ -15432,22 +15539,12 @@ internal fun SettingsDetailShell(
 @Composable
 private fun SettingsDetailBackButton(onBack: () -> Unit) {
     Box(modifier = Modifier.size(30.dp)) {
-        Box(
-            modifier =
-                Modifier
-                    .size(28.dp)
-                    .offset(x = 2.dp, y = 2.dp)
-                    .background(SlockColor.ShadowBlack)
-        )
-        Button(
+        // raft-ui `PanelAction`: a ghost Back, no edge and no offset shadow.
+        RaftPanelAction(
             onClick = onBack,
-            modifier =
-                Modifier
-                    .size(28.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+            modifier = Modifier.size(28.dp)
         ) {
-            SlockLucideIcon(SlockLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp))
+            RaftLucideIcon(RaftLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextMuted))
         }
     }
 }
@@ -15456,32 +15553,32 @@ private fun SettingsDetailBackButton(onBack: () -> Unit) {
 private fun SettingsSharedPlaceholder(
     title: String,
     detail: String,
-    iconName: SlockLucideIconName,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    iconName: RaftLucideIconName,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp).padding(bottom = bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(
-            modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+            modifier = Modifier.size(52.dp).background(RaftColor.Brand, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
+            contentAlignment = androidx.compose.ui.Alignment.Center
         ) {
-            SlockLucideIcon(iconName, modifier = Modifier.size(26.dp))
+            RaftLucideIcon(iconName, modifier = Modifier.size(26.dp))
         }
-        Text(title, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        Text(detail, style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(title, style = RaftType.PageTitle.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+        Text(detail, style = RaftType.Body.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
 
 @Composable
 private fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
-): KuiklySettingsHomePayload {
+): RaftSettingsHomePayload {
     val personalSection = stringResource(MR.strings.settings_navigation_section_personal)
     val workspaceSection = stringResource(MR.strings.settings_navigation_section_workspace)
     val aboutSection = stringResource(MR.strings.settings_navigation_section_about)
-    return KuiklySettingsHomePayload(
+    return RaftSettingsHomePayload(
         title = stringResource(MR.strings.settings_title),
         subtitle = "",
         items =
@@ -15490,7 +15587,7 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationAccount,
                     title = stringResource(MR.strings.settings_account_title),
                     subtitle = stringResource(MR.strings.settings_account_subtitle),
-                    iconName = SlockLucideIconName.User,
+                    iconName = RaftLucideIconName.User,
                     value = session?.user?.bestDisplayName,
                     section = personalSection
                 ),
@@ -15498,42 +15595,42 @@ private fun appShellSettingsHomePayload(
                     key = SettingsNativeDetailPage.LanguageRegion.key,
                     title = stringResource(MR.strings.settings_language_region_title),
                     subtitle = stringResource(MR.strings.settings_language_region_subtitle),
-                    iconName = SlockLucideIconName.Languages,
+                    iconName = RaftLucideIconName.Languages,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Appearance.key,
                     title = stringResource(MR.strings.settings_appearance_title),
                     subtitle = stringResource(MR.strings.settings_appearance_subtitle),
-                    iconName = SlockLucideIconName.Type,
+                    iconName = RaftLucideIconName.Type,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Notifications.key,
                     title = stringResource(MR.strings.settings_notifications_title),
                     subtitle = stringResource(MR.strings.settings_notifications_subtitle),
-                    iconName = SlockLucideIconName.Bell,
+                    iconName = RaftLucideIconName.Bell,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Mobile.key,
                     title = stringResource(MR.strings.settings_mobile_title),
                     subtitle = stringResource(MR.strings.settings_mobile_subtitle),
-                    iconName = SlockLucideIconName.Smartphone,
+                    iconName = RaftLucideIconName.Smartphone,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationStorage,
                     title = stringResource(MR.strings.settings_storage_title),
                     subtitle = stringResource(MR.strings.settings_storage_subtitle),
-                    iconName = SlockLucideIconName.Archive,
+                    iconName = RaftLucideIconName.Archive,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Server.key,
                     title = stringResource(MR.strings.settings_server_profile_title),
                     subtitle = stringResource(MR.strings.settings_server_profile_subtitle),
-                    iconName = SlockLucideIconName.Building2,
+                    iconName = RaftLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     section = workspaceSection
                 ),
@@ -15541,7 +15638,7 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationBilling,
                     title = stringResource(MR.strings.settings_billing_title),
                     subtitle = stringResource(MR.strings.settings_billing_subtitle),
-                    iconName = SlockLucideIconName.CreditCard,
+                    iconName = RaftLucideIconName.CreditCard,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     section = workspaceSection
                 ),
@@ -15549,42 +15646,42 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationAdministration,
                     title = stringResource(MR.strings.settings_server_administration_title),
                     subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
-                    iconName = SlockLucideIconName.Shield,
+                    iconName = RaftLucideIconName.Shield,
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationConnectedApps,
                     title = stringResource(MR.strings.settings_connected_apps_title),
                     subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
-                    iconName = SlockLucideIconName.Link2,
+                    iconName = RaftLucideIconName.Link2,
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationComputers,
                     title = stringResource(MR.strings.settings_computers_title),
                     subtitle = stringResource(MR.strings.settings_computers_subtitle),
-                    iconName = SlockLucideIconName.Monitor,
+                    iconName = RaftLucideIconName.Monitor,
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.About.key,
                     title = stringResource(MR.strings.settings_about_title),
                     subtitle = stringResource(MR.strings.settings_about_subtitle),
-                    iconName = SlockLucideIconName.BadgeInfo,
+                    iconName = RaftLucideIconName.BadgeInfo,
                     section = aboutSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationHandsFeedback,
                     title = stringResource(MR.strings.settings_feedback_title),
                     subtitle = stringResource(MR.strings.settings_feedback_subtitle),
-                    iconName = SlockLucideIconName.MessageSquarePlus,
+                    iconName = RaftLucideIconName.MessageSquarePlus,
                     section = aboutSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationReleaseNotes,
                     title = stringResource(MR.strings.settings_release_notes_title),
                     subtitle = stringResource(MR.strings.settings_release_notes_subtitle),
-                    iconName = SlockLucideIconName.FileText,
+                    iconName = RaftLucideIconName.FileText,
                     section = aboutSection
                 )
             )
@@ -15595,7 +15692,7 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
     session: StoredAuthSession?,
     actionState: build.raft.app.data.SharedSettingsActionState? = null,
     errorStrings: ErrorPresentationStrings
-): KuiklySettingsAccountPayload {
+): RaftSettingsAccountPayload {
     val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
     val providerActionId =
         actionState
@@ -15619,23 +15716,23 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
 
 internal fun ScreenLoadState<AccountSettingsSnapshot>.settingsAccountAvatarCacheIdentity(
     session: StoredAuthSession?
-): SlockMemberAvatarCacheIdentity? {
+): RaftMemberAvatarCacheIdentity? {
     val sessionUserId = session?.user?.id?.trim()?.takeIf(String::isNotEmpty) ?: return null
     val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data ?: return null
     val profileUserId = account.profile.userId.trim().takeIf(String::isNotEmpty) ?: return null
     if (profileUserId != sessionUserId) return null
-    return slockMemberAvatarCacheIdentity(
+    return raftMemberAvatarCacheIdentity(
         kind = MemberKind.Human,
         memberId = profileUserId,
         serverId = session.currentServerId
     )
 }
 
-private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPayload =
-    KuiklySettingsAccountPayload(
+private fun AccountSettingsSnapshot.toAccountPayload(): RaftSettingsAccountPayload =
+    RaftSettingsAccountPayload(
         instanceId = "shared-shell-settings-account",
         profile =
-            KuiklySettingsAccountProfile(
+            RaftSettingsAccountProfile(
                 displayName = profile.displayName,
                 handle = profile.handle,
                 email = profile.email,
@@ -15646,7 +15743,7 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
             ),
         connectedAccounts =
             connectedAccounts.map {
-                KuiklySettingsConnectedAccount(
+                RaftSettingsConnectedAccount(
                     providerId = it.providerId,
                     provider = it.provider,
                     identifier = it.identifier,
@@ -15665,13 +15762,13 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
         canChangePassword = canChangePassword
     )
 
-private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsAccountPayload {
+private fun appShellAccountPayload(session: StoredAuthSession?): RaftSettingsAccountPayload {
     val user = session?.user
     val displayName = user?.bestDisplayName.orEmpty()
-    return KuiklySettingsAccountPayload(
+    return RaftSettingsAccountPayload(
         instanceId = "shared-shell-settings-account",
         profile =
-            KuiklySettingsAccountProfile(
+            RaftSettingsAccountProfile(
                 displayName = displayName,
                 handle = user?.email.orEmpty(),
                 email = user?.email.orEmpty(),
@@ -15686,7 +15783,7 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
                 ?.takeIf { it.isNotBlank() }
                 ?.let {
                     listOf(
-                        KuiklySettingsConnectedAccount(
+                        RaftSettingsConnectedAccount(
                             providerId = "password",
                             provider = "Email password",
                             identifier = it,
@@ -15703,7 +15800,7 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
 internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     refreshing: Boolean
-): KuiklySettingsStoragePayload {
+): RaftSettingsStoragePayload {
     val storage = (this as? ScreenLoadState.Content<SharedSettingsStorageSnapshot>)?.data
     val statusText =
         when (this) {
@@ -15718,7 +15815,7 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
                         .orEmpty()
                 }
         }
-    return KuiklySettingsStoragePayload(
+    return RaftSettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
         totalTitle = stringResource(MR.strings.settings_storage_total_title),
         totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
@@ -15738,8 +15835,8 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
 }
 
 @Composable
-private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolean): KuiklySettingsStorageRow =
-    KuiklySettingsStorageRow(
+private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolean): RaftSettingsStorageRow =
+    RaftSettingsStorageRow(
         target = target,
         iconName = storageTargetIconName(target),
         title = localizedSettingsStorageRowTitle(target, title),
@@ -15783,12 +15880,6 @@ private fun localizedSettingsStorageRowDetail(detail: String): String =
             stringResource(MR.strings.settings_storage_row_downloads_detail)
         "Debug logs and temporary files generated by the app." ->
             stringResource(MR.strings.settings_storage_row_temporary_detail)
-        "OHOS storage usage is not exposed through the host capability yet." ->
-            stringResource(MR.strings.settings_storage_ohos_database_detail)
-        "Image cache clearing is not available on OHOS yet." ->
-            stringResource(MR.strings.settings_storage_ohos_image_cache_detail)
-        "Use Diagnostics clear logs for the local diagnostics buffer." ->
-            stringResource(MR.strings.settings_storage_ohos_temporary_detail)
         else -> detail
     }
 
@@ -15805,24 +15896,24 @@ private fun localizedSettingsStorageFeedback(feedback: String): String =
         else -> feedback
     }
 
-private fun storageTargetIconName(target: String): SlockLucideIconName =
+private fun storageTargetIconName(target: String): RaftLucideIconName =
     when (target) {
-        "database" -> SlockLucideIconName.Archive
-        "imageCache" -> SlockLucideIconName.Image
-        "attachmentDownloads" -> SlockLucideIconName.Download
-        "temporaryAndLogs" -> SlockLucideIconName.FileText
-        else -> SlockLucideIconName.Archive
+        "database" -> RaftLucideIconName.Archive
+        "imageCache" -> RaftLucideIconName.Image
+        "attachmentDownloads" -> RaftLucideIconName.Download
+        "temporaryAndLogs" -> RaftLucideIconName.FileText
+        else -> RaftLucideIconName.Archive
     }
 
 internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
     session: StoredAuthSession?,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     errorStrings: ErrorPresentationStrings,
     actionState: build.raft.app.data.SharedSettingsActionState? = null
-): KuiklySettingsBillingPayload {
+): RaftSettingsBillingPayload {
     val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data
     val fallbackPlan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Hobby"
-    return KuiklySettingsBillingPayload(
+    return RaftSettingsBillingPayload(
         instanceId = "shared-shell-settings-billing",
         status =
             when (this) {
@@ -15833,12 +15924,12 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
                 is ScreenLoadState.Content -> "content"
             },
         currentPlan =
-            KuiklySettingsCurrentPlan(
+            RaftSettingsCurrentPlan(
                 planName = billing?.currentPlan?.planName ?: fallbackPlan,
                 usageRows =
                     billing?.currentPlan?.usageRows
                         ?.map { row ->
-                            KuiklySettingsPlanUsageRow(
+                            RaftSettingsPlanUsageRow(
                                 label = row.label,
                                 value = row.value.formatSettingsBillingUsageValue(timeContext)
                             )
@@ -15851,14 +15942,14 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
             ),
         notices =
             billing?.notices?.map { notice ->
-                KuiklySettingsBillingNotice(
+                RaftSettingsBillingNotice(
                     key = notice.key,
                     title = notice.title,
                     detail = notice.detail.formatSettingsBillingUsageValue(timeContext),
                     tone = notice.tone,
                     rows =
                         notice.rows.map { row ->
-                            KuiklySettingsPlanUsageRow(
+                            RaftSettingsPlanUsageRow(
                                 label = row.label,
                                 value = row.value.formatSettingsBillingUsageValue(timeContext)
                             )
@@ -15872,7 +15963,7 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
         comparePlansUrl = billing?.comparePlansUrl.orEmpty().ifBlank { "https://raft.build/#pricing" },
         plans =
             billing?.plans?.map { plan ->
-                KuiklySettingsBillingPlan(
+                RaftSettingsBillingPlan(
                     id = plan.name.lowercase().replace(" ", "-"),
                     name = plan.name,
                     price = plan.price,
@@ -15882,7 +15973,7 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
                     badgeLabel = plan.badgeLabel
                 )
             } ?: listOf(
-                KuiklySettingsBillingPlan(id = fallbackPlan.lowercase(), name = fallbackPlan, price = "Loading billing snapshot", current = true)
+                RaftSettingsBillingPlan(id = fallbackPlan.lowercase(), name = fallbackPlan, price = "Loading billing snapshot", current = true)
             )
     )
 }
@@ -15892,8 +15983,8 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     session: StoredAuthSession?,
     refreshing: Boolean,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    timeContext: SlockTimeContext?
-): KuiklySharedSettingsPayload {
+    timeContext: RaftTimeContext?
+): RaftSharedSettingsPayload {
     val server = session?.currentServerSummary()
     val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
     val role = server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
@@ -15905,32 +15996,32 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
             is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.localizedUserFacingMessage()}"
             is ScreenLoadState.Content -> "Manage this workspace's profile. Admin actions live under Administration."
         }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-server",
         title = "Server Profile",
-        heroIconName = SlockLucideIconName.Building2,
+        heroIconName = RaftLucideIconName.Building2,
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Profile",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("serverName", SlockLucideIconName.BadgeInfo, "Workspace name", "Current selected workspace profile.", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow("serverName", RaftLucideIconName.BadgeInfo, "Workspace name", "Current selected workspace profile.", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
+                            RaftSharedSettingsRow(
                                 SERVER_ACTION_PROFILE_SAVE,
-                                SlockLucideIconName.Save,
+                                RaftLucideIconName.Save,
                                 "Save workspace profile",
                                 "Save changes to the workspace name.",
                                 status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (snapshot?.profile?.canSave == true) "Ready" else "Read only"),
                                 enabled = snapshot?.profile?.canSave == true && actionState?.inProgress != true
                             ),
-                            KuiklySharedSettingsRow("serverSlug", SlockLucideIconName.Link, "Slug", snapshot?.profile?.slug?.let { "/$it" } ?: server?.slug?.let { "/$it" } ?: "Not provided", status = if (snapshot?.profile?.canSave == true) "Editable" else "Read only"),
-                            KuiklySharedSettingsRow("serverRole", SlockLucideIconName.ShieldCheck, "Your role", "Permission scope for workspace settings.", status = role),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow("serverSlug", RaftLucideIconName.Link, "Slug", snapshot?.profile?.slug?.let { "/$it" } ?: server?.slug?.let { "/$it" } ?: "Not provided", status = if (snapshot?.profile?.canSave == true) "Editable" else "Read only"),
+                            RaftSharedSettingsRow("serverRole", RaftLucideIconName.ShieldCheck, "Your role", "Permission scope for workspace settings.", status = role),
+                            RaftSharedSettingsRow(
                                 "openAdministration",
-                                SlockLucideIconName.Shield,
+                                RaftLucideIconName.Shield,
                                 "Administration",
                                 "Manage admins, invites, join links, pre-join agreement, onboarding, member permissions, translation, and sidebar order.",
                                 status = "Open",
@@ -15947,8 +16038,8 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
     session: StoredAuthSession?,
     refreshing: Boolean,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    timeContext: SlockTimeContext?
-): KuiklySharedSettingsPayload {
+    timeContext: RaftTimeContext?
+): RaftSharedSettingsPayload {
     val errorStrings = localizedErrorPresentationStrings()
     val server = session?.currentServerSummary()
     val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
@@ -15961,10 +16052,10 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
             is ScreenLoadState.Content -> "Manage admins, invites, join links, and pre-join agreements."
         }
     val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-administration",
         title = "Administration",
-        heroIconName = SlockLucideIconName.Shield,
+        heroIconName = RaftLucideIconName.Shield,
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
@@ -15973,7 +16064,7 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                 val sectionTitle = (section?.title ?: spec.title).localized()
                 when (spec.key) {
                     "admins" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows =
                                 settingsAdministrationAdminRows(
@@ -15986,42 +16077,42 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                                 )
                         )
                     "system_channels" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.systemChannels.toSystemChannelRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "pending_invites" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.pendingInvites.toInviteRows(section, sectionTitle, actionState, timeContext)
                         )
                     "join_links" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.joinLinks.toJoinLinkRows(section, sectionTitle, actionState, timeContext)
                         )
                     "pre_join_agreement" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.agreement.toAgreementRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "onboarding_agent" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.onboarding.toOnboardingRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "translation" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.translation.toTranslationRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "member_permissions" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.profile.toMemberPermissionsRows(section, sectionTitle, actionState, errorStrings)
                         )
                     "sidebar_order" ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = sectionTitle,
                             rows = snapshot?.sidebarOrder.toSidebarOrderRows(section, sectionTitle, actionState, errorStrings)
                         )
@@ -16056,7 +16147,7 @@ internal fun settingsAdministrationAdminRows(
     actorRole: String?,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     members.toAdminRows(
         section = section,
         sectionTitle = sectionTitle,
@@ -16071,7 +16162,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     actorRole: String?,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> {
+): List<RaftSharedSettingsRow> {
     val members = this.orEmpty()
     val admins =
         members
@@ -16081,7 +16172,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
         return listOf(
             section.toPlaceholderRow(
                 "admins",
-                SlockLucideIconName.Shield,
+                RaftLucideIconName.Shield,
                 sectionTitle,
                 "No owners or admins are available.",
                 errorStrings
@@ -16101,17 +16192,17 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
                 "Owner only"
             }
         listOf(
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = "admin:${admin.id}",
-                iconName = SlockLucideIconName.Shield,
+                iconName = RaftLucideIconName.Shield,
                 title = admin.name,
                 detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: "Admin" },
                 status = targetRole.replaceFirstChar { it.uppercase() },
                 enabled = false
             ),
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_ROLE,
-                iconName = SlockLucideIconName.UserMinus,
+                iconName = RaftLucideIconName.UserMinus,
                 title = "Remove ${admin.name}'s ${targetRole.ifBlank { "admin" }} role",
                 detail = "Demote this member back to regular member access.",
                 value = "${admin.id}:member",
@@ -16127,19 +16218,19 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    timeContext: SlockTimeContext?
-): List<KuiklySharedSettingsRow> {
+    timeContext: RaftTimeContext?
+): List<RaftSharedSettingsRow> {
     val invites = this.orEmpty()
     if (invites.isEmpty()) {
         return listOf(
-            section.toPlaceholderRow("pendingInvites", SlockLucideIconName.MailPlus, sectionTitle, "No pending invites are available.")
+            section.toPlaceholderRow("pendingInvites", RaftLucideIconName.MailPlus, sectionTitle, "No pending invites are available.")
         )
     }
     return invites.flatMap { invite ->
         listOf(
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = "invite:${invite.id}",
-                iconName = SlockLucideIconName.MailPlus,
+                iconName = RaftLucideIconName.MailPlus,
                 title = invite.email,
                 detail =
                     listOfNotNull(
@@ -16149,9 +16240,9 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
                 status = "Pending",
                 enabled = false
             ),
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_INVITE_REVOKE,
-                iconName = SlockLucideIconName.Trash2,
+                iconName = RaftLucideIconName.Trash2,
                 title = "Revoke invite",
                 detail = "Cancel ${invite.email}'s pending invite.",
                 value = invite.id,
@@ -16167,26 +16258,26 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     section: SettingsServerSectionSnapshot?,
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    timeContext: SlockTimeContext?
-): List<KuiklySharedSettingsRow> {
+    timeContext: RaftTimeContext?
+): List<RaftSharedSettingsRow> {
     val links = this.orEmpty()
     val createRow =
-        KuiklySharedSettingsRow(
+        RaftSharedSettingsRow(
             key = SERVER_ACTION_JOIN_LINK_CREATE,
-            iconName = SlockLucideIconName.Plus,
+            iconName = RaftLucideIconName.Plus,
             title = "Create join link",
             detail = "Create a reusable invite link for this workspace.",
             status = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, "Create"),
             enabled = actionState?.inProgress != true
         )
     if (links.isEmpty()) {
-        return listOf(section.toPlaceholderRow("joinLinks", SlockLucideIconName.Link2, sectionTitle, "No join links are available."), createRow)
+        return listOf(section.toPlaceholderRow("joinLinks", RaftLucideIconName.Link2, sectionTitle, "No join links are available."), createRow)
     }
     return links.flatMap { link ->
         listOf(
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = "joinLink:${link.id}",
-                iconName = SlockLucideIconName.Link2,
+                iconName = RaftLucideIconName.Link2,
                 title = link.label,
                 detail =
                     listOfNotNull(
@@ -16197,9 +16288,9 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
                 status = link.usageLabel.orEmpty(),
                 enabled = false
             ),
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_JOIN_LINK_REVOKE,
-                iconName = SlockLucideIconName.Unlink,
+                iconName = RaftLucideIconName.Unlink,
                 title = "Revoke join link",
                 detail = link.url ?: "Disable this join link.",
                 value = link.id,
@@ -16215,12 +16306,12 @@ private fun SettingsServerAgreementSnapshot?.toAgreementRows(
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     listOf(
         this?.let { agreement ->
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_AGREEMENT_SAVE,
-                iconName = SlockLucideIconName.FileCheck,
+                iconName = RaftLucideIconName.FileCheck,
                 title = "Pre-join Agreement",
                 detail = agreement.detail,
                 value = agreement.enabled.toString(),
@@ -16229,7 +16320,7 @@ private fun SettingsServerAgreementSnapshot?.toAgreementRows(
             )
         } ?: section.toPlaceholderRow(
             "preJoinAgreement",
-            SlockLucideIconName.FileCheck,
+            RaftLucideIconName.FileCheck,
             sectionTitle,
             "No pre-join agreement settings are available.",
             errorStrings
@@ -16241,12 +16332,12 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     listOf(
         this?.let { onboarding ->
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_ONBOARDING_SAVE,
-                iconName = SlockLucideIconName.Bot,
+                iconName = RaftLucideIconName.Bot,
                 title = "Onboarding",
                 detail = onboarding.detail,
                 value = onboarding.onboardingAgentId.orEmpty(),
@@ -16255,7 +16346,7 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
             )
         } ?: section.toPlaceholderRow(
             "onboarding",
-            SlockLucideIconName.Bot,
+            RaftLucideIconName.Bot,
             sectionTitle,
             "No onboarding settings are available.",
             errorStrings
@@ -16267,12 +16358,12 @@ private fun build.raft.app.data.SettingsServerProfileSnapshot?.toMemberPermissio
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     listOf(
         this?.let { profile ->
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_PERMISSIONS_SAVE,
-                iconName = SlockLucideIconName.UsersRound,
+                iconName = RaftLucideIconName.UsersRound,
                 title = "Hide human directory and counts from members",
                 detail = "Member role users cannot see server-wide human lists, graph surfaces, or human counts.",
                 value = profile.hideHumansFromMembers.toString(),
@@ -16284,7 +16375,7 @@ private fun build.raft.app.data.SettingsServerProfileSnapshot?.toMemberPermissio
             )
         } ?: section.toPlaceholderRow(
             "memberPermissions",
-            SlockLucideIconName.UsersRound,
+            RaftLucideIconName.UsersRound,
             sectionTitle,
             "No member permission settings are available.",
             errorStrings
@@ -16296,12 +16387,12 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     listOf(
         this?.let { translation ->
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_TRANSLATION_TOGGLE,
-                iconName = SlockLucideIconName.Languages,
+                iconName = RaftLucideIconName.Languages,
                 title = "Server translation",
                 detail = translation.detail,
                 value = (!translation.translationEnabled).toString(),
@@ -16310,7 +16401,7 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
             )
         } ?: section.toPlaceholderRow(
             "translation",
-            SlockLucideIconName.Languages,
+            RaftLucideIconName.Languages,
             sectionTitle,
             "No translation settings are available.",
             errorStrings
@@ -16322,13 +16413,13 @@ private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> {
+): List<RaftSharedSettingsRow> {
     val system = this
     if (system == null) {
         return listOf(
             section.toPlaceholderRow(
                 "system_channels",
-                SlockLucideIconName.Eye,
+                RaftLucideIconName.Eye,
                 sectionTitle,
                 "System channel controls are unavailable.",
                 errorStrings
@@ -16339,7 +16430,7 @@ private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
         return listOf(
             section.toPlaceholderRow(
                 "system_channels",
-                SlockLucideIconName.Eye,
+                RaftLucideIconName.Eye,
                 sectionTitle,
                 "No #all channel was found for this workspace.",
                 errorStrings
@@ -16347,9 +16438,9 @@ private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
         )
     }
     return listOf(
-        KuiklySharedSettingsRow(
+        RaftSharedSettingsRow(
             key = SERVER_ACTION_SYSTEM_CHANNEL_HIDE,
-            iconName = SlockLucideIconName.Eye,
+            iconName = RaftLucideIconName.Eye,
             title = "Hide #all channel",
             detail = "When enabled, #all disappears from channel lists, search, posting, members, and agent channel surfaces. Existing history is preserved.",
             value = system.allChannelId,
@@ -16364,13 +16455,13 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
     sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     listOf(
         this?.let { order ->
             val nextMode = if (order.channelSortMode == "manual") "recent" else "manual"
-            KuiklySharedSettingsRow(
+            RaftSharedSettingsRow(
                 key = SERVER_ACTION_SIDEBAR_ORDER,
-                iconName = SlockLucideIconName.ListTree,
+                iconName = RaftLucideIconName.ListTree,
                 title = "Channel sidebar sort",
                 detail = "Choose how channels are ordered in the sidebar.",
                 value = nextMode,
@@ -16379,7 +16470,7 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
             )
         } ?: section.toPlaceholderRow(
             "sidebarOrder",
-            SlockLucideIconName.ListTree,
+            RaftLucideIconName.ListTree,
             sectionTitle,
             "No sidebar order settings are available.",
             errorStrings
@@ -16390,11 +16481,11 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
 private fun SettingsServerSnapshot?.toPlanRows(
     billingSection: SettingsServerSectionSnapshot?,
     fallbackPlan: String
-): List<KuiklySharedSettingsRow> =
+): List<RaftSharedSettingsRow> =
     listOf(
-        KuiklySharedSettingsRow(
+        RaftSharedSettingsRow(
             key = "billingSummary",
-            iconName = SlockLucideIconName.ShieldCheck,
+            iconName = RaftLucideIconName.ShieldCheck,
             title = "Plan",
             detail = billingSection.localizedDetail() ?: "Current workspace billing and usage summary.",
             status = this?.usageRows?.firstOrNull()?.value ?: fallbackPlan,
@@ -16405,11 +16496,11 @@ private fun SettingsServerSnapshot?.toPlanRows(
 @Composable
 private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
     key: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     sectionTitle: String,
     fallbackDetail: String
-): KuiklySharedSettingsRow =
-    KuiklySharedSettingsRow(
+): RaftSharedSettingsRow =
+    RaftSharedSettingsRow(
         key = key,
         iconName = iconName,
         title = sectionTitle,
@@ -16420,12 +16511,12 @@ private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
 
 private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
     key: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     sectionTitle: String,
     fallbackDetail: String,
     errorStrings: ErrorPresentationStrings
-): KuiklySharedSettingsRow =
-    KuiklySharedSettingsRow(
+): RaftSharedSettingsRow =
+    RaftSharedSettingsRow(
         key = key,
         iconName = iconName,
         title = sectionTitle,
@@ -16457,14 +16548,14 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     refreshing: Boolean,
     errorStrings: ErrorPresentationStrings
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val mobile =
         (this as? ScreenLoadState.Content<SettingsMobileSnapshot>)?.data
             ?: return appShellMobilePlaceholderPayload(this, refreshing, errorStrings)
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
-        heroIconName = SlockLucideIconName.Smartphone,
+        heroIconName = RaftLucideIconName.Smartphone,
         heroLabel = "Mobile preferences",
         detail =
             if (refreshing) {
@@ -16474,27 +16565,27 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
             },
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Conversation display",
                     rows =
                         listOfNotNull(
                             mobile.messageAlignmentPreference.toMobileSelectionRow(
                                 key = MOBILE_ACTION_MESSAGE_ALIGNMENT,
-                                iconName = SlockLucideIconName.AlignHorizontalSpaceAround,
+                                iconName = RaftLucideIconName.AlignHorizontalSpaceAround,
                                 title = "My message alignment",
                                 fallbackStatus = "Unsupported",
                                 actionState = actionState
                             ),
                             mobile.linkOpenMode.toMobileSelectionRow(
                                 key = MOBILE_ACTION_LINK_OPEN_MODE,
-                                iconName = SlockLucideIconName.ExternalLink,
+                                iconName = RaftLucideIconName.ExternalLink,
                                 title = "Open web links",
                                 fallbackStatus = "Default browser",
                                 actionState = actionState
                             ),
                             mobile.compactConsecutiveMessages.toMobileToggleRow(
                                 key = MOBILE_ACTION_COMPACT_MESSAGES,
-                                iconName = SlockLucideIconName.MessageSquare,
+                                iconName = RaftLucideIconName.MessageSquare,
                                 title = "Compact consecutive messages",
                                 fallbackStatus = "Unsupported",
                                 actionState = actionState,
@@ -16502,7 +16593,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.longMessageCollapse.toMobileToggleRow(
                                 key = MOBILE_ACTION_LONG_MESSAGE_COLLAPSE,
-                                iconName = SlockLucideIconName.ClipboardList,
+                                iconName = RaftLucideIconName.ClipboardList,
                                 title = "Collapse long messages",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16510,7 +16601,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.singleTapOpensThread.toMobileToggleRow(
                                 key = MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD,
-                                iconName = SlockLucideIconName.MessageSquare,
+                                iconName = RaftLucideIconName.MessageSquare,
                                 title = "Single tap opens Thread",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16518,7 +16609,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.threadUnreadJump.toMobileToggleRow(
                                 key = MOBILE_ACTION_THREAD_UNREAD_JUMP,
-                                iconName = SlockLucideIconName.ArrowUpDown,
+                                iconName = RaftLucideIconName.ArrowUpDown,
                                 title = "Thread unread jump",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16527,7 +16618,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.newMessageMenu.toMobileToggleRow(
                                 key = MOBILE_ACTION_NEW_MESSAGE_MENU,
-                                iconName = SlockLucideIconName.PanelBottomOpen,
+                                iconName = RaftLucideIconName.PanelBottomOpen,
                                 title = "New message menu",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16537,7 +16628,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             if (mobile.conversationForwardGesture.available) {
                                 mobile.conversationForwardGesture.toMobileToggleRow(
                                     key = MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE,
-                                    iconName = SlockLucideIconName.Redo2,
+                                    iconName = RaftLucideIconName.Redo2,
                                     title = "Conversation forward gesture",
                                     fallbackStatus = "Off",
                                     actionState = actionState,
@@ -16549,7 +16640,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             },
                             mobile.foregroundMessageBanners.toMobileToggleRow(
                                 key = MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
-                                iconName = SlockLucideIconName.MessageCircle,
+                                iconName = RaftLucideIconName.MessageCircle,
                                 title = "Foreground message banners",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16557,7 +16648,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.desktopModeOnLargeScreen.toMobileToggleRow(
                                 key = MOBILE_ACTION_DESKTOP_MODE,
-                                iconName = SlockLucideIconName.Monitor,
+                                iconName = RaftLucideIconName.Monitor,
                                 title = "Desktop mode on large screens",
                                 fallbackStatus = "On",
                                 actionState = actionState,
@@ -16565,7 +16656,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.serverDrawer.toMobileToggleRow(
                                 key = MOBILE_ACTION_SERVER_DRAWER,
-                                iconName = SlockLucideIconName.Menu,
+                                iconName = RaftLucideIconName.Menu,
                                 title = "Multi-server Home drawer",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16574,7 +16665,7 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             mobile.homeServerAvatar.toMobileToggleRow(
                                 key = MOBILE_ACTION_HOME_SERVER_AVATAR,
-                                iconName = SlockLucideIconName.Image,
+                                iconName = RaftLucideIconName.Image,
                                 title = "Show workspace avatar in Home header",
                                 fallbackStatus = "Off",
                                 actionState = actionState,
@@ -16583,15 +16674,15 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                         )
                 )
             ) +
-                if (slockPlatformSupportsMultiShellHost()) {
+                if (raftPlatformSupportsMultiShellHost()) {
                     listOf(
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = "Windowing",
                             rows =
                                 listOf(
                                     mobile.multiShellHost.toMobileToggleRow(
                                         key = MOBILE_ACTION_MULTI_SHELL_HOST,
-                                        iconName = SlockLucideIconName.AppWindow,
+                                        iconName = RaftLucideIconName.AppWindow,
                                         title = "Multiple app windows",
                                         fallbackStatus = "Off",
                                         actionState = actionState,
@@ -16611,14 +16702,14 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
     actionState: build.raft.app.data.SharedSettingsActionState?,
     refreshing: Boolean,
     errorStrings: ErrorPresentationStrings
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val languageRegion =
         (this as? ScreenLoadState.Content<SettingsLanguageRegionSnapshot>)?.data
             ?: return appShellLanguageRegionPlaceholderPayload(this, refreshing, errorStrings)
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-language-region",
         title = "Language & Region",
-        heroIconName = SlockLucideIconName.Languages,
+        heroIconName = RaftLucideIconName.Languages,
         heroLabel = "Language & Region",
         detail =
             if (refreshing) {
@@ -16628,13 +16719,13 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
             },
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Language",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
-                                iconName = SlockLucideIconName.Languages,
+                                iconName = RaftLucideIconName.Languages,
                                 title = "Enable message translation for this server",
                                 detail =
                                     languageRegion.serverTranslation.errorPresentation?.resolve(errorStrings)
@@ -16647,9 +16738,9 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                                     ),
                                 enabled = languageRegion.serverTranslation.available && actionState?.inProgress != true
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
-                                iconName = SlockLucideIconName.Wand,
+                                iconName = RaftLucideIconName.Wand,
                                 title = "Auto-translate messages",
                                 detail =
                                     languageRegion.autoTranslation.errorPresentation?.resolve(errorStrings)
@@ -16664,27 +16755,27 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                             ),
                             languageRegion.browserLanguage.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_LANGUAGE,
-                                iconName = SlockLucideIconName.Globe,
+                                iconName = RaftLucideIconName.Globe,
                                 title = "Preferred translation language",
                                 fallbackStatus = "Others",
                                 actionState = actionState
                             )
                         )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Date & Time",
                     rows =
                         listOf(
                             languageRegion.timezone.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_TIMEZONE,
-                                iconName = SlockLucideIconName.Clock,
+                                iconName = RaftLucideIconName.Clock,
                                 title = "Timezone",
                                 fallbackStatus = "UTC",
                                 actionState = actionState
                             ),
                             languageRegion.timeFormat.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_TIME_FORMAT,
-                                iconName = SlockLucideIconName.Clock3,
+                                iconName = RaftLucideIconName.Clock3,
                                 title = "Time format",
                                 fallbackStatus = "24-hour",
                                 actionState = actionState
@@ -16699,7 +16790,7 @@ private fun appShellLanguageRegionPlaceholderPayload(
     state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
     refreshing: Boolean,
     errorStrings: ErrorPresentationStrings
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val status =
         when (state) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing" else "Loading"
@@ -16715,21 +16806,21 @@ private fun appShellLanguageRegionPlaceholderPayload(
             is ScreenLoadState.Empty -> state.reason.userFacingMessage(errorStrings)
             else -> "Loading language and region settings."
         }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-language-region-placeholder",
         title = "Language & Region",
-        heroIconName = SlockLucideIconName.Languages,
+        heroIconName = RaftLucideIconName.Languages,
         heroLabel = "Language & Region",
         detail = detail,
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Status",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "languageRegionStatus",
-                                iconName = SlockLucideIconName.Languages,
+                                iconName = RaftLucideIconName.Languages,
                                 title = "Language & Region",
                                 detail = detail,
                                 status = status,
@@ -16745,7 +16836,7 @@ private fun appShellMobilePlaceholderPayload(
     state: ScreenLoadState<SettingsMobileSnapshot>,
     refreshing: Boolean,
     errorStrings: ErrorPresentationStrings
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val status =
         when (state) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing" else "Loading"
@@ -16761,21 +16852,21 @@ private fun appShellMobilePlaceholderPayload(
             is ScreenLoadState.Empty -> state.reason.userFacingMessage(errorStrings)
             else -> "Loading mobile settings."
         }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile-placeholder",
         title = "Mobile",
-        heroIconName = SlockLucideIconName.Smartphone,
+        heroIconName = RaftLucideIconName.Smartphone,
         heroLabel = "Mobile preferences",
         detail = detail,
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Status",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "mobileStatus",
-                                iconName = SlockLucideIconName.Smartphone,
+                                iconName = RaftLucideIconName.Smartphone,
                                 title = "Mobile settings",
                                 detail = detail,
                                 status = status,
@@ -16789,15 +16880,15 @@ private fun appShellMobilePlaceholderPayload(
 
 private fun SettingsMobileSelectionSnapshot.toMobileSelectionRow(
     key: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     title: String,
     fallbackStatus: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
-): KuiklySharedSettingsRow {
+): RaftSharedSettingsRow {
     val nextOption =
         options.dropWhile { it.key != selectedKey }.drop(1).firstOrNull()
             ?: options.firstOrNull()
-    return KuiklySharedSettingsRow(
+    return RaftSharedSettingsRow(
         key = key,
         iconName = iconName,
         title = title,
@@ -16815,14 +16906,14 @@ private fun SettingsMobileSelectionSnapshot.toMobileSelectionRow(
 
 private fun SettingsMobileToggleSnapshot.toMobileToggleRow(
     key: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     title: String,
     fallbackStatus: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings,
     badgeLabel: String = ""
-): KuiklySharedSettingsRow =
-    KuiklySharedSettingsRow(
+): RaftSharedSettingsRow =
+    RaftSharedSettingsRow(
         key = key,
         iconName = iconName,
         title = title,
@@ -16952,12 +17043,12 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsErrorFor
 private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(
     allCategoriesLabel: String,
     otherCategoryLabel: String
-): List<SlockRaftUiSelectionOption> =
-    listOf(SlockRaftUiSelectionOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, allCategoriesLabel)) +
+): List<RaftUiSelectionOption> =
+    listOf(RaftUiSelectionOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, allCategoriesLabel)) +
         map { it.category.trim().ifBlank { otherCategoryLabel } }
             .distinct()
             .sorted()
-            .map { SlockRaftUiSelectionOption(it, it.settingsConnectedAppCategoryLabel(otherCategoryLabel)) }
+            .map { RaftUiSelectionOption(it, it.settingsConnectedAppCategoryLabel(otherCategoryLabel)) }
 
 private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppFilteredMarketplace(
     search: String,
@@ -17047,11 +17138,11 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
         buildUnknown = stringResource(MR.strings.settings_about_state_build_unknown),
         actions = stringResource(MR.strings.settings_about_section_actions),
         checkUpdate = stringResource(MR.strings.settings_about_action_check_update),
-        checkUpdateDetail = stringResource(MR.strings.settings_about_check_update_detail, slockPlatformProductName()),
+        checkUpdateDetail = stringResource(MR.strings.settings_about_check_update_detail, raftPlatformProductName()),
         checking = stringResource(MR.strings.settings_about_state_checking),
         check = stringResource(MR.strings.settings_about_action_check),
         licenses = stringResource(MR.strings.settings_open_source_licenses_title),
-        licensesDetail = stringResource(MR.strings.settings_about_licenses_detail, slockPlatformProductName()),
+        licensesDetail = stringResource(MR.strings.settings_about_licenses_detail, raftPlatformProductName()),
         open = stringResource(MR.strings.settings_state_open),
         copyEnvironment = stringResource(MR.strings.settings_about_action_copy_environment),
         copyEnvironmentDetail = stringResource(MR.strings.settings_about_copy_environment_detail),
@@ -17211,39 +17302,39 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     updateCheck: SharedSettingsUpdateCheckSnapshot? = null,
     actionState: SharedSettingsActionState? = null,
     copy: SettingsAboutPayloadCopy = SettingsAboutPayloadCopy()
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val resolvedWebUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
     val raftLabel = "Raft"
     val updateCheckBusy =
         actionState?.action == DEVELOPER_ACTION_HANDS_UPDATE_CHECK && actionState.inProgress
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = copy.title,
-        heroIconName = SlockLucideIconName.Info,
+        heroIconName = RaftLucideIconName.Info,
         heroLabel = appName.ifBlank { raftLabel },
         detail = copy.detail,
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = copy.applicationSection,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }, copyValue = appName.ifBlank { raftLabel }),
-                            KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = listOf(versionLabel, buildLabel).filter { it.isNotBlank() }.joinToString(" ")),
-                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }, copyValue = buildTime),
-                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }, copyValue = gitCommit),
-                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, copyValue = packageName)
+                            RaftSharedSettingsRow("appName", RaftLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }, copyValue = appName.ifBlank { raftLabel }),
+                            RaftSharedSettingsRow("version", RaftLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = listOf(versionLabel, buildLabel).filter { it.isNotBlank() }.joinToString(" ")),
+                            RaftSharedSettingsRow("buildTime", RaftLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }, copyValue = buildTime),
+                            RaftSharedSettingsRow("gitCommit", RaftLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }, copyValue = gitCommit),
+                            RaftSharedSettingsRow("package", RaftLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, copyValue = packageName)
                         )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = copy.actions,
                     rows =
                         buildList {
                             if (updateCheck?.supported == true) {
                                 add(
-                                    KuiklySharedSettingsRow(
+                                    RaftSharedSettingsRow(
                                         key = DEVELOPER_ACTION_HANDS_UPDATE_CHECK,
-                                        iconName = SlockLucideIconName.Download,
+                                        iconName = RaftLucideIconName.Download,
                                         title = copy.checkUpdate,
                                         detail =
                                             updateCheck.detail.ifBlank {
@@ -17261,9 +17352,9 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 )
                             }
                             add(
-                                KuiklySharedSettingsRow(
+                                RaftSharedSettingsRow(
                                     key = "openSourceLicenses",
-                                    iconName = SlockLucideIconName.FileText,
+                                    iconName = RaftLucideIconName.FileText,
                                     title = copy.licenses,
                                     detail = copy.licensesDetail,
                                     status = copy.open,
@@ -17271,16 +17362,16 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 )
                             )
                             add(
-                                KuiklySharedSettingsRow(
+                                RaftSharedSettingsRow(
                                     key = "copyEnvironmentInfo",
-                                    iconName = SlockLucideIconName.Clipboard,
+                                    iconName = RaftLucideIconName.Clipboard,
                                     title = copy.copyEnvironment,
                                     detail = copy.copyEnvironmentDetail,
                                     status = copy.copy,
                                     enabled = true
                                 )
                             )
-                            add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, copy.openRaft, copy.openWebDetail(resolvedWebUrl), value = resolvedWebUrl, status = copy.open, enabled = true))
+                            add(RaftSharedSettingsRow("openSlock", RaftLucideIconName.ExternalLink, copy.openRaft, copy.openWebDetail(resolvedWebUrl), value = resolvedWebUrl, status = copy.open, enabled = true))
                         }
                 )
             )
@@ -17292,7 +17383,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     actionState: SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings,
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy()
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
             is ScreenLoadState.Error -> state.error.userFacingMessage(errorStrings)
@@ -17308,37 +17399,37 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
             state is ScreenLoadState.Loading -> copy.loading
             else -> copy.open
         }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
         title = copy.title,
         detail = this?.feedback ?: this?.environmentLabel.orEmpty().ifBlank { copy.detail },
-        heroIconName = SlockLucideIconName.Terminal,
+        heroIconName = RaftLucideIconName.Terminal,
         heroLabel = copy.title,
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = copy.apiServer,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "currentApi",
-                                iconName = SlockLucideIconName.Globe,
+                                iconName = RaftLucideIconName.Globe,
                                 title = copy.currentApi,
                                 detail = this?.apiBaseUrl.orEmpty().ifBlank { copy.unknown },
                                 status = this?.environmentLabel.orEmpty().ifBlank { copy.current },
                                 copyValue = this?.apiBaseUrl.orEmpty()
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "currentSocket",
-                                iconName = SlockLucideIconName.Activity,
+                                iconName = RaftLucideIconName.Activity,
                                 title = copy.currentSocket,
                                 detail = this?.socketBaseUrl.orEmpty().ifBlank { copy.unknown },
                                 status = copy.realtime,
                                 copyValue = this?.socketBaseUrl.orEmpty()
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = DEVELOPER_ACTION_API_ENVIRONMENT,
-                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                iconName = RaftLucideIconName.SlidersHorizontal,
                                 title = copy.apiEnvironment,
                                 detail = environmentDetail,
                                 status = environmentStatus,
@@ -17346,12 +17437,12 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                             )
                         )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = copy.diagnostics,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, copy.diagnostics, copy.diagnosticsDetail, status = copy.open, enabled = true),
-                            KuiklySharedSettingsRow("router", SlockLucideIconName.Route, copy.routeLauncher, copy.routeLauncherDetail, status = copy.open, enabled = true)
+                            RaftSharedSettingsRow("diagnostics", RaftLucideIconName.ClipboardList, copy.diagnostics, copy.diagnosticsDetail, status = copy.open, enabled = true),
+                            RaftSharedSettingsRow("router", RaftLucideIconName.Route, copy.routeLauncher, copy.routeLauncherDetail, status = copy.open, enabled = true)
                         )
                 )
             )
@@ -17395,14 +17486,14 @@ private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesP
     return SettingsOpenSourceLicensesPayloadCopy(
         title = stringResource(MR.strings.settings_open_source_licenses_title),
         detail = { count, source -> detailTemplate.replaceLocalizedFormatArgs(count, source) },
-        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source, slockPlatformProductName()),
+        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source, raftPlatformProductName()),
         sectionLicenses = stringResource(MR.strings.settings_licenses_title),
         loading = stringResource(MR.strings.settings_open_source_licenses_state_loading),
-        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail, slockPlatformProductName()),
+        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail, raftPlatformProductName()),
         wait = stringResource(MR.strings.settings_open_source_licenses_state_wait),
         unavailable = stringResource(MR.strings.settings_open_source_licenses_action_unavailable),
         emptyTitle = stringResource(MR.strings.settings_open_source_licenses_empty_title),
-        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail, slockPlatformProductName()),
+        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail, raftPlatformProductName()),
         empty = stringResource(MR.strings.settings_open_source_licenses_state_empty),
         libraries = stringResource(MR.strings.settings_open_source_licenses_section_libraries),
         numberedLibraries = { section -> numberedLibrariesTemplate.replaceLocalizedFormatArgs(section) },
@@ -17418,7 +17509,7 @@ private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesP
 internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(
     errorStrings: ErrorPresentationStrings,
     copy: SettingsOpenSourceLicensesPayloadCopy = SettingsOpenSourceLicensesPayloadCopy()
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val snapshot = (this as? ScreenLoadState.Content<SharedSettingsOpenSourceLicensesSnapshot>)?.data
     val detail =
         when (this) {
@@ -17436,13 +17527,13 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
         when {
             snapshot == null ->
                 listOf(
-                    KuiklySharedSettingsSection(
+                    RaftSharedSettingsSection(
                         title = copy.sectionLicenses,
                         rows =
                             listOf(
-                                KuiklySharedSettingsRow(
+                                RaftSharedSettingsRow(
                                     key = "loading",
-                                    iconName = SlockLucideIconName.LoaderCircle,
+                                    iconName = RaftLucideIconName.LoaderCircle,
                                     title = if (this == ScreenLoadState.Loading) copy.loading else copy.unavailable,
                                     detail = detail,
                                     status = if (this == ScreenLoadState.Loading) copy.wait else copy.unavailable
@@ -17452,13 +17543,13 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                 )
             snapshot.items.isEmpty() ->
                 listOf(
-                    KuiklySharedSettingsSection(
+                    RaftSharedSettingsSection(
                         title = copy.sectionLicenses,
                         rows =
                             listOf(
-                                KuiklySharedSettingsRow(
+                                RaftSharedSettingsRow(
                                     key = "empty",
-                                    iconName = SlockLucideIconName.FileText,
+                                    iconName = RaftLucideIconName.FileText,
                                     title = copy.emptyTitle,
                                     detail = copy.emptyDetail,
                                     status = copy.empty
@@ -17471,15 +17562,15 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                     .sortedWith(compareBy({ it.displayName.ifBlank { it.name }.lowercase() }, { it.version }))
                     .chunked(32)
                     .mapIndexed { sectionIndex, items ->
-                        KuiklySharedSettingsSection(
+                        RaftSharedSettingsSection(
                             title = if (sectionIndex == 0) copy.libraries else copy.numberedLibraries(sectionIndex + 1),
                             rows =
                                 items.map { item ->
                                     val title = item.displayName.ifBlank { item.name.ifBlank { item.id } }
                                     val link = item.licenseUrl.ifBlank { item.sourceUrl }
-                                    KuiklySharedSettingsRow(
+                                    RaftSharedSettingsRow(
                                         key = "openLicenseUrl",
-                                        iconName = SlockLucideIconName.Package,
+                                        iconName = RaftLucideIconName.Package,
                                         title = title,
                                         detail = item.settingsLicenseCoordinates(),
                                         value = link,
@@ -17491,10 +17582,10 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                         )
                     }
         }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-settings-open-source-licenses",
         title = copy.title,
-        heroIconName = SlockLucideIconName.FileText,
+        heroIconName = RaftLucideIconName.FileText,
         heroLabel = copy.title,
         detail = detail,
         sections = sections
@@ -17531,7 +17622,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     errorStrings: ErrorPresentationStrings? = null,
     includeLocalFeatureOverrides: Boolean = true,
     appleSignInLocalOverride: Boolean? = null,
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
     val environmentRows =
@@ -17550,9 +17641,9 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             ?.takeIf { it.isNotBlank() }
             ?.let { errorMessage ->
                 listOf(
-                    KuiklySharedSettingsRow(
+                    RaftSharedSettingsRow(
                         key = "diagnosticsLoadStatus",
-                        iconName = SlockLucideIconName.TriangleAlert,
+                        iconName = RaftLucideIconName.TriangleAlert,
                         title = copy.partialDiagnostics,
                         detail = errorMessage,
                         status = copy.partial
@@ -17562,13 +17653,13 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             .orEmpty()
     val appleSignInOverrideSection =
         appleSignInLocalOverride?.let { enabled ->
-            KuiklySharedSettingsSection(
+            RaftSharedSettingsSection(
                 title = copy.appleSignInOverride,
                 rows =
                     listOf(
-                        KuiklySharedSettingsRow(
+                        RaftSharedSettingsRow(
                             DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE,
-                            SlockLucideIconName.SlidersHorizontal,
+                            RaftLucideIconName.SlidersHorizontal,
                             copy.appleSignInOverride,
                             copy.appleSignInOverrideDetail,
                             value = (!enabled).toString(),
@@ -17588,13 +17679,13 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
         snapshot
             ?.takeIf { includeLocalFeatureOverrides && it.localFeatureOverridesAvailable() }
             ?.let {
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Developer tools",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = LOCAL_FEATURE_OVERRIDES_OPEN_ACTION,
-                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                iconName = RaftLucideIconName.SlidersHorizontal,
                                 title = "Local Feature Overrides",
                                 detail = "Inspect registered keys and override them for this app process.",
                                 status = "Open",
@@ -17603,27 +17694,27 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         )
                 )
             }
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = copy.title,
         detail = copy.detailBasic,
-        heroIconName = SlockLucideIconName.ClipboardList,
+        heroIconName = RaftLucideIconName.ClipboardList,
         heroLabel = copy.title,
         sections =
             listOfNotNull(
                 environmentRows.takeIf { it.isNotEmpty() }?.let {
-                    KuiklySharedSettingsSection(title = copy.environment, rows = it)
+                    RaftSharedSettingsSection(title = copy.environment, rows = it)
                 },
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
-                    KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
+                    RaftSharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
             ) + listOfNotNull(localFeatureOverridesSection) + listOfNotNull(appleSignInOverrideSection) + listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = copy.actions,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, copy.exportLogs, copy.exportLogsDetail, status = if (diagnosticsExportAvailable) copy.export else copy.disabled, enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, copy.sendDiagnostics, copy.sendDiagnosticsDetail, status = copy.send, enabled = true)
+                            RaftSharedSettingsRow("shareLogs", RaftLucideIconName.Share, copy.exportLogs, copy.exportLogsDetail, status = if (diagnosticsExportAvailable) copy.export else copy.disabled, enabled = diagnosticsExportAvailable),
+                            RaftSharedSettingsRow("feedback", RaftLucideIconName.MessageSquarePlus, copy.sendDiagnostics, copy.sendDiagnosticsDetail, status = copy.send, enabled = true)
                         )
                 )
             )
@@ -17639,22 +17730,22 @@ internal fun SharedSettingsDiagnosticsSnapshot.registeredLocalFeatureOverrides()
         .distinctBy { it.key }
         .sortedBy { it.key }
 
-internal fun SharedSettingsDiagnosticsSnapshot.toLocalFeatureOverridesPayload(): KuiklySharedSettingsPayload =
-    KuiklySharedSettingsPayload(
+internal fun SharedSettingsDiagnosticsSnapshot.toLocalFeatureOverridesPayload(): RaftSharedSettingsPayload =
+    RaftSharedSettingsPayload(
         instanceId = "shared-shell-local-feature-overrides",
         title = "Local Feature Overrides",
         detail = "Process-local controls registered by this internal build.",
-        heroIconName = SlockLucideIconName.SlidersHorizontal,
+        heroIconName = RaftLucideIconName.SlidersHorizontal,
         heroLabel = "Local Feature Overrides",
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Registered keys",
                     rows =
                         registeredLocalFeatureOverrides().map { flag ->
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = openLocalFeatureOverrideAction(flag.key),
-                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                iconName = RaftLucideIconName.SlidersHorizontal,
                                 title = flag.localFeatureOverrideDisplayName(),
                                 detail = flag.key,
                                 status = flag.localFeatureOverrideFinalStatus(),
@@ -17667,86 +17758,86 @@ internal fun SharedSettingsDiagnosticsSnapshot.toLocalFeatureOverridesPayload():
 
 internal fun SharedSettingsDiagnosticFeatureFlagSnapshot.toLocalFeatureOverrideDetailPayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
-): KuiklySharedSettingsPayload {
+): RaftSharedSettingsPayload {
     val busy = actionState?.action == "diagnosticFeatureFlagOverride:$key" && actionState.inProgress
-    return KuiklySharedSettingsPayload(
+    return RaftSharedSettingsPayload(
         instanceId = "shared-shell-local-feature-override-$key",
         title = localFeatureOverrideDisplayName(),
         detail = key,
-        heroIconName = SlockLucideIconName.SlidersHorizontal,
+        heroIconName = RaftLucideIconName.SlidersHorizontal,
         heroLabel = localFeatureOverrideDisplayName(),
         sections =
             listOf(
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Effective decision",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "localFeatureOverrideServerEffective|$key",
-                                iconName = SlockLucideIconName.Server,
+                                iconName = RaftLucideIconName.Server,
                                 title = "Server effective",
                                 detail = precedence,
                                 status = serverEffective.localFeatureOverrideBooleanStatus(),
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "localFeatureOverrideClientOverride|$key",
-                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                iconName = RaftLucideIconName.SlidersHorizontal,
                                 title = "Client override",
                                 detail = "Applies to every use of this feature in the current app process.",
                                 status = clientOverride,
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "localFeatureOverrideFinalEffective|$key",
-                                iconName = SlockLucideIconName.Activity,
+                                iconName = RaftLucideIconName.Activity,
                                 title = "Final effective",
                                 detail = "Server value after the process-local override is applied.",
                                 status = localFeatureOverrideFinalEffective().localFeatureOverrideBooleanStatus(),
                             )
                         )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Lifecycle and evidence",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "localFeatureOverrideLifecycle|$key",
-                                iconName = SlockLucideIconName.Clock,
+                                iconName = RaftLucideIconName.Clock,
                                 title = "TTL and clear reason",
                                 detail = "clear=${clearReason.ifBlank { "active" }} · expiresAt=${expiresAtMillis ?: "none"}",
                                 status = if (expiresAtMillis == null) "Process local" else "15 min TTL",
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = "localFeatureOverrideEvidence|$key",
-                                iconName = SlockLucideIconName.ClipboardList,
+                                iconName = RaftLucideIconName.ClipboardList,
                                 title = "Consumer evidence",
                                 detail = evidence.ifBlank { "No consumer evidence has been observed yet." },
                                 status = if (evidence.isBlank()) "Unobserved" else "Observed",
                             )
                         )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Override",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = diagnosticFeatureFlagAction(key, "server"),
-                                iconName = SlockLucideIconName.Server,
+                                iconName = RaftLucideIconName.Server,
                                 title = "Follow Server",
                                 detail = "Clear this key's process-local override and follow the server result.",
                                 status = if (clientOverride == "Server") "Current" else "Select",
                                 enabled = supported && entitled && !busy,
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = diagnosticFeatureFlagAction(key, "force_off"),
-                                iconName = SlockLucideIconName.Shield,
+                                iconName = RaftLucideIconName.Shield,
                                 title = "Force OFF",
                                 detail = "Disable this feature throughout the current app process for 15 minutes.",
                                 status = if (clientOverride == "ForceOff") "Current" else "15 min",
                                 enabled = supported && entitled && !busy,
                             ),
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = diagnosticFeatureFlagAction(key, "force_on"),
-                                iconName = SlockLucideIconName.ShieldCheck,
+                                iconName = RaftLucideIconName.ShieldCheck,
                                 title = "Force ON",
                                 detail = "Enable this feature throughout the current app process for 15 minutes.",
                                 status = if (clientOverride == "ForceOn") "Current" else "15 min",
@@ -17754,13 +17845,13 @@ internal fun SharedSettingsDiagnosticFeatureFlagSnapshot.toLocalFeatureOverrideD
                             )
                         )
                 ),
-                KuiklySharedSettingsSection(
+                RaftSharedSettingsSection(
                     title = "Evidence",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow(
+                            RaftSharedSettingsRow(
                                 key = LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION,
-                                iconName = SlockLucideIconName.Share,
+                                iconName = RaftLucideIconName.Share,
                                 title = "Export diagnostics evidence",
                                 detail = "Share the sanitized diagnostics archive for this process.",
                                 status = "Export",
@@ -17798,18 +17889,18 @@ private fun Boolean?.localFeatureOverrideBooleanStatus(): String =
         null -> "Unobserved"
     }
 
-private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: SettingsDiagnosticsPayloadCopy): List<KuiklySharedSettingsRow> =
+private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: SettingsDiagnosticsPayloadCopy): List<RaftSharedSettingsRow> =
     listOf(
-        KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }, copyValue = listOf(appName, versionLabel).filter { it.isNotBlank() }.joinToString(" ")),
-        KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, copy.build, buildLabel.ifBlank { copy.unknown }, status = sourceLabel.ifBlank { copy.source }, copyValue = buildLabel),
-        KuiklySharedSettingsRow("diagnosticsVersionCode", SlockLucideIconName.BadgeInfo, copy.versionCode, versionCodeLabel.ifBlank { buildLabel.ifBlank { copy.unknown } }, status = sdkLabel.ifBlank { copy.sdk }, copyValue = versionCodeLabel.ifBlank { buildLabel }),
-        KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, status = copy.host, copyValue = packageName),
-        KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, copy.platform, platformLabel.ifBlank { copy.unknown }, status = deviceLabel.ifBlank { copy.device }, copyValue = platformLabel),
-        KuiklySharedSettingsRow("diagnosticsDeviceFacts", SlockLucideIconName.Smartphone, copy.deviceFacts, modelLabel.ifBlank { deviceLabel.ifBlank { copy.unknown } }, status = screenLabel.ifBlank { copy.screen }, copyValue = modelLabel.ifBlank { deviceLabel }),
-        KuiklySharedSettingsRow("diagnosticsDisplay", SlockLucideIconName.Monitor, copy.display, densityLabel.ifBlank { copy.density }, status = fontScaleLabel.ifBlank { copy.fontScale }, copyValue = densityLabel),
-        KuiklySharedSettingsRow("diagnosticsInstallTime", SlockLucideIconName.Clock, copy.installTime, installTimeLabel.ifBlank { "--" }, status = copy.host, copyValue = installTimeLabel),
-        KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, copy.session, signedInUserLabel.ifBlank { copy.noSignedInUser }, status = sessionStatusLabel.ifBlank { copy.unknown }, copyValue = signedInUserLabel),
-        KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, copy.selectedServer, selectedServerLabel.ifBlank { copy.unknown }, status = socketStatusLabel.ifBlank { copy.socket }, copyValue = selectedServerLabel)
+        RaftSharedSettingsRow("diagnosticsApp", RaftLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }, copyValue = listOf(appName, versionLabel).filter { it.isNotBlank() }.joinToString(" ")),
+        RaftSharedSettingsRow("diagnosticsBuild", RaftLucideIconName.GitBranch, copy.build, buildLabel.ifBlank { copy.unknown }, status = sourceLabel.ifBlank { copy.source }, copyValue = buildLabel),
+        RaftSharedSettingsRow("diagnosticsVersionCode", RaftLucideIconName.BadgeInfo, copy.versionCode, versionCodeLabel.ifBlank { buildLabel.ifBlank { copy.unknown } }, status = sdkLabel.ifBlank { copy.sdk }, copyValue = versionCodeLabel.ifBlank { buildLabel }),
+        RaftSharedSettingsRow("diagnosticsPackage", RaftLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, status = copy.host, copyValue = packageName),
+        RaftSharedSettingsRow("diagnosticsPlatform", RaftLucideIconName.Monitor, copy.platform, platformLabel.ifBlank { copy.unknown }, status = deviceLabel.ifBlank { copy.device }, copyValue = platformLabel),
+        RaftSharedSettingsRow("diagnosticsDeviceFacts", RaftLucideIconName.Smartphone, copy.deviceFacts, modelLabel.ifBlank { deviceLabel.ifBlank { copy.unknown } }, status = screenLabel.ifBlank { copy.screen }, copyValue = modelLabel.ifBlank { deviceLabel }),
+        RaftSharedSettingsRow("diagnosticsDisplay", RaftLucideIconName.Monitor, copy.display, densityLabel.ifBlank { copy.density }, status = fontScaleLabel.ifBlank { copy.fontScale }, copyValue = densityLabel),
+        RaftSharedSettingsRow("diagnosticsInstallTime", RaftLucideIconName.Clock, copy.installTime, installTimeLabel.ifBlank { "--" }, status = copy.host, copyValue = installTimeLabel),
+        RaftSharedSettingsRow("diagnosticsSession", RaftLucideIconName.User, copy.session, signedInUserLabel.ifBlank { copy.noSignedInUser }, status = sessionStatusLabel.ifBlank { copy.unknown }, copyValue = signedInUserLabel),
+        RaftSharedSettingsRow("diagnosticsServer", RaftLucideIconName.Server, copy.selectedServer, selectedServerLabel.ifBlank { copy.unknown }, status = socketStatusLabel.ifBlank { copy.socket }, copyValue = selectedServerLabel)
     )
 
 @Composable
@@ -17837,20 +17928,20 @@ private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): Str
                 .ifBlank { "Local Feature Override" }
     }
 
-private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): SlockLucideIconName =
+private fun settingsNativeDetailPageIcon(page: SettingsNativeDetailPage): RaftLucideIconName =
     when (page) {
-        SettingsNativeDetailPage.LanguageRegion -> SlockLucideIconName.Languages
-        SettingsNativeDetailPage.Appearance -> SlockLucideIconName.Type
-        SettingsNativeDetailPage.Notifications -> SlockLucideIconName.Bell
-        SettingsNativeDetailPage.Mobile -> SlockLucideIconName.Smartphone
-        SettingsNativeDetailPage.Server -> SlockLucideIconName.Building2
-        SettingsNativeDetailPage.About -> SlockLucideIconName.BadgeInfo
-        SettingsNativeDetailPage.OpenSourceLicenses -> SlockLucideIconName.FileText
-        SettingsNativeDetailPage.Developer -> SlockLucideIconName.Terminal
+        SettingsNativeDetailPage.LanguageRegion -> RaftLucideIconName.Languages
+        SettingsNativeDetailPage.Appearance -> RaftLucideIconName.Type
+        SettingsNativeDetailPage.Notifications -> RaftLucideIconName.Bell
+        SettingsNativeDetailPage.Mobile -> RaftLucideIconName.Smartphone
+        SettingsNativeDetailPage.Server -> RaftLucideIconName.Building2
+        SettingsNativeDetailPage.About -> RaftLucideIconName.BadgeInfo
+        SettingsNativeDetailPage.OpenSourceLicenses -> RaftLucideIconName.FileText
+        SettingsNativeDetailPage.Developer -> RaftLucideIconName.Terminal
         SettingsNativeDetailPage.ApiEnvironment,
         SettingsNativeDetailPage.LocalFeatureOverrides,
-        SettingsNativeDetailPage.LocalFeatureOverride -> SlockLucideIconName.SlidersHorizontal
-        SettingsNativeDetailPage.Diagnostics -> SlockLucideIconName.Clipboard
+        SettingsNativeDetailPage.LocalFeatureOverride -> RaftLucideIconName.SlidersHorizontal
+        SettingsNativeDetailPage.Diagnostics -> RaftLucideIconName.Clipboard
     }
 
 /** Route-visual fixture compatibility for surfaces now owned by dedicated Pagers. */
@@ -17869,7 +17960,7 @@ private fun String.toVisualFixtureSharedSettingsDestination(): SharedSettingsDes
 internal class AuthChooseServerVisualApi(
     private val user: StoredAuthUser,
     private val servers: List<StoredAuthServer>
-) : SlockAuthApi {
+) : RaftAuthApi {
     override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         AuthApiResult.Failure(code = 400)
 
@@ -17955,7 +18046,7 @@ internal fun Pager.openAppShellDeveloper() {
 }
 
 private fun Pager.openAuthChooseServerPage(
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     documentShell: Boolean
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
@@ -17972,7 +18063,7 @@ private fun Pager.openAuthChooseServerPage(
 
 internal fun Pager.openAppShellReplacingCurrentPage(pageData: JSONObject) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(SLOCK_APP_SHELL_PAGE, pageData)
+        .openPage(RAFT_APP_SHELL_PAGE, pageData)
 }
 
 internal fun Pager.openLoginReplacingCurrentPage(message: String? = null) {
@@ -17990,10 +18081,10 @@ internal fun authChooseServerPageData(
     replaceCurrent: Boolean = false,
     fromShell: Boolean = false,
     skipInitialLoad: Boolean = false,
-    storeScope: SlockShellStoreScope? = null,
+    storeScope: RaftShellStoreScope? = null,
     documentShell: Boolean = false
 ): JSONObject =
-    slockAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
+    raftAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
         .apply {
             if (fromShell) {
                 put(AUTH_CHOOSE_SERVER_FROM_SHELL, true)
@@ -18002,18 +18093,18 @@ internal fun authChooseServerPageData(
                 put(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, true)
             }
             storeScope?.let { scope ->
-                put(SLOCK_SHELL_INSTANCE_ID, scope.shellInstanceId)
-                scope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-                put(SLOCK_DOCUMENT_SHELL, documentShell)
+                put(RAFT_SHELL_INSTANCE_ID, scope.shellInstanceId)
+                scope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
+                put(RAFT_DOCUMENT_SHELL, documentShell)
             }
         }
 
 internal fun authChooseServerUsesScopedStore(pageData: JSONObject): Boolean =
     pageData.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false) ||
-        pageData.slockShellStoreScopeOrNull() != null
+        pageData.raftShellStoreScopeOrNull() != null
 
 internal fun appShellPageDataForServerSelection(
-    sourceStoreScope: SlockShellStoreScope,
+    sourceStoreScope: RaftShellStoreScope,
     sourceDocumentShell: Boolean = false,
     selectedServerId: String?,
     multiShellHostEnabled: Boolean = false,
@@ -18031,19 +18122,19 @@ internal fun appShellPageDataForServerSelection(
         replaceCurrent = true,
         suppressRestoreLanding = suppressRestoreLanding
     ).apply {
-        normalizedServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+        normalizedServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
         if (opensDocumentShell && routeOwner != null) {
-            put(SLOCK_DOCUMENT_SHELL, true)
+            put(RAFT_DOCUMENT_SHELL, true)
             withAuthenticatedRouteOwner(routeOwner)
         } else {
-            put(SLOCK_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
-            put(SLOCK_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
+            put(RAFT_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
+            put(RAFT_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
         }
     }
 }
 
 internal fun isMultiShellCrossServerSelection(
-    sourceStoreScope: SlockShellStoreScope,
+    sourceStoreScope: RaftShellStoreScope,
     selectedServerId: String?,
     multiShellHostEnabled: Boolean
 ): Boolean =
@@ -18055,14 +18146,14 @@ internal fun appShellPageData(
     replaceCurrent: Boolean = false,
     suppressRestoreLanding: Boolean = false
 ): JSONObject =
-    slockAuthRoutePageData(SLOCK_APP_SHELL_PAGE, replaceCurrent)
+    raftAuthRoutePageData(RAFT_APP_SHELL_PAGE, replaceCurrent)
         .apply {
             if (suppressRestoreLanding) {
                 put(APP_SHELL_SUPPRESS_RESTORE_LANDING, true)
             }
         }
 
-private fun slockAuthRoutePageData(pageName: String, replaceCurrent: Boolean): JSONObject =
+private fun raftAuthRoutePageData(pageName: String, replaceCurrent: Boolean): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
         if (replaceCurrent) {
@@ -18140,8 +18231,8 @@ internal fun AppShellServerGateContent(
         topBarBrandImagePadding = 0.dp,
         topLeadingContent = onBack?.let { back ->
             {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.ArrowLeft,
                     onClick = back,
                     size = 34.dp,
                     shadowOffset = 2.dp
@@ -18162,8 +18253,8 @@ internal fun AppShellServerGateContent(
                         }
                     else -> stringResource(MR.strings.auth_server_title_choose)
                 },
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         Text(
             text =
@@ -18171,8 +18262,8 @@ internal fun AppShellServerGateContent(
                     MR.strings.auth_server_signed_in_as,
                     listOf(latestSession.user.bestDisplayName)
                 ).localized(),
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
         AuthFormColumn {
@@ -18191,8 +18282,8 @@ internal fun AppShellServerGateContent(
             if (loadingServers) {
                 Text(
                     text = stringResource(MR.strings.auth_server_loading),
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     textAlign = TextAlign.Center
                 )
             } else if (latestSession.servers.isEmpty() && errorMessage != null) {
@@ -18208,8 +18299,8 @@ internal fun AppShellServerGateContent(
             } else if (mode == "create") {
                 Text(
                     text = stringResource(MR.strings.auth_server_create_hint),
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
                 AuthTextField(
                     value = createName,
@@ -18269,7 +18360,7 @@ internal fun AppShellServerGateContent(
                 )
             } else {
                 latestSession.servers.forEach { server ->
-                    SlockBrutalListRow(
+                    RaftBrutalListRow(
                         title = server.name,
                         subtitle =
                             if (pendingServerId == server.id) {
@@ -18293,7 +18384,7 @@ internal fun AppShellServerGateContent(
                 )
             }
             if (!showPinnedSignOut) {
-                SlockLinkButton(
+                RaftLinkButton(
                     text = stringResource(MR.strings.auth_action_sign_out),
                     enabled = !loading,
                     onClick = {
@@ -18365,14 +18456,14 @@ internal sealed interface AppShellOrderedAuthEffect {
 }
 
 internal suspend fun appShellRunIfAuthSessionTerminalRevision(
-    terminalSource: SlockAuthSessionTerminalSource,
+    terminalSource: RaftAuthSessionTerminalSource,
     expectedGeneration: Long,
     action: () -> Unit,
 ): Boolean =
     terminalSource.runIfAuthSessionTerminalRevision(expectedGeneration, action)
 
 internal suspend fun appShellRunIfAuthSessionTerminalOrAuthorityRevision(
-    terminalSource: SlockAuthSessionTerminalSource,
+    terminalSource: RaftAuthSessionTerminalSource,
     expectedGeneration: Long,
     expectedSession: StoredAuthSession?,
     action: () -> Unit,
@@ -18454,8 +18545,8 @@ private fun AppShellServerEmptyState(
     ) {
         Text(
             text = stringResource(MR.strings.auth_server_empty_hint),
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
         AuthActionButton(
@@ -18479,8 +18570,8 @@ internal fun AppShellAuthErrorContent(
         onDiagnosticsShortcut = onOpenDiagnostics,
         topLeadingContent = onBack?.let { back ->
             {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.ArrowLeft,
                     onClick = back,
                     size = 34.dp,
                     shadowOffset = 2.dp
@@ -18491,8 +18582,8 @@ internal fun AppShellAuthErrorContent(
         AuthLogoBadge("RAFT")
         Text(
             text = stringResource(MR.strings.auth_title_session_error),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         AuthError(message)
         AuthActionButton(text = stringResource(MR.strings.auth_action_retry), onClick = onRetry, tone = AuthButtonTone.Pink)
@@ -18558,8 +18649,8 @@ internal fun AppShellEmailVerificationGateContent(
         AuthLogoBadge("RAFT")
         Text(
             text = stringResource(MR.strings.auth_title_verify_email),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack
         )
         Text(
             text =
@@ -18571,8 +18662,8 @@ internal fun AppShellEmailVerificationGateContent(
                 } else {
                     stringResource(MR.strings.auth_hint_verify_email)
                 },
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
         AuthFormColumn {
@@ -18601,7 +18692,7 @@ internal fun AppShellEmailVerificationGateContent(
                 tone = AuthButtonTone.White,
                 enabled = !loading
             )
-            SlockLinkButton(
+            RaftLinkButton(
                 text = stringResource(MR.strings.auth_action_sign_out),
                 enabled = !loading,
                 onClick = {
@@ -18618,7 +18709,7 @@ internal fun AppShellEmailVerificationGateContent(
 @Composable
 private fun SharedMembersScreen(
     bridge: build.raft.app.base.BridgeModule,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     session: StoredAuthSession?,
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
@@ -18634,13 +18725,13 @@ private fun SharedMembersScreen(
     onContentLoaded: (SharedMembersUiState.Content) -> Unit,
     onRetry: () -> Unit,
     timeContext: AppShellTimeContext?,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
+    paneLayout: RaftAdaptivePaneLayout = RaftAdaptivePaneLayout.Compact,
     desktopMembersEnabled: Boolean = false,
-    detailSelection: androidx.compose.runtime.MutableState<KuiklyMemberDetailPayload?>,
+    detailSelection: androidx.compose.runtime.MutableState<RaftMemberDetailPayload?>,
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -18651,8 +18742,8 @@ private fun SharedMembersScreen(
     val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var selectedDetail by detailSelection
-    val showMemberSplit = desktopMembersEnabled && paneLayout == SlockAdaptivePaneLayout.DualPane
-    SlockBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane") { selectedDetail = null }
+    val showMemberSplit = desktopMembersEnabled && paneLayout == RaftAdaptivePaneLayout.DualPane
+    RaftBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane") { selectedDetail = null }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
@@ -18667,11 +18758,11 @@ private fun SharedMembersScreen(
             is DataResult.Content -> result.data.agentPanelTabOrder
             is DataResult.Empty -> null
             is DataResult.Error -> {
-                slockLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_failed code=${result.error.code}")
+                raftLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_failed code=${result.error.code}")
                 null
             }
             is DataResult.NoPermission -> {
-                slockLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
+                raftLogWarn("SlockAgentPanelTabOrder", "shared_members_agent_tab_order_load_blocked code=${result.blocker.code}")
                 null
             }
         }
@@ -18680,7 +18771,7 @@ private fun SharedMembersScreen(
         agentPanelTabOrderStore.bindServer(
             serverId = currentServerId,
             source = "shared_members_bind_server",
-            logger = slockLogger("SlockAgentPanelTabOrder")
+            logger = raftLogger("SlockAgentPanelTabOrder")
         )
     }
     LaunchedEffect(
@@ -18697,7 +18788,7 @@ private fun SharedMembersScreen(
                 serverId = currentServerId,
                 order = order,
                 source = "shared_members_sidebar_order_get",
-                logger = slockLogger("SlockAgentPanelTabOrder")
+                logger = raftLogger("SlockAgentPanelTabOrder")
             )
         }
     }
@@ -18737,7 +18828,7 @@ private fun SharedMembersScreen(
             val server = session?.servers?.firstOrNull { it.id == currentServerId }?.toServerSummary()
             if (session == null || currentServerId.isNullOrBlank() || server == null) {
                 // Was silent: a Retry that ends here never reached the network.
-                slockLogger("SlockMembersPage")(
+                raftLogger("SlockMembersPage")(
                     "members_page_load_skipped reason=server_required session=${session != null} " +
                         "serverSelected=${!currentServerId.isNullOrBlank()} serverInSession=${server != null}"
                 )
@@ -18783,9 +18874,9 @@ private fun SharedMembersScreen(
 
     when (val current = state) {
         SharedMembersUiState.Loading ->
-            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
                 MembersPageHeader(title = membersTitle)
-                SlockCenteredLoading()
+                RaftCenteredLoading()
         }
         is SharedMembersUiState.Error ->
             MembersPageErrorContent(
@@ -18809,7 +18900,7 @@ private fun SharedMembersScreen(
             val renderMembersPayload = membersPayload.copy(members = current.members)
             val agentStatusResolver =
                 remember(serverMembersStore, serverId) {
-                    slockScopedAgentStatusResolver(serverMembersStore, serverId)
+                    raftScopedAgentStatusResolver(serverMembersStore, serverId)
                 }
             val computersSlice by computersStore
                 .computerPickerSliceFlow(serverId)
@@ -18990,7 +19081,7 @@ private fun SharedMembersScreen(
             // shared members page under the session user id.
             val membersAgentGroupCollapseStore = remember {
                 build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
-                    build.raft.app.data.slockSharedPreferenceStore()
+                    build.raft.app.data.raftSharedPreferenceStore()
                 )
             }
             MembersAdaptiveWorkspace(
@@ -19013,7 +19104,7 @@ private fun SharedMembersScreen(
                             if (showMemberSplit) {
                                 // Resolve local fallback now, never from a later selected server.
                                 val identity = MemberDetailIdentity(member.id, member.kind, member.serverId ?: ServerId(serverId))
-                                selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toKuiklyMemberDetailPayload()
+                                selectedDetail = membersPayload.toMemberDetailPageData(identity)?.toRaftMemberDetailPayload()
                             } else routeScope.launch {
                                 val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
                                 val accessMode = identity.memberDetailAccessMode(serverId)
@@ -19029,7 +19120,7 @@ private fun SharedMembersScreen(
                                                     serverId = serverId,
                                                     order = order,
                                                     source = "shared_members_detail_open_preload",
-                                                    logger = slockLogger("SlockAgentPanelTabOrder")
+                                                    logger = raftLogger("SlockAgentPanelTabOrder")
                                                 )
                                             }
                                             ?.let { order -> membersPayload.copy(agentPanelTabOrder = order) }
@@ -19052,7 +19143,7 @@ private fun SharedMembersScreen(
                                                     ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
                                         )
                                     agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
-                                    pager.openSlockPage(
+                                    pager.openRaftPage(
                                         pageName = MEMBER_DETAIL_PAGE,
                                         pageData = pageData,
                                         storeScopeOverride = storeScope,
@@ -19109,7 +19200,7 @@ private fun SharedMembersScreen(
                         // (members) and refreshes the computer list; the load always clears `refreshing`.
                         onRefresh = {
                             onForegroundActivity("refresh")
-                            slockLogger("SlockMembersPage")("members_pull_refresh serverId=$serverId")
+                            raftLogger("SlockMembersPage")("members_pull_refresh serverId=$serverId")
                             refreshing = true
                             membersRetryForce = true
                             membersRetryNonce += 1
@@ -19122,7 +19213,7 @@ private fun SharedMembersScreen(
                     val detail = selectedDetail
                     if (detail == null) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(stringResource(MR.strings.members_select_detail), color = SlockColor.TextMutedGray)
+                            Text(stringResource(MR.strings.members_select_detail), color = RaftColor.TextMutedGray)
                         }
                     } else if (active) {
                         // Dispose all detail-local effects on identity changes. Canonical
@@ -19145,16 +19236,16 @@ private fun SharedMembersScreen(
 
 internal fun buildHostMembersPayload(
     server: ServerSummary,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     agentPanelTabOrder: List<String> = emptyList()
-): KuiklyMembersPayload =
-    KuiklyMembersPayload(
+): RaftMembersPayload =
+    RaftMembersPayload(
         instanceId = server.id.value,
         title = "Members",
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
+        timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
         agentPanelTabOrder = agentPanelTabOrder,
         // Product mapping for now: create-agent follows server admin/settings permission
         // until the API exposes a dedicated capability.
@@ -19325,7 +19416,7 @@ private fun JsonObject.avatarWireValue(): String? =
     )
 
 /**
- * task #337: projects the shared home snapshot's direct messages into [SlockHomeConversationItem]
+ * task #337: projects the shared home snapshot's direct messages into [RaftHomeConversationItem]
  * for the Slack-nav DMs tab, reusing the exact projection chain SharedHomeScreen uses
  * (directory identity + draft projections). Null-safe: empty until home content is ready.
  */
@@ -19334,7 +19425,7 @@ private fun rememberProjectedDirectMessageItems(
     state: SharedHomeState,
     conversationIdentityProvider: SharedConversationIdentityProvider?,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice?,
-): List<SlockHomeConversationItem> {
+): List<RaftHomeConversationItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot
     val restoredRowHints = (state.content as? SharedHomeContentState.Content)?.displayRowHints().orEmpty()
     val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
@@ -19413,7 +19504,7 @@ private fun SharedHomeScreen(
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
     topSafeAreaOverride: Dp? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     listPositionServerId: String? = null,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
@@ -19463,7 +19554,7 @@ private fun SharedHomeScreen(
             state.serverActivityUnread,
             serverActivityExpectedOwner,
         ) {
-            state.serverDrawer.toSlockHomeServerDrawerSections(
+            state.serverDrawer.toRaftHomeServerDrawerSections(
                 serverUnreadCounts = state.serverUnreadCounts,
                 activityExpectedOwner = serverActivityExpectedOwner,
                 activityProjection = state.serverActivityUnread,
@@ -19513,7 +19604,7 @@ private fun SharedHomeScreen(
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
-                SlockCenteredLoading()
+                RaftCenteredLoading()
             }
         }
         is SharedHomeContentState.Empty ->
@@ -19590,7 +19681,7 @@ private fun SharedHomeScreen(
                 PageErrorContent(
                     title = "Home",
                     subtitle = "Workspace",
-                    iconName = SlockLucideIconName.House,
+                    iconName = RaftLucideIconName.House,
                     message = error.title,
                     code = current.code,
                     onRetry = { onIntent(SharedHomeIntent.Refresh) }
@@ -19605,20 +19696,20 @@ private fun SharedHomeScreen(
             }
             val agentStatusResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
-                    slockScopedAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
+                    raftScopedAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
                 }
             val memberAvatarResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
-                    slockMemberAvatarResolver(serverMembersStore, snapshot.server.id.value)
+                    raftMemberAvatarResolver(serverMembersStore, snapshot.server.id.value)
                 }
             val serverMembersState by (serverMembersStore?.state ?: flowOf(SharedServerMembersState()))
                 .collectAsState(SharedServerMembersState())
-            val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =
+            val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? =
                 remember(serverMembersState, snapshot.server.id) {
                     { memberId ->
-                        serverMembersStore
-                            ?.memberProfile(snapshot.server.id, memberId)
-                            ?.toSlockHomePinnedMemberItem()
+                        serverMembersState
+                            .memberProfile(snapshot.server.id, memberId)
+                            ?.toRaftHomePinnedMemberItem()
                     }
                 }
             LaunchedEffect(serverMembersStore, snapshot.server.id) {
@@ -19715,8 +19806,21 @@ private fun SharedHomeScreen(
             val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
                 activityUnreadCount = activityUnreadCount
             )
-            val homeShellLabels = SlockHomeShellLabels.localized()
-            SlockStructuralHomeShell(
+            val homeShellLabels = RaftHomeShellLabels.localized()
+            // Web "Hide Empty Sections": a device-local display preference.
+            val hideEmptySectionsStore = remember {
+                runCatching {
+                    build.raft.app.data.KeyValueRaftSidebarHideEmptySectionsStore(
+                        build.raft.app.data.raftSharedPreferenceStore()
+                    )
+                }.getOrNull()
+            }
+            var hideEmptySections by remember(hideEmptySectionsStore) {
+                mutableStateOf(
+                    hideEmptySectionsStore?.read() ?: build.raft.app.data.RaftSidebarHideEmptySectionsDefault
+                )
+            }
+            RaftStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
                 servers = servers,
@@ -19755,6 +19859,7 @@ private fun SharedHomeScreen(
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
                 channelOrder = snapshot.sidebarOrder?.channelOrder.orEmpty(),
                 channelSortMode = snapshot.sidebarOrder?.channelSortMode ?: "manual",
+                jointChannelSortMode = snapshot.sidebarOrder?.jointChannelSortMode ?: "manual",
                 dmOrder = snapshot.sidebarOrder?.dmOrder.orEmpty(),
                 dmSortMode = snapshot.sidebarOrder?.dmSortMode ?: "manual",
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
@@ -19766,6 +19871,7 @@ private fun SharedHomeScreen(
                 customSections = snapshot.sidebarOrder?.customSections.orEmpty(),
                 sectionOrder = snapshot.sidebarOrder?.sectionOrder.orEmpty(),
                 sectionPlacements = snapshot.sidebarOrder?.sectionPlacements.orEmpty(),
+                hideEmptySections = hideEmptySections,
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
@@ -19857,14 +19963,28 @@ private fun SharedHomeScreen(
                 onChannelSortModeChange = { mode ->
                     onIntent(SharedHomeIntent.SetChannelSortMode(mode))
                 },
+                onJointChannelSortModeChange = { mode ->
+                    onIntent(SharedHomeIntent.SetJointChannelSortMode(mode))
+                },
+                onHideEmptySectionsChange = { hide ->
+                    hideEmptySections = hide
+                    hideEmptySectionsStore?.write(hide)
+                },
                 onSidebarOrderChange = { target, order ->
                     onIntent(target.toReorderSidebarIntent(order))
                 },
                 onSidebarSectionSortModeChange = { sectionId, mode ->
                     onIntent(SharedHomeIntent.SetSidebarSectionSortMode(sectionId, mode))
                 },
-                onSidebarSectionCreate = { name, emoji ->
-                    onIntent(SharedHomeIntent.CreateSidebarSection(name, emoji))
+                onSidebarSectionCreate = { request ->
+                    onIntent(
+                        SharedHomeIntent.CreateSidebarSection(
+                            name = request.name,
+                            emoji = request.emoji,
+                            moveConversationId = request.moveConversationId,
+                            insertBeforeSectionId = request.insertBeforeSectionId
+                        )
+                    )
                 },
                 onSidebarSectionRename = { sectionId, name, emoji ->
                     onIntent(SharedHomeIntent.RenameSidebarSection(sectionId, name, emoji))
@@ -19930,7 +20050,7 @@ private fun SharedCreateChannelDialog(
     initialDescription: TextFieldValue = TextFieldValue(""),
     initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
     initialSelectedMemberKeys: Set<String> = emptySet(),
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (String, String?, String, List<String>, List<String>) -> Unit
@@ -19948,7 +20068,7 @@ private fun SharedCreateChannelDialog(
     val createChannelScrollScope = rememberCoroutineScope()
     var createChannelViewport by remember { mutableStateOf<Rect?>(null) }
     val createChannelScrollCoordinator = remember {
-        SlockFocusedEditorScrollRequestCoordinator()
+        RaftFocusedEditorScrollRequestCoordinator()
     }
     DisposableEffect(createChannelScrollCoordinator) {
         onDispose { createChannelScrollCoordinator.invalidate() }
@@ -19958,7 +20078,7 @@ private fun SharedCreateChannelDialog(
     fun scrollToMemberPicker() {
         val requestGeneration = createChannelScrollCoordinator.begin()
         val job = createChannelScrollScope.launch {
-            slockUnifiedDialogScrollToTargetItem(
+            raftUnifiedDialogScrollToTargetItem(
                 keyboardHeight = 1f,
                 targetItemIndex = 3,
                 targetItemScrollOffset = 0,
@@ -19996,14 +20116,14 @@ private fun SharedCreateChannelDialog(
     val filteredAgentMembers = filteredMembers.filter { it.kind == MemberKind.Agent }
     val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
     val hasFilteredMembers = filteredMembers.isNotEmpty()
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
-        val focusedEditorBounds = rememberSlockFocusedInputBoundsResolver()
-        val dialogKeyboardHeightChange = LocalSlockDialogKeyboardHeightChange.current
+        val focusedEditorBounds = rememberRaftFocusedInputBoundsResolver()
+        val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
 
         fun keepFocusedCreateChannelEditorVisible(params: KeyboardParams) {
             dialogKeyboardHeightChange(params)
@@ -20011,7 +20131,7 @@ private fun SharedCreateChannelDialog(
             if (params.height <= 0f) return
             val job = createChannelScrollScope.launch {
                 if (memberSearchFocused) {
-                    slockUnifiedDialogScrollToTargetItem(
+                    raftUnifiedDialogScrollToTargetItem(
                         keyboardHeight = params.height,
                         targetItemIndex = 3,
                         targetItemScrollOffset = 0,
@@ -20026,13 +20146,13 @@ private fun SharedCreateChannelDialog(
                         isTargetActive = { memberSearchFocused }
                     )
                 } else {
-                    slockUnifiedDialogKeepFocusedEditorVisible(
+                    raftUnifiedDialogKeepFocusedEditorVisible(
                         keyboardHeight = params.height,
                         awaitRelayoutFrame = { withFrameNanos { } },
                         focusedBounds = focusedEditorBounds,
                         viewportBounds = { createChannelViewport },
                         currentScrollPosition = {
-                            SlockUnifiedDialogListScrollPosition(
+                            RaftUnifiedDialogListScrollPosition(
                                 index = createChannelListState.firstVisibleItemIndex,
                                 scrollOffset = createChannelListState.firstVisibleItemScrollOffset
                             )
@@ -20052,7 +20172,7 @@ private fun SharedCreateChannelDialog(
         }
 
         CompositionLocalProvider(
-            LocalSlockDialogKeyboardHeightChange provides ::keepFocusedCreateChannelEditorVisible
+            LocalRaftDialogKeyboardHeightChange provides ::keepFocusedCreateChannelEditorVisible
         ) {
             LazyColumn(
                 state = createChannelListState,
@@ -20064,7 +20184,7 @@ private fun SharedCreateChannelDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
             item {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.channel_create_label_name),
                     required = true,
                     value = name,
@@ -20083,7 +20203,7 @@ private fun SharedCreateChannelDialog(
                 )
             }
             item {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.channel_create_label_description),
                     optional = true,
                     value = description,
@@ -20148,21 +20268,21 @@ private fun SharedCreateChannelDialog(
                         }
                     Text(
                         text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
-                        style = SlockType.Caption,
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption,
+                        color = RaftColor.AccentRed
                     )
                 }
             }
         }
         }
-        SlockDialogFooter {
-            SlockBrutalActionButton(
+        RaftDialogFooter {
+            RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
                 enabled = !submitting,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = RaftColor.SurfaceWhite,
                 onClick = onDismiss
             )
-            SlockBrutalActionButton(
+            RaftBrutalActionButton(
                 label =
                     if (submitting) {
                         stringResource(MR.strings.channel_create_action_creating)
@@ -20171,7 +20291,7 @@ private fun SharedCreateChannelDialog(
                     },
                 enabled = canSubmit,
                 minWidth = 126.dp,
-                backgroundColor = SlockColor.AccentPink,
+                backgroundColor = RaftColor.AccentPink,
                 onClick = {
                     val selectedMembers =
                         selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
@@ -20191,10 +20311,10 @@ private fun SharedCreateChannelDialog(
 private enum class SharedCreateChannelVisibility(
     val wireValue: String,
     val label: String,
-    val iconName: SlockLucideIconName
+    val iconName: RaftLucideIconName
 ) {
-    Public("public", "Public", SlockLucideIconName.Hash),
-    Private("private", "Private", SlockLucideIconName.Lock);
+    Public("public", "Public", RaftLucideIconName.Hash),
+    Private("private", "Private", RaftLucideIconName.Lock);
 
     companion object {
         fun fromWireValue(value: String?): SharedCreateChannelVisibility =
@@ -20209,7 +20329,7 @@ private fun SharedCreateChannelVisibilityControl(
     onSelected: (SharedCreateChannelVisibility) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_visibility))
+        RaftBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_visibility))
         SegmentedControl(
             selectedValue = selected.name,
             options =
@@ -20245,29 +20365,29 @@ private fun SharedCreateChannelMemberPicker(
     hasFilteredMembers: Boolean,
     selectedKeys: Set<String>,
     enabled: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean,
     onToggle: (String) -> Unit,
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
+        RaftBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
         when {
             loading ->
                 Text(
                     text = stringResource(MR.strings.settings_members_loading),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             !hasMembers ->
                 Text(
                     text = stringResource(MR.strings.settings_members_empty),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             else -> {
-                SlockBrutalSearchField(
+                RaftBrutalSearchField(
                     value = query,
                     enabled = enabled,
                     placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
@@ -20275,7 +20395,7 @@ private fun SharedCreateChannelMemberPicker(
                     onFocus = onFocus,
                     onBlur = onBlur
                 )
-                SlockModalListShell(
+                RaftModalListShell(
                     height = 192.dp,
                     modifier = Modifier.retainInputFocusForInteractions(),
                     listModifier =
@@ -20297,8 +20417,8 @@ private fun SharedCreateChannelMemberPicker(
                             ) {
                                 Text(
                                     text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
-                                    style = SlockType.Caption,
-                                    color = SlockColor.TextMutedGray
+                                    style = RaftType.Caption,
+                                    color = RaftColor.TextMutedGray
                                 )
                             }
                         }
@@ -20350,13 +20470,13 @@ private fun SharedCreateChannelMemberSectionLabel(label: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite.copy(alpha = 0.5f))
+                .background(RaftColor.SurfaceWhite.copy(alpha = 0.5f))
                 .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(
-            text = label.slockDisplayUppercase(),
-            style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.2.sp),
-            color = SlockColor.TextMutedGray,
+            text = label,
+            style = RaftType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+            color = RaftColor.TextMutedGray,
             maxLines = 1
         )
     }
@@ -20367,7 +20487,7 @@ private fun SharedCreateChannelMemberRow(
     member: MemberProfile,
     selected: Boolean,
     enabled: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -20375,7 +20495,7 @@ private fun SharedCreateChannelMemberRow(
     // Dot-facing resolution: must be the OrNull variant. The label-facing
     // resolveMembersAgentStatusIndicatorState substitutes a placeholder whose presence is
     // Offline, so its colour is StatusNeutralGray -- pixel-identical to a real Offline dot
-    // for an agent whose status is merely not known yet. SlockAvatarWithStatus omits the dot
+    // for an agent whose status is merely not known yet. RaftAvatarWithStatus omits the dot
     // entirely on a null colour, which is the behaviour task #253 chose: show nothing rather
     // than something wrong. Same defect as task #256 fixed in MembersPage; this call site
     // survived because that sweep, and the lint written alongside it, only looked at
@@ -20383,9 +20503,9 @@ private fun SharedCreateChannelMemberRow(
     val statusIndicatorState =
         if (member.kind == MemberKind.Agent) {
             resolveMembersAgentStatusIndicatorStateOrNull(
-                canonicalState = rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value),
+                canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value),
                 fixtureFallback =
-                    slockAgentStatusIndicatorState(
+                    raftAgentStatusIndicatorState(
                         status = member.agentStatus,
                         presence = member.presence,
                         external = member.isExternal
@@ -20400,7 +20520,7 @@ private fun SharedCreateChannelMemberRow(
             ?.takeIf { it.isNotBlank() }
             ?: "${member.kind.name.lowercase()} · @${member.handle}"
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-    val background = if (selected) SlockColor.AccentPink.copy(alpha = 0.2f) else SlockColor.SurfaceWhite
+    val background = if (selected) RaftColor.AccentPink.copy(alpha = 0.2f) else RaftColor.SurfaceWhite
     Row(
         modifier =
             Modifier
@@ -20411,17 +20531,17 @@ private fun SharedCreateChannelMemberRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockAvatarWithStatus(
+        RaftAvatarWithStatus(
             statusColor = statusIndicatorState?.color,
             avatarSize = 28.dp,
             statusSize = 7.dp,
             statusPulsing = statusIndicatorState?.pulsing == true
         ) {
-            SlockAvatar(
+            RaftAppAvatar(
                 avatarWireValue = avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
                 avatarSize = 28.dp,
-                cacheSubject = member.slockAvatarCacheSubject(),
+                cacheSubject = member.raftAvatarCacheSubject(),
                 cacheServerId = member.serverId?.value
             )
         }
@@ -20431,21 +20551,21 @@ private fun SharedCreateChannelMemberRow(
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = subtitle,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         if (selected) {
-            SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(14.dp), color = "#FF000000")
+            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = "#FF000000")
         }
     }
 }
@@ -20454,8 +20574,8 @@ private val MemberProfile.memberSelectionKey: String
     get() = "${kind.name}:${id.value}"
 
 @Composable
-private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificationItem =
-    SlockHomeNotificationItem(
+private fun SharedHomeNotification.toHomeNotificationItem(): RaftHomeNotificationItem =
+    RaftHomeNotificationItem(
         id = id,
         title = titleDesc?.localized() ?: title,
         body = bodyDesc?.localized() ?: body,
@@ -20466,16 +20586,16 @@ private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificati
         targetId = targetId,
         kind =
             when (kind) {
-                SharedHomeNotificationKind.Warning -> SlockHomeNotificationKind.Warning
-                SharedHomeNotificationKind.Info -> SlockHomeNotificationKind.Info
-                SharedHomeNotificationKind.Error -> SlockHomeNotificationKind.Error
+                SharedHomeNotificationKind.Warning -> RaftHomeNotificationKind.Warning
+                SharedHomeNotificationKind.Info -> RaftHomeNotificationKind.Info
+                SharedHomeNotificationKind.Error -> RaftHomeNotificationKind.Error
             },
         icon =
             when (icon) {
-                SharedHomeNotificationIcon.Default -> SlockHomeNotificationIcon.Default
-                SharedHomeNotificationIcon.WifiOff -> SlockHomeNotificationIcon.WifiOff
-                SharedHomeNotificationIcon.CircleArrowUp -> SlockHomeNotificationIcon.CircleArrowUp
-                SharedHomeNotificationIcon.Info -> SlockHomeNotificationIcon.Info
+                SharedHomeNotificationIcon.Default -> RaftHomeNotificationIcon.Default
+                SharedHomeNotificationIcon.WifiOff -> RaftHomeNotificationIcon.WifiOff
+                SharedHomeNotificationIcon.CircleArrowUp -> RaftHomeNotificationIcon.CircleArrowUp
+                SharedHomeNotificationIcon.Info -> RaftHomeNotificationIcon.Info
             }
     )
 
@@ -20484,8 +20604,8 @@ internal fun SharedHomeSearchPanel(
     state: SharedHomeSearchPanelState,
     homeState: SharedHomeState,
     cacheServerId: String? = null,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     computerDirectory: HomeSearchComputerDirectory = HomeSearchComputerDirectory(),
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
@@ -20504,7 +20624,7 @@ internal fun SharedHomeSearchPanel(
     onTogglePin: ((SearchEntityPinTarget) -> Unit)? = null,
     bottomContentPadding: Dp,
     timeContext: AppShellThreadTimeContext? = null,
-    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
@@ -20574,16 +20694,16 @@ internal fun SharedHomeSearchPanel(
     }
     var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
     var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
-    var scopeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var senderAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var timeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var sortAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    var scopeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
-    var senderAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
-    var channelAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
-    var timeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
-    var sortAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var scopeAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var senderAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var channelAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var timeAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var sortAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
+    var scopeAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    var senderAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    var channelAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    var timeAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    var sortAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
     var activePinMenu by remember { mutableStateOf<SharedHomeSearchPinMenuState?>(null) }
     var historyEditing by remember(initialHistoryEditing) { mutableStateOf(initialHistoryEditing) }
     val searchEditor = remember { SharedHomeSearchEditorOwner(state.query) }
@@ -20630,7 +20750,7 @@ internal fun SharedHomeSearchPanel(
             pendingInitialOpenFilterId = null
         }
     }
-    SlockBackHandler(enabled = openFilterId != null || activePinMenu != null || historyEditing) {
+    RaftBackHandler(enabled = openFilterId != null || activePinMenu != null || historyEditing) {
         when {
             openFilterId != null || activePinMenu != null -> {
                 openFilterId = null
@@ -20640,402 +20760,421 @@ internal fun SharedHomeSearchPanel(
             historyEditing -> historyEditing = false
         }
     }
-    Box(
-        modifier =
-            modifier
-                .background(SlockColor.SurfaceWhite)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SharedHomeSearchToolbar(
-                editor = searchEditor,
-                focusRequester = searchFocusRequester,
-                query = state.query,
-                loading = state.loading,
-                onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
-                onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
-                onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
-                onClose = onClose,
-                interactive = interactiveSearchField,
-                autoFocus = initialFocusInput,
-                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
-                placeholder = stringResource(MR.strings.search_placeholder)
-            )
-            SharedHomeSearchDivider()
-            SlockAppShellBodyTopBanner()
-            SharedHomeSearchFilters(
-                state = state,
-                channelFilters = channelFilters,
-                scopeAnchorChanged = { scopeAnchorResolver = it },
-                senderAnchorChanged = { senderAnchorResolver = it },
-                channelAnchorChanged = { channelAnchorResolver = it },
-                timeAnchorChanged = { timeAnchorResolver = it },
-                sortAnchorChanged = { sortAnchorResolver = it },
-                onOpenFilter = { id, anchor ->
-                    when (id) {
-                        "scope" -> scopeAnchor = anchor
-                        "sender" -> senderAnchor = anchor
-                        "channel" -> channelAnchor = anchor
-                        "time" -> timeAnchor = anchor
-                        "sort" -> sortAnchor = anchor
-                    }
-                    openFilterId = id
-                },
-                onIntent = onIntent,
-                showSenderFilter = showSenderFilter
-            )
-            SharedHomeSearchDivider()
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                item {
-                    val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
-                    if (showSearchHome && (!state.personalizationLoaded || !hasSearchHomeContent)) {
-                        SharedHomeSearchEmptyState(
-                            title = stringResource(MR.strings.search_empty_title),
-                            detail = stringResource(MR.strings.search_empty_detail)
-                        )
-                    } else if (showSearchHome) {
-                        Unit
-                    } else if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
-                        SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
-                    } else if (
-                        state.noPermissionCode != null ||
-                            (state.errorCode != null && !hasSearchRows) ||
-                            (computerSearchEligible && computerDirectory.initialLoadError != null && !hasSearchRows)
-                    ) {
-                        val errorCode = state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
-                        val recoveryAction = sharedHomeSearchErrorAction(errorCode, state.sort)
-                        HomeInlineErrorCard(
-                            error = localizedSharedHomeSearchErrorDisplay(errorCode, recoveryAction),
-                            modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding),
-                            showAction = recoveryAction != null,
-                            onAction = {
-                                recoveryAction?.let(onIntent)
-                                if (recoveryAction == SharedHomeSearchSavedIntent.RefreshSearch) {
-                                    onRefreshComputers()
+    // raft-ui search panel: designsystem type tokens and badges, on the canvas layer.
+    RaftDesignSystemTheme {
+        Box(
+            modifier =
+                modifier
+                    .background(RaftColor.Canvas)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SharedHomeSearchToolbar(
+                    editor = searchEditor,
+                    focusRequester = searchFocusRequester,
+                    query = state.query,
+                    loading = state.loading,
+                    onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
+                    onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
+                    onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
+                    onClose = onClose,
+                    interactive = interactiveSearchField,
+                    autoFocus = initialFocusInput,
+                    topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+                    placeholder = stringResource(MR.strings.search_placeholder)
+                )
+                SharedHomeSearchDivider()
+                RaftAppShellBodyTopBanner()
+                SharedHomeSearchFilters(
+                    state = state,
+                    channelFilters = channelFilters,
+                    scopeAnchorChanged = { scopeAnchorResolver = it },
+                    senderAnchorChanged = { senderAnchorResolver = it },
+                    channelAnchorChanged = { channelAnchorResolver = it },
+                    timeAnchorChanged = { timeAnchorResolver = it },
+                    sortAnchorChanged = { sortAnchorResolver = it },
+                    onOpenFilter = { id, anchor ->
+                        when (id) {
+                            "scope" -> scopeAnchor = anchor
+                            "sender" -> senderAnchor = anchor
+                            "channel" -> channelAnchor = anchor
+                            "time" -> timeAnchor = anchor
+                            "sort" -> sortAnchor = anchor
+                        }
+                        openFilterId = id
+                    },
+                    onIntent = onIntent,
+                    showSenderFilter = showSenderFilter
+                )
+                SharedHomeSearchDivider()
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    item {
+                        val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
+                        if (showSearchHome && (!state.personalizationLoaded || !hasSearchHomeContent)) {
+                            SharedHomeSearchEmptyState(
+                                title = stringResource(MR.strings.search_empty_title),
+                                detail = stringResource(MR.strings.search_empty_detail)
+                            )
+                        } else if (showSearchHome) {
+                            Unit
+                        } else if ((state.loading || (computerSearchEligible && computerDirectory.initialLoadInFlight)) && !hasSearchRows) {
+                            RaftCenteredLoading(modifier = Modifier.fillParentMaxSize())
+                        } else if (
+                            state.noPermissionCode != null ||
+                                (state.errorCode != null && !hasSearchRows) ||
+                                (computerSearchEligible && computerDirectory.initialLoadError != null && !hasSearchRows)
+                        ) {
+                            val errorCode = state.noPermissionCode ?: state.errorCode ?: computerDirectory.initialLoadError?.code.orEmpty()
+                            val recoveryAction = sharedHomeSearchErrorAction(errorCode, state.sort)
+                            SharedHomeSearchErrorState(
+                                error = localizedSharedHomeSearchErrorDisplay(errorCode, recoveryAction),
+                                showAction = recoveryAction != null,
+                                onAction = {
+                                    recoveryAction?.let(onIntent)
+                                    if (recoveryAction == SharedHomeSearchSavedIntent.RefreshSearch) {
+                                        onRefreshComputers()
+                                    }
                                 }
-                            }
-                        )
-                    } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
-                        SharedHomeSearchEmptyState(
-                            title = stringResource(MR.strings.search_empty_title),
-                            detail = stringResource(MR.strings.search_empty_detail)
-                        )
-                    } else if (
-                        (state.empty || state.searched) &&
-                            projectedItems.isEmpty() &&
-                            entityResults.isEmpty()
-                    ) {
-                        val trimmedQuery = state.query.trim()
-                        SharedHomeSearchEmptyState(
-                            title =
-                                if (trimmedQuery.isNotBlank()) {
-                                    MR.strings.search_empty_results_query.format(listOf(trimmedQuery)).localized()
-                                } else {
-                                    stringResource(MR.strings.search_empty_results)
-                                },
-                            detail =
-                                if (trimmedQuery.isNotBlank()) {
-                                    stringResource(MR.strings.search_empty_query_detail)
-                                } else {
-                                    stringResource(MR.strings.search_empty_filters_detail)
-                                }
-                        )
-                    } else {
-                        SharedHomeSearchResultsCount(
-                            totalResults = state.totalCount + entityResults.size,
-                            searching = state.querySearchPending || state.loading || state.refreshing
-                        )
-                    }
-                }
-                if (showSearchHome && state.personalizationLoaded && state.history.isNotEmpty()) {
-                    item(key = "search-home-history") {
-                        SharedHomeSearchHistorySection(
-                            history = state.history,
-                            editing = historyEditing,
-                            visualTextScale = searchHomeVisualTextScale,
-                            onEditingChange = { historyEditing = it },
-                            onSelect = { query ->
-                                historyEditing = false
-                                searchEditor.replaceText(query) { next ->
-                                    onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(next))
-                                }
-                                searchFocusRequester.requestFocus()
-                            },
-                            onRemove = { query ->
-                                onIntent(SharedHomeSearchSavedIntent.RemoveSearchHistoryEntry(query))
-                            },
-                            onClear = {
-                                historyEditing = false
-                                onIntent(SharedHomeSearchSavedIntent.ClearSearchHistory)
-                            },
-                        )
-                    }
-                }
-                if (showSearchHome && state.personalizationLoaded && hasSearchHomeContent) {
-                    item(key = "search-home-frequent-heading") {
-                        SharedHomeSearchSectionLabel(
-                            label = stringResource(MR.strings.search_home_frequent),
-                            visualTextScale = searchHomeVisualTextScale,
-                        )
-                    }
-                    if (frequentEntityResults.isEmpty()) {
-                        item(key = "search-home-frequent-empty") {
-                            Text(
-                                text = stringResource(MR.strings.search_home_frequent_empty),
-                                style = SlockType.Body.withHomeSearchVisualTextScale(searchHomeVisualTextScale),
-                                color = SlockColor.TextMutedGray,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp),
+                            )
+                        } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
+                            SharedHomeSearchEmptyState(
+                                title = stringResource(MR.strings.search_empty_title),
+                                detail = stringResource(MR.strings.search_empty_detail)
+                            )
+                        } else if (
+                            (state.empty || state.searched) &&
+                                projectedItems.isEmpty() &&
+                                entityResults.isEmpty()
+                        ) {
+                            val trimmedQuery = state.query.trim()
+                            SharedHomeSearchEmptyState(
+                                title =
+                                    if (trimmedQuery.isNotBlank()) {
+                                        MR.strings.search_empty_results_query.format(listOf(trimmedQuery)).localized()
+                                    } else {
+                                        stringResource(MR.strings.search_empty_results)
+                                    },
+                                detail =
+                                    if (trimmedQuery.isNotBlank()) {
+                                        stringResource(MR.strings.search_empty_query_detail)
+                                    } else {
+                                        stringResource(MR.strings.search_empty_filters_detail)
+                                    }
+                            )
+                        } else {
+                            SharedHomeSearchResultsCount(
+                                totalResults = state.totalCount + entityResults.size,
+                                searching = state.querySearchPending || state.loading || state.refreshing
                             )
                         }
-                    } else {
-                        items(
-                            frequentEntityResults.size,
-                            key = { index -> "frequent:${frequentEntityResults[index].key}" },
-                        ) { index ->
+                    }
+                    if (showSearchHome && state.personalizationLoaded && state.history.isNotEmpty()) {
+                        item(key = "search-home-history") {
+                            SharedHomeSearchHistorySection(
+                                history = state.history,
+                                editing = historyEditing,
+                                visualTextScale = searchHomeVisualTextScale,
+                                onEditingChange = { historyEditing = it },
+                                onSelect = { query ->
+                                    historyEditing = false
+                                    searchEditor.replaceText(query) { next ->
+                                        onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(next))
+                                    }
+                                    searchFocusRequester.requestFocus()
+                                },
+                                onRemove = { query ->
+                                    onIntent(SharedHomeSearchSavedIntent.RemoveSearchHistoryEntry(query))
+                                },
+                                onClear = {
+                                    historyEditing = false
+                                    onIntent(SharedHomeSearchSavedIntent.ClearSearchHistory)
+                                },
+                            )
+                        }
+                    }
+                    if (showSearchHome && state.personalizationLoaded && hasSearchHomeContent) {
+                        item(key = "search-home-frequent-heading") {
+                            SharedHomeSearchSectionLabel(
+                                label = stringResource(MR.strings.search_home_frequent),
+                                visualTextScale = searchHomeVisualTextScale,
+                            )
+                        }
+                        if (frequentEntityResults.isEmpty()) {
+                            item(key = "search-home-frequent-empty") {
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp),
+                                ) {
+                                    RaftText(
+                                        text = stringResource(MR.strings.search_home_frequent_empty),
+                                        style = RaftTheme.typography.callout.withHomeSearchVisualTextScale(searchHomeVisualTextScale),
+                                        color = RaftColor.ForegroundHint,
+                                    )
+                                }
+                            }
+                        } else {
+                            items(
+                                frequentEntityResults.size,
+                                key = { index -> "frequent:${frequentEntityResults[index].key}" },
+                            ) { index ->
+                                SharedHomeSearchEntityRow(
+                                    result = frequentEntityResults[index],
+                                    query = "",
+                                    showSeparator = index > 0,
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    isPinned = frequentEntityResults[index].isPinnedBy(pinnedItems),
+                                    visualTextScale = searchHomeVisualTextScale,
+                                    onOpen = { onOpenEntity(frequentEntityResults[index]) },
+                                    onContextMenu = null,
+                                )
+                            }
+                        }
+                    }
+                    if (entityResults.isNotEmpty()) {
+                        item {
+                            SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
+                        }
+                        items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                             SharedHomeSearchEntityRow(
-                                result = frequentEntityResults[index],
-                                query = "",
+                                result = entityResults[index],
+                                query = state.query,
+                                showSeparator = index > 0,
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
-                                isPinned = frequentEntityResults[index].isPinnedBy(pinnedItems),
-                                visualTextScale = searchHomeVisualTextScale,
-                                onOpen = { onOpenEntity(frequentEntityResults[index]) },
-                                onContextMenu = null,
+                                isPinned = entityResults[index].isPinnedBy(pinnedItems),
+                                onOpen = { onOpenEntity(entityResults[index]) },
+                                onContextMenu =
+                                    searchEntityPinTarget(entityResults[index])
+                                        ?.takeIf { onTogglePin != null }
+                                        ?.let { target ->
+                                            { anchor ->
+                                                activePinMenu =
+                                                    SharedHomeSearchPinMenuState(
+                                                        resultKey = entityResults[index].key,
+                                                        target = target,
+                                                        isPinned = entityResults[index].isPinnedBy(pinnedItems),
+                                                        anchor = anchor
+                                                    )
+                                            }
+                                        }
                             )
                         }
                     }
-                }
-                if (entityResults.isNotEmpty()) {
-                    item {
-                        SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
-                    }
-                    items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
-                        SharedHomeSearchEntityRow(
-                            result = entityResults[index],
-                            query = state.query,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            isPinned = entityResults[index].isPinnedBy(pinnedItems),
-                            onOpen = { onOpenEntity(entityResults[index]) },
-                            onContextMenu =
-                                searchEntityPinTarget(entityResults[index])
-                                    ?.takeIf { onTogglePin != null }
-                                    ?.let { target ->
-                                        { anchor ->
-                                            activePinMenu =
-                                                SharedHomeSearchPinMenuState(
-                                                    resultKey = entityResults[index].key,
-                                                    target = target,
-                                                    isPinned = entityResults[index].isPinnedBy(pinnedItems),
-                                                    anchor = anchor
-                                                )
-                                        }
-                                    }
-                        )
-                    }
-                }
-                if (groupedResults.isNotEmpty()) {
-                    item {
-                        SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_messages))
-                    }
-                }
-                groupedResults.forEach { group ->
-                    when (group) {
-                        is HomeSearchResultGroup.Message -> {
-                            item(key = group.item.key) {
-                                SharedHomeSearchMessageResultRow(
-                                    item = group.item,
-                                    query = state.query,
-                                    cacheServerId = cacheServerId,
-                                    memberAvatarResolver = memberAvatarResolver,
-                                    timeContext = timeContext,
-                                    onOpen = { onOpenItem(group.item) }
-                                )
-                            }
+                    if (groupedResults.isNotEmpty()) {
+                        item {
+                            SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_messages))
                         }
-                        is HomeSearchResultGroup.Thread -> {
-                            item(key = group.key) {
-                                SharedHomeThreadResultGroup(
-                                    group = group,
-                                    query = state.query,
-                                    cacheServerId = cacheServerId,
-                                    memberAvatarResolver = memberAvatarResolver,
-                                    timeContext = timeContext,
-                                    onOpenItem = onOpenItem
-                                )
+                    }
+                    groupedResults.forEachIndexed { groupIndex, group ->
+                        when (group) {
+                            is HomeSearchResultGroup.Message -> {
+                                item(key = group.item.key) {
+                                    SharedHomeSearchMessageResultRow(
+                                        item = group.item,
+                                        query = state.query,
+                                        showSeparator = groupIndex > 0,
+                                        cacheServerId = cacheServerId,
+                                        memberAvatarResolver = memberAvatarResolver,
+                                        timeContext = timeContext,
+                                        onOpen = { onOpenItem(group.item) }
+                                    )
+                                }
+                            }
+                            is HomeSearchResultGroup.Thread -> {
+                                item(key = group.key) {
+                                    SharedHomeThreadResultGroup(
+                                        group = group,
+                                        query = state.query,
+                                        showSeparator = groupIndex > 0,
+                                        cacheServerId = cacheServerId,
+                                        memberAvatarResolver = memberAvatarResolver,
+                                        timeContext = timeContext,
+                                        onOpenItem = onOpenItem
+                                    )
+                                }
                             }
                         }
                     }
-                }
-                if (state.hasMore) {
-                    item {
-                        SharedHomeLoadMoreRow(
-                            loading = state.loadingMore,
-                            label = stringResource(MR.strings.search_action_load_more_results),
-                            onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
-                        )
+                    if (state.hasMore) {
+                        item {
+                            SharedHomeLoadMoreRow(
+                                loading = state.loadingMore,
+                                label = stringResource(MR.strings.search_action_load_more_results),
+                                onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
+                            )
+                        }
                     }
-                }
-                item {
-                    Spacer(Modifier.height(bottomContentPadding))
+                    item {
+                        Spacer(Modifier.height(bottomContentPadding))
+                    }
                 }
             }
-        }
-        when (openFilterId) {
-            "scope" ->
-                SlockFilterPopover(
-                    anchor = scopeAnchor,
-                    title = stringResource(MR.strings.search_filter_scope),
-                    searchPlaceholder = "",
-                    searchText = "",
-                    onSearchChange = {},
-                    options = SearchScope.entries.map { SlockFilterOption(it.key, it.localizedSearchLabel()) },
-                    selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
-                    onToggle = { key ->
-                        SearchScope.entries.firstOrNull { it.key == key }?.let {
-                            onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
-                        }
-                    },
-                    onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
-                    onDismiss = { openFilterId = null },
-                    widthDp = 180f,
-                    multiSelect = true,
-                    searchable = false,
-                    surfaceBorderColor = SearchPopoverBorderColor,
-                    surfaceShadowColor = SearchPopoverShadowColor,
-                    selectedRowColor = SlockColor.SurfaceWhite,
-                    showClearWhenSelected = true
-                )
-            "sender" ->
-                SlockFilterPopover(
-                    anchor = senderAnchor,
-                    title = stringResource(MR.strings.search_filter_from),
-                    searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
-                    searchText = senderSearch,
-                    onSearchChange = { senderSearch = it },
-                    options = state.senderFilterOptions(),
-                    selectedIds = state.selectedSenderIds.toSet(),
-                    onToggle = {
-                        onIntent(SharedHomeSearchSavedIntent.ToggleSearchSender(it))
-                    },
-                    onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchSenders) },
-                    onDismiss = { openFilterId = null },
-                    multiSelect = true,
-                    surfaceBorderColor = SearchPopoverBorderColor,
-                    surfaceShadowColor = SearchPopoverShadowColor,
-                    selectedRowColor = SlockColor.SurfaceWhite,
-                    showClearWhenSelected = true,
-                    headerSlot = {
-                        if (state.senderFiltersLoading) {
-                            Text(stringResource(MR.strings.search_filter_loading_senders), style = SlockType.Caption, color = SlockColor.TextMutedGray)
-                        } else if (state.senderFiltersErrorCode != null) {
-                            Text(state.senderFiltersErrorCode, style = SlockType.Caption, color = SlockColor.AccentRed)
-                        }
+            when (openFilterId) {
+                "scope" ->
+                    RaftFilterPopover(
+                        anchor = scopeAnchor,
+                        title = stringResource(MR.strings.search_filter_scope),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options = SearchScope.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
+                        selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
+                        onToggle = { key ->
+                            SearchScope.entries.firstOrNull { it.key == key }?.let {
+                                onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
+                            }
+                        },
+                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
+                        onDismiss = { openFilterId = null },
+                        widthDp = 180f,
+                        multiSelect = true,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite,
+                        showClearWhenSelected = true
+                    )
+                "sender" ->
+                    RaftFilterPopover(
+                        anchor = senderAnchor,
+                        title = stringResource(MR.strings.search_filter_from),
+                        searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
+                        searchText = senderSearch,
+                        onSearchChange = { senderSearch = it },
+                        options = state.senderFilterOptions(),
+                        selectedIds = state.selectedSenderIds.toSet(),
+                        onToggle = {
+                            onIntent(SharedHomeSearchSavedIntent.ToggleSearchSender(it))
+                        },
+                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchSenders) },
+                        onDismiss = { openFilterId = null },
+                        multiSelect = true,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite,
+                        showClearWhenSelected = true,
+                        // Only pass a header when there is a status to show: the raft popover
+                        // pads the slot and reserves its height, so an empty slot would leave a gap.
+                        headerSlot =
+                            when {
+                                state.senderFiltersLoading -> {
+                                    {
+                                        Text(stringResource(MR.strings.search_filter_loading_senders), style = RaftType.Caption, color = RaftColor.TextMutedGray)
+                                    }
+                                }
+                                state.senderFiltersErrorCode != null -> {
+                                    val errorCode = state.senderFiltersErrorCode
+                                    {
+                                        Text(errorCode, style = RaftType.Caption, color = RaftColor.AccentRed)
+                                    }
+                                }
+                                else -> null
+                            }
+                    )
+                "channel" ->
+                    RaftFilterPopover(
+                        anchor = channelAnchor,
+                        title = stringResource(MR.strings.search_filter_channels),
+                        searchPlaceholder = stringResource(MR.strings.search_filter_search),
+                        searchText = channelSearch,
+                        onSearchChange = { channelSearch = it },
+                        options = channelFilters.map { RaftFilterOption(it.id, it.label, it.icon) },
+                        selectedIds = state.selectedChannelId?.let { setOf(it) } ?: emptySet(),
+                        onToggle = {
+                            onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it))
+                        },
+                        onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
+                        onDismiss = { openFilterId = null },
+                        widthDp = 220f,
+                        multiSelect = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite,
+                        showClearWhenSelected = true
+                    )
+                "time" ->
+                    RaftFilterPopover(
+                        anchor = timeAnchor,
+                        title = stringResource(MR.strings.search_filter_time),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options = SearchTimeRange.entries.map { RaftFilterOption(it.key, it.localizedSearchLabel()) },
+                        selectedIds = setOf(state.timeRange.key),
+                        onToggle = { key ->
+                            SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
+                                onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
+                            }
+                        },
+                        onClear = {},
+                        onDismiss = { openFilterId = null },
+                        widthDp = 168f,
+                        multiSelect = false,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite
+                    )
+                "sort" ->
+                    RaftFilterPopover(
+                        anchor = sortAnchor,
+                        title = stringResource(MR.strings.search_filter_sort),
+                        searchPlaceholder = "",
+                        searchText = "",
+                        onSearchChange = {},
+                        options =
+                            listOf(
+                                RaftFilterOption("relevance", stringResource(MR.strings.search_sort_relevant)),
+                                RaftFilterOption("recent", stringResource(MR.strings.search_sort_recent))
+                            ),
+                        selectedIds = setOf(state.sort.searchKey),
+                        onToggle = { key ->
+                            when (key) {
+                                "recent" -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
+                                else -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance))
+                            }
+                        },
+                        onClear = {},
+                        onDismiss = { openFilterId = null },
+                        widthDp = 148f,
+                        multiSelect = false,
+                        searchable = false,
+                        surfaceBorderColor = SearchPopoverBorderColor,
+                        surfaceShadowColor = SearchPopoverShadowColor,
+                        selectedRowColor = RaftColor.SurfaceWhite
+                    )
+                else -> Unit
+            }
+            activePinMenu?.let { menu ->
+                RaftBaseMenuOverlay(
+                    anchor = menu.anchor,
+                    items =
+                        listOf(
+                            RaftBaseMenuItem(
+                                id = SharedHomeSearchPinMenuActionToggle,
+                                label = if (menu.isPinned) unpinLabel else pinLabel,
+                                icon = if (menu.isPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
+                            )
+                        ),
+                    selectedId = "",
+                    uppercaseLabels = false,
+                    onDismiss = { activePinMenu = null },
+                    onSelect = { actionId ->
+                        activePinMenu = null
+                        dispatchSearchEntityPinMenuSelection(
+                            actionId = actionId,
+                            target = menu.target,
+                            onTogglePin = onTogglePin
+                        )
                     }
                 )
-            "channel" ->
-                SlockFilterPopover(
-                    anchor = channelAnchor,
-                    title = stringResource(MR.strings.search_filter_channels),
-                    searchPlaceholder = stringResource(MR.strings.search_filter_search),
-                    searchText = channelSearch,
-                    onSearchChange = { channelSearch = it },
-                    options = channelFilters.map { SlockFilterOption(it.id, it.label, it.icon) },
-                    selectedIds = state.selectedChannelId?.let { setOf(it) } ?: emptySet(),
-                    onToggle = {
-                        onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(it))
-                    },
-                    onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
-                    onDismiss = { openFilterId = null },
-                    widthDp = 220f,
-                    multiSelect = false,
-                    surfaceBorderColor = SearchPopoverBorderColor,
-                    surfaceShadowColor = SearchPopoverShadowColor,
-                    selectedRowColor = SlockColor.SurfaceWhite,
-                    showClearWhenSelected = true
-                )
-            "time" ->
-                SlockFilterPopover(
-                    anchor = timeAnchor,
-                    title = stringResource(MR.strings.search_filter_time),
-                    searchPlaceholder = "",
-                    searchText = "",
-                    onSearchChange = {},
-                    options = SearchTimeRange.entries.map { SlockFilterOption(it.key, it.localizedSearchLabel()) },
-                    selectedIds = setOf(state.timeRange.key),
-                    onToggle = { key ->
-                        SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
-                            onIntent(SharedHomeSearchSavedIntent.SetSearchTimeRange(it))
-                        }
-                    },
-                    onClear = {},
-                    onDismiss = { openFilterId = null },
-                    widthDp = 168f,
-                    multiSelect = false,
-                    searchable = false,
-                    surfaceBorderColor = SearchPopoverBorderColor,
-                    surfaceShadowColor = SearchPopoverShadowColor,
-                    selectedRowColor = SlockColor.SurfaceWhite
-                )
-            "sort" ->
-                SlockFilterPopover(
-                    anchor = sortAnchor,
-                    title = stringResource(MR.strings.search_filter_sort),
-                    searchPlaceholder = "",
-                    searchText = "",
-                    onSearchChange = {},
-                    options =
-                        listOf(
-                            SlockFilterOption("relevance", stringResource(MR.strings.search_sort_relevant)),
-                            SlockFilterOption("recent", stringResource(MR.strings.search_sort_recent))
-                        ),
-                    selectedIds = setOf(state.sort.searchKey),
-                    onToggle = { key ->
-                        when (key) {
-                            "recent" -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
-                            else -> onIntent(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Relevance))
-                        }
-                    },
-                    onClear = {},
-                    onDismiss = { openFilterId = null },
-                    widthDp = 148f,
-                    multiSelect = false,
-                    searchable = false,
-                    surfaceBorderColor = SearchPopoverBorderColor,
-                    surfaceShadowColor = SearchPopoverShadowColor,
-                    selectedRowColor = SlockColor.SurfaceWhite
-                )
-            else -> Unit
-        }
-        activePinMenu?.let { menu ->
-            SlockBaseMenuOverlay(
-                anchor = menu.anchor,
-                items =
-                    listOf(
-                        SlockBaseMenuItem(
-                            id = SharedHomeSearchPinMenuActionToggle,
-                            label = if (menu.isPinned) unpinLabel else pinLabel,
-                            icon = if (menu.isPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
-                        )
-                    ),
-                selectedId = "",
-                uppercaseLabels = false,
-                onDismiss = { activePinMenu = null },
-                onSelect = { actionId ->
-                    activePinMenu = null
-                    dispatchSearchEntityPinMenuSelection(
-                        actionId = actionId,
-                        target = menu.target,
-                        onTogglePin = onTogglePin
-                    )
-                }
-            )
+            }
         }
     }
 }
@@ -21046,7 +21185,7 @@ private data class SharedHomeSearchPinMenuState(
     val resultKey: String,
     val target: SearchEntityPinTarget,
     val isPinned: Boolean,
-    val anchor: SlockPopoverAnchor
+    val anchor: RaftPopoverAnchor
 )
 
 internal fun dispatchSearchEntityPinMenuSelection(
@@ -21059,14 +21198,15 @@ internal fun dispatchSearchEntityPinMenuSelection(
     }
 }
 
+// raft-ui PanelHeader / search `filtersRow`: a 1dp `border-line-seam` under each bar.
 @Composable
 private fun SharedHomeSearchDivider() {
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderSeam)
     )
 }
 
@@ -21081,33 +21221,37 @@ private fun SharedHomeSearchHistorySection(
     onRemove: (String) -> Unit,
     onClear: () -> Unit,
 ) {
+    // The history heading reads as a search `sectionHeading` (footnote bold hint); the
+    // entries are raft-ui Combobox chips (`h-7` chip radius, `fill-muted`, footnote semibold).
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
                 .padding(
                     start = SearchMessagesHorizontalPadding,
-                    top = 16.dp,
+                    top = 8.dp,
                     end = SearchMessagesHorizontalPadding,
-                    bottom = 24.dp,
+                    bottom = 8.dp,
                 ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SlockLucideIcon(
-                SlockLucideIconName.Clock3,
-                color = SlockColor.TextMutedGrayArgb,
+            RaftLucideIcon(
+                RaftLucideIconName.Clock3,
+                color = raftArgbHex(RaftColor.ForegroundHint),
                 modifier = Modifier.size(14.dp),
             )
             Spacer(Modifier.width(6.dp))
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.search_home_history),
-                style = SlockType.SectionLabel.withHomeSearchVisualTextScale(visualTextScale),
-                color = SlockColor.TextMutedGray,
+                style =
+                    RaftTheme.typography.footnote
+                        .copy(fontWeight = FontWeight.Bold)
+                        .withHomeSearchVisualTextScale(visualTextScale),
+                color = RaftColor.ForegroundHint,
                 modifier = Modifier.weight(1f),
             )
             SharedHomeSearchHistoryTextAction(
@@ -21158,13 +21302,13 @@ private fun SharedHomeSearchHistoryTextAction(
                 .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        RaftText(
             text = label,
             style =
-                SlockType.Caption
-                    .withSlockFontWeight(FontWeight.Bold)
+                RaftTheme.typography.footnote
+                    .copy(fontWeight = FontWeight.Bold)
                     .withHomeSearchVisualTextScale(visualTextScale),
-            color = SlockColor.TextBlack,
+            color = RaftColor.TextBlack,
             maxLines = 1,
         )
     }
@@ -21187,49 +21331,52 @@ private fun SharedHomeSearchHistoryTag(
     Box(
         modifier =
             Modifier
-                .height(if (editing) 44.dp else 30.dp)
+                .height(if (editing) 44.dp else 28.dp)
                 .widthIn(max = 260.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(
             modifier =
                 Modifier
-                    .height(30.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f)),
+                    .height(28.dp)
+                    .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
                 modifier =
                     Modifier
-                        .height(30.dp)
+                        .height(28.dp)
                         .weight(1f, fill = false)
-                        .padding(start = 10.dp, end = if (editing) 4.dp else 10.dp),
+                        .padding(start = 8.dp, end = if (editing) 0.dp else 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.Clock3,
-                    color = SlockColor.TextMutedGrayArgb,
+                RaftLucideIcon(
+                    RaftLucideIconName.Clock3,
+                    color = raftArgbHex(RaftColor.ForegroundHint),
                     modifier = Modifier.size(12.dp),
                 )
-                Text(
+                RaftText(
                     text = query,
-                    style = SlockType.Caption.withHomeSearchVisualTextScale(visualTextScale),
-                    color = SlockColor.TextBlack,
+                    style =
+                        RaftTheme.typography.footnote
+                            .copy(fontWeight = FontWeight.SemiBold)
+                            .withHomeSearchVisualTextScale(visualTextScale),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             if (editing) {
+                // `chipRemove`: a 14dp hint X; the slot keeps the 44dp remove target.
                 Box(
-                    modifier = Modifier.size(width = 44.dp, height = 30.dp),
+                    modifier = Modifier.size(width = 44.dp, height = 28.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.X,
-                        color = "#FF000000",
-                        modifier = Modifier.size(16.dp),
+                    RaftLucideIcon(
+                        RaftLucideIconName.X,
+                        color = raftArgbHex(RaftColor.ForegroundHint),
+                        modifier = Modifier.size(14.dp),
                     )
                 }
             }
@@ -21265,6 +21412,9 @@ private fun SharedHomeSearchHistoryTag(
     }
 }
 
+// raft-ui SearchHeader (PanelHeader): a 56dp canvas row, `pl-4` and `gap-2` on a phone; an
+// outline icon-lg Back, the 27dp brand PanelHeaderIcon with the search glyph, then the
+// search field (a filled control, so it ends on the 16dp content edge).
 @Composable
 private fun SharedHomeSearchToolbar(
     editor: SharedHomeSearchEditorOwner,
@@ -21282,12 +21432,21 @@ private fun SharedHomeSearchToolbar(
 ) {
     SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
-            SharedHomeSearchIconButton(
-                iconName = SlockLucideIconName.ArrowLeft,
-                size = 36.dp,
-                iconSize = 16.dp,
-                background = SlockColor.SurfaceWhite,
-                onClick = onClose
+            RaftBrutalIconButton(
+                iconName = RaftLucideIconName.ArrowLeft,
+                onClick = onClose,
+                contentDescription = stringResource(MR.strings.common_back),
+                backgroundColor = RaftColor.SurfaceWhite,
+                size = RaftMetrics.ControlHeightLg,
+                iconSize = 14.dp
+            )
+        }
+        RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Sm) {
+            RaftLucideIcon(
+                RaftLucideIconName.Search,
+                color = raftArgbHex(RaftColor.StickerInk),
+                strokeWidth = 2f,
+                modifier = Modifier.size(RaftIconTileSize.Sm.icon)
             )
         }
         SharedHomeSearchInput(
@@ -21300,6 +21459,7 @@ private fun SharedHomeSearchToolbar(
             onQueryChange = { next -> editor.acceptEditorValue(next, onQueryChange) },
             onSubmit = onSubmit,
             onClear = { editor.clear(onClear) },
+            raftField = true,
             modifier = Modifier.weight(1f)
         )
     }
@@ -21314,42 +21474,21 @@ private fun SharedHomeSearchControlsRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .padding(
-                    start = SearchControlsHorizontalPadding,
-                    top = topSafeAreaPadding + 12.dp,
-                    end = SearchControlsHorizontalPadding,
-                    bottom = 12.dp
-                ),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                .background(RaftColor.Canvas)
+                .padding(top = topSafeAreaPadding)
+                .height(56.dp)
+                .padding(horizontal = SearchControlsHorizontalPadding),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
     )
 }
 
 @Composable
-private fun SharedHomeSearchIconButton(
-    iconName: SlockLucideIconName,
-    size: Dp,
-    iconSize: Dp,
-    background: Color,
-    onClick: (() -> Unit)?
-) {
-    SharedHomeSearchShadowSurface(
-        modifier = Modifier.size(size),
-        background = background,
-        borderWidth = SlockStroke.Default,
-        onClick = onClick
-    ) {
-        SlockLucideIcon(iconName, color = "#FF000000", modifier = Modifier.size(iconSize))
-    }
-}
-
-@Composable
 internal fun SharedHomeSavedPanel(
     state: SharedHomeSavedPanelState,
     cacheServerId: String? = null,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     onClose: (() -> Unit)? = null,
@@ -21357,7 +21496,7 @@ internal fun SharedHomeSavedPanel(
     bottomContentPadding: Dp,
     includeTopSafeArea: Boolean = true,
     timeContext: AppShellThreadTimeContext? = null,
-    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     onTitleClick: (() -> Unit)? = null,
     onCopyLink: (InboxItem) -> Unit = {},
@@ -21378,7 +21517,6 @@ internal fun SharedHomeSavedPanel(
             activeMenu = null
         }
     }
-    val pullToRefreshState = rememberPullToRefreshState(state.pullRefreshing)
     val projectedItems =
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
@@ -21388,12 +21526,12 @@ internal fun SharedHomeSavedPanel(
     val removeLabel = stringResource(MR.strings.saved_action_remove)
     val contextMenuItems = remember(copyLinkLabel, copyMarkdownLabel, removeLabel) {
         listOf(
-            SlockBaseMenuItem(SharedHomeSavedMenuActionCopyLink, copyLinkLabel, SlockLucideIconName.Link),
-            SlockBaseMenuItem(SharedHomeSavedMenuActionCopyMarkdown, copyMarkdownLabel, SlockLucideIconName.Copy),
-            SlockBaseMenuItem(
+            RaftBaseMenuItem(SharedHomeSavedMenuActionCopyLink, copyLinkLabel, RaftLucideIconName.Link),
+            RaftBaseMenuItem(SharedHomeSavedMenuActionCopyMarkdown, copyMarkdownLabel, RaftLucideIconName.Copy),
+            RaftBaseMenuItem(
                 SharedHomeSavedMenuActionRemove,
                 removeLabel,
-                SlockLucideIconName.Bookmark,
+                RaftLucideIconName.Bookmark,
                 dividerBefore = true
             )
         )
@@ -21403,7 +21541,7 @@ internal fun SharedHomeSavedPanel(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(SlockColor.SurfaceWhite)
+                    .background(RaftColor.SurfaceWhite)
         ) {
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: projectedItems.size,
@@ -21412,8 +21550,8 @@ internal fun SharedHomeSavedPanel(
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
-            SlockAppShellBodyTopBanner()
-            SlockCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
+            RaftAppShellBodyTopBanner()
+            RaftCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
         }
         return
     }
@@ -21421,7 +21559,7 @@ internal fun SharedHomeSavedPanel(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         Column(Modifier.fillMaxSize()) {
             SharedHomeSavedHeader(
@@ -21431,76 +21569,74 @@ internal fun SharedHomeSavedPanel(
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
-            SlockAppShellBodyTopBanner()
-            LazyColumn(
-                state = listState,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(SlockColor.SurfaceWhite),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            RaftAppShellBodyTopBanner()
+            RaftPullToRefreshBox(
+                isRefreshing = state.pullRefreshing,
+                onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
+                modifier = Modifier.fillMaxWidth().weight(1f),
             ) {
-                if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                    slockRaftPullToRefreshItem(
-                        state = pullToRefreshState,
-                        scrollState = listState,
-                        onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) }
-                    )
-                }
-                val hasSavedRows = projectedItems.isNotEmpty()
-                if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
-                    item {
-                        SharedHomePanelStatus(
-                            errorCode = state.errorCode,
-                            noPermissionCode = state.noPermissionCode,
-                            empty = false,
-                            emptyTitle = "",
-                            emptyDetail = "",
-                            onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                LazyColumn(
+                    state = listState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(RaftColor.SurfaceWhite),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                ) {
+                    raftPullToRefreshItem()
+                    val hasSavedRows = projectedItems.isNotEmpty()
+                    if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
+                        item {
+                            SharedHomePanelStatus(
+                                errorCode = state.errorCode,
+                                noPermissionCode = state.noPermissionCode,
+                                empty = false,
+                                emptyTitle = "",
+                                emptyDetail = "",
+                                onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                            )
+                        }
+                    } else if (state.empty || (state.loaded && projectedItems.isEmpty())) {
+                        item {
+                            SharedHomeSavedEmptyState()
+                        }
+                    }
+                    items(projectedItems.size, key = { index -> "saved-${projectedItems[index].key}" }) { index ->
+                        val item = projectedItems[index]
+                        SharedHomeSavedResultCard(
+                            item = item,
+                            selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
+                            cacheServerId = cacheServerId,
+                            memberAvatarResolver = memberAvatarResolver,
+                            onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
+                            onOpen = {
+                                selectedItemKey = item.key
+                                onOpenItem(item)
+                            },
+                            onContextMenu = { anchor -> activeMenu = SharedHomeSavedContextMenuState(item, anchor) },
+                            timeContext = timeContext
                         )
                     }
-                } else if (state.empty || (state.loaded && projectedItems.isEmpty())) {
-                    item {
-                        SharedHomeSavedEmptyState()
+                    if (state.hasMore) {
+                        item {
+                            SharedHomeLoadMoreRow(
+                                loading = state.loadingMore,
+                                label = stringResource(MR.strings.saved_action_load_more),
+                                onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
+                            )
+                        }
                     }
-                }
-                items(projectedItems.size, key = { index -> "saved-${projectedItems[index].key}" }) { index ->
-                    val item = projectedItems[index]
-                    SharedHomeSavedResultCard(
-                        item = item,
-                        selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
-                        cacheServerId = cacheServerId,
-                        memberAvatarResolver = memberAvatarResolver,
-                        onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
-                        onOpen = {
-                            selectedItemKey = item.key
-                            onOpenItem(item)
-                        },
-                        onContextMenu = { anchor -> activeMenu = SharedHomeSavedContextMenuState(item, anchor) },
-                        timeContext = timeContext
-                    )
-                }
-                if (state.hasMore) {
                     item {
-                        SharedHomeLoadMoreRow(
-                            loading = state.loadingMore,
-                            label = stringResource(MR.strings.saved_action_load_more),
-                            onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
-                        )
+                        Spacer(Modifier.height(bottomContentPadding))
                     }
-                }
-                item {
-                    Spacer(Modifier.height(bottomContentPadding))
                 }
             }
         }
         activeMenu?.let { menu ->
-            SlockBaseMenuOverlay(
+            RaftBaseMenuOverlay(
                 anchor = menu.anchor,
                 items = contextMenuItems,
                 selectedId = "",
-                uppercaseLabels = false,
                 onDismiss = { activeMenu = null },
                 onSelect = { actionId ->
                     val item = menu.item
@@ -21541,7 +21677,7 @@ internal fun sharedHomeSavedGestureOwner(
 
 private data class SharedHomeSavedContextMenuState(
     val item: InboxItem,
-    val anchor: SlockPopoverAnchor
+    val anchor: RaftPopoverAnchor
 )
 
 internal fun sharedHomeSavedPermalink(
@@ -21579,10 +21715,10 @@ internal fun InboxItem.sharedHomeSavedMarkdownContent(): String =
 
 @Composable
 private fun SharedHomeSavedEmptyState() {
-    SlockEmptyState(
+    RaftEmptyState(
         title = stringResource(MR.strings.saved_empty_title),
         detail = stringResource(MR.strings.saved_empty_detail),
-        iconName = SlockLucideIconName.Bookmark,
+        iconName = RaftLucideIconName.Bookmark,
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -21598,16 +21734,16 @@ private fun SharedHomeSavedHeader(
     topSafeAreaPadding: Dp = 0.dp,
     onTitleClick: (() -> Unit)? = null
 ) {
-    SlockTopPageHeader(
+    RaftTopPageHeader(
         title = stringResource(MR.strings.saved_title),
         subtitle = stringResource(MR.strings.saved_count, count),
-        backgroundColor = SlockColor.SurfaceWhite,
+        backgroundColor = RaftColor.SurfaceWhite,
         topSafeAreaOverride = topSafeAreaPadding,
         refreshing = refreshing,
         leadingContent =
             onClose?.let { close ->
                 {
-                    SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = close)
+                    RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = close)
                 }
             },
         onTitleClick = onTitleClick,
@@ -21619,34 +21755,34 @@ private fun SharedHomeSavedHeader(
 private fun SharedHomePanelHeader(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     actionLabel: String,
     actionEnabled: Boolean,
     onAction: () -> Unit,
     includeTopSafeArea: Boolean = true
 ) {
-    val topPadding = if (includeTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val topPadding = if (includeTopSafeArea) raftTopSafeAreaPadding() else 0.dp
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(start = 18.dp, top = topPadding + 18.dp, end = 18.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(name = iconName, color = "#FF000000", modifier = Modifier.size(30.dp))
+        RaftLucideIcon(name = iconName, color = "#FF000000", modifier = Modifier.size(30.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 title,
-                style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 subtitle,
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -21672,10 +21808,10 @@ private fun SharedHomePanelSearchField(
             Modifier
                 .padding(horizontal = SearchControlsHorizontalPadding)
                 .fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockBrutalInputField(
+        RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = "Search messages",
@@ -21683,7 +21819,7 @@ private fun SharedHomePanelSearchField(
             maxLines = 1,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
-            textStyle = SlockType.Input.copy(color = SlockColor.TextBlack),
+            textStyle = RaftType.Input.copy(color = RaftColor.TextBlack),
             fieldMinHeight = 42.dp,
             showShadow = false,
             showClearWhenNotEmpty = true,
@@ -21702,12 +21838,12 @@ private fun SharedHomePanelSearchField(
 private fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
     channelFilters: List<SearchChannelFilterItem>,
-    scopeAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
-    senderAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
-    channelAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
-    timeAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
-    sortAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
-    onOpenFilter: (String, SlockPopoverAnchor) -> Unit,
+    scopeAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
+    senderAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
+    channelAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
+    timeAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
+    sortAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
+    onOpenFilter: (String, RaftPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     showSenderFilter: Boolean = true
 ) {
@@ -21725,23 +21861,30 @@ private fun SharedHomeSearchFilters(
     val sortActive = state.sort != SearchSort.Relevance
     val scopeLabel = stringResource(MR.strings.search_filter_scope)
     val channelLabel = stringResource(MR.strings.search_filter_channel)
+    // raft-ui PickerTriggerButton: an applied filter is the cyan `--info-soft` wash
+    // (web `appliedFilterProps`).
+    val appliedFill = RaftColor.InfoSoft
     SharedHomeSearchControlsBlock {
+        val backSwipeRowState = rememberLazyListState()
+        val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
         LazyRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
+            state = backSwipeRowState,
+            userScrollEnabled = backSwipeRow.userScrollEnabled,
+            modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             homeSearchFilterOrder(showSenderFilter).forEach { filter ->
                 item(key = "search-filter-${filter.id}") {
                     when (filter) {
                         HomeSearchFilter.Sender ->
-                            SlockAnchoredToolbarChip(
+                            RaftAnchoredToolbarChip(
                                 label = state.localizedSenderFilterLabel(),
                                 anchorIdentity = "search_filter:sender",
                                 active = senderActive,
                                 enabled = true,
                                 uppercase = !senderActive,
-                                iconName = SlockLucideIconName.CircleUser,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                iconName = RaftLucideIconName.CircleUser,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = senderAnchorChanged,
@@ -21750,14 +21893,14 @@ private fun SharedHomeSearchFilters(
                                 }
                             )
                         HomeSearchFilter.Scope ->
-                            SlockAnchoredToolbarChip(
+                            RaftAnchoredToolbarChip(
                                 label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                                 anchorIdentity = "search_filter:scope",
                                 active = scopeActive,
                                 enabled = true,
                                 uppercase = !scopeActive,
-                                iconName = SlockLucideIconName.AtSign,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                iconName = RaftLucideIconName.AtSign,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = scopeAnchorChanged,
@@ -21766,14 +21909,14 @@ private fun SharedHomeSearchFilters(
                                 }
                             )
                         HomeSearchFilter.Channel ->
-                            SlockAnchoredToolbarChip(
+                            RaftAnchoredToolbarChip(
                                 label = selectedChannel?.label ?: channelLabel,
                                 anchorIdentity = "search_filter:channel",
                                 active = channelActive,
                                 enabled = true,
                                 uppercase = selectedChannel == null,
-                                iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = channelAnchorChanged,
@@ -21782,14 +21925,14 @@ private fun SharedHomeSearchFilters(
                                 }
                             )
                         HomeSearchFilter.Time ->
-                            SlockAnchoredToolbarChip(
+                            RaftAnchoredToolbarChip(
                                 label = state.timeRange.localizedSearchLabel(),
                                 anchorIdentity = "search_filter:time",
                                 active = timeActive,
                                 enabled = true,
                                 uppercase = false,
-                                iconName = SlockLucideIconName.Calendar,
-                                activeBackgroundColor = SlockColor.BrandYellow,
+                                iconName = RaftLucideIconName.Calendar,
+                                activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = timeAnchorChanged,
@@ -21801,14 +21944,14 @@ private fun SharedHomeSearchFilters(
                 }
             }
             item {
-                SlockAnchoredToolbarChip(
+                RaftAnchoredToolbarChip(
                     label = state.sort.localizedSearchLabel(),
                     anchorIdentity = "search_filter:sort",
                     active = sortActive,
                     enabled = true,
                     uppercase = false,
-                    iconName = SlockLucideIconName.ArrowUpDown,
-                    activeBackgroundColor = SlockColor.BrandYellow,
+                    iconName = RaftLucideIconName.ArrowUpDown,
+                    activeBackgroundColor = appliedFill,
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
                     onAnchorChanged = sortAnchorChanged,
@@ -21819,7 +21962,7 @@ private fun SharedHomeSearchFilters(
             }
             if (hasActiveFilters) {
                 item {
-                    SlockToolbarChip(
+                    RaftToolbarChip(
                         label = stringResource(MR.strings.search_filter_clear_all),
                         active = false,
                         enabled = true,
@@ -21859,7 +22002,7 @@ private fun SharedHomeSearchControlsBlock(content: @Composable ColumnScope.() ->
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(top = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content
@@ -21883,7 +22026,7 @@ private fun SharedHomePanelStatus(
                 detail =
                     userFacingErrorLabels.forErrorCode(noPermissionCode)
                         ?: userFacingErrorLabels.generic(),
-                tone = SlockColor.AccentRed,
+                tone = RaftColor.AccentRed,
                 actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
             )
@@ -21893,7 +22036,7 @@ private fun SharedHomePanelStatus(
                 detail =
                     userFacingErrorLabels.forErrorCode(errorCode)
                         ?: userFacingErrorLabels.generic(),
-                tone = SlockColor.AccentRed,
+                tone = RaftColor.AccentRed,
                 actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
             )
@@ -21901,7 +22044,7 @@ private fun SharedHomePanelStatus(
             SharedHomePanelMessage(
                 title = emptyTitle,
                 detail = emptyDetail,
-                tone = SlockColor.AppBgLightBlue
+                tone = RaftColor.AppBgLightBlue
             )
     }
 }
@@ -21910,7 +22053,7 @@ private fun SharedHomePanelStatus(
 private fun SharedHomePanelMessage(
     title: String,
     detail: String,
-    tone: com.tencent.kuikly.compose.ui.graphics.Color,
+    tone: androidx.compose.ui.graphics.Color,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
@@ -21919,24 +22062,23 @@ private fun SharedHomePanelMessage(
             Modifier
                 .padding(horizontal = SearchMessagesHorizontalPadding)
                 .fillMaxWidth()
-                .background(tone.copy(alpha = 0.42f))
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Md),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                .raftCardSurface(fill = tone.copy(alpha = 0.42f))
+                .padding(RaftAppSpacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 title,
-                style = SlockType.SectionLabel,
-                color = SlockColor.TextBlack,
+                style = RaftType.SectionLabel,
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 detail,
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -21957,25 +22099,17 @@ private fun SharedHomeSavedSelectedSurface(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(end = SavedSelectedRowShadowOffset, bottom = SavedSelectedRowShadowOffset)
     ) {
-        if (selected) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SavedSelectedRowShadowOffset, y = SavedSelectedRowShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
+        // raft card: the selected card carries the 1.5dp ink edge, others a hairline.
         content(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 122.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(
-                    SlockStroke.Default,
-                    if (selected) SlockColor.BorderBlack else SearchLightRowBorderColor
+                .raftControlSurface(
+                    fill = RaftColor.Card,
+                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
+                    radius = RaftAppRadius.Container,
+                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
                 )
         )
     }
@@ -21986,10 +22120,10 @@ private fun SharedHomeSavedResultCard(
     item: InboxItem,
     selected: Boolean,
     cacheServerId: String? = null,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onUnsave: () -> Unit,
     onOpen: () -> Unit,
-    onContextMenu: (SlockPopoverAnchor) -> Unit,
+    onContextMenu: (RaftPopoverAnchor) -> Unit,
     timeContext: AppShellThreadTimeContext? = null
 ) {
     val avatarCacheIdentity =
@@ -22000,7 +22134,7 @@ private fun SharedHomeSavedResultCard(
     val time = item.latestActivityAt ?: item.lastMessageAt
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
     val gestureGeneration = remember(item.key) { mutableStateOf(0L) }
-    val gestureLogger = remember { slockLogger("SlockHomeSaved", "home_saved_gesture") }
+    val gestureLogger = remember { raftLogger("SlockHomeSaved", "home_saved_gesture") }
     val savedMessageId = item.savedMessageIdOrNull()?.value.orEmpty()
     val source =
         when {
@@ -22008,7 +22142,7 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
-    val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef(identity = openGestureKey) }
+    val contentAnchor = remember(openGestureKey) { RaftLiveRootAnchorRef(identity = openGestureKey) }
     fun dispatchSavedGesture(owner: SharedHomeSavedGestureOwner, source: String) {
         val generation = gestureGeneration.value + 1L
         gestureGeneration.value = generation
@@ -22022,7 +22156,7 @@ private fun SharedHomeSavedResultCard(
         }
     }
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "home-saved-result",
             semanticIdentity = openGestureKey,
             callbacks =
@@ -22053,7 +22187,7 @@ private fun SharedHomeSavedResultCard(
                                     "itemKey=${item.key.take(80)} messageId=${savedMessageId.take(80)}"
                             )
                             contentAnchor
-                                .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                .resolve(RaftPopoverLocalPoint.Exact(localOffset))
                                 ?.let(onContextMenu)
                         } else {
                             gestureLogger(
@@ -22076,10 +22210,10 @@ private fun SharedHomeSavedResultCard(
             modifier =
                 surfaceModifier
                     .padding(horizontal = 12.dp, vertical = 12.dp)
-                    .slockCaptureLiveRootAnchor(contentAnchor)
-                    .slockGesturePointerInput(gestureOwner) { owner ->
+                    .raftCaptureLiveRootAnchor(contentAnchor)
+                    .raftGesturePointerInput(gestureOwner) { owner ->
                         val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
-                        var gesture: SlockGestureSession<SharedHomeSavedResultGestureCallbacks>? = null
+                        var gesture: RaftGestureSession<SharedHomeSavedResultGestureCallbacks>? = null
                         detectTapGestures(
                             onPress = {
                                 gesture = owner.beginGesture()
@@ -22119,8 +22253,8 @@ private fun SharedHomeSavedResultCard(
                     source?.let {
                         Text(
                             text = it,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-                            color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+                            color = RaftColor.TextBlack.copy(alpha = 0.5f),
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 82.dp)
@@ -22131,11 +22265,11 @@ private fun SharedHomeSavedResultCard(
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            SlockLucideIcon(SlockLucideIconName.MessageSquare, color = "#66000000", modifier = Modifier.size(10.dp))
+                            RaftLucideIcon(RaftLucideIconName.MessageSquare, color = "#66000000", modifier = Modifier.size(10.dp))
                             Text(
                                 text = stringResource(MR.strings.saved_meta_thread),
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
-                                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
+                                color = RaftColor.TextBlack.copy(alpha = 0.4f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -22153,11 +22287,11 @@ private fun SharedHomeSavedResultCard(
                         )
                     }
                     time?.let { timestamp ->
-                        SlockRelativeTimestampText(
+                        RaftRelativeTimestampText(
                             value = timestamp,
                             timeContext = timeContext,
-                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-                            color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+                            color = RaftColor.TextBlack.copy(alpha = 0.4f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -22165,8 +22299,8 @@ private fun SharedHomeSavedResultCard(
                 }
                 Text(
                     text = preview,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -22189,41 +22323,26 @@ private fun SharedHomeSavedUnsaveButton(
     modifier: Modifier = Modifier
 ) {
     val size = 31.dp
-    val shadowOffset = 3.dp
     val currentOnClick by rememberUpdatedState(onClick)
     Box(
         modifier =
             modifier
                 .size(SavedUnsaveHitTargetSize)
                 .zIndex(1f)
-                .slockButtonAccessibility(enabled = true) { currentOnClick() },
+                .raftButtonAccessibility(enabled = true) { currentOnClick() },
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(size + shadowOffset)
+                    .size(size)
+                    .raftControlSurface(fill = RaftColor.Card, border = RaftColor.BorderBlack),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
-                // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
-                // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
-                SlockLucideIcon(SlockLucideIconName.BookmarkMinus, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
-            }
+            // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
+            // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
+            // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
+            RaftLucideIcon(RaftLucideIconName.BookmarkMinus, color = RaftColor.TextBlackArgb, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -22232,7 +22351,7 @@ private fun SharedHomeSavedUnsaveButton(
 private fun SharedHomeSavedSenderMeta(
     senderName: String,
     avatarWireValue: String?,
-    avatarCacheIdentity: SlockMemberAvatarCacheIdentity? = null,
+    avatarCacheIdentity: RaftMemberAvatarCacheIdentity? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -22240,7 +22359,7 @@ private fun SharedHomeSavedSenderMeta(
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockAvatar(
+        RaftAppAvatar(
             avatarWireValue = avatarWireValue ?: savedSenderAvatarFallback(senderName),
             label = senderName,
             avatarSize = 12.dp,
@@ -22249,8 +22368,8 @@ private fun SharedHomeSavedSenderMeta(
         )
         Text(
             text = senderName,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+            color = RaftColor.TextBlack,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -22298,9 +22417,9 @@ private fun InboxItem.senderAvatarWireValueForPreview(): String? {
 
 internal fun InboxItem.previewSenderAvatarCacheIdentity(
     cacheServerId: String?
-): SlockMemberAvatarCacheIdentity? {
+): RaftMemberAvatarCacheIdentity? {
     val identity = previewSenderIdentityOrNull() ?: return null
-    return slockMemberAvatarCacheIdentity(
+    return raftMemberAvatarCacheIdentity(
         kind = identity.kind,
         memberId = identity.memberId,
         serverId = cacheServerId
@@ -22309,10 +22428,10 @@ internal fun InboxItem.previewSenderAvatarCacheIdentity(
 
 @Composable
 private fun InboxItem.resolvedSenderAvatarWireValueForPreview(
-    memberAvatarResolver: SlockMemberAvatarResolver
+    memberAvatarResolver: RaftMemberAvatarResolver
 ): String? {
     val senderId = previewSenderMemberId()
-    val memberAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, senderId)
+    val memberAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, senderId)
     return memberAvatarWireValue ?: senderAvatarWireValueForPreview()
 }
 
@@ -22326,19 +22445,47 @@ private fun savedSenderAvatarFallback(senderName: String): String? =
         null
     }
 
+// raft-ui SearchEmpty (EmptyState): search icon, headline title, callout description.
 @Composable
 private fun SharedHomeSearchEmptyState(
     title: String,
     detail: String
 ) {
-    SlockEmptyState(
+    RaftSearchEmptyState(
         title = title,
         detail = detail,
-        iconName = SlockLucideIconName.Search,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(300.dp)
+        typography = RaftTheme.typography,
+        modifier = Modifier.heightIn(min = 300.dp)
+    )
+}
+
+// raft-ui SearchError: the EmptyState with the TriangleAlert icon, its copy and the retry
+// action under it.
+@Composable
+private fun SharedHomeSearchErrorState(
+    error: RaftHomeInlineError,
+    showAction: Boolean,
+    onAction: () -> Unit
+) {
+    val copy = error.toVisibleCopy()
+    RaftSearchEmptyState(
+        title = copy.title,
+        detail = copy.detail,
+        typography = RaftTheme.typography,
+        iconName = RaftLucideIconName.TriangleAlert,
+        actions =
+            if (showAction) {
+                {
+                    RaftBrutalActionButton(
+                        label = copy.actionLabel,
+                        onClick = onAction,
+                        leadingIcon = RaftLucideIconName.RefreshCw,
+                        backgroundColor = RaftColor.SurfaceWhite
+                    )
+                }
+            } else {
+                null
+            }
     )
 }
 
@@ -22347,20 +22494,14 @@ private fun SharedHomeSearchResultsCount(
     totalResults: Int,
     searching: Boolean
 ) {
-    Text(
+    RaftSearchSummary(
         text =
             if (searching) {
                 stringResource(MR.strings.search_state_searching)
             } else {
                 stringResource(MR.strings.search_results_count, totalResults)
             },
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.6.sp),
-        color = SlockColor.TextMutedGray,
-        maxLines = 1,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp)
+        typography = RaftTheme.typography
     )
 }
 
@@ -22388,68 +22529,73 @@ private fun SharedHomeSearchSectionLabel(
     label: String,
     visualTextScale: Float = 1f,
 ) {
-    Text(
-        text = label.slockDisplayUppercase(),
+    RaftSearchSectionHeading(
+        label = label,
         style =
-            SlockType.Caption
-                .withSlockFontWeight(FontWeight.Bold)
-                .copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.8.sp)
-                .withHomeSearchVisualTextScale(visualTextScale),
-        color = SlockColor.TextMutedGray,
-        maxLines = 1,
-        modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding, vertical = 8.dp)
+            RaftTheme.typography.footnote
+                .copy(fontWeight = FontWeight.Bold)
+                .withHomeSearchVisualTextScale(visualTextScale)
     )
 }
 
-internal fun sharedHomeSearchTimestampTextStyle(compact: Boolean) =
-    SlockType.Caption.copy(
-        fontFamily = SlockMonoFamily,
-        fontSize = if (compact) 9.sp else 10.sp,
-        lineHeight = if (compact) 11.sp else 12.sp,
+/**
+ * search-message `messageHeader` / search-thread `threadMeta`: `font-mono text-mono-meta`
+ * (12/16) in `foreground-hint` for the channel, thread and time meta, nested hits included.
+ */
+internal fun sharedHomeSearchTimestampTextStyle() =
+    RaftType.Caption.copy(
+        fontFamily = RaftMonoFamily,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
         letterSpacing = 0.sp
     )
 
+// raft-ui search-entity: a flat `px-4 py-3` row (min 64dp) on the panel, `gap-3` between a
+// 27dp leading avatar / IconTile and the text; `text-body` semibold title with its type
+// Badge, `text-callout` `foreground-muted` description; hairline separators from 55dp;
+// pressed lays `fill-pressed`. An archived channel mutes its title and description.
 @Composable
 private fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
     query: String,
-    agentStatusResolver: SlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    agentStatusResolver: RaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     isPinned: Boolean = false,
+    showSeparator: Boolean = false,
     visualTextScale: Float = 1f,
     onOpen: () -> Unit,
-    onContextMenu: ((SlockPopoverAnchor) -> Unit)? = null
+    onContextMenu: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
     val gestureKey = remember(result.key, isPinned, onContextMenu != null) { "search-entity:${result.key}:$isPinned" }
-    val contentAnchor = remember(gestureKey) { SlockLiveRootAnchorRef(identity = gestureKey) }
+    val contentAnchor = remember(gestureKey) { RaftLiveRootAnchorRef(identity = gestureKey) }
     val gestureOwner =
-        rememberSlockGestureOwner(
+        rememberRaftGestureOwner(
             surface = "home-search-entity",
             semanticIdentity = gestureKey,
             callbacks = SharedHomeSearchEntityGestureCallbacks(onOpen, onContextMenu, contentAnchor)
         )
+    // Same delayed press as the message rows' clickable: a touch that becomes a scroll within
+    // the tap timeout never flashes the pressed fill.
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val mutedArchived = result.archived && result.type == SearchEntityType.Channel
+    val typography = RaftTheme.typography
     Row(
         modifier =
             Modifier
-                .padding(horizontal = 16.dp, vertical = 4.dp)
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SearchLightRowBorderColor)
-                .padding(horizontal = 13.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .slockCaptureLiveRootAnchor(contentAnchor)
-                    .slockGesturePointerInput(gestureOwner) { owner ->
-                        var gesture: SlockGestureSession<SharedHomeSearchEntityGestureCallbacks>? = null
+                .heightIn(min = RaftSearchMetrics.EntityMinHeight)
+                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.EntitySeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowPressed(pressed, RaftColor.FillPressed)
+                .raftCaptureLiveRootAnchor(contentAnchor)
+                .raftGesturePointerInput(gestureOwner, interactionSource) { owner ->
+                    var gesture: RaftGestureSession<SharedHomeSearchEntityGestureCallbacks>? = null
+                    coroutineScope {
+                        val pressScope = this
                         detectTapGestures(
-                            onPress = {
+                            onPress = { offset ->
                                 gesture = owner.beginGesture()
-                                tryAwaitRelease()
+                                raftDelayedRowPress(offset, interactionSource, pressScope) { tryAwaitRelease() }
                             },
                             onTap = {
                                 (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onOpen()
@@ -22458,51 +22604,58 @@ private fun SharedHomeSearchEntityRow(
                                 (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
                                     callbacks.onContextMenu?.let { callback ->
                                         callbacks.contentAnchor
-                                            .resolve(SlockPopoverLocalPoint.Exact(localOffset))
+                                            .resolve(RaftPopoverLocalPoint.Exact(localOffset))
                                             ?.let(callback)
                                     }
                                 }
                             }
                         )
-                    },
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HomeSearchHighlightedText(
-                        text = result.title,
-                        query = query,
-                        style =
-                            SlockType.Body
-                                .withSlockFontWeight(FontWeight.Bold)
-                                .copy(fontSize = 14.sp, lineHeight = 18.sp)
-                                .withHomeSearchVisualTextScale(visualTextScale),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    SharedHomeEntityTypeBadge(result.type)
+                    }
                 }
-                HomeSearchHighlightedText(
-                    text = result.subtitle,
+                .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
+        horizontalArrangement = Arrangement.spacedBy(RaftSearchMetrics.EntityGap),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SharedHomeSearchEntityLeadingAvatar(result, agentStatusResolver, memberAvatarResolver)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftSearchHitText(
+                    text = result.title,
                     query = query,
-                    style = SlockType.Caption.withHomeSearchVisualTextScale(visualTextScale),
-                    color = SlockColor.TextMutedGray,
+                    style =
+                        typography.body
+                            .copy(fontWeight = FontWeight.SemiBold)
+                            .withHomeSearchVisualTextScale(visualTextScale),
+                    color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextBlack,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
+                SharedHomeEntityTypeBadge(result.type, muted = mutedArchived)
+                if (result.archived) {
+                    RaftBadge(
+                        text = stringResource(MR.strings.channel_settings_status_archived),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = if (mutedArchived) RaftBadgeVariant.Muted else RaftBadgeVariant.Warning
+                    )
+                }
             }
+            RaftSearchHitText(
+                text = result.subtitle,
+                query = query,
+                style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
+                color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
 
 private data class SharedHomeSearchEntityGestureCallbacks(
     val onOpen: () -> Unit,
-    val onContextMenu: ((SlockPopoverAnchor) -> Unit)?,
-    val contentAnchor: SlockLiveRootAnchorRef
+    val onContextMenu: ((RaftPopoverAnchor) -> Unit)?,
+    val contentAnchor: RaftLiveRootAnchorRef
 )
 
 internal data class SearchEntityPinTarget(
@@ -22568,10 +22721,11 @@ internal fun SettingsServerSidebarOrderSnapshot?.pinnedChannelConversationIds():
         .filter { it.isNotBlank() }
         .toSet()
 
+// raft-ui search-entity Badge: `solid` `default`, or `soft` `muted` on an archived channel.
 @Composable
-private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
-    SharedHomeOutlinedMetaBadge(
-        label =
+private fun SharedHomeEntityTypeBadge(type: SearchEntityType, muted: Boolean = false) {
+    RaftBadge(
+        text =
             when (type) {
                 SearchEntityType.Channel -> stringResource(MR.strings.search_entity_channel)
                 SearchEntityType.DirectMessage -> stringResource(MR.strings.search_entity_dm)
@@ -22579,93 +22733,105 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
                 SearchEntityType.Agent -> stringResource(MR.strings.search_entity_dm)
                 SearchEntityType.Computer -> stringResource(MR.strings.search_entity_computer)
             },
-        compact = true
+        appearance = if (muted) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
+        variant = if (muted) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
     )
 }
 
+// raft-ui search-thread: a flat block (hairline separator from 16dp, no card or wash). The
+// `px-4 pt-3 pb-1` header holds a mono-meta `foreground-hint` line (Thread Badge, #channel,
+// hit count, time at the end) over the `text-callout` semibold title; the hits follow as
+// search-message rows.
 @Composable
 private fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
     query: String,
+    showSeparator: Boolean = false,
     cacheServerId: String? = null,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpenItem: (InboxItem) -> Unit
 ) {
     val firstItem = group.items.firstOrNull()
     val sourceLabel = searchResultSourceLabel(firstItem ?: return)
     val latestTime = firstItem.latestActivityAt ?: firstItem.lastMessageAt
+    val metaStyle = sharedHomeSearchTimestampTextStyle()
     Column(
         modifier =
             Modifier
-                .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 4.dp)
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SearchLightRowBorderColor)
+                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-                    .background(SlockColor.AccentPink.copy(alpha = 0.08f))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+                    .padding(start = RaftSearchMetrics.Inset, top = 12.dp, end = RaftSearchMetrics.Inset, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SharedHomeMiniMetaBadge(stringResource(MR.strings.search_meta_thread), SlockLucideIconName.MessageSquare, compact = true)
-                Text(
-                    text = sourceLabel,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = stringResource(MR.strings.search_hits_count, group.items.size),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
-                if (firstItem.hasDraft) {
-                    SharedHomeDraftPencilIcon(compact = true)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftBadge(
+                        text = stringResource(MR.strings.search_meta_thread),
+                        icon = {
+                            RaftLucideIcon(
+                                RaftLucideIconName.MessageSquare,
+                                color = raftArgbHex(RaftColor.StickerInk),
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    )
+                    Text(
+                        text = sourceLabel,
+                        style = metaStyle,
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        text = stringResource(MR.strings.search_hits_count, group.items.size),
+                        style = metaStyle,
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1
+                    )
+                    if (firstItem.hasDraft) {
+                        SharedHomeDraftPencilIcon(compact = true)
+                    }
                 }
-                Spacer(Modifier.weight(1f))
                 if (!latestTime.isNullOrBlank()) {
-                    SlockRelativeTimestampText(
+                    RaftRelativeTimestampText(
                         value = latestTime,
                         timeContext = timeContext,
-                        style = sharedHomeSearchTimestampTextStyle(compact = false),
-                        color = SlockColor.TextMutedGray,
+                        style = metaStyle,
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1
                     )
                 }
             }
-            HomeSearchHighlightedText(
+            RaftSearchHitText(
                 text = group.title,
                 query = query,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = SlockColor.TextBlack,
+                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                color = RaftColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        group.items.forEach { item ->
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(SlockStroke.Thin)
-                        .background(SearchLightRowBorderColor)
-            )
+        group.items.forEachIndexed { index, item ->
             SharedHomeSearchMessageResultRow(
                 item = item,
                 query = query,
                 nested = true,
+                showSeparator = index > 0,
                 cacheServerId = cacheServerId,
                 memberAvatarResolver = memberAvatarResolver,
                 timeContext = timeContext,
@@ -22675,13 +22841,18 @@ private fun SharedHomeThreadResultGroup(
     }
 }
 
+// raft-ui search-message: a flat `px-4 py-3` row (hairline separator from 16dp, pressed
+// `fill-pressed`). The header line is mono-meta `foreground-hint` with the sender first
+// (14dp avatar, `text-callout` bold `foreground`), then #channel, thread, and the time at
+// the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
 @Composable
 private fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
     nested: Boolean = false,
+    showSeparator: Boolean = false,
     cacheServerId: String? = null,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     timeContext: AppShellThreadTimeContext? = null,
     onOpen: () -> Unit
 ) {
@@ -22691,92 +22862,94 @@ private fun SharedHomeSearchMessageResultRow(
         ?: stringResource(MR.strings.search_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
-    val compactMeta = nested
+    val metaStyle = sharedHomeSearchTimestampTextStyle()
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     Column(
         modifier =
             Modifier
-                .let {
-                    if (nested) {
-                        it
-                            .fillMaxWidth()
-                    } else {
-                        it
-                            .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 4.dp)
-                            .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SearchLightRowBorderColor)
-                    }
-                }
-                .clickable(onClick = onOpen)
-                .padding(horizontal = 12.dp, vertical = if (nested) 10.dp else 11.dp),
-        verticalArrangement = Arrangement.spacedBy(if (nested) 5.dp else 6.dp)
+                .fillMaxWidth()
+                .raftSearchRowSeparator(showSeparator, RaftSearchMetrics.MessageSeparatorInset, RaftColor.BorderHairline)
+                .raftSearchRowPressed(pressed, RaftColor.FillPressed)
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onOpen)
+                .padding(horizontal = RaftSearchMetrics.Inset, vertical = RaftSearchMetrics.RowPaddingVertical),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(if (nested) 6.dp else 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(if (nested) 6.dp else 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (!sender.isNullOrBlank()) {
+                    SharedHomeSearchSenderMeta(
+                        sender = sender,
+                        avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
+                        avatarCacheIdentity = avatarCacheIdentity,
+                        modifier = Modifier.widthIn(max = 180.dp)
+                    )
+                }
                 if (!nested) {
                     Text(
                         text = searchResultSourceLabel(item),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-                        color = SlockColor.TextMutedGray,
+                        style = metaStyle,
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                 }
                 if (item.kind == InboxItemKind.Thread && !nested) {
-                    SharedHomeMiniMetaBadge(stringResource(MR.strings.search_meta_thread), SlockLucideIconName.MessageSquare)
+                    SharedHomeSearchThreadMeta(metaStyle)
                 }
                 if (item.hasDraft) {
-                    SharedHomeDraftPencilIcon(compact = nested)
-                }
-                if (!sender.isNullOrBlank()) {
-                    SharedHomeSearchSenderMeta(
-                        sender = sender,
-                        avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
-                        avatarCacheIdentity = avatarCacheIdentity,
-                        modifier = Modifier.weight(1f, fill = false),
-                        compact = compactMeta
-                    )
-                } else if (nested) {
-                    Spacer(Modifier.weight(1f))
+                    SharedHomeDraftPencilIcon(compact = true)
                 }
             }
             if (!time.isNullOrBlank()) {
-                SlockRelativeTimestampText(
+                RaftRelativeTimestampText(
                     value = time,
                     timeContext = timeContext,
-                    style = sharedHomeSearchTimestampTextStyle(compact = compactMeta),
-                    color = SlockColor.TextMutedGray,
+                    style = metaStyle,
+                    color = RaftColor.ForegroundHint,
                     maxLines = 1
                 )
             }
         }
-        HomeSearchHighlightedText(
+        RaftSearchHitText(
             text = preview,
             query = query,
-            style = SlockType.Body.copy(fontSize = if (nested) 12.sp else 14.sp, lineHeight = if (nested) 17.sp else 19.sp, letterSpacing = 0.sp),
-            color = SlockColor.TextBlack.copy(alpha = if (nested) 0.7f else 0.74f),
+            style = RaftTheme.typography.callout,
+            color = RaftColor.TextMuted,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
     }
 }
 
+// search-message `messageThreadMeta`: a 12dp message icon and "thread" in the meta type.
 @Composable
-private fun SharedHomeMiniMetaBadge(
-    label: String,
-    iconName: SlockLucideIconName,
-    compact: Boolean = false
-) {
-    SharedHomeOutlinedMetaBadge(label = label, iconName = iconName, compact = compact)
+private fun SharedHomeSearchThreadMeta(style: TextStyle) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RaftLucideIcon(
+            RaftLucideIconName.MessageSquare,
+            color = raftArgbHex(RaftColor.ForegroundHint),
+            modifier = Modifier.size(12.dp)
+        )
+        Text(
+            text = stringResource(MR.strings.search_meta_thread),
+            style = style,
+            color = RaftColor.ForegroundHint,
+            maxLines = 1
+        )
+    }
 }
 
 @Composable
@@ -22784,40 +22957,11 @@ private fun SharedHomeDraftPencilIcon(
     compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    SlockLucideIcon(
-        SlockLucideIconName.Pencil,
+    RaftLucideIcon(
+        RaftLucideIconName.Pencil,
         modifier = modifier.size(if (compact) 10.dp else 12.dp),
-        color = SlockColor.TextMutedGrayArgb
+        color = RaftColor.TextMutedGrayArgb
     )
-}
-
-@Composable
-private fun SharedHomeOutlinedMetaBadge(
-    label: String,
-    iconName: SlockLucideIconName? = null,
-    compact: Boolean = false
-) {
-    Row(
-        modifier =
-            Modifier
-                .height(if (compact) 16.dp else 18.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.EmptyStateGray)
-                .padding(horizontal = if (compact) 4.dp else 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (iconName != null) {
-            SlockLucideIcon(iconName, color = "#99000000", modifier = Modifier.size(if (compact) 9.dp else 10.dp))
-        }
-        Text(
-            text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = if (compact) 9.sp else 10.sp, lineHeight = if (compact) 11.sp else 12.sp, letterSpacing = 0.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
 }
 
 private fun searchResultSourceLabel(item: InboxItem): String {
@@ -22830,50 +22974,20 @@ private fun searchResultSourceLabel(item: InboxItem): String {
     return if (item.kind == InboxItemKind.DirectMessage) "@$name" else "#$name"
 }
 
-@Composable
-private fun HomeSearchHighlightedText(
-    text: String,
-    query: String,
-    style: TextStyle,
-    color: Color,
-    modifier: Modifier = Modifier,
-    maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip
-) {
-    val highlightedText = remember(text, query) { homeSearchHighlightedAnnotatedString(text, query) }
-    Text(
-        text = highlightedText,
-        style = style,
-        color = color,
-        maxLines = maxLines,
-        overflow = overflow,
-        modifier = modifier,
-    )
-}
-
+/** The raft-ui search hit spans; [RaftSearchHitText] draws the sticker behind them. */
 internal fun homeSearchHighlightedAnnotatedString(
     text: String,
     query: String
-): AnnotatedString {
-    val ranges = homeSearchHighlightRanges(text, query)
-    if (ranges.isEmpty()) return AnnotatedString(text)
-    return buildAnnotatedString {
-        append(text)
-        val highlightStyle =
-            SpanStyle(
-                background = SlockColor.BrandYellow,
-                color = SlockColor.TextBlack
-            )
-        ranges.forEach { range ->
-            addStyle(
-                highlightStyle,
-                start = range.first,
-                end = range.last + 1
-            )
-        }
-    }
-}
+): AnnotatedString = raftSearchHitAnnotatedString(text, homeSearchHighlightRanges(text, query))
 
+/**
+ * The search hit spans of [query]'s whitespace-separated terms in [text], case-insensitive,
+ * longest term first, never overlapping, in text order. Ranges are indices into [text]
+ * itself: matching compares char by char (`regionMatches(ignoreCase = true)`) rather than
+ * searching `text.lowercase()`, whose length can differ from [text] ("İ" lowercases to two
+ * chars). Hits that touch ("foo" + "bar" in "foobar") merge into one span, so they draw as
+ * one sticker.
+ */
 internal fun homeSearchHighlightRanges(
     text: String,
     query: String
@@ -22889,24 +23003,41 @@ internal fun homeSearchHighlightRanges(
             .sortedByDescending { it.length }
     if (terms.isEmpty()) return emptyList()
 
-    val lowerText = text.lowercase()
     val occupied = BooleanArray(text.length)
     val ranges = mutableListOf<IntRange>()
     terms.forEach { term ->
-        val lowerTerm = term.lowercase()
-        var start = lowerText.indexOf(lowerTerm)
-        while (start >= 0) {
-            val endExclusive = start + lowerTerm.length
-            if (start < endExclusive && (start until endExclusive).none { occupied[it] }) {
+        var start = 0
+        while (start + term.length <= text.length) {
+            if (!text.regionMatches(start, term, 0, term.length, ignoreCase = true)) {
+                start++
+                continue
+            }
+            val endExclusive = start + term.length
+            if ((start until endExclusive).none { occupied[it] }) {
                 ranges += start until endExclusive
                 for (index in start until endExclusive) {
                     occupied[index] = true
                 }
             }
-            start = lowerText.indexOf(lowerTerm, startIndex = start + lowerTerm.length)
+            start = endExclusive
         }
     }
-    return ranges.sortedBy { it.first }
+    return mergeAbuttingHighlightRanges(ranges.sortedBy { it.first })
+}
+
+/** Joins sorted, non-overlapping ranges that touch (`a.last + 1 == b.first`). */
+private fun mergeAbuttingHighlightRanges(sorted: List<IntRange>): List<IntRange> {
+    if (sorted.size < 2) return sorted
+    val merged = mutableListOf(sorted.first())
+    for (range in sorted.drop(1)) {
+        val last = merged.last()
+        if (range.first <= last.last + 1) {
+            merged[merged.lastIndex] = last.first..maxOf(last.last, range.last)
+        } else {
+            merged += range
+        }
+    }
+    return merged
 }
 
 @Composable
@@ -22923,13 +23054,14 @@ private fun SharedHomeLoadMoreRow(
                 .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = if (loading) stringResource(MR.strings.common_loading) else label,
             enabled = !loading,
             minWidth = 0.dp,
-            minHeight = 30.dp,
+            minHeight = RaftMetrics.ControlHeightMd,
             shadowOffset = 3.dp,
-            textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+            // raft-ui Button `md` (32dp): `text-footnote` bold.
+            textStyle = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Bold),
             onClick = onClick
         )
     }
@@ -22989,14 +23121,14 @@ private fun SharedHomeSearchSortSegmentButton(
         enabled = true,
         onClick = onClick,
         modifier = modifier.heightIn(min = 28.dp),
-        background = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
-        borderColor = SlockColor.BorderBlack,
-        shadowColor = if (selected) SlockColor.ShadowBlack else Color.Transparent
+        background = if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite,
+        borderColor = RaftColor.BorderBlack,
+        shadowColor = if (selected) RaftColor.ShadowBlack else Color.Transparent
     ) {
         Text(
             text = label,
-            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = if (selected) SlockColor.TextBlack else SearchMutedTextColor,
+            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+            color = if (selected) RaftColor.TextBlack else SearchMutedTextColor,
             maxLines = 1
         )
     }
@@ -23008,8 +23140,8 @@ private fun SharedHomeSearchControlSurface(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     background: Color,
-    borderColor: Color = SlockColor.BorderBlack,
-    shadowColor: Color = SlockColor.ShadowBlack,
+    borderColor: Color = RaftColor.BorderBlack,
+    shadowColor: Color = RaftColor.ShadowBlack,
     content: @Composable () -> Unit
 ) {
     SharedHomeSearchShadowSurface(
@@ -23025,40 +23157,31 @@ private fun SharedHomeSearchControlSurface(
     )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun SharedHomeSearchShadowSurface(
     modifier: Modifier = Modifier,
     background: Color,
-    borderColor: Color = SlockColor.BorderBlack,
-    borderWidth: Dp = SlockStroke.Default,
-    shadowColor: Color = SlockColor.ShadowBlack,
+    borderColor: Color = RaftColor.BorderBlack,
+    borderWidth: Dp = RaftAppStroke.Default,
+    shadowColor: Color = RaftColor.ShadowBlack,
     enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
     contentPaddingHorizontal: Dp = 0.dp,
     contentPaddingVertical: Dp = 0.dp,
     content: @Composable () -> Unit
 ) {
-    Box(
-        modifier =
-            modifier.padding(
-                end = if (shadowColor == Color.Transparent) 0.dp else SearchControlShadowOffset,
-                bottom = if (shadowColor == Color.Transparent) 0.dp else SearchControlShadowOffset
-            )
-    ) {
-        if (shadowColor != Color.Transparent) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
-                        .background(if (enabled) shadowColor else shadowColor.copy(alpha = 0.18f))
-            )
-        }
+    // raft-ui: a selected (yellow) control is the brand sticker (1.5dp sticker-ink edge);
+    // every other one is a ghost control. Control radius, no ink frame, no offset shadow.
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    val sticker = background == RaftColor.BrandYellow || background == RaftColor.Brand
+    Box(modifier = modifier) {
         val surfaceModifier =
             Modifier
                 .fillMaxSize()
-                .background(background)
-                .border(borderWidth, borderColor)
+                .clip(shape)
+                .background(if (sticker) RaftColor.Brand else Color.Transparent, shape)
+                .border(RaftAppStroke.Control, if (sticker) RaftColor.StickerInk else Color.Transparent, shape)
                 .padding(horizontal = contentPaddingHorizontal, vertical = contentPaddingVertical)
         Box(
             modifier =
@@ -23085,23 +23208,22 @@ private fun SharedHomePanelButton(
 ) {
     val background =
         when {
-            !enabled -> SlockColor.TextMutedGray.copy(alpha = 0.18f)
-            selected -> SlockColor.BrandYellow
-            else -> SlockColor.SurfaceWhite
+            !enabled -> RaftColor.TextMutedGray.copy(alpha = 0.18f)
+            selected -> RaftColor.BrandYellow
+            else -> RaftColor.SurfaceWhite
         }
     Button(
         enabled = enabled,
         onClick = onClick,
         modifier =
             modifier
-                .background(background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftControlSurface(fill = background, border = RaftColor.BorderBlack)
                 .padding(horizontal = if (dense) 5.dp else 11.dp, vertical = if (dense) 6.dp else 7.dp)
     ) {
         Text(
             text = label,
-            style = SlockType.SectionLabel.copy(fontSize = if (dense) 9.sp else 11.sp, lineHeight = if (dense) 11.sp else 13.sp),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+            style = RaftType.SectionLabel.copy(fontSize = if (dense) 9.sp else 11.sp, lineHeight = if (dense) 11.sp else 13.sp),
+            color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -23111,10 +23233,10 @@ private fun SharedHomePanelButton(
 internal data class SearchChannelFilterItem(
     val id: String,
     val label: String,
-    val icon: SlockLucideIconName
+    val icon: RaftLucideIconName
 )
 
-private val SearchChannelFilterItem.iconName: SlockLucideIconName
+private val SearchChannelFilterItem.iconName: RaftLucideIconName
     get() = icon
 
 internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
@@ -23126,7 +23248,7 @@ internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChanne
                 SearchChannelFilterItem(
                     id = channelId,
                     label = conversation.name.removePrefix("#"),
-                    icon = SlockLucideIconName.Hash
+                    icon = RaftLucideIconName.Hash
                 )
             }
     val directMessageFilters =
@@ -23135,7 +23257,7 @@ internal fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChanne
                 SearchChannelFilterItem(
                     id = conversation.channelId?.value ?: conversation.threadId.value,
                     label = "@${conversation.name.removePrefix("@")}",
-                    icon = if (conversation.isAgentDirectMessage()) SlockLucideIconName.Bot else SlockLucideIconName.CircleUser
+                    icon = if (conversation.isAgentDirectMessage()) RaftLucideIconName.Bot else RaftLucideIconName.CircleUser
                 )
             }
     return (channelFilters + directMessageFilters)
@@ -23192,17 +23314,17 @@ internal data class SearchEntityResult(
         get() = memberIdentity?.memberId?.value
 }
 
-internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): SlockLucideIconName =
+internal fun ThreadLaunchConversationIdentity.homeSearchChannelLeadingIconName(): RaftLucideIconName =
     when {
-        kind == ConversationKind.Joint -> SlockLucideIconName.GitBranch
-        channelType.equals("private", ignoreCase = true) -> SlockLucideIconName.Lock
-        else -> SlockLucideIconName.Hash
+        kind == ConversationKind.Joint -> RaftLucideIconName.GitBranch
+        channelType.equals("private", ignoreCase = true) -> RaftLucideIconName.Lock
+        else -> RaftLucideIconName.Hash
     }
 
-internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): SlockLucideIconName? =
+internal fun SearchEntityResult.homeSearchEntityLeadingIconName(): RaftLucideIconName? =
     when (type) {
-        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: SlockLucideIconName.Hash
-        SearchEntityType.Computer -> SlockLucideIconName.Monitor
+        SearchEntityType.Channel -> conversationIdentity?.homeSearchChannelLeadingIconName() ?: RaftLucideIconName.Hash
+        SearchEntityType.Computer -> RaftLucideIconName.Monitor
         SearchEntityType.DirectMessage,
         SearchEntityType.Human,
         SearchEntityType.Agent -> null
@@ -23259,14 +23381,14 @@ private fun groupHomeSearchResults(
 }
 
 @Composable
-private fun SharedHomeSearchPanelState.senderFilterOptions(): List<SlockFilterOption> {
+private fun SharedHomeSearchPanelState.senderFilterOptions(): List<RaftFilterOption> {
     val meLabel = stringResource(MR.strings.search_sender_me)
     return senderFilters
         .map { sender ->
-            SlockFilterOption(
+            RaftFilterOption(
                 id = sender.id,
                 label = if (sender.isSelf) meLabel else sender.displayLabel,
-                icon = if (sender.kind == MemberKind.Agent) SlockLucideIconName.Bot else SlockLucideIconName.CircleUser
+                icon = if (sender.kind == MemberKind.Agent) RaftLucideIconName.Bot else RaftLucideIconName.CircleUser
             )
         }
         .distinctBy { it.id }
@@ -23707,19 +23829,19 @@ private fun SharedHomeSessionShell(
     serverSwitcherExpanded: Boolean,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
-    serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
+    serverDrawerSections: List<RaftHomeServerDrawerSection> = emptyList(),
     scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     serverActivityExpectedOwner: ReadReceiptOwner? = null,
     serverActivityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
     prefersChineseCommunity: Boolean = false,
     topSafeAreaOverride: Dp? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     // #372: true only for the Loading-with-session branch — renders
     // skeleton rows under the CHANNELS / DIRECT MESSAGES headers so the
     // post-sign-in transition matches the React app instead of a bare shell.
     loadingSkeletons: Boolean = false,
-    inlineError: SlockHomeInlineError? = null,
+    inlineError: RaftHomeInlineError? = null,
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
@@ -23732,7 +23854,7 @@ private fun SharedHomeSessionShell(
 ) {
     val currentServer = session.currentServerSummary()
     val currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty()
-    SlockStructuralHomeShell(
+    RaftStructuralHomeShell(
         currentServerName = currentServer?.name ?: "No server",
         currentServerId = currentServerId,
         servers =
@@ -23758,7 +23880,7 @@ private fun SharedHomeSessionShell(
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
-        labels = SlockHomeShellLabels.localized(),
+        labels = RaftHomeShellLabels.localized(),
         onInlineErrorAction = onInlineErrorAction,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
@@ -23782,9 +23904,9 @@ private fun ServerSummary.toSharedSwitcherItem(
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     activityExpectedOwner: ReadReceiptOwner? = null,
     activityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
-): SlockServerSwitcherItem {
+): RaftServerSwitcherItem {
     val serverOwner = activityExpectedOwner?.copy(serverId = id.value)
-    return SlockServerSwitcherItem(
+    return RaftServerSwitcherItem(
         id = id.value,
         name = name,
         slug = slug ?: description?.removePrefix("/") ?: id.value,
@@ -23802,7 +23924,7 @@ internal fun sharedHomeSwitcherItems(
     serverUnreadCounts: Map<String, Int>,
     activityExpectedOwner: ReadReceiptOwner?,
     activityProjection: HomeServerActivityUnreadProjection,
-): List<SlockServerSwitcherItem> =
+): List<RaftServerSwitcherItem> =
     session.servers.map { server ->
         server.toServerSummary().let { summary ->
             if (summary.id == selectedServer.id) {
@@ -23857,7 +23979,7 @@ internal data class SharedHomeConversationRowProjector(
     /** task #166: cold-start hints from [SharedHomeContentState.Content.displayRowHints]. */
     val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap()
 ) {
-    fun project(conversation: HomeConversationRow): SlockHomeConversationItem =
+    fun project(conversation: HomeConversationRow): RaftHomeConversationItem =
         project(
             conversation.toSharedHomeConversationRowSeed().withRestoredHint(
                 // A known count (read prediction, realtime) is newer than anything restored.
@@ -23865,23 +23987,23 @@ internal data class SharedHomeConversationRowProjector(
             )
         )
 
-    fun project(seed: SharedHomeConversationRowSeed): SlockHomeConversationItem =
+    fun project(seed: SharedHomeConversationRowSeed): RaftHomeConversationItem =
         seed.toSharedHomeConversationItem(
             directoryProjection = directoryProjections[seed.id],
             draftProjection = draftProjection
         )
 }
 
-internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
+internal fun HomeServerDrawerState.toRaftHomeServerDrawerSections(
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     activityExpectedOwner: ReadReceiptOwner? = null,
     activityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
-): List<SlockHomeServerDrawerSection> {
+): List<RaftHomeServerDrawerSection> {
     val projector = SharedHomeConversationRowProjector()
     return sections.values.map { section ->
         val snapshot = section.content?.snapshot
         val sidebarOrder = snapshot?.sidebarOrder
-        SlockHomeServerDrawerSection(
+        RaftHomeServerDrawerSection(
             server =
                 section.server.toSharedSwitcherItem(
                     serverUnreadCounts = serverUnreadCounts,
@@ -23908,15 +24030,15 @@ internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
     }
 }
 
-internal fun HomeServerDrawerState.toSlockHomeServerDrawerHostedSections(
+internal fun HomeServerDrawerState.toRaftHomeServerDrawerHostedSections(
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     activityExpectedOwner: ReadReceiptOwner? = null,
     activityProjection: HomeServerActivityUnreadProjection = HomeServerActivityUnreadProjection(),
-): List<SlockHomeServerDrawerHostedSection> =
+): List<RaftHomeServerDrawerHostedSection> =
     sections.values.map { section ->
-        SlockHomeServerDrawerHostedSection(
+        RaftHomeServerDrawerHostedSection(
             header =
-                SlockHomeServerDrawerSection(
+                RaftHomeServerDrawerSection(
                     server =
                         section.server.toSharedSwitcherItem(
                             serverUnreadCounts = serverUnreadCounts,
@@ -23970,25 +24092,25 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     directoryProjection: SharedConversationDirectoryProjection? = null
-): SlockHomeConversationItem {
+): RaftHomeConversationItem {
     val title = resolvedDirectoryTitle(directoryProjection)
     val projectedChannelType =
         directoryProjection
             ?.takeIf { projection -> projection.conversationKind == kind }
             ?.channelKind
             ?.takeIf { it.isNotBlank() }
-    return SlockHomeConversationItem(
+    return RaftHomeConversationItem(
         id = id,
         name = title,
         // The row seed is the Home identity source. Directory projection enriches display/state
         // fields, but cannot rewrite the row's conversation kind (§5).
         // task #444: serialize through the LOSSLESS wire kind, not the surface projection —
-        // toKuiklySurfaceKind() folds Joint into the channel surface (contract rule: the
+        // toRaftSurfaceKind() folds Joint into the channel surface (contract rule: the
         // surface projection is lossy), which made the Joint Channels section filter
         // (kind == "joint") never match and the section vanish. The surface fallback only
         // covers kinds without a wire channel kind (Inbox/System), which render as channel
         // surfaces anyway.
-        kind = kind.toWireChannelKindOrNull() ?: kind.toKuiklySurfaceKind(),
+        kind = kind.toWireChannelKindOrNull() ?: kind.toRaftSurfaceKind(),
         channelType = projectedChannelType ?: fallbackChannelType,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
@@ -24030,35 +24152,35 @@ private fun String.isGenericHomeDirectoryTitle(
         threadHeaderIdentityLikeTitle(candidate, identityIds)
 }
 
-private fun Presence?.toSharedPresence(): SlockPresence? =
+private fun Presence?.toSharedPresence(): RaftAppPresence? =
     when (this) {
-        Presence.Active -> SlockPresence.Online
-        Presence.Away -> SlockPresence.Unknown
-        Presence.Offline -> SlockPresence.Offline
+        Presence.Active -> RaftAppPresence.Online
+        Presence.Away -> RaftAppPresence.Unknown
+        Presence.Offline -> RaftAppPresence.Offline
         null -> null
     }
 
-internal typealias AppShellTimeContext = SlockTimeContext
-internal typealias AppShellThreadTimeContext = SlockTimeContext
+internal typealias AppShellTimeContext = RaftTimeContext
+internal typealias AppShellThreadTimeContext = RaftTimeContext
 
 @Composable
 private fun relativeSettingsTimestampLabel(
     value: String?,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ): String? {
     val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    return slockRelativeTimestampLabel(trimmed, timeContext).takeIf { it.isNotBlank() }
+    return raftRelativeTimestampLabel(trimmed, timeContext).takeIf { it.isNotBlank() }
 }
 
 internal fun formatSettingsTimestampLabel(
     value: String?,
-    timeContext: SlockTimeContext?
+    timeContext: RaftTimeContext?
 ): String? {
     val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return timeContext?.formatTimestampLabel(trimmed)?.takeIf { it.isNotBlank() } ?: trimmed
 }
 
-private fun String.formatSettingsBillingUsageValue(timeContext: SlockTimeContext?): String =
+private fun String.formatSettingsBillingUsageValue(timeContext: RaftTimeContext?): String =
     formatSettingsTimestampLabel(this, timeContext) ?: this
 
 internal fun StoredAuthSession?.appShellThreadTimeFormat(): String? =
@@ -24068,12 +24190,12 @@ internal fun StoredAuthSession?.appShellThreadTimeFormat(): String? =
 private fun AppShellTimeContext?.withTimeFormat(timeFormat: String?): AppShellTimeContext? =
     this?.withTimeFormat(timeFormat)
 
-internal fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeCapabilities(): SlockTimeCapabilities? {
+internal fun build.raft.app.compat.json.JSONObject.threadTimeCapabilities(): RaftTimeCapabilities? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
-    return SlockTimeContext(
+    return RaftTimeContext(
         localOffsetMinutes = offset,
-        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
-    ).toSlockTimeCapabilities()
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: RaftTimeFormat24Hour
+    ).toRaftTimeCapabilities()
 }
 
 internal data class AppShellNotificationThreadLaunchRequest(
@@ -24164,13 +24286,13 @@ internal fun JSONObject?.appShellSystemNotificationNavigationIntent(): WindowNav
         ?.appShellWindowNavigationIntent(fallbackServerId = null)
 
 internal fun JSONObject.appShellDesktopShortcutNavigationIntent(fallbackServerId: String?): WindowNavigationIntent? {
-    val targetId = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyTargetId).trim().takeIf { it.isNotBlank() } ?: return null
-    val serverId = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyServerId).trim().takeIf { it.isNotBlank() }
+    val targetId = optString(build.raft.app.data.RaftDesktopShortcutContract.KeyTargetId).trim().takeIf { it.isNotBlank() } ?: return null
+    val serverId = optString(build.raft.app.data.RaftDesktopShortcutContract.KeyServerId).trim().takeIf { it.isNotBlank() }
         ?: fallbackServerId?.trim()?.takeIf { it.isNotBlank() }
         ?: return null
-    val targetKind = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyTargetKind).trim().lowercase()
-    val launchId = optString(build.raft.app.data.SlockDesktopShortcutContract.KeyLaunchId).trim().takeIf { it.isNotBlank() }
-    val conversationKind = if (targetKind == build.raft.app.data.SlockDesktopShortcutContract.TargetKindChannel) {
+    val targetKind = optString(build.raft.app.data.RaftDesktopShortcutContract.KeyTargetKind).trim().lowercase()
+    val launchId = optString(build.raft.app.data.RaftDesktopShortcutContract.KeyLaunchId).trim().takeIf { it.isNotBlank() }
+    val conversationKind = if (targetKind == build.raft.app.data.RaftDesktopShortcutContract.TargetKindChannel) {
         ConversationKind.Channel
     } else {
         ConversationKind.DirectMessage
@@ -24220,8 +24342,8 @@ internal fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange
             SearchTimeRange.Last30Days -> today - 29L
         }
     return SearchIsoBounds(
-        afterIso = afterDay?.let { slockStartOfDayUtcIso(it, context.localOffsetMinutes) },
-        beforeIso = context.nowEpochMillis?.let(::slockEpochMillisUtcIso)
+        afterIso = afterDay?.let { raftStartOfDayUtcIso(it, context.localOffsetMinutes) },
+        beforeIso = context.nowEpochMillis?.let(::raftEpochMillisUtcIso)
     )
 }
 
@@ -24308,10 +24430,10 @@ internal fun buildAppShellThreadPayload(
     originFallback: ThreadLaunchOriginFallback? = null,
     accessState: ThreadLaunchAccessState = ThreadLaunchAccessState(),
     onWarn: (String) -> Unit = {}
-): KuiklyThreadScreenPayload? {
+): RaftThreadScreenPayload? {
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
-    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val isReplyThread = surfaceKind == RaftThreadSurfaceKind.ReplyThread
     // Trust the source tuple: parent channel+message ids alone are enough to open the
     // reply thread. Only a missing tuple is unrecoverable here; an unresolved parent
     // kind stays observable via parentSurfaceKind/parentChannelKind = null (#304/#307).
@@ -24363,7 +24485,7 @@ internal fun buildAppShellThreadPayload(
     // Joint channels have task surfaces like any channel (server task surface mapping).
     val supportsChannelTasks = accessState.permissions.canCreateTask
     val composer =
-        KuiklyThreadComposerPayload(
+        RaftThreadComposerPayload(
             surfaceKind = surfaceKind,
             enabled = canSend,
             showAsTaskToggle = supportsChannelTasks,
@@ -24381,7 +24503,7 @@ internal fun buildAppShellThreadPayload(
             parentMessageId = parentMessageId,
             originFallback = originFallback
         )
-    val payload = KuiklyThreadScreenPayload(
+    val payload = RaftThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = launchHeaderContext.title,
         subtitle = null,
@@ -24394,7 +24516,7 @@ internal fun buildAppShellThreadPayload(
         parentMessageId = parentMessageId,
         parentSurfaceKind = parentSurfaceKind,
         parentChannelKind = parentChannelKind,
-        dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
+        dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == RaftThreadSurfaceKind.DirectMessage },
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
@@ -24411,9 +24533,9 @@ internal fun buildAppShellThreadPayload(
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
-        showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
-        showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
+        timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
+        showMembersAction = !isReplyThread && surfaceKind != RaftThreadSurfaceKind.DirectMessage,
+        showSettingsAction = !isReplyThread && surfaceKind != RaftThreadSurfaceKind.DirectMessage,
         showTaskOpenActions = supportsChannelTasks,
         showTaskStatusActions = supportsChannelTasks,
         settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActionCapabilities(),
@@ -24442,7 +24564,7 @@ private fun Pager.openStandaloneTaskThreadPage(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    storeScope: SlockShellStoreScope
+    storeScope: RaftShellStoreScope
 ) {
     val launchPayload =
         buildStandaloneTaskThreadLaunchPayload(
@@ -24459,9 +24581,9 @@ private fun Pager.openStandaloneTaskThreadPage(
 
 private fun Pager.openStandaloneThreadLaunchPayload(
     launchPayload: WireThreadLaunchPayload,
-    storeScope: SlockShellStoreScope
+    storeScope: RaftShellStoreScope
 ) {
-    openSlockPage(
+    openRaftPage(
         pageName = THREAD_PAGE,
         pageData = threadLaunchPageData(launchPayload),
         storeScopeOverride = storeScope
@@ -24475,7 +24597,7 @@ internal fun Pager.closeHomeSecondaryPage() {
 private fun Pager.openHomeSecondaryPage(
     destination: String,
     timeContext: AppShellThreadTimeContext?,
-    storeScope: SlockShellStoreScope
+    storeScope: RaftShellStoreScope
 ) {
     val retainedDestination = retainedHomeSecondaryDestination(destination) ?: return
     val pageName =
@@ -24495,9 +24617,9 @@ private fun Pager.openHomeSecondaryPage(
             put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
-            put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+            put("timeFormat", timeContext?.timeFormat ?: RaftTimeFormat24Hour)
         }
-    openSlockPage(
+    openRaftPage(
         pageName = pageName,
         pageData = pageData,
         storeScopeOverride = storeScope
@@ -24511,7 +24633,7 @@ internal fun Pager.openStandaloneHomeMessageRequest(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    storeScope: SlockShellStoreScope
+    storeScope: RaftShellStoreScope
 ): Boolean =
     openStandaloneHomeConversation(
         bridge = bridge,
@@ -24532,7 +24654,7 @@ private fun Pager.openStandaloneHomeConversation(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
 ): Boolean {
@@ -24578,7 +24700,7 @@ internal fun Pager.openHomeSearchEntity(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    storeScope: SlockShellStoreScope
+    storeScope: RaftShellStoreScope
 ): Boolean {
     return when (val destination = entity.destinationOrNull()) {
         is HomeSearchEntityDestination.Conversation -> {
@@ -24594,7 +24716,7 @@ internal fun Pager.openHomeSearchEntity(
         }
         is HomeSearchEntityDestination.Member -> {
             val pageData = homeSearchMemberDetailPageData(destination.identity, timeContext) ?: return false
-            openSlockPage(
+            openRaftPage(
                 pageName = MEMBER_DETAIL_PAGE,
                 pageData = pageData,
                 storeScopeOverride = storeScope
@@ -24661,7 +24783,7 @@ internal fun homeSearchMemberDetailPageData(
             put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
-            put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+            put("timeFormat", timeContext?.timeFormat ?: RaftTimeFormat24Hour)
         }
     val pageData =
         JSONObject().apply {
@@ -24684,7 +24806,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
 ): WireThreadLaunchPayload? {
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
-    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val isReplyThread = surfaceKind == RaftThreadSurfaceKind.ReplyThread
     // Same contract as buildAppShellThreadPayload: source tuple alone is sufficient;
     // only a missing parentKey rejects the launch (#304/#307).
     if (isReplyThread && routeIdentity.parentKey == null) {
@@ -24705,14 +24827,14 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         surfaceKind = surfaceKind,
         channelKind =
             when (surfaceKind) {
-                KuiklyThreadSurfaceKind.ReplyThread -> conversation.threadParentChannelKind()
-                KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                RaftThreadSurfaceKind.ReplyThread -> conversation.threadParentChannelKind()
+                RaftThreadSurfaceKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
                 else -> routeIdentity.channelKind
             },
         threadId =
             when (surfaceKind) {
-                KuiklyThreadSurfaceKind.ReplyThread,
-                KuiklyThreadSurfaceKind.DirectMessage -> streamChannelId
+                RaftThreadSurfaceKind.ReplyThread,
+                RaftThreadSurfaceKind.DirectMessage -> streamChannelId
                 else -> null
             },
         sourceThreadId = streamChannelId,
@@ -24728,7 +24850,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
                 null
             },
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
-        dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
+        dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == RaftThreadSurfaceKind.DirectMessage },
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = focusedMessageId,
         focusedMessageRequestNonce =
@@ -24744,7 +24866,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
+        timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
         originFallbackParentChannelId = originFallback?.parentChannelId,
         originFallbackParentMessageId = originFallback?.parentMessageId,
         originFallbackPreview = originFallback?.preview,
@@ -24832,7 +24954,7 @@ private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =
     this !is Heartbeat && this !is MemberPresenceUpdated
 
 internal fun decodeSharedShellRealtimeEvent(
-    eventData: JSONObject,
+    eventData: JsonObject,
     mapper: RealtimeEventMapper,
     log: (String) -> Unit
 ): RealtimeEvent? {
@@ -24856,7 +24978,7 @@ internal fun decodeSharedShellRealtimeEvent(
 }
 
 internal fun resolveSharedShellRealtimeServerId(
-    eventData: JSONObject,
+    eventData: JsonObject,
     event: RealtimeEvent,
     @Suppress("UNUSED_PARAMETER") session: StoredAuthSession?,
 ): String? =
@@ -24885,11 +25007,11 @@ internal suspend fun applySelectedServerTerminalRealtimeTransition(
     return accepted && applied
 }
 
-internal fun JSONObject.realtimeConnectionWitnessOrNull(): RealtimeConnectionWitness? {
-    val scopeLeaseId = optString(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()
-    val principalId = optString(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId).trim()
-    val authGeneration = optLong(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, 0L)
-    val connectionFamilyId = optString(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId).trim()
+internal fun JsonObject.realtimeConnectionWitnessOrNull(): RealtimeConnectionWitness? {
+    val scopeLeaseId = optString(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()
+    val principalId = optString(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId).trim()
+    val authGeneration = optLong(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, 0L)
+    val connectionFamilyId = optString(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId).trim()
     if (
         scopeLeaseId.isBlank() ||
         principalId.isBlank() ||
@@ -24974,17 +25096,17 @@ private fun AppShellSilentRestoreContent() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     )
 }
 
 @Composable
 private fun AppShellCachedHomePreviewContent(
     bridge: build.raft.app.base.BridgeModule,
-    shellScope: SlockAppShellScope,
+    shellScope: RaftAppShellScope,
     state: SharedHomeState
 ) {
-    SlockAppShellSurface(
+    RaftAppShellSurface(
         shellScope = shellScope,
         bottomTabs = emptyList(),
         onBottomTabSelected = {},
@@ -25022,7 +25144,7 @@ internal fun AppShellRestoreSplashContent() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceCream)
+                .background(RaftColor.SurfaceCream)
                 .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -25032,15 +25154,15 @@ internal fun AppShellRestoreSplashContent() {
         Text(
             text = stringResource(MR.strings.auth_restore_tagline),
             style =
-                SlockType.SectionLabel
-                    .withSlockFontWeight(FontWeight.Bold)
+                RaftType.SectionLabel
+                    .withRaftFontWeight(FontWeight.Bold)
                     .copy(
                         fontSize = 15.sp,
                         lineHeight = 22.sp,
                         letterSpacing = 1.2.sp,
-                        color = SlockColor.TextMutedGray
+                        color = RaftColor.TextMutedGray
                     ),
-            color = SlockColor.TextMutedGray,
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -25051,12 +25173,12 @@ internal fun AppShellRestoreSplashContent() {
 
 @Composable
 private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier) {
-    SlockTiltedBadgeSurface(modifier = modifier.width(214.dp).height(68.dp)) {
+    RaftTiltedBadgeSurface(modifier = modifier.width(214.dp).height(68.dp)) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
                 text = text,
-                style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.BrandYellow),
-                color = SlockColor.BrandYellow,
+                style = RaftType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = RaftColor.BrandYellow),
+                color = RaftColor.BrandYellow,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -25068,9 +25190,9 @@ private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier
 internal fun PageErrorContent(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName?,
+    iconName: RaftLucideIconName?,
     headerContentStartPadding: Dp = 20.dp,
-    headerTitleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+    headerTitleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     message: String,
     code: String,
     retryLabel: String? = "Retry",
@@ -25080,10 +25202,10 @@ internal fun PageErrorContent(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite),
+                .background(RaftColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SlockTopPageHeader(
+        RaftTopPageHeader(
             title = title,
             subtitle = subtitle,
             iconName = iconName,
@@ -25106,7 +25228,7 @@ private fun MembersPageErrorContent(
     onRetry: (() -> Unit)?
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         MembersPageHeader(title = stringResource(MR.strings.tab_members))
@@ -25130,24 +25252,23 @@ private fun PageErrorBody(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(SlockSpacing.Md)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Md)
+                .padding(RaftAppSpacing.Md)
+                .raftCardSurface()
+                .padding(RaftAppSpacing.Md)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            Text(text = message, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
+        Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+            Text(text = message, style = RaftType.ButtonBold, color = RaftColor.TextBlack)
             Text(
                 text = code.userFacingErrorCodeMessage(localizedErrorPresentationStrings()),
-                style = SlockType.Caption,
-                color = SlockColor.AccentRed
+                style = RaftType.Caption,
+                color = RaftColor.AccentRed
             )
             if (retryLabel != null && onRetry != null) {
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label = retryLabel,
                     onClick = onRetry,
-                    leadingIcon = SlockLucideIconName.RefreshCw,
-                    backgroundColor = SlockColor.SurfaceWhite
+                    leadingIcon = RaftLucideIconName.RefreshCw,
+                    backgroundColor = RaftColor.SurfaceWhite
                 )
             }
         }
@@ -25156,10 +25277,10 @@ private fun PageErrorBody(
 
 @Composable
 internal fun BottomTabBarSmokeContent() {
-    val shellScope = rememberSlockAppShellScope()
+    val shellScope = rememberRaftAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -25170,15 +25291,15 @@ internal fun BottomTabBarSmokeContent() {
             ) {
                 Text(
                     "Bottom TabBar",
-                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     "Harmony smoke preview",
-                    style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    style = RaftType.Input.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -25187,8 +25308,8 @@ internal fun BottomTabBarSmokeContent() {
                     smokeItems.forEach { item ->
                         Text(
                             text = item.label,
-                            style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
+                            style = RaftType.Input.copy(color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -25199,46 +25320,46 @@ internal fun BottomTabBarSmokeContent() {
             Spacer(modifier = Modifier.height(14.dp))
             Text(
                 "Edge",
-                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            SlockBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
+            RaftBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Floating Dock",
-                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            SlockFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
+            RaftFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Navigation Rail",
-                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Row(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-                SlockNavigationRailTabBar(items = smokeItems, onSelect = { selectedTab = it })
+                RaftNavigationRailTabBar(items = smokeItems, onSelect = { selectedTab = it })
                 Column(
-                    modifier = Modifier.weight(1f).fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp),
+                    modifier = Modifier.weight(1f).fillMaxSize().background(RaftColor.AppBgLightBlue).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         "Rail layout",
-                        style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         "Shared TabBar variant parity with Android",
-                        style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Input.copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -25246,7 +25367,7 @@ internal fun BottomTabBarSmokeContent() {
             }
             Spacer(modifier = Modifier.weight(1f))
         }
-        SlockAppBottomTabBarHost(
+        RaftAppBottomTabBarHost(
             items = smokeItems,
             onSelect = { selectedTab = it },
             modifier = Modifier
@@ -25259,12 +25380,12 @@ internal fun BottomTabBarSmokeContent() {
 
 @Composable
 internal fun BottomTabBarVisualContent() {
-    // React measures the live tab bar element at full page width (390x53dp), so
+    // The bar is measured at full page width (390x58dp, approved mockup A), so
     // render the bar flush at the window origin at exactly 390dp — explicit width
     // rather than fillMaxWidth because the capture window can be wider than 390dp
     // (task #370).
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockBottomTabBar(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        RaftBottomTabBar(
             items = bottomTabBarSmokeItems,
             onSelect = {},
             modifier = Modifier.width(390.dp)
@@ -25278,11 +25399,11 @@ internal fun SettingsRowVisualContent() {
         modifier =
             Modifier
                 .width(342.dp)
-                .background(SlockColor.SurfaceCream)
+                .background(RaftColor.SurfaceCream)
                 .padding(top = 48.dp)
                 .padding(horizontal = 8.dp, vertical = 12.dp)
     ) {
-        SlockVerticalTabBar(
+        RaftVerticalTabBar(
             items = settingsVisualItems,
             showSelection = true,
             onSelect = {}
@@ -25308,7 +25429,7 @@ internal fun SettingsPageVisualContent() {
         modifier =
             Modifier
                 .width(342.dp)
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         SettingsDetailShell(
             title = spec.title,
@@ -25326,7 +25447,7 @@ private data class SettingsVisualSpec(
     val variant: String,
     val title: String,
     val subtitle: String,
-    val iconName: SlockLucideIconName
+    val iconName: RaftLucideIconName
 )
 
 internal fun settingsVisualHeaderSubtitle(variant: String): String = ""
@@ -25334,32 +25455,32 @@ internal fun settingsVisualHeaderSubtitle(variant: String): String = ""
 private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
     when (variant) {
         "server-profile" ->
-            SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
+            SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", RaftLucideIconName.Building2)
         "server-danger" ->
-            SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", SlockLucideIconName.TriangleAlert)
+            SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", RaftLucideIconName.TriangleAlert)
         "server-danger-modal" ->
-            SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
+            SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", RaftLucideIconName.Building2)
         "administration" ->
-            SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
+            SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", RaftLucideIconName.Shield)
         "billing" ->
-            SettingsVisualSpec(variant, "Plan & Billing", "", SlockLucideIconName.CreditCard)
+            SettingsVisualSpec(variant, "Plan & Billing", "", RaftLucideIconName.CreditCard)
         "language-region" ->
-            SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", SlockLucideIconName.Languages)
+            SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", RaftLucideIconName.Languages)
         "appearance" ->
-            SettingsVisualSpec(variant, "Appearance", "Message font size and reading density", SlockLucideIconName.Type)
+            SettingsVisualSpec(variant, "Appearance", "Message font size and reading density", RaftLucideIconName.Type)
         "notifications" ->
-            SettingsVisualSpec(variant, "Notifications", "Push notification preferences", SlockLucideIconName.Bell)
+            SettingsVisualSpec(variant, "Notifications", "Push notification preferences", RaftLucideIconName.Bell)
         "connected-apps" ->
-            SettingsVisualSpec(variant, "Connected Apps", "Marketplace, installed apps, and OAuth clients", SlockLucideIconName.Blocks)
+            SettingsVisualSpec(variant, "Connected Apps", "Marketplace, installed apps, and OAuth clients", RaftLucideIconName.Blocks)
         "account-provider-linked",
         "account-password-expanded",
         "account-error" ->
-            SettingsVisualSpec(variant, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
+            SettingsVisualSpec(variant, "Account", "Profile, email, password, connected accounts", RaftLucideIconName.User)
         else ->
             if (variant.startsWith("administration")) {
-                SettingsVisualSpec("administration", "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
+                SettingsVisualSpec("administration", "Administration", "Owners, admins, invites, and join links", RaftLucideIconName.Shield)
             } else {
-                SettingsVisualSpec("account", "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
+                SettingsVisualSpec("account", "Account", "Profile, email, password, connected accounts", RaftLucideIconName.User)
             }
     }
 
@@ -25386,15 +25507,15 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
         when (variant) {
             "account-provider-linked" ->
                 listOf(
-                    KuiklySettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
-                    KuiklySettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected", canConnect = false),
-                    KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
+                    RaftSettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
+                    RaftSettingsConnectedAccount("google", "Google", fixture.ownerEmail, "connected", canConnect = false),
+                    RaftSettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
             else ->
                 listOf(
-                    KuiklySettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
-                    KuiklySettingsConnectedAccount("google", "Google", "Not connected", "notConnected", canConnect = true),
-                    KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
+                    RaftSettingsConnectedAccount("password", "Email password", fixture.ownerEmail, "connected", canConnect = false),
+                    RaftSettingsConnectedAccount("google", "Google", "Not connected", "notConnected", canConnect = true),
+                    RaftSettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
                 )
         }
     SettingsAccountContent(
@@ -25472,7 +25593,7 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
         deleteConfirmationName = deleteConfirmationName,
         onDeleteConfirmationNameChange = { deleteConfirmationName = it },
         actionState = null,
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = RaftAppSpacing.Lg,
         onCreateJoinLink = {},
         onAction = { _, _ -> }
     )
@@ -25483,8 +25604,8 @@ private fun SettingsServerDangerModalVisualContent() {
     val snapshot = remember { settingsVisualServerSnapshot() }
     var modalSlug by remember { mutableStateOf("") }
     val serverSlug = snapshot.profile.slug
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
             Row(
                 modifier =
                     Modifier
@@ -25497,13 +25618,13 @@ private fun SettingsServerDangerModalVisualContent() {
                 SettingsDetailBackButton(onBack = {})
                 Text(
                     "Server Profile",
-                    style = SlockType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(RaftColor.BorderBlack))
             Box(modifier = Modifier.fillMaxSize().padding(start = 20.dp, top = 43.dp, end = 20.dp, bottom = 20.dp)) {
                 SettingsServerProfileBackdropCard(snapshot)
             }
@@ -25529,8 +25650,7 @@ private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) 
         modifier =
             Modifier
                 .width(350.dp)
-                .background(SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -25538,11 +25658,11 @@ private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) 
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(SlockLucideIconName.Building2, modifier = Modifier.size(14.dp), color = "#FF000000")
+            RaftLucideIcon(RaftLucideIconName.Building2, modifier = Modifier.size(14.dp), color = "#FF000000")
             Text(
                 "PROFILE",
-                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, letterSpacing = 1.3.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 1.3.sp, color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray
             )
         }
         SettingsServerBackdropField(label = "Name", value = snapshot.profile.name)
@@ -25558,30 +25678,22 @@ private fun SettingsServerBackdropField(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             label,
-            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
         Box(modifier = Modifier.fillMaxWidth().height(39.dp)) {
             Box(
                 modifier =
                     Modifier
-                        .matchParentSize()
-                        .offset(x = 3.dp, y = 3.dp)
-                        .background(SlockColor.ShadowBlack)
-            )
-            Box(
-                modifier =
-                    Modifier
                         .fillMaxSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .raftCardSurface()
                         .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 Text(
                     value,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -25602,7 +25714,7 @@ private fun SettingsVisualBillingContent() {
                 timeContext = null,
                 errorStrings = localizedErrorPresentationStrings()
             ),
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = RaftAppSpacing.Lg,
         onEvent = { _, _ -> }
     )
 }
@@ -25618,7 +25730,7 @@ private fun SettingsVisualLanguageRegionContent() {
         displayDraft = snapshot.translationDisplay.selectedKey,
         timezoneDraft = snapshot.timezone.selectedKey,
         timeFormatDraft = snapshot.timeFormat.selectedKey,
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = RaftAppSpacing.Lg,
         onLanguageDraftChange = {},
         onDisplayDraftChange = {},
         onTimezoneDraftChange = {},
@@ -25640,7 +25752,7 @@ private fun SettingsVisualAppearanceContent() {
         fontSizeDraft = snapshot.messageBodyFontSize.selectedKey,
         activitySenderAvatarsEnabled = false,
         fontPreference = FontPreference.Default,
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = RaftAppSpacing.Lg,
         onFontSizeDraftChange = {},
         onActivitySenderAvatarsChange = {},
         onFontPreferenceChange = {},
@@ -25654,7 +25766,7 @@ private fun SettingsVisualNotificationsContent() {
     SettingsNotificationsContent(
         state = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
         actionState = null,
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = RaftAppSpacing.Lg,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
         foregroundKeepAliveBusy = false,
@@ -25694,7 +25806,7 @@ private fun SettingsVisualConnectedAppsContent() {
         selectedBuiltInId = null,
         confirmTarget = null,
         actionState = null,
-        bottomContentPadding = SlockSpacing.Lg,
+        bottomContentPadding = RaftAppSpacing.Lg,
         onNameChange = {},
         onClientIdChange = {},
         onDescriptionChange = {},
@@ -26300,6 +26412,58 @@ internal fun HomeActivityVisualContent() {
     }
 }
 
+/**
+ * Activity as the second app-shell bottom tab (artin 2026-10-20): the main-tab head, the three
+ * segments (全部 · 未读 · 提及) and the 5-tab bar with the Activity badge. pageData
+ * `segment` picks all / unread / mentions.
+ */
+@Composable
+internal fun RaftActivityTabVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val segment =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.optString("segment").ifBlank { "all" }
+        }
+    val filter =
+        build.raft.app.data.InboxFilter.entries.firstOrNull { it.wireValue == segment }
+            ?: build.raft.app.data.InboxFilter.All
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite)) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            SharedHomeActivityScreen(
+                state =
+                    build.raft.app.data.SharedActivityState(
+                        selectedFilter = filter,
+                        snapshot = homeActivityVisualSnapshot,
+                        loaded = true,
+                    ),
+                onIntent = {},
+                onOpenItem = {},
+                onClose = null,
+                includeTopSafeArea = false,
+                activityTaskStatusBadgesEnabled = true,
+                draftProjection = homeActivityVisualDraftProjection,
+                foregroundEpoch = 0L,
+                mainTab = true,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        RaftBottomTabBar(
+            items =
+                appShellBottomTabs(
+                    selectedKey = "activity",
+                    homeLabel = "Home",
+                    activityLabel = "Activity",
+                    tasksLabel = "Tasks",
+                    membersLabel = "Members",
+                    settingsLabel = "Settings",
+                    activityBadgeCount = homeActivityVisualSnapshot.totalUnreadCount
+                ),
+            onSelect = {},
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
 @Composable
 internal fun HomeActivityHitTargetVisualContent() {
     var openedKey by remember { mutableStateOf<String?>(null) }
@@ -26317,11 +26481,10 @@ internal fun HomeActivityHitTargetVisualContent() {
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .raftCardSurface(fill = RaftColor.Brand)
                         .padding(4.dp),
-                style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
+                color = RaftColor.TextBlack
             )
         }
     }
@@ -26404,7 +26567,7 @@ private val homeActivityAvatarVisualSnapshot = InboxSnapshot(
                 lastMessageSenderAvatarWireValue = "pixel:random:fixture-fable"
             ),
             // Read DM, Agent sender WITH a kind but NO avatar wire value
-            // (missing profile/avatar) -> SlockAvatar default user-icon
+            // (missing profile/avatar) -> RaftAppAvatar default user-icon
             // placeholder, NOT the app "SY". Proves a normal channel/DM keeps
             // its sender kind for the human/agent fallback and does not
             // collapse to system. Mirrors @Mahua's #65 review note.
@@ -26420,7 +26583,7 @@ private val homeActivityAvatarVisualSnapshot = InboxSnapshot(
                 lastMessageSenderId = "agent-quill",
                 lastMessageSenderKind = MemberKind.Agent
                 // NOTE: deliberately no lastMessageSenderAvatarWireValue ->
-                // SlockAvatar renders the default user-icon placeholder, not
+                // RaftAppAvatar renders the default user-icon placeholder, not
                 // the app "SY".
             ),
             // Read channel, sender kind/id absent -> app "SY" placeholder
@@ -26484,7 +26647,7 @@ internal fun HomeCreateChannelDialogVisualContent() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         SharedCreateChannelDialog(
             submitting = false,
@@ -26512,7 +26675,7 @@ internal fun SettingsRouteVisualScreen() {
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
     val storeScope =
         remember(pager.pageData.params.toString(), pager.pagerId) {
-            pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+            pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
         }
     val route =
         remember(pager.pageData.params.toString()) {
@@ -26541,8 +26704,8 @@ internal fun SettingsRouteVisualScreen() {
                 }
             )
         }
-    val eventBus = remember(bridge) { SlockSharedStoreRegistry.get(bridge).eventBus }
-    val sessionStore = remember(session) { InMemorySlockAuthSessionStore(session) }
+    val eventBus = remember(bridge) { RaftSharedStoreRegistry.get(bridge).eventBus }
+    val sessionStore = remember(session) { InMemoryRaftAuthSessionStore(session) }
     val authDataSource =
         remember(sessionStore, session) {
             SharedAuthDataSource(
@@ -26581,7 +26744,7 @@ internal fun SettingsRouteVisualScreen() {
             onSettingsIntent = {},
             route = route,
             onBack = {},
-            bottomContentPadding = SlockSpacing.Lg,
+            bottomContentPadding = RaftAppSpacing.Lg,
             timeContext = null,
             onLogout = {},
         )
@@ -26596,11 +26759,11 @@ internal fun SettingsRouteVisualScreen() {
 @Composable
 private fun SettingsRouteVisualFixtureDetailContent(
     pager: Pager,
-    eventBus: SlockEventBus,
+    eventBus: RaftEventBus,
     session: StoredAuthSession,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture?,
     settingsState: SharedSettingsState,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
@@ -26608,7 +26771,7 @@ private fun SettingsRouteVisualFixtureDetailContent(
     route: SettingsRouteVisualPayload,
     onBack: () -> Unit,
     bottomContentPadding: Dp,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
     onLogout: () -> Unit,
 ) {
     val nativePage = SettingsNativeDetailPage.fromKey(route.destination)
@@ -26622,7 +26785,7 @@ private fun SettingsRouteVisualFixtureDetailContent(
             SettingsSharedPlaceholder(
                 title = "Settings",
                 detail = "This visual fixture route is invalid.",
-                iconName = SlockLucideIconName.Settings,
+                iconName = RaftLucideIconName.Settings,
                 bottomContentPadding = bottomContentPadding,
             )
             return
@@ -26678,16 +26841,16 @@ private fun SettingsRouteVisualFixtureDetailContent(
 @Composable
 private fun SettingsDedicatedPagerVisualFixtureContent(
     pager: Pager,
-    eventBus: SlockEventBus,
+    eventBus: RaftEventBus,
     session: StoredAuthSession,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     handsFeedbackVisualFixture: SettingsHandsFeedbackVisualFixture?,
     settingsState: SharedSettingsState,
     route: SettingsRouteVisualPayload,
     onBack: () -> Unit,
     bottomContentPadding: Dp,
-    timeContext: SlockTimeContext?,
+    timeContext: RaftTimeContext?,
 ) {
     val serverSnapshot = settingsState.server.currentContent()
     val serverProfile = serverSnapshot?.profile
@@ -26825,7 +26988,7 @@ private fun SettingsDedicatedPagerVisualFixtureContent(
                 SettingsSharedPlaceholder(
                     title = "Settings",
                     detail = "This visual fixture route is unavailable.",
-                    iconName = SlockLucideIconName.Settings,
+                    iconName = RaftLucideIconName.Settings,
                     bottomContentPadding = bottomContentPadding,
                 )
         }
@@ -26846,17 +27009,17 @@ private fun settingsDedicatedPagerVisualFixtureTitle(destination: String): Strin
         else -> stringResource(MR.strings.settings_title)
     }
 
-private fun settingsDedicatedPagerVisualFixtureIcon(destination: String): SlockLucideIconName =
+private fun settingsDedicatedPagerVisualFixtureIcon(destination: String): RaftLucideIconName =
     when (destination) {
-        SettingsDestinationAccount -> SlockLucideIconName.User
-        SettingsDestinationComputers -> SlockLucideIconName.Monitor
-        SettingsDestinationAdministration -> SlockLucideIconName.Shield
-        SettingsDestinationConnectedApps -> SlockLucideIconName.Link2
-        SettingsDestinationBilling -> SlockLucideIconName.CreditCard
-        SettingsDestinationStorage -> SlockLucideIconName.Archive
-        SettingsDestinationReleaseNotes -> SlockLucideIconName.FileText
-        SettingsDestinationHandsFeedback -> SlockLucideIconName.MessageSquarePlus
-        else -> SlockLucideIconName.Settings
+        SettingsDestinationAccount -> RaftLucideIconName.User
+        SettingsDestinationComputers -> RaftLucideIconName.Monitor
+        SettingsDestinationAdministration -> RaftLucideIconName.Shield
+        SettingsDestinationConnectedApps -> RaftLucideIconName.Link2
+        SettingsDestinationBilling -> RaftLucideIconName.CreditCard
+        SettingsDestinationStorage -> RaftLucideIconName.Archive
+        SettingsDestinationReleaseNotes -> RaftLucideIconName.FileText
+        SettingsDestinationHandsFeedback -> RaftLucideIconName.MessageSquarePlus
+        else -> RaftLucideIconName.Settings
     }
 
 private fun settingsHandsFeedbackVisualFixture(fixtureKey: String): SettingsHandsFeedbackVisualFixture? {
@@ -26941,7 +27104,7 @@ internal fun settingsRouteVisualState(route: SettingsRouteVisualPayload): Shared
  * emulator display so the whole Settings route fits one frame; it needs (1) the
  * fullHeight capture flag readable at the list sites and (2) the content-bottom
  * pixel to crop the tall frame to. Both read capture-intent pageData params the
- * same way the safe-area overrides do (SlockSafeArea.kt); production pages never
+ * same way the safe-area overrides do (RaftAppSafeArea.kt); production pages never
  * set them, so this is inert outside compose_settings_route_visual captures.
  */
 @Composable
@@ -26975,7 +27138,7 @@ internal data class SettingsRouteVisualPayload(
     val fullHeight: Boolean
 )
 
-private fun parseSettingsRouteVisualPayload(params: com.tencent.kuikly.core.nvi.serialization.json.JSONObject): SettingsRouteVisualPayload {
+private fun parseSettingsRouteVisualPayload(params: build.raft.app.compat.json.JSONObject): SettingsRouteVisualPayload {
     val destination =
         params.optString(SettingsRouteVisualDestinationKey)
             .trim()
@@ -27038,7 +27201,7 @@ internal fun rememberSettingsHomePayload(
     payload: String,
     fallbackPageData: String,
     instanceId: String
-): KuiklySettingsHomePayload =
+): RaftSettingsHomePayload =
     androidx.compose.runtime.remember(payload, fallbackPageData, instanceId) {
         parseSettingsHomePayload(
             payload = payload,
@@ -27049,8 +27212,8 @@ internal fun rememberSettingsHomePayload(
 
 @Composable
 internal fun SettingsHomeContent(
-    payload: KuiklySettingsHomePayload,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    payload: RaftSettingsHomePayload,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     applyTopSafeArea: Boolean = true,
     onHeaderClick: (() -> Unit)? = null,
     onSelect: (String) -> Unit
@@ -27061,9 +27224,9 @@ internal fun SettingsHomeContent(
         } else {
             Modifier
         }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockMainTabPageHeader(
-            surface = SlockMainTabHeaderSurface.Settings,
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        RaftMainTabPageHeader(
+            surface = RaftMainTabHeaderSurface.Settings,
             title = payload.title,
             subtitle = null,
             modifier = headerModifier,
@@ -27074,20 +27237,20 @@ internal fun SettingsHomeContent(
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             item {
-                Spacer(Modifier.height(SlockSpacing.Md))
+                Spacer(Modifier.height(RaftAppSpacing.Md))
             }
             item {
-                SlockVerticalTabBar(
+                RaftVerticalTabBar(
                     items = payload.items.map(SettingsHomePageLinkPayload::toTabItemPayload),
                     showSelection = false,
                     onSelect = onSelect,
-                    modifier = Modifier.padding(start = SlockSpacing.Md),
+                    modifier = Modifier.padding(start = RaftAppSpacing.Md),
                     sectionStartPadding = 0.dp,
                     itemStartPadding = 0.dp
                 )
             }
             item {
-                Spacer(Modifier.height(SlockSpacing.Md))
+                Spacer(Modifier.height(RaftAppSpacing.Md))
             }
             item {
                 Spacer(Modifier.height(bottomContentPadding))
@@ -27096,8 +27259,8 @@ internal fun SettingsHomeContent(
     }
 }
 
-private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload =
-    SlockTabItemPayload(
+private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
+    RaftTabItemPayload(
         key = key,
         title = title,
         subtitle = subtitle,
@@ -27109,7 +27272,7 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): SlockTabItemPayload 
 
 // task #386/#401: Slack-nav More tab destinations. Tasks/Members/Settings live behind the More
 // action menu; gate-off keeps the legacy four-tab bar where they stay first-class tabs.
-internal enum class SlockSlackNavMoreDestination {
+internal enum class RaftSlackNavMoreDestination {
     Tasks,
     Members,
     Settings
@@ -27117,15 +27280,15 @@ internal enum class SlockSlackNavMoreDestination {
 
 /** task #401: in Slack-nav mode every More tap (including re-taps while More is selected)
  *  opens the destination menu instead of switching straight to a sticky sub-page. */
-internal fun slockSlackNavMoreTapOpensMenu(slackNavMode: Boolean, tappedTab: String): Boolean =
+internal fun raftSlackNavMoreTapOpensMenu(slackNavMode: Boolean, tappedTab: String): Boolean =
     slackNavMode && tappedTab == "more"
 
 @Composable
-private fun SlockSlackNavMoreMenu(
-    selected: SlockSlackNavMoreDestination?,
+private fun RaftSlackNavMoreMenu(
+    selected: RaftSlackNavMoreDestination?,
     bottomInset: Dp,
     onDismiss: () -> Unit,
-    onSelect: (SlockSlackNavMoreDestination) -> Unit
+    onSelect: (RaftSlackNavMoreDestination) -> Unit
 ) {
     val tasksTitle = stringResource(MR.strings.tab_tasks)
     val membersTitle = stringResource(MR.strings.tab_members)
@@ -27135,37 +27298,29 @@ private fun SlockSlackNavMoreMenu(
     val settingsSubtitle = stringResource(MR.strings.more_hub_settings_subtitle)
     val rows =
         listOf(
-            Triple(SlockSlackNavMoreDestination.Tasks, tasksTitle to tasksSubtitle, SlockLucideIconName.ClipboardList),
-            Triple(SlockSlackNavMoreDestination.Members, membersTitle to membersSubtitle, SlockLucideIconName.Users),
-            Triple(SlockSlackNavMoreDestination.Settings, settingsTitle to settingsSubtitle, SlockLucideIconName.Settings)
+            Triple(RaftSlackNavMoreDestination.Tasks, tasksTitle to tasksSubtitle, RaftLucideIconName.ClipboardList),
+            Triple(RaftSlackNavMoreDestination.Members, membersTitle to membersSubtitle, RaftLucideIconName.Users),
+            Triple(RaftSlackNavMoreDestination.Settings, settingsTitle to settingsSubtitle, RaftLucideIconName.Settings)
         )
     Modal(onWillDismiss = { onDismiss() }) {
         Box(modifier = Modifier.fillMaxSize()) {
-            SlockModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss)
+            RaftModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss)
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(start = SlockSpacing.Md, end = SlockSpacing.Md, bottom = bottomInset + SlockSpacing.Sm)
-                        .widthIn(max = 320.dp)
-                        .padding(end = 4.dp, bottom = 4.dp)
-                        .slockDialogContentPointerBarrier()
+                        .padding(start = RaftAppSpacing.Md, end = RaftAppSpacing.Md, bottom = bottomInset + RaftAppSpacing.Sm)
+                        .widthIn(min = RaftMetrics.MenuMinWidth, max = 320.dp)
+                        .raftDialogContentPointerBarrier()
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
+                // raft-ui menu popup: `p-1.5` inset, rows flush (no inter-row gap), the
+                // current destination on the `--brand-soft` highlight at control radius.
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(SlockSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                            .raftLookOverlaySurface()
+                            .padding(RaftMetrics.PopupPadding)
                 ) {
                     rows.forEach { (destination, labels, icon) ->
                         Box(
@@ -27173,13 +27328,15 @@ private fun SlockSlackNavMoreMenu(
                                 Modifier
                                     .fillMaxWidth()
                                     .background(
-                                        if (destination == selected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite
+                                        if (destination == selected) RaftColor.BrandSoft else Color.Transparent,
+                                        RoundedCornerShape(RaftAppRadius.Control)
                                     )
                         ) {
-                            SlockActionSheetRow(
+                            RaftActionSheetRow(
                                 title = labels.first,
                                 subtitle = labels.second,
                                 icon = icon,
+                                menuItemPadding = true,
                                 onClick = { onSelect(destination) }
                             )
                         }

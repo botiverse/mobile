@@ -1,6 +1,6 @@
 package build.raft.app.network
 
-import build.raft.app.data.SlockPlatformFileChunkSource
+import build.raft.app.data.RaftPlatformFileChunkSource
 import build.raft.app.data.boundedPlatformFileNetworkStream
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkByteStream
@@ -171,7 +171,7 @@ class NetworkKmmMultipartBodyTest {
 
     private class FakeSource(
         private val chunks: MutableList<ByteArray>
-    ) : SlockPlatformFileChunkSource {
+    ) : RaftPlatformFileChunkSource {
         var closeCount: Int = 0
             private set
 

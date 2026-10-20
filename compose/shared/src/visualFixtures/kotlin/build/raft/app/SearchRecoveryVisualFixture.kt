@@ -4,19 +4,18 @@ import androidx.compose.runtime.*
 import build.raft.app.base.BasePager
 import build.raft.app.data.*
 import build.raft.app.model.ServerId
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.foundation.layout.*
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Page
 
 /** Real search UI -> intent -> store -> repository; only HTTP is replaced. */
 @Page("compose_search_recovery_visual", supportInLocal = true)
 internal class SearchRecoveryVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(brutalTheme) { SearchRecoveryVisualContent() } }
+        setContent { RaftThemeProvider(raftLightTheme) { SearchRecoveryVisualContent() } }
     }
 }
 
@@ -25,7 +24,7 @@ private fun SearchRecoveryVisualContent() {
     val scope = rememberCoroutineScope()
     var wireStatus by remember { mutableStateOf("Waiting for initial request") }
     val store = remember {
-        val auth = InMemorySlockAuthSessionStore(homeSearchVisualSession)
+        val auth = InMemoryRaftAuthSessionStore(homeSearchVisualSession)
         val network = SearchRecoveryVisualNetwork { wireStatus = it }
         SharedHomeSearchSavedStore(
             authStore = auth, savedRepository = RealSavedRepository(auth, network),
@@ -54,7 +53,7 @@ private fun SearchRecoveryVisualContent() {
     }
 }
 
-private class SearchRecoveryVisualNetwork(val report: (String) -> Unit) : SlockNetworkClient {
+private class SearchRecoveryVisualNetwork(val report: (String) -> Unit) : RaftNetworkClient {
     private var initial: List<Pair<String, String>>? = null
     override suspend fun request(
         priority: DataRequestPriority, path: String, method: String,

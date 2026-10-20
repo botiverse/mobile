@@ -11,29 +11,30 @@ import android.net.NetworkCapabilities
 import android.os.Bundle
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.network.AndroidNetworkPrewarmController
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthTokenProvider
-import build.raft.app.data.SharedSlockAuthTransport
-import build.raft.app.data.SlockAuthApiClient
-import build.raft.app.data.SlockHostNetworkNotifyContract
-import build.raft.app.data.updateSlockHostVisibility
+import build.raft.app.data.SharedRaftAuthTransport
+import build.raft.app.data.RaftAndroidPushRegistrationBridge
+import build.raft.app.data.RaftAuthApiClient
+import build.raft.app.data.RaftHostNetworkNotifyContract
+import build.raft.app.data.updateRaftHostVisibility
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeConnectionState
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeRuntimeCursorIdentity
-import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
-import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
+import build.raft.app.data.realtime.RaftRealtimeAppScopePolicy
+import build.raft.app.data.realtime.RaftRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.bootstrapRealtime
 import build.raft.app.data.realtime.realtimeRuntimeCursorAdvanceDecision
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.ServerId
-import build.raft.app.network.updateSlockProcessNetworkVisibility
+import build.raft.app.network.updateRaftProcessNetworkVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,7 +52,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var realtimeClient: SocketIoRealtimeClient? = null
-    private var realtimeRuntime: SlockRealtimeAppScopeRuntime? = null
+    private var realtimeRuntime: RaftRealtimeAppScopeRuntime? = null
     private var realtimeConnectionWitness: RealtimeConnectionWitnessToken? = null
     private var realtimeConnectJob: Job? = null
     private var multiSessionRegistry: AndroidRealtimeSessionRegistry<MultiSessionRuntime>? = null
@@ -66,8 +67,8 @@ internal object AndroidAppScopeRealtimeOwner {
     private var hostNetworkOnline: Boolean? = null
     private val processVisibilityTracker =
         AndroidProcessVisibilityTracker { foreground, foregroundEpoch ->
-            val retired = updateSlockProcessNetworkVisibility(foreground)
-            SlockAppLog.d(
+            val retired = updateRaftProcessNetworkVisibility(foreground)
+            RaftAppLog.d(
                 LOG_TAG,
                 "app_scope_network_lifecycle foreground=$foreground epoch=$foregroundEpoch " +
                     "retiredRequests=$retired"
@@ -76,6 +77,8 @@ internal object AndroidAppScopeRealtimeOwner {
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
                 }
+                // Keeps the FCM delivery-status answer fresh for the background tray decision.
+                RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
             } else {
                 onAppHidden(source = "process_activity_stopped")
             }
@@ -84,7 +87,7 @@ internal object AndroidAppScopeRealtimeOwner {
     fun onHostVisibilityChanged(
         visibility: AndroidHostVisibility,
         shellInstanceId: String = "",
-        pageName: String = SlockKuiklyActivity.PAGE_APP_SHELL,
+        pageName: String = RaftCmpActivity.PAGE_APP_SHELL,
         source: String = "unknown"
     ) {
         val lifecycleForegroundEpoch = processVisibilityTracker.currentForegroundEpoch()
@@ -94,7 +97,7 @@ internal object AndroidAppScopeRealtimeOwner {
             pageName = pageName,
             lifecycleForegroundEpoch = lifecycleForegroundEpoch
         )
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "app_scope_host_visibility event=${visibility.wireValue} source=$source " +
                 "page=${normalizedAndroidLifecyclePageName(pageName)} epoch=$lifecycleForegroundEpoch"
@@ -136,9 +139,9 @@ internal object AndroidAppScopeRealtimeOwner {
                 )
                 networkCallbackInstalled = true
                 publishCurrentNetworkStatus(appContext, source = "network_callback_initial")
-                SlockAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
+                RaftAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
             }.onFailure { error ->
-                SlockAppLog.w(
+                RaftAppLog.w(
                     LOG_TAG,
                     "app_scope_lifecycle event=network_callback_install_failed message=${error.message.orEmpty()}"
                 )
@@ -172,7 +175,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 }
             )
             processLifecycleInstalled = true
-            SlockAppLog.d(LOG_TAG, "app_scope_lifecycle event=process_lifecycle_installed")
+            RaftAppLog.d(LOG_TAG, "app_scope_lifecycle event=process_lifecycle_installed")
         }
     }
 
@@ -191,7 +194,7 @@ internal object AndroidAppScopeRealtimeOwner {
         } else {
             realtimeRuntime?.onAppShown()
         }
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=shown source=$source joined_rooms=${joinedChannelCount()}"
         )
@@ -209,7 +212,7 @@ internal object AndroidAppScopeRealtimeOwner {
             val runtime = realtimeRuntime
             val ownedSession = runtime?.ownedSession()
             if (runtime != null && ownedSession != null) {
-                SlockAppLog.d(
+                RaftAppLog.d(
                     LOG_TAG,
                     "foreground_reconnect_request reason=long_background source=$source " +
                         "backgroundMs=${shownAtMillis - (hiddenAtMillis ?: shownAtMillis)} " +
@@ -245,7 +248,7 @@ internal object AndroidAppScopeRealtimeOwner {
         } else {
             realtimeRuntime?.onAppHidden()
         }
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=hidden source=$source joined_rooms=${joinedChannelCount()}"
         )
@@ -258,22 +261,22 @@ internal object AndroidAppScopeRealtimeOwner {
         pageName: String,
         lifecycleForegroundEpoch: Long
     ) {
-        updateSlockHostVisibility(
+        updateRaftHostVisibility(
             shellInstanceId = shellInstanceId,
             visible = visibility == AndroidHostVisibility.Visible
         )
         postAndroidAppScopeEvent(
-            eventName = SlockRealtimeNotifyContract.EventName,
+            eventName = RaftRealtimeNotifyContract.EventName,
             eventData =
                 JSONObject()
-                    .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionAppLifecycle)
-                    .put(SlockRealtimeNotifyContract.KeyLifecycleEvent, visibility.wireValue)
-                    .put(SlockRealtimeNotifyContract.KeyForegroundEpoch, lifecycleForegroundEpoch)
+                    .put(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionAppLifecycle)
+                    .put(RaftRealtimeNotifyContract.KeyLifecycleEvent, visibility.wireValue)
+                    .put(RaftRealtimeNotifyContract.KeyForegroundEpoch, lifecycleForegroundEpoch)
                     .put(
-                        SlockRealtimeNotifyContract.KeyPageName,
+                        RaftRealtimeNotifyContract.KeyPageName,
                         normalizedAndroidLifecyclePageName(pageName)
                     )
-                    .put(SlockRealtimeNotifyContract.KeyShellInstanceId, shellInstanceId)
+                    .put(RaftRealtimeNotifyContract.KeyShellInstanceId, shellInstanceId)
         )
     }
 
@@ -283,7 +286,7 @@ internal object AndroidAppScopeRealtimeOwner {
     ) {
         backgroundKeepAliveEnabled = true
         syncRealtimeReconnectPolicy()
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedChannelCount()}"
         )
@@ -311,7 +314,7 @@ internal object AndroidAppScopeRealtimeOwner {
         if (!backgroundKeepAliveEnabled) return
         backgroundKeepAliveEnabled = false
         syncRealtimeReconnectPolicy()
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
         )
@@ -327,14 +330,14 @@ internal object AndroidAppScopeRealtimeOwner {
         witness: RealtimeConnectionWitnessToken,
     ) {
         if (serverId.value.isBlank() || accessToken.isBlank()) {
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "connect_skip reason=blank_request serverId=${serverId.value} has_access_token=${accessToken.isNotBlank()}"
             )
             return
         }
         realtimeConnectionWitness = witness
-        SlockAppLog.w(
+        RaftAppLog.w(
             LOG_TAG,
             "connect_request source=shared serverId=${serverId.value} shellInstanceId=$shellInstanceId " +
                 "lastSeq=$requestedLastSeq forceReconnect=$forceReconnect multiSession=${multiServerRealtimeEnabled()}"
@@ -383,7 +386,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val selection = selectAndroidCurrentRealtimeServer(serverIds)
         if (selection.rejectedMultipleServers) {
             clearMultiSessionState("multiple_current_servers")
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "process_reconcile result=rejected reason=multiple_current_servers " +
                     "serverCount=${selection.normalizedServerCount}"
@@ -398,7 +401,7 @@ internal object AndroidAppScopeRealtimeOwner {
             currentDesiredServerId = null
             realtimeConnectionWitness = null
             backgroundKeepAliveEnabled = false
-            SlockAppLog.d(LOG_TAG, "process_reconcile result=cleared reason=$disconnectReason")
+            RaftAppLog.d(LOG_TAG, "process_reconcile result=cleared reason=$disconnectReason")
             return
         }
         if (
@@ -409,7 +412,7 @@ internal object AndroidAppScopeRealtimeOwner {
             witness.authGeneration <= 0L ||
             witness.connectionFamilyId.isBlank()
         ) {
-            SlockAppLog.w(LOG_TAG, "process_reconcile_skip reason=invalid_authority serverCount=1")
+            RaftAppLog.w(LOG_TAG, "process_reconcile_skip reason=invalid_authority serverCount=1")
             multiSessionRegistry?.disconnectAll("invalid_process_authority")
             multiSessionRegistry = null
             multiSessionIdentity = null
@@ -451,7 +454,7 @@ internal object AndroidAppScopeRealtimeOwner {
             forceReconnect = forceReconnect || identityChanged,
             witness = witness,
         )
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "process_reconcile result=applied serverCount=1 serverId=${desiredServerId.value} " +
                 "identityChanged=$identityChanged bindingReplaced=$bindingReplaced " +
@@ -489,7 +492,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 appliedSeq = appliedSeq,
             )
         if (!decision.shouldAdvance) {
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "cursor_advance_skip reason=${decision.reason} serverId=${serverId.value} appliedSeq=$appliedSeq"
             )
@@ -498,7 +501,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val ownedSession = holder.runtime.ownedSession() ?: return false
         if (ownedSession.serverId != serverId) return false
         val nextSeq = holder.runtime.advanceAppliedSeqForHost(decision.resumeSeq)
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "cursor_advance result=applied serverId=${serverId.value} requestedSeq=$appliedSeq resumeSeq=$nextSeq"
         )
@@ -506,7 +509,7 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     fun onNetworkAvailable(context: Context) {
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=network_available visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
         )
@@ -546,7 +549,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val previous = lastDnsConfiguration
         lastDnsConfiguration = dnsConfiguration
         if (previous == null || previous == dnsConfiguration) return
-        SlockAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_dns_configuration_changed")
+        RaftAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_dns_configuration_changed")
         val appContext = context.applicationContext
         emitHostNetworkStatus(
             context = appContext,
@@ -566,7 +569,7 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     fun onNetworkLost(context: Context) {
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=network_lost visibility=$appVisibility"
         )
@@ -584,7 +587,7 @@ internal object AndroidAppScopeRealtimeOwner {
         reason: String
     ) {
         if (appVisibility != AppVisibility.Foreground && !allowBackground) {
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "realtime_health_check_skip reason=app_background trigger=$reason"
             )
@@ -593,7 +596,7 @@ internal object AndroidAppScopeRealtimeOwner {
         if (multiServerRealtimeEnabled()) {
             val runtimes = currentMultiSessionRuntimes("health_check_$reason")
             if (runtimes.isEmpty()) {
-                SlockAppLog.d(LOG_TAG, "realtime_health_check_skip reason=no_multi_session trigger=$reason")
+                RaftAppLog.d(LOG_TAG, "realtime_health_check_skip reason=no_multi_session trigger=$reason")
                 return
             }
             runtimes.forEach { holder -> healthCheckMultiSession(holder, reason) }
@@ -603,7 +606,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val runtime = realtimeRuntime
         val ownedSession = runtime?.ownedSession()
         if (client == null || ownedSession == null) {
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "realtime_health_check_missing_owner_session trigger=$reason"
             )
@@ -611,7 +614,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         val serverId = ownedSession.serverId
         if (client.checkHeartbeatSilence()) {
-            SlockAppLog.d(
+            RaftAppLog.d(
                 LOG_TAG,
                 "realtime_health_check_reconnect reason=heartbeat_silent trigger=$reason serverId=${serverId.value}"
             )
@@ -625,13 +628,13 @@ internal object AndroidAppScopeRealtimeOwner {
             }
             RealtimeConnectionState.Connected,
             RealtimeConnectionState.RoomsJoined -> {
-                SlockAppLog.d(
+                RaftAppLog.d(
                     LOG_TAG,
                     "realtime_health_check_skip reason=already_connected trigger=$reason state=${state::class.simpleName} serverId=${serverId.value}"
                 )
             }
             RealtimeConnectionState.Connecting ->
-                SlockAppLog.d(
+                RaftAppLog.d(
                     LOG_TAG,
                     "realtime_health_check_skip reason=connecting trigger=$reason serverId=${serverId.value}"
                 )
@@ -645,8 +648,8 @@ internal object AndroidAppScopeRealtimeOwner {
         explicitClose: Boolean = false
     ) {
         val cleanReason = reason.takeIf { it.isNotBlank() } ?: "shared_disconnect"
-        if (!SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason(cleanReason)) {
-            SlockAppLog.w(
+        if (!RaftRealtimeAppScopePolicy.isSessionEndDisconnectReason(cleanReason)) {
+            RaftAppLog.w(
                 LOG_TAG,
                 "disconnect_ignored reason=$cleanReason"
             )
@@ -743,7 +746,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 connectionFamilyId = witness.connectionFamilyId,
             )
         if (!forceReconnect && holder.requestedIdentity == requestedIdentity && holder.connectJob?.isActive == true) {
-            SlockAppLog.d(LOG_TAG, "multi_session_connect_skip reason=duplicate_in_flight serverId=${serverId.value}")
+            RaftAppLog.d(LOG_TAG, "multi_session_connect_skip reason=duplicate_in_flight serverId=${serverId.value}")
             return
         }
         holder.requestedIdentity = requestedIdentity
@@ -760,7 +763,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             forceReconnect = forceReconnect,
                             witness = witness,
                         )
-                    SlockAppLog.d(
+                    RaftAppLog.d(
                         LOG_TAG,
                         "multi_session_connect_result serverId=${serverId.value} shellInstanceId=$shellInstanceId " +
                             "result=${result::class.simpleName}"
@@ -792,7 +795,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 holder.connectJob = null
                 holder.runtime.disconnectForSessionEnd(GeneratedRealtimeContract.DisconnectReason.ServerRemoved)
                 holder.runtime.dispose()
-                SlockAppLog.d(
+                RaftAppLog.d(
                     LOG_TAG,
                     "multi_session_disconnect serverId=${serverId.value} reason=$reason"
                 )
@@ -820,7 +823,7 @@ internal object AndroidAppScopeRealtimeOwner {
             RealtimeConnectionState.Connected,
             RealtimeConnectionState.RoomsJoined,
             RealtimeConnectionState.Connecting ->
-                SlockAppLog.d(
+                RaftAppLog.d(
                     LOG_TAG,
                     "multi_session_health_check_skip trigger=$reason state=${state::class.simpleName} " +
                         "serverId=${holder.serverId.value}"
@@ -872,7 +875,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             forceReconnect = true,
                             witness = witness,
                         )
-                    SlockAppLog.d(
+                    RaftAppLog.d(
                         LOG_TAG,
                         "multi_session_reconnect_result reason=$reason serverId=${ownedSession.serverId.value} " +
                             "result=${result::class.simpleName}"
@@ -892,7 +895,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private fun multiServerRealtimeEnabled(): Boolean = true
 
-    private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
+    private fun bootstrapRealtime(context: Context): RaftRealtimeAppScopeRuntime {
         realtimeRuntime?.let { return it }
         val hostContext = AndroidAppScopeRealtimeHostContext.create(context.applicationContext, scope)
         hostContext.client.setReconnectAllowed(realtimeReconnectAllowed())
@@ -923,7 +926,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             forceReconnect = true,
                             witness = witness,
                         )
-                    SlockAppLog.d(
+                    RaftAppLog.d(
                         LOG_TAG,
                         "foreground_reconnect_result state=${state::class.simpleName} serverId=${serverId.value} result=${result::class.simpleName}"
                     )
@@ -941,25 +944,25 @@ internal object AndroidAppScopeRealtimeOwner {
     ) {
         if (!force && hostNetworkOnline == online) return
         hostNetworkOnline = online
-        SlockAppLog.d(
+        RaftAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=host_network_status online=$online source=$source"
         )
         scope.launch {
             postAndroidAppScopeEvent(
-                eventName = SlockHostNetworkNotifyContract.EventName,
+                eventName = RaftHostNetworkNotifyContract.EventName,
                 eventData =
                     JSONObject()
                         .put(
-                            SlockHostNetworkNotifyContract.KeyStatus,
+                            RaftHostNetworkNotifyContract.KeyStatus,
                             if (online) {
-                                SlockHostNetworkNotifyContract.StatusOnline
+                                RaftHostNetworkNotifyContract.StatusOnline
                             } else {
-                                SlockHostNetworkNotifyContract.StatusOffline
+                                RaftHostNetworkNotifyContract.StatusOffline
                             }
                         )
-                        .put(SlockHostNetworkNotifyContract.KeyOnline, online)
-                        .put(SlockHostNetworkNotifyContract.KeySource, source)
+                        .put(RaftHostNetworkNotifyContract.KeyOnline, online)
+                        .put(RaftHostNetworkNotifyContract.KeySource, source)
             )
         }
     }
@@ -976,12 +979,14 @@ internal object AndroidAppScopeRealtimeOwner {
     internal fun shouldPostBackgroundUnreadNotification(
         hasAttachedConsumers: Boolean,
         preferenceEnabled: Boolean,
-        isAppInForeground: Boolean
+        isAppInForeground: Boolean,
+        remotePushActive: Boolean = false
     ): Boolean =
         AndroidAppScopeRealtimeHostContext.shouldPostBackgroundUnreadNotification(
             hasAttachedConsumers = hasAttachedConsumers,
             preferenceEnabled = preferenceEnabled,
-            isAppInForeground = isAppInForeground
+            isAppInForeground = isAppInForeground,
+            remotePushActive = remotePushActive
         )
 
     internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
@@ -997,7 +1002,7 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     internal fun syncRuntimeVisibility(
-        runtime: SlockRealtimeAppScopeRuntime,
+        runtime: RaftRealtimeAppScopeRuntime,
         visibility: AppVisibility
     ) {
         when (visibility) {
@@ -1046,7 +1051,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private data class MultiSessionRuntime(
         val serverId: ServerId,
         val client: SocketIoRealtimeClient,
-        val runtime: SlockRealtimeAppScopeRuntime,
+        val runtime: RaftRealtimeAppScopeRuntime,
         var connectJob: Job? = null,
         var witness: RealtimeConnectionWitnessToken? = null,
         var requestedIdentity: MultiSessionConnectIdentity? = null,
@@ -1100,15 +1105,15 @@ internal object AndroidAppScopeRealtimeOwner {
         return SharedAuthTokenProvider(
             sessionStore = sessionStore,
             authApi =
-                SlockAuthApiClient(
-                    SharedSlockAuthTransport(
+                RaftAuthApiClient(
+                    SharedRaftAuthTransport(
                         baseUrl = apiBaseUrl,
-                        warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
+                        warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) }
                     )
                 ),
             clockMillis = { System.currentTimeMillis() },
-            logger = { message -> SlockAppLog.auth(LOG_TAG, message) },
-            warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
+            logger = { message -> RaftAppLog.auth(LOG_TAG, message) },
+            warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) }
         )
     }
 }
@@ -1119,7 +1124,7 @@ internal enum class AndroidHostVisibility(val wireValue: String) {
 }
 
 internal fun normalizedAndroidLifecyclePageName(pageName: String): String =
-    pageName.trim().ifBlank { SlockKuiklyActivity.PAGE_APP_SHELL }
+    pageName.trim().ifBlank { RaftCmpActivity.PAGE_APP_SHELL }
 
 /** Started-activity accounting is process visibility, not a page/pager lifecycle signal. */
 internal class AndroidProcessVisibilityTracker(

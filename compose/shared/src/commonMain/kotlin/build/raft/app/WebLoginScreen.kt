@@ -14,17 +14,17 @@ import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
-import build.raft.app.data.SlockWebLoginCompletion
+import build.raft.app.data.RaftWebLoginCompletion
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -44,15 +44,15 @@ internal fun WebLoginScreen(
     }
     // Consent is explicit and local to this login screen; never infer it from a link visit.
     var consentAccepted by remember { mutableStateOf(false) }
-    val linkNavigator = rememberSlockLinkNavigator(
+    val linkNavigator = rememberRaftLinkNavigator(
         pager = pager,
         bridge = bridge,
-        routeScope = SlockInAppBrowserRouteScope.Unscoped,
+        routeScope = RaftInAppBrowserRouteScope.Unscoped,
     )
     var starting by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var staleCallback by remember { mutableStateOf(false) }
-    val completion by SlockWebLoginCompletion.status.collectAsState()
+    val completion by RaftWebLoginCompletion.status.collectAsState()
     LaunchedEffect(completion) {
         when (completion) {
             "app_shell", "choose_server" -> {
@@ -62,15 +62,15 @@ internal fun WebLoginScreen(
                     is SharedAuthResult.Success -> pager.openPostAuthRoute(session.data)
                     else -> failed = true
                 }
-                SlockWebLoginCompletion.clear()
+                RaftWebLoginCompletion.clear()
             }
             "login_error", "legal_acceptance", "retry" -> {
                 failed = true
-                SlockWebLoginCompletion.clear()
+                RaftWebLoginCompletion.clear()
             }
             APP_LOGIN_STALE_CALLBACK -> {
                 staleCallback = true
-                SlockWebLoginCompletion.clear()
+                RaftWebLoginCompletion.clear()
             }
         }
     }
@@ -107,7 +107,7 @@ internal fun WebLoginScreen(
                         starting = true
                         failed = false
                         staleCallback = false
-                        SlockWebLoginCompletion.clear()
+                        RaftWebLoginCompletion.clear()
                         scope.launch {
                             try {
                                 val result = runCatchingPreservingCancellation { platform.startWebLogin() }.getOrNull()
@@ -123,7 +123,7 @@ internal fun WebLoginScreen(
                 // Follows the current environment: the official web app by default, the private web address once set.
                 text = stringResource(MR.strings.auth_web_login_hint, webLoginHintHost(webUrl)),
                 modifier = Modifier.fillMaxWidth(),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 textAlign = TextAlign.Center,
             )
             AuthTextLink(

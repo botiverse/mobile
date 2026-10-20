@@ -19,7 +19,7 @@
         </intent>
     </queries>
 
-    <application android:name=".SlockApplication" android:allowBackup="true" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.Slock">
+    <application android:name=".RaftApplication" android:allowBackup="true" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.Raft">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -27,7 +27,7 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/slock_file_paths" />
+                android:resource="@xml/raft_file_paths" />
         </provider>
 
         <meta-data
@@ -35,39 +35,73 @@
             android:value="true" />
 
         <service
-            android:name=".push.SlockFirebaseMessagingService"
+            android:name=".push.RaftFirebaseMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
 
+        <!-- Page host: every page renders on Compose Multiplatform (RaftCmpRouter /
+             RaftPageRegistry). adjustResize so Compose receives IME insets on every API level. -->
         <activity
-            android:name=".shared.SlockKuiklyActivity"
+            android:name=".shared.RaftCmpActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="false"
-            android:theme="@style/Theme.Slock.Translucent"
-            android:windowSoftInputMode="adjustNothing" />
+            android:theme="@style/Theme.Raft.Translucent"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
+             older versions: notifications, shortcuts, recents, external tools. -->
+        <activity-alias
+            android:name=".shared.SlockCmpActivity"
+            android:exported="false"
+            android:targetActivity=".shared.RaftCmpActivity" />
+        <!-- Former Kuikly host, kept as an entry point (diagnostics alias, Intents from older
+             versions); a RaftCmpActivity subclass with the same behaviour. -->
         <activity
-            android:name=".shared.SlockAppShellActivity"
+            android:name=".shared.RaftLegacyHostActivity"
+            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.Raft.Translucent"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
+             older versions: notifications, shortcuts, recents, external tools. -->
+        <activity-alias
+            android:name=".shared.SlockKuiklyActivity"
+            android:exported="false"
+            android:targetActivity=".shared.RaftLegacyHostActivity" />
+        <activity
+            android:name=".shared.RaftAppShellActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="false"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Slock.AppShellStarting"
-            android:windowSoftInputMode="adjustNothing" />
+            android:theme="@style/Theme.Raft.AppShellStarting"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
+             older versions: notifications, shortcuts, recents, external tools. -->
+        <activity-alias
+            android:name=".shared.SlockAppShellActivity"
+            android:exported="false"
+            android:targetActivity=".shared.RaftAppShellActivity" />
         <activity
-            android:name=".shared.SlockDocumentShellActivity"
+            android:name=".shared.RaftDocumentShellActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:documentLaunchMode="intoExisting"
             android:exported="false"
             android:launchMode="standard"
-            android:theme="@style/Theme.Slock.Starting"
-            android:windowSoftInputMode="adjustNothing" />
+            android:theme="@style/Theme.Raft.Starting"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
+             older versions: notifications, shortcuts, recents, external tools. -->
+        <activity-alias
+            android:name=".shared.SlockDocumentShellActivity"
+            android:exported="false"
+            android:targetActivity=".shared.RaftDocumentShellActivity" />
         <activity-alias
             android:name=".core.diagnostics.DiagnosticsDeepLinkActivity"
             android:enabled="@bool/diagnostics_deeplink_enabled"
             android:exported="@bool/diagnostics_deeplink_enabled"
-            android:targetActivity=".shared.SlockKuiklyActivity">
+            android:targetActivity=".shared.RaftLegacyHostActivity">
             <intent-filter>
                 <action android:name="build.raft.app.diagnostics.OPEN" />
 
@@ -75,16 +109,22 @@
             </intent-filter>
         </activity-alias>
         <activity
-            android:name=".widget.SlockWidgetServerConfigureActivity"
+            android:name=".widget.RaftWidgetServerConfigureActivity"
             android:excludeFromRecents="true"
             android:exported="true"
-            android:theme="@style/Theme.Slock" />
+            android:theme="@style/Theme.Raft" />
+        <!-- Pre-rename component name (Slock -> Raft), kept for Intents persisted by
+             older versions: notifications, shortcuts, recents, external tools. -->
+        <activity-alias
+            android:name=".widget.SlockWidgetServerConfigureActivity"
+            android:exported="true"
+            android:targetActivity=".widget.RaftWidgetServerConfigureActivity" />
         <activity
             android:name=".core.data.auth.QaSessionBootstrapActivity"
             android:enabled="@bool/qa_session_bootstrap_enabled"
             android:excludeFromRecents="true"
             android:exported="@bool/qa_session_bootstrap_enabled"
-            android:theme="@style/Theme.Slock.Starting" />
+            android:theme="@style/Theme.Raft.Starting" />
         <receiver
             android:name=".core.data.auth.QaCaptureBoundaryReceiver"
             android:enabled="@bool/qa_session_bootstrap_enabled"
@@ -99,7 +139,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.Slock.Starting"
+            android:theme="@style/Theme.Raft.Starting"
             android:windowSoftInputMode="adjustNothing">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -160,7 +200,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/slock_activity_widget_info" />
+                android:resource="@xml/raft_activity_widget_info" />
         </receiver>
 
         <receiver
@@ -172,7 +212,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/slock_agent_status_widget_info" />
+                android:resource="@xml/raft_agent_status_widget_info" />
         </receiver>
     </application>
 

@@ -9,8 +9,8 @@ import build.raft.app.data.MviStoreRuntime
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.TaskSummary
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.ReentrantLock
 import kotlinx.atomicfu.locks.reentrantLock
@@ -53,7 +53,7 @@ internal data class SharedThreadComposerDraftState(
     val nextAttachmentAdmissionGeneration: Long = 0L,
     val attachmentAdmissionsByLocalId: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap(),
     val externalShareSources: List<SharedThreadComposerExternalShareSource> = emptyList(),
-    val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList(),
     val mentionActionNoticeTitle: String? = null,
     val mentionActionNotice: String? = null,
     val mentionActionStates: Map<String, String> = emptyMap(),
@@ -2275,7 +2275,7 @@ internal fun Set<SharedThreadComposerDraftRecord>.toThreadComposerDraftDiagnosti
 
 internal sealed interface SharedThreadComposerDraftIntent {
     data class Start(
-        val composer: KuiklyThreadComposerPayload,
+        val composer: RaftThreadComposerPayload,
         val draftKey: String? = null
     ) : SharedThreadComposerDraftIntent
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
@@ -2290,10 +2290,10 @@ internal sealed interface SharedThreadComposerDraftIntent {
     ) : SharedThreadComposerDraftIntent
     data object CompleteInlineSendFailure : SharedThreadComposerDraftIntent
     data class CompleteSend(
-        val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList()
+        val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList()
     ) : SharedThreadComposerDraftIntent
     data class ApplyPendingMentionActions(
-        val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList()
+        val pendingMentionActions: List<RaftPendingMentionActionItem> = emptyList()
     ) : SharedThreadComposerDraftIntent
     data class DismissMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
     data class BeginMentionAction(

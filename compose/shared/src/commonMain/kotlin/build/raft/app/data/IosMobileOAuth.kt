@@ -1,8 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.SlockHostStrings
-import build.raft.app.slockLogInfo
-import build.raft.app.slockLogWarn
+import build.raft.app.RaftHostStrings
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -10,8 +10,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-const val SLOCK_IOS_MOBILE_OAUTH_MMKV_NAMESPACE = "slockIosMobileOAuth"
-internal const val SLOCK_MOBILE_OAUTH_COMPLETION_EVENT = "slockMobileOAuthCompletion"
+const val RAFT_IOS_MOBILE_OAUTH_MMKV_NAMESPACE = "slockIosMobileOAuth"
+internal const val RAFT_MOBILE_OAUTH_COMPLETION_EVENT = "slockMobileOAuthCompletion"
 
 private const val IOS_MOBILE_OAUTH_LOG_TAG = "SlockIosOAuth"
 private const val IOS_MOBILE_OAUTH_LOGIN_MODE = "login"
@@ -29,7 +29,7 @@ private val IosMobileOAuthModes = setOf(IOS_MOBILE_OAUTH_LOGIN_MODE, IOS_MOBILE_
 private val IosMobileOAuthPkceValue = Regex("^[A-Za-z0-9_-]{43,128}$")
 
 /** Swift-facing start result. Authorization URLs and PKCE material are never logged. */
-data class SlockIosMobileOAuthStartResult(
+data class RaftIosMobileOAuthStartResult(
     val status: String,
     val code: Int,
     val presentation: String? = null,
@@ -43,7 +43,7 @@ data class SlockIosMobileOAuthStartResult(
  * Swift-facing terminal result. `handoffCode` and `codeVerifier` are populated only for the
  * existing shared legal-acceptance route and must stay in-process.
  */
-data class SlockIosMobileOAuthCompletionResult(
+data class RaftIosMobileOAuthCompletionResult(
     val status: String,
     val message: String? = null,
     val provider: String? = null,
@@ -65,7 +65,7 @@ internal data class IosMobileOAuthPendingRequest(
 )
 
 internal class IosMobileOAuthPendingStore(
-    private val store: SlockKeyValueStore,
+    private val store: RaftKeyValueStore,
 ) {
     fun save(request: IosMobileOAuthPendingRequest) {
         // Commit marker is written last so a process death during a multi-key MMKV write cannot
@@ -225,7 +225,7 @@ internal interface IosMobileOAuthRuntime {
 }
 
 private class SharedIosMobileOAuthRuntime(
-    provider: SlockSharedStoreProvider,
+    provider: RaftSharedStoreProvider,
 ) : IosMobileOAuthRuntime {
     private val authDataSource = provider.createAuthDataSourceForCurrentEnvironment()
 
@@ -444,7 +444,7 @@ internal class IosMobileOAuthCoordinator(
         codeVerifier: String,
         codeChallenge: String,
         returnUriOverride: String? = null,
-    ): SlockIosMobileOAuthStartResult =
+    ): RaftIosMobileOAuthStartResult =
         mutex.withLock {
             pendingStore.clear()
             val normalizedProvider = provider.trim().lowercase()
@@ -525,7 +525,7 @@ internal class IosMobileOAuthCoordinator(
                             startedAtMillis = nowMillis(),
                         )
                     )
-                    SlockIosMobileOAuthStartResult(
+                    RaftIosMobileOAuthStartResult(
                         status = "started",
                         code = 202,
                         presentation = "browser",
@@ -552,7 +552,7 @@ internal class IosMobileOAuthCoordinator(
         codeVerifier: String,
         codeChallenge: String,
         returnUriOverride: String? = null,
-    ): SlockIosMobileOAuthStartResult =
+    ): RaftIosMobileOAuthStartResult =
         mutex.withLock {
             pendingStore.clear()
             val normalizedMode = mode.trim().lowercase()
@@ -621,7 +621,7 @@ internal class IosMobileOAuthCoordinator(
                             startedAtMillis = nowMillis(),
                         )
                     )
-                    SlockIosMobileOAuthStartResult(
+                    RaftIosMobileOAuthStartResult(
                         status = "started",
                         code = 202,
                         presentation = "native_apple",
@@ -644,7 +644,7 @@ internal class IosMobileOAuthCoordinator(
         generation: String,
         authorizationCode: String,
         identityToken: String,
-    ): SlockIosMobileOAuthCompletionResult =
+    ): RaftIosMobileOAuthCompletionResult =
         mutex.withLock {
             val pending = pendingStore.read() ?: return@withLock ignoredCompletion()
             val requestToken = pending.requestToken ?: return@withLock ignoredCompletion()
@@ -669,7 +669,7 @@ internal class IosMobileOAuthCoordinator(
                 )
             }
             val runtime = runtimeProvider()
-                ?: return@withLock SlockIosMobileOAuthCompletionResult(
+                ?: return@withLock RaftIosMobileOAuthCompletionResult(
                     status = "retry",
                     provider = pending.provider,
                     generation = pending.generation,
@@ -732,7 +732,7 @@ internal class IosMobileOAuthCoordinator(
             result
         }
 
-    suspend fun complete(callback: IosMobileOAuthCallback): SlockIosMobileOAuthCompletionResult =
+    suspend fun complete(callback: IosMobileOAuthCallback): RaftIosMobileOAuthCompletionResult =
         mutex.withLock {
             val pending = pendingStore.read() ?: return@withLock ignoredCompletion()
             when (val admission = admitIosMobileOAuthCallback(pending, callback, nowMillis())) {
@@ -758,7 +758,7 @@ internal class IosMobileOAuthCoordinator(
                 }
                 is IosMobileOAuthCallbackAdmission.Complete -> {
                     val runtime = runtimeProvider()
-                        ?: return@withLock SlockIosMobileOAuthCompletionResult(
+                        ?: return@withLock RaftIosMobileOAuthCompletionResult(
                             status = "retry",
                             provider = pending.provider,
                             generation = pending.generation,
@@ -792,7 +792,7 @@ internal class IosMobileOAuthCoordinator(
     suspend fun cancel(
         generation: String,
         error: String,
-    ): SlockIosMobileOAuthCompletionResult =
+    ): RaftIosMobileOAuthCompletionResult =
         mutex.withLock {
             val pending = pendingStore.read() ?: return@withLock ignoredCompletion()
             if (generation.isBlank() || generation != pending.generation) {
@@ -809,7 +809,7 @@ internal class IosMobileOAuthCoordinator(
         runtime: IosMobileOAuthRuntime,
         pending: IosMobileOAuthPendingRequest,
         code: String,
-    ): SlockIosMobileOAuthCompletionResult =
+    ): RaftIosMobileOAuthCompletionResult =
         when (
             val outcome =
                 runtime.completeLogin(
@@ -819,12 +819,12 @@ internal class IosMobileOAuthCoordinator(
                 )
         ) {
             is IosMobileOAuthLoginOutcome.Success ->
-                SlockIosMobileOAuthCompletionResult(
+                RaftIosMobileOAuthCompletionResult(
                     status = if (outcome.selectedServerId.isNullOrBlank()) "choose_server" else "app_shell",
                     provider = pending.provider,
                 )
             is IosMobileOAuthLoginOutcome.LegalAcceptanceRequired ->
-                SlockIosMobileOAuthCompletionResult(
+                RaftIosMobileOAuthCompletionResult(
                     status = "legal_acceptance",
                     provider = pending.provider,
                     handoffCode = code,
@@ -840,7 +840,7 @@ internal class IosMobileOAuthCoordinator(
         runtime: IosMobileOAuthRuntime,
         pending: IosMobileOAuthPendingRequest,
         code: String,
-    ): SlockIosMobileOAuthCompletionResult =
+    ): RaftIosMobileOAuthCompletionResult =
         when (
             val outcome =
                 runtime.completeLink(
@@ -850,7 +850,7 @@ internal class IosMobileOAuthCoordinator(
                 )
         ) {
             IosMobileOAuthLinkOutcome.Success ->
-                SlockIosMobileOAuthCompletionResult(
+                RaftIosMobileOAuthCompletionResult(
                     status = "settings_account",
                     message = "${pending.provider.iosMobileOAuthProviderName()} account linked.",
                     provider = pending.provider,
@@ -880,22 +880,22 @@ private fun isApprovedMobileOAuthReturnUri(value: String): Boolean =
             IOS_MOBILE_OAUTH_DEBUG_RETURN_URI,
         )
 
-private fun startError(code: String, message: String): SlockIosMobileOAuthStartResult =
-    SlockIosMobileOAuthStartResult(
+private fun startError(code: String, message: String): RaftIosMobileOAuthStartResult =
+    RaftIosMobileOAuthStartResult(
         status = "error",
         code = 0,
         errorCode = code,
         message = message,
     )
 
-private fun ignoredCompletion(): SlockIosMobileOAuthCompletionResult =
-    SlockIosMobileOAuthCompletionResult(status = "ignored")
+private fun ignoredCompletion(): RaftIosMobileOAuthCompletionResult =
+    RaftIosMobileOAuthCompletionResult(status = "ignored")
 
 private fun errorCompletion(
     pending: IosMobileOAuthPendingRequest,
     message: String,
-): SlockIosMobileOAuthCompletionResult =
-    SlockIosMobileOAuthCompletionResult(
+): RaftIosMobileOAuthCompletionResult =
+    RaftIosMobileOAuthCompletionResult(
         status = if (pending.mode == IOS_MOBILE_OAUTH_LINK_MODE) "settings_account" else "login_error",
         message = message,
         provider = pending.provider,
@@ -912,8 +912,8 @@ internal fun iosMobileOAuthProviderErrorMessage(
     provider: String,
     mode: String,
     error: String,
-    accountConflictMessage: (String) -> String = SlockHostStrings::mobileOAuthAccountConflict,
-    providerConflictMessage: (String) -> String = SlockHostStrings::mobileOAuthProviderConflict,
+    accountConflictMessage: (String) -> String = RaftHostStrings::mobileOAuthAccountConflict,
+    providerConflictMessage: (String) -> String = RaftHostStrings::mobileOAuthProviderConflict,
 ): String {
     val providerName = provider.iosMobileOAuthProviderName()
     return when (error.trim().lowercase()) {
@@ -954,19 +954,19 @@ private fun String.iosMobileOAuthProviderName(): String =
  * Native iOS entry point. Swift owns AuthenticationServices presentation and cryptographic PKCE
  * generation; shared owns request state, API/session SSOT, callback admission and route outcome.
  */
-object SlockIosMobileOAuthBridge {
+object RaftIosMobileOAuthBridge {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val coordinator: IosMobileOAuthCoordinator by lazy {
         IosMobileOAuthCoordinator(
             pendingStore =
                 IosMobileOAuthPendingStore(
-                    SlockSharedKeyValueStoreProvider.create(
-                        namespace = SLOCK_IOS_MOBILE_OAUTH_MMKV_NAMESPACE,
+                    RaftSharedKeyValueStoreProvider.create(
+                        namespace = RAFT_IOS_MOBILE_OAUTH_MMKV_NAMESPACE,
                         storageName = "iOS mobile OAuth",
                     ).store
                 ),
             runtimeProvider = {
-                SlockSharedStoreRegistry.currentOrNull()?.let(::SharedIosMobileOAuthRuntime)
+                RaftSharedStoreRegistry.currentOrNull()?.let(::SharedIosMobileOAuthRuntime)
             },
         )
     }
@@ -978,7 +978,7 @@ object SlockIosMobileOAuthBridge {
         returnUri: String,
         codeVerifier: String,
         codeChallenge: String,
-        completion: (SlockIosMobileOAuthStartResult) -> Unit,
+        completion: (RaftIosMobileOAuthStartResult) -> Unit,
     ) {
         scope.launch {
             val result =
@@ -997,7 +997,7 @@ object SlockIosMobileOAuthBridge {
                         message = "Mobile sign-in is unavailable. Try again.",
                     )
                 }
-            slockLogInfo(
+            raftLogInfo(
                 IOS_MOBILE_OAUTH_LOG_TAG,
                 "oauth_start_result provider=${provider.safeIosOAuthDiagnosticToken()} " +
                     "mode=${mode.safeIosOAuthDiagnosticToken()} status=${result.status}",
@@ -1012,7 +1012,7 @@ object SlockIosMobileOAuthBridge {
         returnUri: String,
         codeVerifier: String,
         codeChallenge: String,
-        completion: (SlockIosMobileOAuthStartResult) -> Unit,
+        completion: (RaftIosMobileOAuthStartResult) -> Unit,
     ) {
         scope.launch {
             val result =
@@ -1030,7 +1030,7 @@ object SlockIosMobileOAuthBridge {
                         message = "Mobile sign-in is unavailable. Try again.",
                     )
                 }
-            slockLogInfo(
+            raftLogInfo(
                 IOS_MOBILE_OAUTH_LOG_TAG,
                 "oauth_native_apple_start_result mode=${mode.safeIosOAuthDiagnosticToken()} status=${result.status}",
             )
@@ -1042,7 +1042,7 @@ object SlockIosMobileOAuthBridge {
         generation: String,
         authorizationCode: String,
         identityToken: String,
-        completion: (SlockIosMobileOAuthCompletionResult) -> Unit,
+        completion: (RaftIosMobileOAuthCompletionResult) -> Unit,
     ) {
         scope.launch {
             val result =
@@ -1053,17 +1053,17 @@ object SlockIosMobileOAuthBridge {
                         identityToken = identityToken,
                     )
                 }.getOrElse {
-                    slockLogWarn(
+                    raftLogWarn(
                         IOS_MOBILE_OAUTH_LOG_TAG,
                         "oauth_native_apple_complete_failed errorType=${it::class.simpleName ?: "unknown"}",
                     )
-                    SlockIosMobileOAuthCompletionResult(
+                    RaftIosMobileOAuthCompletionResult(
                         status = "login_error",
                         message = "Mobile sign-in failed. Try again.",
                         provider = "apple",
                     )
                 }
-            slockLogInfo(
+            raftLogInfo(
                 IOS_MOBILE_OAUTH_LOG_TAG,
                 "oauth_native_apple_complete_result status=${result.status}",
             )
@@ -1080,7 +1080,7 @@ object SlockIosMobileOAuthBridge {
         code: String?,
         error: String?,
         expectedGeneration: String?,
-        completion: (SlockIosMobileOAuthCompletionResult) -> Unit,
+        completion: (RaftIosMobileOAuthCompletionResult) -> Unit,
     ) {
         scope.launch {
             val result =
@@ -1098,13 +1098,13 @@ object SlockIosMobileOAuthBridge {
                         )
                     )
                 }.getOrElse {
-                    slockLogWarn(IOS_MOBILE_OAUTH_LOG_TAG, "oauth_callback_failed errorType=${it::class.simpleName ?: "unknown"}")
-                    SlockIosMobileOAuthCompletionResult(
+                    raftLogWarn(IOS_MOBILE_OAUTH_LOG_TAG, "oauth_callback_failed errorType=${it::class.simpleName ?: "unknown"}")
+                    RaftIosMobileOAuthCompletionResult(
                         status = "login_error",
                         message = "Mobile sign-in failed. Try again.",
                     )
                 }
-            slockLogInfo(
+            raftLogInfo(
                 IOS_MOBILE_OAUTH_LOG_TAG,
                 "oauth_callback_result provider=${provider.safeIosOAuthDiagnosticToken()} " +
                     "mode=${mode.safeIosOAuthDiagnosticToken()} status=${result.status}",
@@ -1116,13 +1116,13 @@ object SlockIosMobileOAuthBridge {
     fun cancel(
         generation: String,
         error: String,
-        completion: (SlockIosMobileOAuthCompletionResult) -> Unit,
+        completion: (RaftIosMobileOAuthCompletionResult) -> Unit,
     ) {
         scope.launch {
             val result =
                 runCatchingPreservingCancellation { coordinator.cancel(generation, error) }
                     .getOrElse { ignoredCompletion() }
-            slockLogInfo(IOS_MOBILE_OAUTH_LOG_TAG, "oauth_cancel_result status=${result.status}")
+            raftLogInfo(IOS_MOBILE_OAUTH_LOG_TAG, "oauth_cancel_result status=${result.status}")
             completion(result)
         }
     }

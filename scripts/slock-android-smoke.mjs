@@ -208,7 +208,8 @@ function collect(prefix) {
 function ensureHome() {
   for (let i = 0; i < 3; i += 1) {
     const tree = capture(`ensure-home-${i}`);
-    if (tree.includes('content-desc="CHANNELS') && tree.includes(`content-desc="${escapeAttr(channel)}"`)) {
+    // Labels are source case since raft-ui 0.6 ("Channels", "Home"); match either case.
+    if (/content-desc="channels/i.test(tree) && tree.includes(`content-desc="${escapeAttr(channel)}"`)) {
       return;
     }
     const home = findElement(tree, "HOME");
@@ -255,7 +256,7 @@ function tapElement(desc, role) {
 
 function findElement(xml, desc) {
   const escaped = escapeRegex(desc);
-  const pattern = new RegExp(`<node\\b[^>]*content-desc="${escaped}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"`, "g");
+  const pattern = new RegExp(`<node\\b[^>]*content-desc="${escaped}"[^>]*bounds="\\[([0-9]+),([0-9]+)\\]\\[([0-9]+),([0-9]+)\\]"`, "gi");
   const matches = [...xml.matchAll(pattern)].map((match) => {
     const [, left, top, right, bottom] = match.map(Number);
     return {

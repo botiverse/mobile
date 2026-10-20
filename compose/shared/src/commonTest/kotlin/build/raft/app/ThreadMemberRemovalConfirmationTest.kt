@@ -48,7 +48,7 @@ class ThreadMemberRemovalConfirmationTest {
                 channelId = ChannelA
             )
         val removable =
-            KuiklyThreadMemberItem(
+            RaftThreadMemberItem(
                 id = "human-1",
                 displayName = "",
                 handle = "@human-one",
@@ -181,7 +181,7 @@ class ThreadMemberRemovalConfirmationTest {
         checkNotNull(
             threadMemberRemovalConfirmation(
                 member =
-                    KuiklyThreadMemberItem(
+                    RaftThreadMemberItem(
                         id = "agent-cx-suni",
                         displayName = "Cx-Suni",
                         handle = "cx-suni",

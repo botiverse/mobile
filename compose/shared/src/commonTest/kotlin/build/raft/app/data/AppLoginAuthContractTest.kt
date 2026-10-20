@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 // OHOS has no kotlinx-coroutines-test KLIB; all suspend fakes complete inline and time is injected.
 class AppLoginAuthContractTest {
-    private class Transport : SlockAuthTransport by AuthDataSourceTest.FakeAuthApi() {
+    private class Transport : RaftAuthTransport by AuthDataSourceTest.FakeAuthApi() {
         var startBody = ""
         var completeBody = ""
         var response = AuthNetworkResponse(200,
@@ -24,7 +24,7 @@ class AppLoginAuthContractTest {
     }
     @Test fun pureLoginContractUsesNoOAuthFieldsAndCommitsCanonicalSession() = runBlocking {
         val transport = Transport()
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source = SharedAuthDataSource(transport, store)
         assertTrue(source.startAppLogin("raft://login/callback", "challenge") is SharedAuthResult.Success)
         assertEquals("""{"returnUri":"raft://login/callback","codeChallenge":"challenge"}""", transport.startBody)
@@ -36,7 +36,7 @@ class AppLoginAuthContractTest {
     }
     @Test fun malformedResponseAndEnvironmentChangeCannotInstallSession() = runBlocking {
         val transport = Transport()
-        val store = InMemorySlockAuthSessionStore()
+        val store = InMemoryRaftAuthSessionStore()
         val source = SharedAuthDataSource(transport, store)
         assertEquals(SharedAuthResult.Unauthenticated, source.completeAppLogin("code", "verifier") { false })
         assertNull(store.readSession())
@@ -45,9 +45,9 @@ class AppLoginAuthContractTest {
         assertNull(store.readSession())
     }
     @Test fun environmentChangeWhileReadingPreviousSessionCannotCommit() = runBlocking {
-        val backing = InMemorySlockAuthSessionStore()
+        val backing = InMemoryRaftAuthSessionStore()
         var current = true
-        val store = object : SlockAuthSessionStore by backing {
+        val store = object : RaftAuthSessionStore by backing {
             override suspend fun readSession(): StoredAuthSession? {
                 current = false
                 return backing.readSession()

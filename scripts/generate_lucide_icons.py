@@ -3,14 +3,13 @@
 Generate Slock Lucide assets from one manifest.
 
 Outputs by default:
-- Android Compose ImageVector catalog
-- OHOS raw SVG resources and Path registry
-- Shared Kuikly icon name registry
-- iOS asset catalog SVG imagesets
-- Shared/OHOS/iOS bundled brand SVG assets used by assets:// image URLs
+- compose: commonMain Compose Multiplatform path table (RaftLucideIconPaths.kt) rendered by
+  RaftLucideIcon through lazily built, cached ImageVectors
+- shared: RaftLucideIconName registry (RaftLucideIconCatalog.kt)
+- ios: iOS asset catalog SVG imagesets (still used by native iOS chrome)
+- brand-assets: shared/iOS bundled brand SVG assets used by assets:// image URLs
 
-Requirements for Android generation:
-  brew install s2c   (dev-tonholo/svg-to-compose tap)
+Use --check to verify the committed compose/shared Kotlin outputs are up to date without writing.
 """
 
 import argparse
@@ -35,13 +34,13 @@ LUCIDE_SOURCE_COMMITS = {
 }
 ANDROID_FLOAT_MAX = Decimal("3.4028234663852886e38")
 ANDROID_FLOAT_MIN_POSITIVE = Decimal("1.401298464324817e-45")
-DEFAULT_TARGETS = "android-path,ohos,ios,shared,brand-assets"
+DEFAULT_TARGETS = "compose,ios,shared,brand-assets"
+CHECKABLE_TARGETS = {"compose", "shared"}
 DEFAULT_LUCIDE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "slock-lucide")
 LUCIDE_REPO_URL = "https://github.com/lucide-icons/lucide.git"
 LUCIDE_RAW_URL = "https://raw.githubusercontent.com/lucide-icons/lucide"
 LUCIDE_API_URL = "https://api.github.com/repos/lucide-icons/lucide"
 SVG_NS = "http://www.w3.org/2000/svg"
-NORMALIZED_VIEWPORT = 24.0
 BRAND_ASSET_SOURCE_DIR = os.path.join(SCRIPT_DIR, "assets", "brand")
 PATH_TOKEN_RE = re.compile(r"[AaCcHhLlMmQqSsTtVvZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?")
 PATH_COMMAND_ARITY = {
@@ -169,7 +168,9 @@ LUCIDE_ICONS = [
     "film",
     "flame",
     "folder",
+    "folder-input",
     "folder-open",
+    "folder-plus",
     "funnel",
     "git-branch",
     "globe",
@@ -235,6 +236,7 @@ LUCIDE_ICONS = [
     "shield-check",
     "sliders-horizontal",
     "smartphone",
+    "smile-plus",
     "sparkles",
     "square",
     "square-check-big",
@@ -287,93 +289,30 @@ BRAND_ASSET_SVGS = {
             BRAND_ASSET_SOURCE_DIR,
             "raft-logo.svg",
         ),
-        os.path.join(
-            REPO_ROOT,
-            "compose",
-            "ohosApp",
-            "entry",
-            "src",
-            "main",
-            "resources",
-            "resfile",
-            "lucide",
-            "raft-logo.svg",
-        ),
     ],
     "slock-icon": [
         os.path.join(
             BRAND_ASSET_SOURCE_DIR,
             "slock-icon.svg",
         ),
-        os.path.join(
-            REPO_ROOT,
-            "compose",
-            "ohosApp",
-            "entry",
-            "src",
-            "main",
-            "resources",
-            "resfile",
-            "lucide",
-            "slock-icon.svg",
-        ),
     ],
 }
 
-ANDROID_FILLED_ICON_VARIANTS = {
+FILLED_ICON_VARIANTS = {
     "bookmark": "filled-bookmark",
 }
 
-DEFAULT_ANDROID_OUTPUT = os.path.join(
+DEFAULT_COMPOSE_OUTPUT = os.path.join(
     REPO_ROOT,
     "compose",
-    "androidApp",
-    "src",
-    "main",
-    "java",
-    "build",
-    "raft",
-    "app",
-    "ui",
-    "icons",
-    "LucideIcons.kt",
-)
-DEFAULT_ANDROID_PATH_OUTPUT = os.path.join(
-    REPO_ROOT,
-    "compose",
-    "androidApp",
-    "src",
-    "main",
-    "java",
-    "build",
-    "raft",
-    "app",
     "shared",
-    "generated",
-    "SlockLucidePathIcons.kt",
-)
-DEFAULT_OHOS_PATH_OUTPUT = os.path.join(
-    REPO_ROOT,
-    "compose",
-    "ohosApp",
-    "entry",
     "src",
-    "main",
-    "ets",
-    "kuikly",
-    "generated",
-    "SlockLucidePathIcons.ets",
-)
-DEFAULT_OHOS_RESFILE_OUTPUT = os.path.join(
-    REPO_ROOT,
-    "compose",
-    "ohosApp",
-    "entry",
-    "src",
-    "main",
-    "resources",
-    "resfile",
-    "lucide",
+    "commonMain",
+    "kotlin",
+    "build",
+    "raft",
+    "app",
+    "RaftLucideIconPaths.kt",
 )
 DEFAULT_SHARED_CATALOG_OUTPUT = os.path.join(
     REPO_ROOT,
@@ -385,7 +324,7 @@ DEFAULT_SHARED_CATALOG_OUTPUT = os.path.join(
     "build",
     "raft",
     "app",
-    "SlockLucideIconCatalog.kt",
+    "RaftLucideIconCatalog.kt",
 )
 DEFAULT_SHARED_ASSET_OUTPUT = os.path.join(
     REPO_ROOT,
@@ -418,10 +357,6 @@ def pascal_name(name):
 
 def kotlin_string(value):
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
-
-
-def ets_string(value):
-    return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
 def git_output(args, cwd=None):
@@ -459,21 +394,21 @@ def checkout_matches_version(repo_dir, version):
         return False
 
 
-def verify_android_path_source_checkout(repo_dir, version):
+def verify_pinned_source_checkout(repo_dir, version):
     if not repo_dir or not os.path.isdir(os.path.join(repo_dir, ".git")):
-        raise RuntimeError("Android path generation requires a git-backed Lucide checkout")
+        raise RuntimeError("Lucide path generation requires a git-backed Lucide checkout")
     expected_commit = LUCIDE_SOURCE_COMMITS.get(version)
     if not expected_commit:
-        raise RuntimeError(f"Android path generation has no pinned commit for Lucide {version}")
+        raise RuntimeError(f"Lucide path generation has no pinned commit for Lucide {version}")
     actual_commit = checkout_head(repo_dir)
     if actual_commit != expected_commit:
         raise RuntimeError(
-            f"Android path generation requires Lucide {version} commit {expected_commit}, "
+            f"Lucide path generation requires Lucide {version} commit {expected_commit}, "
             f"found {actual_commit}"
         )
     if not checkout_matches_version(repo_dir, version):
         raise RuntimeError(
-            f"Android path generation requires Lucide checkout at exact tag {version}: {repo_dir}"
+            f"Lucide path generation requires Lucide checkout at exact tag {version}: {repo_dir}"
         )
     return expected_commit
 
@@ -569,8 +504,8 @@ def read_lucide_svg(name, version, fallback_dir=None, lucide_source_dir=None):
                 _SVG_CACHE[cache_key] = svg
                 return svg
 
-    fallback_path = os.path.join(fallback_dir or DEFAULT_OHOS_RESFILE_OUTPUT, f"{normalized}.svg")
-    if os.path.exists(fallback_path):
+    fallback_path = os.path.join(fallback_dir, f"{normalized}.svg") if fallback_dir else None
+    if fallback_path and os.path.exists(fallback_path):
         with open(fallback_path, "r", encoding="utf-8") as file:
             svg = file.read().strip()
             _SVG_CACHE[cache_key] = svg
@@ -608,17 +543,6 @@ def prefetch_lucide_svgs(icons, version, fallback_dir, lucide_source_dir, worker
                 future.result()
             except Exception as error:
                 raise RuntimeError(f"Failed to prefetch Lucide icon '{icon}'") from error
-
-
-def normalize_ohos_svg(svg_text):
-    return svg_text.replace('stroke="currentColor"', 'stroke="#000000"').replace('fill="currentColor"', 'fill="#000000"')
-
-
-def svg_for_path_parse(svg_text):
-    svg_text = re.sub(r"<defs>.*?</defs>", "", svg_text, flags=re.DOTALL)
-    if not re.search(r"<svg[^>]*\sstroke=", svg_text):
-        svg_text = re.sub(r"<svg", '<svg stroke="none"', svg_text, count=1)
-    return svg_text
 
 
 def circle_to_path(cx, cy, radius):
@@ -662,28 +586,14 @@ def rect_to_path(x, y, width, height, rx=0.0, ry=0.0):
     )
 
 
-def points_to_path(points, close=False):
-    nums = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", points)
-    coords = list(map(float, nums))
-    pairs = [(coords[index], coords[index + 1]) for index in range(0, len(coords) - 1, 2)]
-    if not pairs:
-        return ""
-    data = f"M {pairs[0][0]} {pairs[0][1]}"
-    for px, py in pairs[1:]:
-        data += f" L {px} {py}"
-    if close:
-        data += " Z"
-    return data
-
-
 def strip_ns(tag):
     return tag.replace(f"{{{SVG_NS}}}", "")
 
 
-def android_filled_variant_svg(icon_name, svg_text):
+def filled_variant_svg(icon_name, svg_text):
     normalized = normalize_icon_name(icon_name)
     if normalized != "bookmark":
-        raise ValueError(f"Unsupported filled Android icon variant: {icon_name}")
+        raise ValueError(f"Unsupported filled icon variant: {icon_name}")
 
     ET.register_namespace("", SVG_NS)
     root = ET.fromstring(svg_text)
@@ -694,81 +604,6 @@ def android_filled_variant_svg(icon_name, svg_text):
             element.set("fill", "currentColor")
             element.set("stroke", "currentColor")
     return ET.tostring(root, encoding="unicode")
-
-
-def resolve_paint(value):
-    if not value:
-        return None
-    normalized = value.strip()
-    if normalized in ("none", "transparent"):
-        return None
-    if normalized == "currentColor":
-        return "currentColor"
-    return normalized
-
-
-def parse_svg(svg_text):
-    ET.register_namespace("", SVG_NS)
-    root = ET.fromstring(svg_text)
-    svg_defaults = {
-        "stroke": root.get("stroke", "currentColor"),
-        "fill": root.get("fill", "none"),
-        "stroke-width": root.get("stroke-width", "2"),
-        "stroke-linecap": root.get("stroke-linecap", "round"),
-        "stroke-linejoin": root.get("stroke-linejoin", "round"),
-    }
-    result = []
-
-    def visit(element, inherited):
-        tag = strip_ns(element.tag)
-        ctx = {key: element.get(key, inherited[key]) for key in inherited}
-        path_data = None
-        if tag == "path":
-            path_data = element.get("d", "")
-        elif tag == "circle":
-            path_data = circle_to_path(element.get("cx", 0), element.get("cy", 0), element.get("r", 0))
-        elif tag == "ellipse":
-            path_data = ellipse_to_path(
-                element.get("cx", 0), element.get("cy", 0), element.get("rx", 0), element.get("ry", 0)
-            )
-        elif tag == "line":
-            path_data = line_to_path(
-                element.get("x1", 0), element.get("y1", 0), element.get("x2", 0), element.get("y2", 0)
-            )
-        elif tag == "rect":
-            rx = element.get("rx", element.get("ry", 0))
-            ry = element.get("ry", rx)
-            path_data = rect_to_path(
-                element.get("x", 0),
-                element.get("y", 0),
-                element.get("width", 0),
-                element.get("height", 0),
-                rx,
-                ry,
-            )
-        elif tag == "polyline":
-            path_data = points_to_path(element.get("points", ""), close=False)
-        elif tag == "polygon":
-            path_data = points_to_path(element.get("points", ""), close=True)
-
-        if path_data:
-            entry = {"pathData": path_data}
-            fill_paint = resolve_paint(ctx["fill"])
-            stroke_paint = resolve_paint(ctx["stroke"])
-            if fill_paint:
-                entry["fillPaint"] = fill_paint
-            if stroke_paint:
-                entry["strokePaint"] = stroke_paint
-                entry["strokeWidth"] = ctx["stroke-width"]
-                entry["strokeLineCap"] = ctx["stroke-linecap"]
-                entry["strokeLineJoin"] = ctx["stroke-linejoin"]
-            result.append(entry)
-        for child in element:
-            visit(child, ctx)
-
-    for child in root:
-        visit(child, svg_defaults)
-    return result
 
 
 STRICT_PRESENTATION_ATTRIBUTES = {
@@ -804,9 +639,9 @@ def strict_float(value, label):
         raise RuntimeError(f"Non-finite SVG attribute {label}={value!r}")
     magnitude = abs(decimal_value)
     if magnitude > ANDROID_FLOAT_MAX:
-        raise RuntimeError(f"SVG number exceeds Android Float range: {label}={value!r}")
+        raise RuntimeError(f"SVG number exceeds Kotlin Float range: {label}={value!r}")
     if decimal_value != 0 and magnitude < ANDROID_FLOAT_MIN_POSITIVE:
-        raise RuntimeError(f"SVG number underflows Android Float range: {label}={value!r}")
+        raise RuntimeError(f"SVG number underflows Kotlin Float range: {label}={value!r}")
     return float(decimal_value)
 
 
@@ -1072,146 +907,6 @@ def parse_svg_strict(svg_text):
     }
 
 
-def run_s2c(svg_path, out_path, package):
-    result = subprocess.run(
-        [
-            "s2c",
-            "-o",
-            out_path,
-            "-p",
-            package,
-            "-t",
-            f"{package}.LucideIcons",
-            "--no-preview",
-            "--minified",
-            "-opt=false",
-            "--kmp=false",
-            svg_path,
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"s2c failed for {svg_path}:\n{result.stderr}")
-
-
-def extract_builder_block(kt_content, prop):
-    m_start = re.search(r"^\s*return (ImageVector\.Builder\()", kt_content, re.MULTILINE)
-    if not m_start:
-        raise ValueError(f"No ImageVector.Builder found for {prop}")
-
-    m_end = re.search(r"(\.build\(\))\.also \{ \w+ = it \}", kt_content)
-    if not m_end:
-        raise ValueError(f"No .build().also found for {prop}")
-
-    block = kt_content[m_start.start(1): m_end.end(1)]
-    return re.sub(r'(name\s*=\s*")[^"]*(")', rf'\g<1>Lucide{prop}\2', block, count=1)
-
-
-def collect_imports(kt_content):
-    return [line for line in kt_content.splitlines() if line.startswith("import ")]
-
-
-def android_vector_entry(icon_file_name, prop, svg, tmpdir, package):
-    svg_path = os.path.join(tmpdir, f"{icon_file_name}.svg")
-    with open(svg_path, "w", encoding="utf-8") as file:
-        file.write(svg)
-
-    out_path = os.path.join(tmpdir, f"{prop}.kt")
-    run_s2c(svg_path, out_path, package)
-    with open(out_path, "r", encoding="utf-8") as file:
-        kt_content = file.read()
-
-    return collect_imports(kt_content), extract_builder_block(kt_content, prop)
-
-
-def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
-    package = "build.raft.app.ui.icons"
-    entries = []
-    variant_entries = []
-    all_imports = set()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for name in icons:
-            prop = pascal_name(name)
-            svg = read_lucide_svg(name, version, fallback_dir=fallback_dir, lucide_source_dir=lucide_source_dir)
-            imports, block = android_vector_entry(name, prop, svg, tmpdir, package)
-            all_imports.update(imports)
-            entries.append((name, prop, block))
-
-            variant_name = ANDROID_FILLED_ICON_VARIANTS.get(name)
-            if variant_name:
-                variant_prop = pascal_name(variant_name)
-                variant_imports, variant_block = android_vector_entry(
-                    variant_name,
-                    variant_prop,
-                    android_filled_variant_svg(name, svg),
-                    tmpdir,
-                    package,
-                )
-                all_imports.update(variant_imports)
-                variant_entries.append((variant_name, variant_prop, variant_block))
-
-    sorted_imports = sorted(all_imports)
-    sorted_imports.append("import java.util.Locale")
-
-    lines = [
-        f"package {package}",
-        "",
-        *sorted_imports,
-        "",
-        "// Generated by scripts/generate_lucide_icons.py. Do not edit by hand.",
-        "object LucideIcons {",
-        f'    const val Version: String = "{version}"',
-        "",
-    ]
-    for _, prop, block in [*entries, *variant_entries]:
-        indented = "\n".join("        " + line if line.strip() else "" for line in block.splitlines())
-        lines.extend([f"    val {prop}: ImageVector by lazy {{", indented, "    }", ""])
-
-    name_entries = ", ".join(f'"{name}"' for name, _, _ in entries)
-    lines.extend(
-        [
-            f"    val Names: List<String> = listOf({name_entries})",
-            "",
-            "    fun byName(name: String): ImageVector? {",
-            "        return when (name.toIconKey()) {",
-        ]
-    )
-    for name, prop, _ in entries:
-        lines.append(f'            "{name}" -> {prop}')
-    lines.extend(
-        [
-            "            else -> null",
-            "        }",
-            "    }",
-            "",
-            "    private fun String.toIconKey(): String {",
-            "        val normalized = trim()",
-            "        if (normalized.isEmpty()) {",
-            "            return normalized",
-            "        }",
-            "        return normalized",
-            "            .replace(Regex(\"([a-z0-9])([A-Z])\"), \"$1-$2\")",
-            "            .replace('_', '-')",
-            "            .lowercase(Locale.US)",
-            "    }",
-            "",
-            f"    val All: List<ImageVector> = listOf({', '.join(prop for _, prop, _ in entries)})",
-            "}",
-            "",
-        ]
-    )
-
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    with open(output, "w", encoding="utf-8") as file:
-        file.write("\n".join(lines))
-    if variant_entries:
-        print(f"Generated {len(entries)} Android icons + {len(variant_entries)} variants -> {output}")
-    else:
-        print(f"Generated {len(entries)} Android icons -> {output}")
-
-
 def kotlin_float(value):
     number = float(value)
     if number == 0.0:
@@ -1230,173 +925,152 @@ def kotlin_nullable_string(value):
     return f'"{kotlin_string(value)}"'
 
 
-def android_path_entry_expr(path):
-    cap = {
-        "butt": "Butt",
-        "round": "Round",
-        "square": "Square",
-    }[path["strokeLineCap"]]
-    join = {
-        "miter": "Miter",
-        "round": "Round",
-        "bevel": "Bevel",
-    }[path["strokeLineJoin"]]
-    fill_rule = {
-        "nonzero": "NonZero",
-        "evenodd": "EvenOdd",
-    }[path["fillRule"]]
-    return "\n".join(
-        [
-            "            SlockLucidePathSpec(",
-            f'                pathData = "{kotlin_string(path["pathData"])}",',
-            f"                fillPaint = {kotlin_nullable_string(path['fillPaint'])},",
-            f"                strokePaint = {kotlin_nullable_string(path['strokePaint'])},",
-            f"                fillOpacity = {kotlin_float(path['fillOpacity'])},",
-            f"                strokeOpacity = {kotlin_float(path['strokeOpacity'])},",
-            f"                strokeWidth = {kotlin_float(path['strokeWidth'])},",
-            f"                strokeLineCap = SlockLucideStrokeLineCap.{cap},",
-            f"                strokeLineJoin = SlockLucideStrokeLineJoin.{join},",
-            f"                fillRule = SlockLucideFillRule.{fill_rule},",
-            "            ),",
-        ]
+COMPOSE_PATH_DEFAULTS = {
+    "fillPaint": None,
+    "strokePaint": "currentColor",
+    "strokeWidth": 2.0,
+    "strokeLineCap": "round",
+    "strokeLineJoin": "round",
+    "fillRule": "nonzero",
+}
+COMPOSE_LINE_CAPS = {"butt": "Butt", "round": "Round", "square": "Square"}
+COMPOSE_LINE_JOINS = {"miter": "Miter", "round": "Round", "bevel": "Bevel"}
+COMPOSE_FILL_RULES = {"nonzero": "NonZero", "evenodd": "EvenOdd"}
+
+
+def compose_path_entry_expr(path):
+    """One RaftLucidePathSpec(...) call; only non-default attributes are emitted."""
+    args = [f'"{kotlin_string(path["pathData"])}"']
+    if path["fillPaint"] != COMPOSE_PATH_DEFAULTS["fillPaint"]:
+        args.append(f"fillPaint = {kotlin_nullable_string(path['fillPaint'])}")
+    if path["fillPaint"] is not None and path["fillOpacity"] != 1.0:
+        args.append(f"fillOpacity = {kotlin_float(path['fillOpacity'])}")
+    if path["strokePaint"] != COMPOSE_PATH_DEFAULTS["strokePaint"]:
+        args.append(f"strokePaint = {kotlin_nullable_string(path['strokePaint'])}")
+    if path["strokePaint"] is not None and path["strokeOpacity"] != 1.0:
+        args.append(f"strokeOpacity = {kotlin_float(path['strokeOpacity'])}")
+    if path["strokeWidth"] != COMPOSE_PATH_DEFAULTS["strokeWidth"]:
+        args.append(f"strokeWidth = {kotlin_float(path['strokeWidth'])}")
+    if path["strokeLineCap"] != COMPOSE_PATH_DEFAULTS["strokeLineCap"]:
+        args.append(f"strokeLineCap = RaftLucideStrokeLineCap.{COMPOSE_LINE_CAPS[path['strokeLineCap']]}")
+    if path["strokeLineJoin"] != COMPOSE_PATH_DEFAULTS["strokeLineJoin"]:
+        args.append(f"strokeLineJoin = RaftLucideStrokeLineJoin.{COMPOSE_LINE_JOINS[path['strokeLineJoin']]}")
+    if path["fillRule"] != COMPOSE_PATH_DEFAULTS["fillRule"]:
+        args.append(f"fillRule = RaftLucideFillRule.{COMPOSE_FILL_RULES[path['fillRule']]}")
+    return f"RaftLucidePathSpec({', '.join(args)})"
+
+
+def compose_icon_expr(icon, parsed, indent):
+    pad = " " * indent
+    lines = [f"{pad}RaftLucideIconSpec(", f'{pad}    "{kotlin_string(icon)}",', f"{pad}    listOf("]
+    for path in parsed["paths"]:
+        lines.append(f"{pad}        {compose_path_entry_expr(path)},")
+    lines.append(f"{pad}    ),")
+    view_box = (
+        ("viewBoxMinX", 0.0),
+        ("viewBoxMinY", 0.0),
+        ("viewBoxWidth", 24.0),
+        ("viewBoxHeight", 24.0),
     )
+    for key, default in view_box:
+        if parsed[key] != default:
+            lines.append(f"{pad}    {key} = {kotlin_float(parsed[key])},")
+    lines.append(f"{pad})")
+    return lines
 
 
-def android_path_icon_expr(icon, parsed):
-    path_lines = "\n".join(android_path_entry_expr(path) for path in parsed["paths"])
-    return "\n".join(
-        [
-            "        SlockLucideIconSpec(",
-            f'            name = "{kotlin_string(icon)}",',
-            "            viewBox =",
-            "                SlockLucideViewBox(",
-            f"                    minX = {kotlin_float(parsed['viewBoxMinX'])},",
-            f"                    minY = {kotlin_float(parsed['viewBoxMinY'])},",
-            f"                    width = {kotlin_float(parsed['viewBoxWidth'])},",
-            f"                    height = {kotlin_float(parsed['viewBoxHeight'])},",
-            "                ),",
-            "            paths =",
-            "                listOf(",
-            path_lines,
-            "                ),",
-            "        )",
-        ]
-    )
+def read_pinned_icon_svg(icon, lucide_source_dir):
+    normalized = normalize_icon_name(icon)
+    if normalized in CUSTOM_ICONS and os.path.isfile(CUSTOM_ICONS[normalized]):
+        source_path = CUSTOM_ICONS[normalized]
+    else:
+        source_path = os.path.join(lucide_source_dir, "icons", f"{normalized}.svg")
+        if not os.path.isfile(source_path):
+            raise RuntimeError(f"Pinned Lucide source is missing icon: {source_path}")
+    with open(source_path, encoding="utf-8") as file:
+        return file.read().strip()
 
 
-def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir):
+def compose_catalog_source(icons, version, lucide_source_dir):
+    """Kotlin source for the commonMain Lucide path table consumed by RaftLucideIcon.
+
+    The table only stores SVG path strings plus non-default presentation attributes; the
+    runtime (RaftLucideImageVectors.kt) parses them lazily into cached ImageVectors. This keeps
+    the generated file small and avoids hundreds of ImageVector.Builder call chains to compile.
+    """
     if not lucide_source_dir:
-        raise RuntimeError("Android path generation requires a pinned Lucide source checkout")
+        raise RuntimeError("Compose Lucide generation requires a pinned Lucide source checkout")
     source_commit = LUCIDE_SOURCE_COMMITS.get(version)
     if not source_commit:
-        raise RuntimeError(f"Android path generation has no pinned commit for Lucide {version}")
-    entries = []
-    for icon in icons:
-        normalized = normalize_icon_name(icon)
-        if normalized in CUSTOM_ICONS and os.path.isfile(CUSTOM_ICONS[normalized]):
-            source_path = CUSTOM_ICONS[normalized]
-        else:
-            source_path = os.path.join(lucide_source_dir, "icons", f"{normalized}.svg")
-            if not os.path.isfile(source_path):
-                raise RuntimeError(f"Pinned Lucide source is missing icon: {source_path}")
-        with open(source_path, encoding="utf-8") as file:
-            svg = file.read().strip()
-        entries.append((icon, parse_svg_strict(svg)))
-
+        raise RuntimeError(f"Compose Lucide generation has no pinned commit for Lucide {version}")
+    entries = [(icon, parse_svg_strict(read_pinned_icon_svg(icon, lucide_source_dir))) for icon in icons]
     variant_entries = []
-    for source_name, variant_name in ANDROID_FILLED_ICON_VARIANTS.items():
+    for source_name in FILLED_ICON_VARIANTS:
         if source_name not in icons:
             continue
-        source_path = os.path.join(lucide_source_dir, "icons", f"{source_name}.svg")
-        with open(source_path, encoding="utf-8") as file:
-            variant_svg = android_filled_variant_svg(source_name, file.read().strip())
-        variant_entries.append((variant_name, parse_svg_strict(variant_svg)))
-    all_entries = [*entries, *variant_entries]
+        variant_svg = filled_variant_svg(source_name, read_pinned_icon_svg(source_name, lucide_source_dir))
+        variant_entries.append((source_name, parse_svg_strict(variant_svg)))
 
     lines = [
-        "package build.raft.app.shared.generated",
+        "package build.raft.app",
         "",
         "// Generated by scripts/generate_lucide_icons.py. Do not edit by hand.",
-        "internal enum class SlockLucideStrokeLineCap { Butt, Round, Square }",
-        "internal enum class SlockLucideStrokeLineJoin { Miter, Round, Bevel }",
-        "internal enum class SlockLucideFillRule { NonZero, EvenOdd }",
+        f"// Source: Lucide {version} ({source_commit}) plus scripts/assets/brand custom icons.",
         "",
-        "internal data class SlockLucideViewBox(",
-        "    val minX: Float,",
-        "    val minY: Float,",
-        "    val width: Float,",
-        "    val height: Float,",
-        ")",
+        "internal enum class RaftLucideStrokeLineCap { Butt, Round, Square }",
         "",
-        "internal data class SlockLucidePathSpec(",
+        "internal enum class RaftLucideStrokeLineJoin { Miter, Round, Bevel }",
+        "",
+        "internal enum class RaftLucideFillRule { NonZero, EvenOdd }",
+        "",
+        "/** One SVG path in viewBox units. Paints are `currentColor`, `#rgb`/`#rrggbb`, or null (none). */",
+        "internal class RaftLucidePathSpec(",
         "    val pathData: String,",
-        "    val fillPaint: String?,",
-        "    val strokePaint: String?,",
-        "    val fillOpacity: Float,",
-        "    val strokeOpacity: Float,",
-        "    val strokeWidth: Float,",
-        "    val strokeLineCap: SlockLucideStrokeLineCap,",
-        "    val strokeLineJoin: SlockLucideStrokeLineJoin,",
-        "    val fillRule: SlockLucideFillRule,",
+        "    val fillPaint: String? = null,",
+        "    val fillOpacity: Float = 1f,",
+        '    val strokePaint: String? = "currentColor",',
+        "    val strokeOpacity: Float = 1f,",
+        "    val strokeWidth: Float = 2f,",
+        "    val strokeLineCap: RaftLucideStrokeLineCap = RaftLucideStrokeLineCap.Round,",
+        "    val strokeLineJoin: RaftLucideStrokeLineJoin = RaftLucideStrokeLineJoin.Round,",
+        "    val fillRule: RaftLucideFillRule = RaftLucideFillRule.NonZero,",
         ")",
         "",
-        "internal data class SlockLucideIconSpec(",
+        "internal class RaftLucideIconSpec(",
         "    val name: String,",
-        "    val viewBox: SlockLucideViewBox,",
-        "    val paths: List<SlockLucidePathSpec>,",
+        "    val paths: List<RaftLucidePathSpec>,",
+        "    val viewBoxMinX: Float = 0f,",
+        "    val viewBoxMinY: Float = 0f,",
+        "    val viewBoxWidth: Float = 24f,",
+        "    val viewBoxHeight: Float = 24f,",
         ")",
         "",
-        "internal object SlockLucidePathIcons {",
+        "internal object RaftLucideIconPaths {",
         f'    const val Version: String = "{kotlin_string(version)}"',
         f'    const val SourceCommit: String = "{source_commit}"',
         "",
+        "    fun spec(name: RaftLucideIconName): RaftLucideIconSpec =",
+        "        when (name) {",
     ]
-    for icon, parsed in all_entries:
-        expression = android_path_icon_expr(icon, parsed)
-        lines.append(f"    private val {pascal_name(icon)}: SlockLucideIconSpec by lazy {{")
-        lines.extend(expression.splitlines())
-        lines.extend(["    }", ""])
+    for icon, parsed in entries:
+        lines.append(f"            RaftLucideIconName.{pascal_name(icon)} ->")
+        lines.extend(compose_icon_expr(icon, parsed, 16))
     lines.extend(
         [
-            "    val Names: List<String> =",
-            "        listOf(",
-            *[f'            "{kotlin_string(icon)}",' for icon, _ in entries],
-            "        )",
+            "        }",
             "",
-            "    val VariantNames: List<String> =",
-            "        listOf(",
-            *[f'            "{kotlin_string(icon)}",' for icon, _ in variant_entries],
-            "        )",
-            "",
-            "    fun byName(name: String): SlockLucideIconSpec? =",
-            "        when (name.toIconKey()) {",
+            "    /** Filled variant used when RaftLucideIcon gets a `fill` colour; null if the icon has none. */",
+            "    fun filledSpec(name: RaftLucideIconName): RaftLucideIconSpec? =",
+            "        when (name) {",
         ]
     )
-    for icon, _ in all_entries:
-        lines.append(f'            "{kotlin_string(icon)}" -> {pascal_name(icon)}')
+    for icon, parsed in variant_entries:
+        lines.append(f"            RaftLucideIconName.{pascal_name(icon)} ->")
+        lines.extend(compose_icon_expr(FILLED_ICON_VARIANTS[icon], parsed, 16))
     lines.extend(
         [
             "            else -> null",
             "        }",
-            "",
-            "    fun filledVariantName(name: String): String? =",
-            "        when (name.toIconKey()) {",
-            *[
-                f'            "{kotlin_string(source_name)}" -> "{kotlin_string(variant_name)}"'
-                for source_name, variant_name in ANDROID_FILLED_ICON_VARIANTS.items()
-                if source_name in icons
-            ],
-            "            else -> null",
-            "        }",
-            "",
-            "    fun filledByName(name: String): SlockLucideIconSpec? =",
-            "        filledVariantName(name)?.let(::byName)",
-            "",
-            "    private fun String.toIconKey(): String =",
-            "        trim()",
-            '            .replace(Regex("([a-z0-9])([A-Z])"), "$1-$2")',
-            "            .replace('_', '-')",
-            "            .lowercase()",
             "}",
             "",
         ]
@@ -1404,194 +1078,27 @@ def android_path_catalog_source(icons, version, fallback_dir, lucide_source_dir)
     return "\n".join(lines)
 
 
-def generate_android_paths(icons, version, output, fallback_dir, lucide_source_dir):
-    verify_android_path_source_checkout(lucide_source_dir, version)
-    source = android_path_catalog_source(
-        icons,
-        version,
-        fallback_dir,
-        lucide_source_dir,
-    )
+def generate_compose(icons, version, output, lucide_source_dir, check=False):
+    verify_pinned_source_checkout(lucide_source_dir, version)
+    source = compose_catalog_source(icons, version, lucide_source_dir)
+    if check:
+        return check_text(output, source)
     write_text(output, source)
-    print(f"Generated {len(icons)} Android path icons -> {output}")
+    print(f"Generated {len(icons)} Compose Lucide icons -> {output}")
+    return True
 
 
-def parse_dimension(raw):
-    if not raw:
-        return None
-    match = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", raw)
-    return float(match.group(0)) if match else None
-
-
-def svg_viewbox(svg_text):
-    root = ET.fromstring(svg_text)
-    view_box = root.get("viewBox")
-    if view_box:
-        nums = [float(part) for part in re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", view_box)]
-        if len(nums) == 4 and nums[2] > 0 and nums[3] > 0:
-            return nums[2], nums[3]
-    width = parse_dimension(root.get("width")) or 24.0
-    height = parse_dimension(root.get("height")) or 24.0
-    return width, height
-
-
-def line_cap_expr(value):
-    return {
-        "butt": "LineCapStyle.Butt",
-        "round": "LineCapStyle.Round",
-        "square": "LineCapStyle.Square",
-    }.get(value, "LineCapStyle.Round")
-
-
-def line_join_expr(value):
-    return {
-        "miter": "LineJoinStyle.Miter",
-        "round": "LineJoinStyle.Round",
-        "bevel": "LineJoinStyle.Bevel",
-    }.get(value, "LineJoinStyle.Round")
-
-
-def stroke_width(path):
+def check_text(path, expected):
     try:
-        return float(path.get("strokeWidth", "0"))
-    except ValueError:
-        return 0.0
-
-
-def format_number(value):
-    if abs(value) < 0.000001:
-        value = 0.0
-    text = f"{value:.4f}".rstrip("0").rstrip(".")
-    return text or "0"
-
-
-def transform_command_values(command, values, scale, offset_x, offset_y):
-    absolute = command.isupper()
-    upper = command.upper()
-
-    def transform_x(raw):
-        value = float(raw) * scale
-        return value + offset_x if absolute else value
-
-    def transform_y(raw):
-        value = float(raw) * scale
-        return value + offset_y if absolute else value
-
-    if upper in ("M", "L", "T"):
-        return [format_number(transform_x(values[0])), format_number(transform_y(values[1]))]
-    if upper == "H":
-        value = float(values[0]) * scale
-        if absolute:
-            value += offset_x
-        return [format_number(value)]
-    if upper == "V":
-        value = float(values[0]) * scale
-        if absolute:
-            value += offset_y
-        return [format_number(value)]
-    if upper in ("S", "Q"):
-        return [
-            format_number(transform_x(values[0])),
-            format_number(transform_y(values[1])),
-            format_number(transform_x(values[2])),
-            format_number(transform_y(values[3])),
-        ]
-    if upper == "C":
-        return [
-            format_number(transform_x(values[0])),
-            format_number(transform_y(values[1])),
-            format_number(transform_x(values[2])),
-            format_number(transform_y(values[3])),
-            format_number(transform_x(values[4])),
-            format_number(transform_y(values[5])),
-        ]
-    if upper == "A":
-        return [
-            format_number(float(values[0]) * scale),
-            format_number(float(values[1]) * scale),
-            values[2],
-            values[3],
-            values[4],
-            format_number(transform_x(values[5])),
-            format_number(transform_y(values[6])),
-        ]
-    return values
-
-
-def normalize_path_data(path_data, viewport_width, viewport_height):
-    scale = NORMALIZED_VIEWPORT / max(viewport_width, viewport_height)
-    offset_x = (NORMALIZED_VIEWPORT - viewport_width * scale) / 2.0
-    offset_y = (NORMALIZED_VIEWPORT - viewport_height * scale) / 2.0
-    tokens = PATH_TOKEN_RE.findall(path_data)
-    result = []
-    index = 0
-    command = None
-    while index < len(tokens):
-        token = tokens[index]
-        if re.fullmatch(r"[AaCcHhLlMmQqSsTtVvZz]", token):
-            command = token
-            result.append(command)
-            index += 1
-            if command.upper() == "Z":
-                command = None
-            continue
-        if command is None:
-            result.append(token)
-            index += 1
-            continue
-
-        arity = PATH_COMMAND_ARITY[command.upper()]
-        if arity == 0 or index + arity > len(tokens):
-            result.append(token)
-            index += 1
-            continue
-
-        values = tokens[index:index + arity]
-        result.extend(transform_command_values(command, values, scale, offset_x, offset_y))
-        index += arity
-        if command == "M":
-            command = "L"
-        elif command == "m":
-            command = "l"
-    return " ".join(result), viewport_width * scale, viewport_height * scale
-
-
-def ohos_entry_expr(path, viewport_width, viewport_height):
-    fill_paint = path.get("fillPaint") or "none"
-    stroke_paint = path.get("strokePaint") or "none"
-    has_fill = fill_paint != "none"
-    has_stroke = stroke_paint != "none"
-    commands, normalized_width, normalized_height = normalize_path_data(
-        path["pathData"], viewport_width, viewport_height
-    )
-    return (
-        "    {\n"
-        f"      commands: '{ets_string(commands)}',\n"
-        f"      fillPaint: '{ets_string(fill_paint)}',\n"
-        f"      strokePaint: '{ets_string(stroke_paint)}',\n"
-        f"      fillOpacity: {1 if has_fill else 0},\n"
-        f"      strokeOpacity: {1 if has_stroke else 0},\n"
-        f"      strokeWidth: {stroke_width(path) * (NORMALIZED_VIEWPORT / max(viewport_width, viewport_height)):g},\n"
-        f"      strokeLineCap: {line_cap_expr(path.get('strokeLineCap'))},\n"
-        f"      strokeLineJoin: {line_join_expr(path.get('strokeLineJoin'))},\n"
-        f"      viewportWidth: {normalized_width:g},\n"
-        f"      viewportHeight: {normalized_height:g},\n"
-        "    }"
-    )
-
-
-def read_ohos_svg(icon_name, version, resfile_output, lucide_source_dir):
-    brand_path = BRAND_SVGS.get(icon_name)
-    if brand_path:
-        if os.path.exists(brand_path):
-            with open(brand_path, "r", encoding="utf-8") as file:
-                return file.read().strip()
-        fallback_path = os.path.join(resfile_output, f"{icon_name}.svg")
-        if os.path.exists(fallback_path):
-            with open(fallback_path, "r", encoding="utf-8") as file:
-                return file.read().strip()
-        raise RuntimeError(f"Brand SVG '{icon_name}' is missing at {brand_path} and {fallback_path}")
-    return read_lucide_svg(icon_name, version, fallback_dir=resfile_output, lucide_source_dir=lucide_source_dir)
+        with open(path, encoding="utf-8") as file:
+            actual = file.read()
+    except FileNotFoundError:
+        actual = None
+    if actual != expected:
+        print(f"OUT OF DATE: {path}")
+        return False
+    print(f"up to date: {path}")
+    return True
 
 
 def read_brand_asset_svg(asset_name):
@@ -1637,22 +1144,20 @@ def write_text(path, text):
         file.write(text)
 
 
-def generate_brand_assets(shared_asset_output, ohos_resfile_output, ios_asset_catalog):
+def generate_brand_assets(shared_asset_output, ios_asset_catalog):
     shared_asset_output = os.path.abspath(shared_asset_output)
-    ohos_resfile_output = os.path.abspath(ohos_resfile_output)
     ios_asset_catalog = os.path.abspath(ios_asset_catalog)
     for asset_name in BRAND_ASSET_SVGS.keys():
         svg_text = read_brand_asset_svg(asset_name)
         filename = f"{asset_name}.svg"
         write_text(os.path.join(shared_asset_output, filename), svg_text)
-        write_text(os.path.join(ohos_resfile_output, filename), svg_text)
 
         imageset_dir = os.path.join(ios_asset_catalog, f"lucide-{asset_name}.imageset")
         write_text(os.path.join(imageset_dir, filename), svg_text)
         write_text(os.path.join(imageset_dir, "Contents.json"), ios_imageset_contents(filename))
     print(
         f"Generated {len(BRAND_ASSET_SVGS)} brand SVG assets -> "
-        f"{shared_asset_output}, {ohos_resfile_output}, {ios_asset_catalog}"
+        f"{shared_asset_output}, {ios_asset_catalog}"
     )
 
 
@@ -1703,72 +1208,7 @@ def validate_ios_assets(icons, ios_asset_catalog):
         )
 
 
-def generate_ohos(icons, version, output, resfile_output, lucide_source_dir):
-    all_icons = [*BRAND_SVGS.keys(), *icons]
-    cases = []
-    os.makedirs(resfile_output, exist_ok=True)
-    for icon in all_icons:
-        svg_text = read_ohos_svg(icon, version, resfile_output, lucide_source_dir)
-        with open(os.path.join(resfile_output, f"{icon}.svg"), "w", encoding="utf-8") as file:
-            file.write(normalize_ohos_svg(svg_text))
-        viewport_width, viewport_height = svg_viewbox(svg_text)
-        paths = parse_svg(svg_for_path_parse(svg_text))
-        entries = ",\n".join(ohos_entry_expr(path, viewport_width, viewport_height) for path in paths)
-        cases.append((icon, entries))
-
-    lines = [
-        "// Generated by scripts/generate_lucide_icons.py. Do not edit by hand.",
-        "",
-        "export interface SlockLucidePathEntry {",
-        "  commands: string;",
-        "  fillPaint: string;",
-        "  strokePaint: string;",
-        "  fillOpacity: number;",
-        "  strokeOpacity: number;",
-        "  strokeWidth: number;",
-        "  strokeLineCap: LineCapStyle;",
-        "  strokeLineJoin: LineJoinStyle;",
-        "  viewportWidth: number;",
-        "  viewportHeight: number;",
-        "}",
-        "",
-        "export const SlockLucidePathIconNames: string[] = [",
-        *[f"  '{icon}'," for icon, _ in cases],
-        "];",
-        "",
-        "export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {",
-        "  switch (normalizeSlockLucidePathIconName(name)) {",
-    ]
-    for icon, entries in cases:
-        lines.extend([f"    case '{icon}':", "      return [", entries, "      ];"])
-    lines.extend(
-        [
-            "    default:",
-            "      return [];",
-            "  }",
-            "}",
-            "",
-            "function normalizeSlockLucidePathIconName(value: string): string {",
-            "  if (value === null || value === undefined) {",
-            "    return '';",
-            "  }",
-            "  return value",
-            "    .trim()",
-            "    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')",
-            "    .replace(/_/g, '-')",
-            "    .toLowerCase();",
-            "}",
-            "",
-        ]
-    )
-
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    with open(output, "w", encoding="utf-8") as file:
-        file.write("\n".join(lines))
-    print(f"Generated {len(cases)} OHOS icons -> {output}")
-
-
-def generate_shared_catalog(icons, output):
+def shared_catalog_source(icons):
     brand_entries = ", ".join(f'"{name}"' for name in BRAND_SVGS.keys())
     lines = [
         "package build.raft.app",
@@ -1782,8 +1222,8 @@ def generate_shared_catalog(icons, output):
         "import kotlinx.serialization.encoding.Encoder",
         "",
         "// Generated by scripts/generate_lucide_icons.py. Do not edit by hand.",
-        "@Serializable(with = SlockLucideIconNameWireSerializer::class)",
-        "enum class SlockLucideIconName(val wireName: String) {",
+        "@Serializable(with = RaftLucideIconNameWireSerializer::class)",
+        "enum class RaftLucideIconName(val wireName: String) {",
     ]
     for index, icon in enumerate(icons):
         suffix = "," if index < len(icons) - 1 else ";"
@@ -1792,42 +1232,48 @@ def generate_shared_catalog(icons, output):
         [
             "",
             "    companion object {",
-            "        fun fromWireName(value: String): SlockLucideIconName? =",
+            "        fun fromWireName(value: String): RaftLucideIconName? =",
             "            entries.firstOrNull { it.wireName == value }",
             "    }",
             "}",
             "",
-            "object SlockLucideIconNameWireSerializer : KSerializer<SlockLucideIconName> {",
+            "object RaftLucideIconNameWireSerializer : KSerializer<RaftLucideIconName> {",
             "    override val descriptor: SerialDescriptor =",
-            '        PrimitiveSerialDescriptor("SlockLucideIconName", PrimitiveKind.STRING)',
+            '        PrimitiveSerialDescriptor("RaftLucideIconName", PrimitiveKind.STRING)',
             "",
-            "    override fun serialize(encoder: Encoder, value: SlockLucideIconName) {",
+            "    override fun serialize(encoder: Encoder, value: RaftLucideIconName) {",
             "        encoder.encodeString(value.wireName)",
             "    }",
             "",
-            "    override fun deserialize(decoder: Decoder): SlockLucideIconName =",
-            "        SlockLucideIconName.fromWireName(decoder.decodeString()) ?: SlockLucideIconName.Settings",
+            "    override fun deserialize(decoder: Decoder): RaftLucideIconName =",
+            "        RaftLucideIconName.fromWireName(decoder.decodeString()) ?: RaftLucideIconName.Settings",
             "}",
             "",
-            "internal object SlockLucideIcons {",
-            "    val Names: List<String> = SlockLucideIconName.entries.map { it.wireName }",
+            "internal object RaftLucideIcons {",
+            "    val Names: List<String> = RaftLucideIconName.entries.map { it.wireName }",
             "}",
             "",
-            "internal object SlockLucideIconCompareSet {",
-            f"    val Names: List<String> = listOf({brand_entries}) + SlockLucideIcons.Names",
+            "internal object RaftLucideIconCompareSet {",
+            f"    val Names: List<String> = listOf({brand_entries}) + RaftLucideIcons.Names",
             "}",
             "",
         ]
     )
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    with open(output, "w", encoding="utf-8") as file:
-        file.write("\n".join(lines))
+    return "\n".join(lines)
+
+
+def generate_shared_catalog(icons, output, check=False):
+    source = shared_catalog_source(icons)
+    if check:
+        return check_text(output, source)
+    write_text(output, source)
     print(f"Generated shared icon catalog -> {output}")
+    return True
 
 
 def parse_targets(value):
     targets = {part.strip().lower() for part in value.split(",") if part.strip()}
-    valid = {"android", "android-path", "ohos", "ios", "shared", "brand-assets"}
+    valid = {"compose", "ios", "shared", "brand-assets"}
     unknown = targets - valid
     if unknown:
         raise argparse.ArgumentTypeError(f"Unknown target(s): {', '.join(sorted(unknown))}")
@@ -1837,14 +1283,11 @@ def parse_targets(value):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("icons", nargs="*", help="Lucide icon names. Defaults to the Slock manifest in this file.")
     parser.add_argument("--version", default=DEFAULT_VERSION)
-    parser.add_argument("--targets", type=parse_targets, default=parse_targets(DEFAULT_TARGETS))
-    parser.add_argument("--android-output", default=DEFAULT_ANDROID_OUTPUT)
-    parser.add_argument("--android-path-output", default=DEFAULT_ANDROID_PATH_OUTPUT)
-    parser.add_argument("--ohos-output", default=DEFAULT_OHOS_PATH_OUTPUT)
-    parser.add_argument("--ohos-resfile-output", default=DEFAULT_OHOS_RESFILE_OUTPUT)
+    parser.add_argument("--targets", type=parse_targets, default=None)
+    parser.add_argument("--compose-output", default=DEFAULT_COMPOSE_OUTPUT)
     parser.add_argument("--shared-catalog-output", default=DEFAULT_SHARED_CATALOG_OUTPUT)
     parser.add_argument("--shared-asset-output", default=DEFAULT_SHARED_ASSET_OUTPUT)
     parser.add_argument("--ios-asset-catalog", default=DEFAULT_IOS_ASSET_CATALOG)
@@ -1852,9 +1295,20 @@ def main():
     parser.add_argument("--lucide-repo-dir", default=None)
     parser.add_argument("--download-workers", type=int, default=8)
     parser.add_argument("--all-lucide-icons", action="store_true")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify the committed compose/shared Kotlin outputs match the generator (no writes).",
+    )
     args = parser.parse_args()
 
-    lucide_targets = args.targets & {"android", "android-path", "ohos", "ios", "shared"}
+    targets = args.targets
+    if targets is None:
+        targets = set(CHECKABLE_TARGETS) if args.check else parse_targets(DEFAULT_TARGETS)
+    if args.check and targets - CHECKABLE_TARGETS:
+        parser.error(f"--check only supports targets: {', '.join(sorted(CHECKABLE_TARGETS))}")
+
+    lucide_targets = targets & {"compose", "ios", "shared"}
     lucide_source_dir = None
     icons = []
     if lucide_targets:
@@ -1866,49 +1320,35 @@ def main():
         prefetch_lucide_svgs(
             icons,
             args.version,
-            os.path.abspath(args.ohos_resfile_output),
+            None,
             lucide_source_dir,
             args.download_workers,
         )
-    if "android" in args.targets:
-        generate_android(
+    ok = True
+    if "compose" in targets:
+        ok &= generate_compose(
             icons,
             args.version,
-            os.path.abspath(args.android_output),
-            os.path.abspath(args.ohos_resfile_output),
+            os.path.abspath(args.compose_output),
             lucide_source_dir,
+            check=args.check,
         )
-    if "android-path" in args.targets:
-        generate_android_paths(
-            icons,
-            args.version,
-            os.path.abspath(args.android_path_output),
-            os.path.abspath(args.ohos_resfile_output),
-            lucide_source_dir,
-        )
-    if "ohos" in args.targets:
-        generate_ohos(
-            icons,
-            args.version,
-            os.path.abspath(args.ohos_output),
-            os.path.abspath(args.ohos_resfile_output),
-            lucide_source_dir,
-        )
-    if "ios" in args.targets:
+    if "ios" in targets:
         generate_ios(
             icons,
             args.version,
             os.path.abspath(args.ios_asset_catalog),
             lucide_source_dir,
         )
-    if "shared" in args.targets:
-        generate_shared_catalog(icons, os.path.abspath(args.shared_catalog_output))
-    if "brand-assets" in args.targets:
+    if "shared" in targets:
+        ok &= generate_shared_catalog(icons, os.path.abspath(args.shared_catalog_output), check=args.check)
+    if "brand-assets" in targets:
         generate_brand_assets(
             os.path.abspath(args.shared_asset_output),
-            os.path.abspath(args.ohos_resfile_output),
             os.path.abspath(args.ios_asset_catalog),
         )
+    if not ok:
+        raise SystemExit("Lucide outputs are out of date; run scripts/generate_lucide_icons.py")
 
 
 if __name__ == "__main__":

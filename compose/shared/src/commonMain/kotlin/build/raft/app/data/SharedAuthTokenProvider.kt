@@ -1,8 +1,8 @@
 package build.raft.app.data
 
 class SharedAuthTokenProvider(
-    private val sessionStore: SlockAuthSessionStore,
-    private val authApi: SlockAuthApi,
+    private val sessionStore: RaftAuthSessionStore,
+    private val authApi: RaftAuthApi,
     private val clockMillis: () -> Long,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {},

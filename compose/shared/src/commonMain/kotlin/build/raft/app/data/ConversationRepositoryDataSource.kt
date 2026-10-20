@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.strictProjectionDiagnosticsLogger
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -41,7 +41,7 @@ private val conversationRepositoryJson = Json {
 internal interface AuthorityBoundAttachmentUploader {
     suspend fun uploadAttachmentsBound(
         request: AttachmentUploadRequest,
-        expectedAuthority: SlockExpectedAuthBinding
+        expectedAuthority: RaftExpectedAuthBinding
     ): DataResult<AttachmentUploadResult>
 }
 
@@ -50,7 +50,7 @@ internal class RealConversationAuthorityBoundAttachmentUploader(
 ) : AuthorityBoundAttachmentUploader {
     override suspend fun uploadAttachmentsBound(
         request: AttachmentUploadRequest,
-        expectedAuthority: SlockExpectedAuthBinding
+        expectedAuthority: RaftExpectedAuthBinding
     ): DataResult<AttachmentUploadResult> =
         repository.uploadAttachmentsBound(request, expectedAuthority)
 }
@@ -58,7 +58,7 @@ internal class RealConversationAuthorityBoundAttachmentUploader(
 internal fun interface ProgressiveConversationAttachmentUploader {
     suspend fun uploadAttachmentsWithProgress(
         request: AttachmentUploadRequest,
-        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
     ): DataResult<AttachmentUploadResult>
 }
 
@@ -70,7 +70,7 @@ private fun DataResult<*>.conversationDiagnosticsResult(): String =
         is DataResult.NoPermission -> "no_permission:${blocker.code}"
     }
 
-private suspend fun SlockNetworkClient.channelMessages(
+private suspend fun RaftNetworkClient.channelMessages(
     priority: DataRequestPriority,
     channelId: ChannelId,
     limit: Int,
@@ -90,7 +90,7 @@ private suspend fun SlockNetworkClient.channelMessages(
             )
     )
 
-private suspend fun SlockNetworkClient.messageContext(
+private suspend fun RaftNetworkClient.messageContext(
     priority: DataRequestPriority,
     messageId: MessageId,
     channelId: ChannelId? = null,
@@ -103,7 +103,7 @@ private suspend fun SlockNetworkClient.messageContext(
         serverIdOverride = serverIdOverride,
     )
 
-private suspend fun SlockNetworkClient.messageSync(
+private suspend fun RaftNetworkClient.messageSync(
     priority: DataRequestPriority,
     sinceSeq: Long,
     limit: Int,
@@ -122,7 +122,7 @@ private suspend fun SlockNetworkClient.messageSync(
             )
     )
 
-private suspend fun SlockNetworkClient.channelThreads(
+private suspend fun RaftNetworkClient.channelThreads(
     priority: DataRequestPriority,
     channelId: ChannelId,
     limit: Int? = null,
@@ -147,7 +147,7 @@ private suspend fun SlockNetworkClient.channelThreads(
             )
     )
 
-private suspend fun SlockNetworkClient.followedThreads(
+private suspend fun RaftNetworkClient.followedThreads(
     priority: DataRequestPriority,
     limit: Int,
     serverId: ServerId? = null
@@ -159,7 +159,7 @@ private suspend fun SlockNetworkClient.followedThreads(
         serverIdOverride = serverId
     )
 
-private suspend fun SlockNetworkClient.createOrOpenThread(
+private suspend fun RaftNetworkClient.createOrOpenThread(
     priority: DataRequestPriority,
     channelId: ChannelId,
     bodyText: String,
@@ -173,42 +173,42 @@ private suspend fun SlockNetworkClient.createOrOpenThread(
         serverIdOverride = serverIdOverride,
     )
 
-private suspend fun SlockNetworkClient.followThread(
+private suspend fun RaftNetworkClient.followThread(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/threads/follow", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.unfollowThread(
+private suspend fun RaftNetworkClient.unfollowThread(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/threads/unfollow", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.markThreadDone(
+private suspend fun RaftNetworkClient.markThreadDone(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/threads/done", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.markThreadUndone(
+private suspend fun RaftNetworkClient.markThreadUndone(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "channels/threads/undone", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.attachmentUrl(
+private suspend fun RaftNetworkClient.attachmentUrl(
     priority: DataRequestPriority,
     attachmentId: AttachmentId
 ): HomeNetworkResponse =
     request(priority, "attachments/${attachmentId.value}/url")
 
-private suspend fun SlockNetworkClient.attachmentUploadCapabilities(
+private suspend fun RaftNetworkClient.attachmentUploadCapabilities(
     priority: DataRequestPriority
 ): HomeNetworkResponse =
     request(priority, "attachments/upload-capabilities")
 
-private suspend fun SlockNetworkClient.channelFiles(
+private suspend fun RaftNetworkClient.channelFiles(
     priority: DataRequestPriority,
     channelId: ChannelId,
     limit: Int,
@@ -220,27 +220,27 @@ private suspend fun SlockNetworkClient.channelFiles(
         query = listOfNotNull("limit" to limit.toString(), cursor?.takeIf { it.isNotBlank() }?.let { "cursor" to it })
     )
 
-private suspend fun SlockNetworkClient.sendMessage(
+private suspend fun RaftNetworkClient.sendMessage(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "messages", method = "POST", bodyText = bodyText)
 
-private suspend fun SlockNetworkClient.executePendingMentionActions(
+private suspend fun RaftNetworkClient.executePendingMentionActions(
     priority: DataRequestPriority,
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "messages/mention-actions/execute", method = "POST", bodyText = bodyText)
 
 class RealConversationRepository private constructor(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val routeServerIdProvider: (() -> String?)? = null,
     private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     private val routeEnvironmentIdProvider: (() -> String?)? = null,
     /** Non-null only for the repository produced by [boundTo].  Direct upload sessions are
      * reservation-bearing mutations and must not be reachable through a selector-backed facade. */
-    private val directSessionAuthority: SlockExpectedAuthBinding? = null,
+    private val directSessionAuthority: RaftExpectedAuthBinding? = null,
 ) : ConversationRepository, ProgressiveConversationAttachmentUploader {
     /**
      * Upper bound the targeted reply-summary join waits for the account-wide followed-thread
@@ -253,8 +253,8 @@ class RealConversationRepository private constructor(
 
     /** Public compatibility constructor for ordinary selector-backed repositories. */
     constructor(
-        sessionStore: SlockAuthSessionStore,
-        networkClient: SlockNetworkClient,
+        sessionStore: RaftAuthSessionStore,
+        networkClient: RaftNetworkClient,
         routeServerIdProvider: (() -> String?)? = null,
         warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
         routeEnvironmentIdProvider: (() -> String?)? = null,
@@ -274,8 +274,8 @@ class RealConversationRepository private constructor(
      * complete operation; constructing a fresh unbound repository for cleanup would reopen the
      * account/server race this seam is intended to close.
      */
-    internal fun boundTo(expectedAuthority: SlockExpectedAuthBinding): RealConversationRepository? {
-        if (networkClient !is AuthorityBoundSlockNetworkClient) return null
+    internal fun boundTo(expectedAuthority: RaftExpectedAuthBinding): RealConversationRepository? {
+        if (networkClient !is AuthorityBoundRaftNetworkClient) return null
         if (
             expectedAuthority.accountId.trim().isBlank() ||
             expectedAuthority.accessToken.isBlank() ||
@@ -305,7 +305,7 @@ class RealConversationRepository private constructor(
      * an unbound repository for capability admission or compensation.
      */
     internal fun directAttachmentUploadOperation(
-        expectedAuthority: SlockExpectedAuthBinding,
+        expectedAuthority: RaftExpectedAuthBinding,
         diagnosticsLogger: (String) -> Unit = {},
     ): DirectAttachmentUploadOperation? =
         boundTo(expectedAuthority)?.let { boundRepository ->
@@ -334,7 +334,7 @@ class RealConversationRepository private constructor(
             },
             source = "conversation_detail",
             mapper = { bodyText ->
-                parseSlockChannelDetail(bodyText, warningLogger)?.toConversationSummary()
+                parseRaftChannelDetail(bodyText, warningLogger)?.toConversationSummary()
                     ?: throw IllegalStateException("Conversation detail response missing channel")
             },
         )
@@ -419,7 +419,7 @@ class RealConversationRepository private constructor(
     override suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -442,7 +442,7 @@ class RealConversationRepository private constructor(
     override suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -477,7 +477,7 @@ class RealConversationRepository private constructor(
             file.copy(fileRef = normalizedRef)
         )
         return when (preparation) {
-            is SlockPlatformFilePreparationResult.Ready -> {
+            is RaftPlatformFilePreparationResult.Ready -> {
                 val size = preparation.sizeBytes
                 if (size <= 0L) {
                     DataResult.Error(ScreenError("attachment_size_unavailable", retryable = false))
@@ -490,7 +490,7 @@ class RealConversationRepository private constructor(
                     )
                 }
             }
-            is SlockPlatformFilePreparationResult.Rejected ->
+            is RaftPlatformFilePreparationResult.Rejected ->
                 if (preparation.code == "auth_authority_changed") {
                     DataResult.Error(ScreenError("auth_authority_changed", retryable = true))
                 } else {
@@ -762,7 +762,7 @@ class RealConversationRepository private constructor(
         return DataResult.Content(
             snapshot.withConversationDetail(
                 detail = detail,
-                canonicalReplyThread = canonicalTargetKind == KuiklyThreadSurfaceKind.ReplyThread
+                canonicalReplyThread = canonicalTargetKind == RaftThreadSurfaceKind.ReplyThread
             )
         )
     }
@@ -792,7 +792,7 @@ class RealConversationRepository private constructor(
             warningLogger("conversation_detail_unavailable channelId=${channelId.value} status=${response.code}")
             return null
         }
-        val detail = parseSlockChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
+        val detail = parseRaftChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
         if (detail == null) {
             warningLogger("conversation_detail_parse_failed channelId=${channelId.value}")
         }
@@ -981,9 +981,12 @@ class RealConversationRepository private constructor(
             networkClient.unfollowThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
         }
 
-    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+    override suspend fun markThreadDone(
+        threadChannelId: ChannelId,
+        frontier: InboxDoneFrontier
+    ): DataResult<ThreadActionResult> =
         threadAction(threadChannelId, source = "thread_done") {
-            networkClient.markThreadDone(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
+            networkClient.markThreadDone(DataRequestPriority.Foreground, threadChannelId.toThreadDoneBody(frontier))
         }
 
     override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
@@ -996,13 +999,13 @@ class RealConversationRepository private constructor(
 
     override suspend fun uploadAttachmentsWithProgress(
         request: AttachmentUploadRequest,
-        onProgress: (build.raft.app.network.SlockTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
     ): DataResult<AttachmentUploadResult> =
         uploadAttachmentsInternal(request, onProgress)
 
     private suspend fun uploadAttachmentsInternal(
         request: AttachmentUploadRequest,
-        onProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?
+        onProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
     ): DataResult<AttachmentUploadResult> {
         currentContext() ?: return authRequired()
         if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
@@ -1034,7 +1037,7 @@ class RealConversationRepository private constructor(
 
     internal suspend fun uploadAttachmentsBound(
         request: AttachmentUploadRequest,
-        expectedAuthority: SlockExpectedAuthBinding
+        expectedAuthority: RaftExpectedAuthBinding
     ): DataResult<AttachmentUploadResult> {
         val context = currentContext() ?: return authRequired()
         if (
@@ -1047,7 +1050,7 @@ class RealConversationRepository private constructor(
             return DataResult.Error(ScreenError("external_share_authority_changed", retryable = true))
         }
         if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
-        val boundNetwork = networkClient as? AuthorityBoundSlockNetworkClient
+        val boundNetwork = networkClient as? AuthorityBoundRaftNetworkClient
             ?: return DataResult.Error(ScreenError("attachment_upload_authority_binding_unsupported", retryable = false))
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
@@ -1695,7 +1698,7 @@ private fun buildSharedThreadSnapshot(
             .copy(archived = payload.channelArchived)
     val conversation =
         if (
-            payload.canonicalTarget?.kind == KuiklyThreadSurfaceKind.ReplyThread &&
+            payload.canonicalTarget?.kind == RaftThreadSurfaceKind.ReplyThread &&
             payload.canonicalTarget.channelId != null &&
             payload.canonicalTarget.threadParentMessageId != null
         ) {
@@ -1899,9 +1902,9 @@ private fun InboxItem.matchesParentMessage(messageId: MessageId): Boolean {
             parentMessageId?.value,
             lastMessageId?.value,
             latestActivityMessageId?.value,
-            parentMessagePreview?.extractSlockMessageReferenceId(),
-            latestActivityPreview?.extractSlockMessageReferenceId(),
-            lastMessagePreview?.extractSlockMessageReferenceId(),
+            parentMessagePreview?.extractRaftMessageReferenceId(),
+            latestActivityPreview?.extractRaftMessageReferenceId(),
+            lastMessagePreview?.extractRaftMessageReferenceId(),
             threadChannelId?.value,
             channelId.value,
             key.removePrefix("thread:").takeIf { it != key }
@@ -1909,7 +1912,7 @@ private fun InboxItem.matchesParentMessage(messageId: MessageId): Boolean {
     return candidateIds.any { candidate -> messageId.value.matchesThreadSummaryId(candidate) }
 }
 
-private fun String.extractSlockMessageReferenceId(): String? =
+private fun String.extractRaftMessageReferenceId(): String? =
     Regex("#[A-Za-z0-9_-]+:([A-Fa-f0-9]{8})(?:[A-Fa-f0-9-]{0,28})?")
         .find(this)
         ?.groupValues
@@ -1988,6 +1991,31 @@ private fun ChannelId.toThreadActionBody(): String =
         ThreadChannelActionRequestBody(threadChannelId = value)
     )
 
+/**
+ * `POST /channels/threads/done` body (botiverse/slock 1bb70cbeb,
+ * routes/channels.ts:2014): same omitted-vs-storage matrix as inbox Done.
+ */
+@Serializable
+private data class ThreadDoneRequestBody(
+    val threadChannelId: String,
+    val throughActivitySeq: String? = null,
+    val frontierSpace: String? = null,
+)
+
+private fun ChannelId.toThreadDoneBody(frontier: InboxDoneFrontier): String =
+    inboxDoneRequestJson.encodeToString(
+        ThreadDoneRequestBody.serializer(),
+        when (frontier) {
+            InboxDoneFrontier.Legacy -> ThreadDoneRequestBody(threadChannelId = value)
+            is InboxDoneFrontier.Storage ->
+                ThreadDoneRequestBody(
+                    threadChannelId = value,
+                    throughActivitySeq = frontier.throughActivitySeq,
+                    frontierSpace = InboxDoneFrontierSpaceStorage,
+                )
+        }
+    )
+
 private fun MessageId.toParentMessageThreadBody(): String =
     conversationRepositoryJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId = value))
 
@@ -2037,17 +2065,17 @@ private suspend fun <T> executeConversationWithDiagnostics(
         val parseStartedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
             "conversation_parse_start source=$sourceLabel responseBytes=$responseBytes " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         val result =
-            withContext(SlockJsonParseDispatcher) {
+            withContext(RaftJsonParseDispatcher) {
                 mapper(body)
             }
         val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
         diagnosticsLogger(
             "conversation_parse_result source=$sourceLabel result=${dataResult.conversationDiagnosticsResult()} " +
                 "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         dataResult
     } catch (cancellation: kotlinx.coroutines.CancellationException) {

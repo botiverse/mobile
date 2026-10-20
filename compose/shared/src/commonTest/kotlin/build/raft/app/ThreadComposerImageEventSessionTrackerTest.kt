@@ -1,7 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,8 +28,8 @@ class ThreadComposerImageEventSessionTrackerTest {
     @Test
     fun partialThreadSessionSweepRemovesAccumulatorRegistryLedgerAndRefs() {
         val tracker = ThreadComposerImageEventSessionTracker()
-        val registry = SlockFilePreviewEphemeralActionRegistry()
-        val ledger = SlockFilePreviewEphemeralCleanupLedger(InMemorySlockKeyValueStore())
+        val registry = RaftFilePreviewEphemeralActionRegistry()
+        val ledger = RaftFilePreviewEphemeralCleanupLedger(InMemoryRaftKeyValueStore())
         val sessionId = "thread-preview-partial"
         val threadKey = "thread-owner-a"
         val refs =
@@ -57,7 +57,7 @@ class ThreadComposerImageEventSessionTrackerTest {
         val batches = mutableMapOf<ThreadComposerImageEventBatchKey, ThreadComposerImageEventBatchAccumulator>()
         val accumulator = ThreadComposerImageEventBatchAccumulator(key, expectedCount = 2)
         val payload =
-            SlockFilePreviewComposerImageEventPayload(
+            RaftFilePreviewComposerImageEventPayload(
                 previewSessionId = sessionId,
                 threadKey = threadKey,
                 actionId = "action-0",
@@ -66,7 +66,7 @@ class ThreadComposerImageEventSessionTrackerTest {
                 previewUri = refs.getValue("action-0"),
                 fileName = "thread-zero.jpg",
                 mimeType = "image/jpeg",
-                source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+                source = RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
                 compressed = false,
                 sizeBytes = 10L,
                 groupId = "group-a",

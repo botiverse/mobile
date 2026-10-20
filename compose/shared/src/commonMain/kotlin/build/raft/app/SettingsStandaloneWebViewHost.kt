@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -8,48 +7,45 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.zIndex
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.Alignment
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kmm.network.export.NetworkUserAgent
 
@@ -67,14 +63,14 @@ internal class ComposeSettingsWebViewPage : AuthenticatedProductPager(Authentica
 
 internal fun settingsWebViewPageData(
     surface: SettingsWebViewSurface,
-    storeScope: build.raft.app.data.SlockShellStoreScope,
+    storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
         put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName)
-        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+        put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
         if (surface == SettingsWebViewSurface.ReleaseNotes) {
             releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
                 put(SETTINGS_WEB_VIEW_VERSION_CODE, it)
@@ -89,7 +85,7 @@ internal fun settingsWebViewSurfaceFromPageData(params: JSONObject): SettingsWeb
 
 internal fun Pager.openSettingsWebViewPage(
     surface: SettingsWebViewSurface,
-    storeScope: build.raft.app.data.SlockShellStoreScope,
+    storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
@@ -142,43 +138,30 @@ private fun SettingsWebViewScreen() {
         remember(pager.pageData.params) {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
-    val computerTarget =
-        remember(pager.pageData.params.toString(), surface) {
-            if (surface == SettingsWebViewSurface.Computers) {
-                settingsComputerRouteIdentityFromPageData(pager.pageData.params)
-            } else {
-                null
-            }
-        }
-    val computerSpec = remember(computerTarget) { computerTarget?.let(::settingsComputerWebViewSpec) }
     when (surface) {
         SettingsWebViewSurface.Onboarding -> SettingsWebViewInvalidRoute(pager)
-        SettingsWebViewSurface.Computers ->
-            StandaloneSettingsWebViewPage(
-                pager = pager,
-                title = stringResource(MR.strings.settings_computers_title),
-                iconName = SlockLucideIconName.Monitor,
-                spec = computerSpec ?: settingsComputersWebViewSpec,
-            )
+        // Computers is a native page now; keep old settings-webview route payloads
+        // (list, or one machine via settingsComputerId) compatible by rendering it here.
+        SettingsWebViewSurface.Computers -> RaftSettingsComputersRoute()
         SettingsWebViewSurface.Billing ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(MR.strings.settings_billing_title),
-                iconName = SlockLucideIconName.CreditCard,
+                iconName = RaftLucideIconName.CreditCard,
                 spec = settingsBillingWebViewSpec,
             )
         SettingsWebViewSurface.Marketplace ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(MR.strings.settings_connected_apps_title),
-                iconName = SlockLucideIconName.Link2,
+                iconName = RaftLucideIconName.Link2,
                 spec = settingsMarketplaceWebViewSpec,
             )
         SettingsWebViewSurface.Feedback ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(MR.strings.settings_feedback_title),
-                iconName = SlockLucideIconName.MessageSquarePlus,
+                iconName = RaftLucideIconName.MessageSquarePlus,
                 spec = settingsFeedbackWebViewSpec,
                 onHostMessage = { kind, _ ->
                     when (kind) {
@@ -187,7 +170,7 @@ private fun SettingsWebViewScreen() {
                         "integration-unavailable" -> {
                             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
                             pager.openSettingsHandsFeedbackPage(
-                                pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+                                pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
                             )
                         }
                     }
@@ -197,7 +180,7 @@ private fun SettingsWebViewScreen() {
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(MR.strings.settings_server_administration_title),
-                iconName = SlockLucideIconName.Shield,
+                iconName = RaftLucideIconName.Shield,
                 spec = settingsAdministrationWebViewSpec,
             )
         // Keep old settings-webview route payloads compatible while rendering
@@ -209,14 +192,14 @@ private fun SettingsWebViewScreen() {
 
 @Composable
 private fun SettingsWebViewInvalidRoute(pager: Pager) {
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+        RaftTopPageHeader(
             title = stringResource(MR.strings.settings_title),
-            iconName = SlockLucideIconName.Settings,
-            backgroundColor = SlockColor.SurfaceWhite,
+            iconName = RaftLucideIconName.Settings,
+            backgroundColor = RaftColor.SurfaceWhite,
             leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.ArrowLeft,
                     onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
                     size = 30.dp,
                     shadowOffset = 2.dp,
@@ -225,7 +208,7 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
         )
         SettingsWebViewErrorContent(
             actionLabel = stringResource(MR.strings.common_close),
-            actionIcon = SlockLucideIconName.X,
+            actionIcon = RaftLucideIconName.X,
             onAction = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         )
     }
@@ -264,9 +247,8 @@ internal data class StandaloneSettingsWebViewSpec(
 internal fun StandaloneSettingsWebViewPage(
     pager: Pager,
     title: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
-    isComputerDetail: Boolean = false,
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
 ) {
     SettingsWebViewPageScaffold(
@@ -281,7 +263,6 @@ internal fun StandaloneSettingsWebViewPage(
             spec = spec,
             controller = controller,
             onNavigationStateChange = onNavigationStateChange,
-            isComputerDetail = isComputerDetail,
             onHostMessage = onHostMessage,
         )
     }
@@ -292,16 +273,16 @@ internal fun SettingsWebViewPageScaffold(
     pager: Pager,
     surface: SettingsWebViewSurface,
     title: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     headerFollowsDocumentTitle: Boolean = false,
     content: @Composable (
-        controller: SlockWebViewController,
+        controller: RaftWebViewController,
         onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
     ) -> Unit,
 ) {
     var bodyReady by remember { mutableStateOf(false) }
-    val webViewController = rememberSlockWebViewController()
-    var navigationState by remember { mutableStateOf(SlockWebViewNavigationState()) }
+    val webViewController = rememberRaftWebViewController()
+    var navigationState by remember { mutableStateOf(RaftWebViewNavigationState()) }
     var headerTitleState by remember(surface) { mutableStateOf(SettingsWebViewHeaderTitleState()) }
     LaunchedEffect(Unit) {
         // LaunchedEffect itself does not establish a rendered-frame boundary. Without awaiting a
@@ -323,17 +304,17 @@ internal fun SettingsWebViewPageScaffold(
         )
     }
 
-    SlockBackHandler(
+    RaftBackHandler(
         enabled = true,
         label = "settings_webview_${surface.diagnosticsName}",
         onBack = ::goBackOrClose,
     )
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-        // This wrapper, rather than SlockTopPageHeader's inner content Box, is the sibling of the
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+        // This wrapper, rather than RaftTopPageHeader's inner content Box, is the sibling of the
         // WebView body. The layer must live here so it can order those two layout siblings.
         Box(modifier = Modifier.fillMaxWidth().zIndex(SETTINGS_WEB_VIEW_HEADER_Z_INDEX)) {
-            SlockTopPageHeader(
+            RaftTopPageHeader(
                 title =
                     if (headerFollowsDocumentTitle) {
                         headerTitleState.displayTitle(title)
@@ -341,10 +322,10 @@ internal fun SettingsWebViewPageScaffold(
                         title
                     },
                 iconName = iconName,
-                backgroundColor = SlockColor.SurfaceWhite,
+                backgroundColor = RaftColor.SurfaceWhite,
                 leadingContent = {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.ArrowLeft,
+                    RaftBrutalIconButton(
+                        iconName = RaftLucideIconName.ArrowLeft,
                         onClick = ::goBackOrClose,
                         size = 30.dp,
                         shadowOffset = 2.dp,
@@ -358,7 +339,7 @@ internal fun SettingsWebViewPageScaffold(
                     .weight(1f)
                     .fillMaxWidth()
                     .zIndex(SETTINGS_WEB_VIEW_BODY_Z_INDEX)
-                    .background(SlockColor.SurfaceCream),
+                    .background(RaftColor.SurfaceCream),
         ) {
             if (bodyReady) {
                 content(webViewController) { update ->
@@ -414,7 +395,7 @@ internal data class SettingsWebViewHeaderTitleState(
 
 internal data class SettingsWebViewNavigationUpdate(
     val owner: Long,
-    val state: SlockWebViewNavigationState,
+    val state: RaftWebViewNavigationState,
 )
 
 /** Invalidates callbacks retained by a detached native WebView generation. */
@@ -437,19 +418,18 @@ internal class SettingsWebViewNavigationAuthority {
 private fun StandaloneSettingsWebViewBody(
     pager: Pager,
     spec: StandaloneSettingsWebViewSpec,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
-    isComputerDetail: Boolean = false,
     onHostMessage: (String, JSONObject) -> Unit,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
     // The Web settings surfaces own their product data in the embedded SPA. Keep this host path
     // limited to shell identity, canonical environment, and auth bootstrap; constructing a full
     // native SharedSettingsDataSource here would only prepare repositories that this page cannot
     // render or mutate.
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     val authStore =
         remember(sharedStores, storeScope) {
@@ -457,41 +437,8 @@ private fun StandaloneSettingsWebViewBody(
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
-    val navigationScope = rememberCoroutineScope()
-    val session = authSnapshot.session
-    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
-    val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
-    val serverId = session?.currentServerId
-    val serverSlug = session?.servers?.firstOrNull { it.id == serverId }?.slug
-    val computerNavigation = remember(webBaseUrl, serverId, serverSlug, authSnapshot.sessionGeneration, storeScope, selectedServerId) {
-        if (spec.surface == SettingsWebViewSurface.Computers) {
-            computerNavigationForSelection(webBaseUrl, serverSlug, serverId, selectedServerId, bridge::log)
-        } else null
-    }
-    LaunchedEffect(computerNavigation, selectedServerId, serverId, serverSlug) {
-        if (spec.surface == SettingsWebViewSurface.Computers) {
-            val reason = when {
-                serverId.isNullOrBlank() -> "no_session_server"
-                selectedServerId != serverId -> "selection_mismatch"
-                serverSlug.isNullOrBlank() -> "no_slug"
-                webBaseUrl.isNullOrBlank() -> "no_origin"
-                else -> "enabled"
-            }
-            bridge.log("computer_native_nav_state reason=$reason")
-        }
-    }
     LaunchedEffect(spec.surface, spec) {
-        // Computers opens two distinct pages (list vs machine detail) that share one
-        // surface name; tagging the target keeps the diagnostic unambiguous (#336).
-        val targetTag = when {
-            spec.surface != SettingsWebViewSurface.Computers -> null
-            isComputerDetail -> "detail"
-            else -> "list"
-        }
-        bridge.log(
-            "settings_${spec.surface.diagnosticsName}_open" +
-                (targetTag?.let { " target=$it" } ?: "")
-        )
+        bridge.log("settings_${spec.surface.diagnosticsName}_open")
     }
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,
@@ -503,50 +450,6 @@ private fun StandaloneSettingsWebViewBody(
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
-            when (val action = computerNavigation?.takeIf { selectedServerStore.isSelected(serverId) }?.accept(url)) {
-                is ComputerNavigationAction.RestoreComputer -> {
-                    bridge.log("computer_native_restore ticket=${action.ticket}")
-                    controller.goBack()
-                    navigationScope.launch {
-                        delay(1000)
-                        // replaceState and missing history need an explicit return location.
-                        // Check session authority again after the asynchronous wait.
-                        if (authStore.readSession() == session && selectedServerStore.isSelected(serverId)) {
-                            computerNavigation?.fallbackUrl(action.ticket)?.let { returnUrl ->
-                                controller.evaluateJavaScript(
-                                    "window.location.replace(" + Json.encodeToString(returnUrl) + ");"
-                                )
-                            }
-                        }
-                    }
-                }
-                is ComputerNavigationAction.Open -> {
-                    val target = action.target
-                    bridge.log("computer_native_open kind=${target.kind}")
-                    val pageData = if (target.kind == "agent") {
-                        KuiklyMembersPayload(instanceId = "computer-agent").toMemberDetailPageData(
-                            MemberDetailIdentity(
-                                build.raft.app.model.MemberId(target.id),
-                                build.raft.app.model.MemberKind.Agent,
-                                serverId?.let { build.raft.app.model.ServerId(it) },
-                            )
-                        )
-                    } else {
-                        WireThreadLaunchPayload(
-                            instanceId = "computer-dm-${target.id}",
-                            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                            streamChannelId = target.id,
-                        ).toThreadPageData()
-                    }
-                    if (pageData != null) pager.openSlockPage(
-                        pageName = if (target.kind == "agent") MEMBER_DETAIL_PAGE else THREAD_PAGE,
-                        pageData = pageData,
-                        storeScopeOverride = storeScope,
-                        onMissingScope = { bridge.log("computer_native_open_skip reason=missing_shell_scope") },
-                    )
-                }
-                null -> Unit
-            }
         },
         onLoadCommit = {
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
@@ -566,7 +469,7 @@ internal fun StandaloneSettingsWebViewContent(
     apiOrigin: String,
     spec: StandaloneSettingsWebViewSpec,
     modifier: Modifier = Modifier,
-    controller: SlockWebViewController = rememberSlockWebViewController(),
+    controller: RaftWebViewController = rememberRaftWebViewController(),
     bridge: BridgeModule? = null,
     onLoadCommit: () -> Unit = {},
     onUrlChange: (String) -> Unit = {},
@@ -621,7 +524,6 @@ internal fun StandaloneSettingsWebViewContent(
         generationKey = hostAuthBinding?.webViewGeneration,
         onLoadCommit = onLoadCommit,
         onUrlChange = onUrlChange,
-        filterStaleUrlCallbacks = spec.surface == SettingsWebViewSurface.Computers,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = { kind, payload ->
@@ -660,7 +562,7 @@ internal fun SettingsWebViewContent(
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
     injectedJavaScript: String = "",
-    controller: SlockWebViewController = rememberSlockWebViewController(),
+    controller: RaftWebViewController = rememberRaftWebViewController(),
     generationKey: Any? = null,
     onLoadCommit: () -> Unit = {},
     onLoadSuccess: () -> Unit = {},
@@ -678,7 +580,7 @@ internal fun SettingsWebViewContent(
     var loadError by remember(url, generationKey, reloadKey) { mutableStateOf<String?>(null) }
     var navigationState by
         remember(url, generationKey, reloadKey) {
-            mutableStateOf(SlockWebViewNavigationState(url = url, isLoading = true))
+            mutableStateOf(RaftWebViewNavigationState(url = url, isLoading = true))
         }
     var bodyFrameReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
     var webViewAttachReady by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
@@ -699,7 +601,7 @@ internal fun SettingsWebViewContent(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceCream)
+                .background(RaftColor.SurfaceCream)
                 .onGloballyPositioned { coordinates ->
                     bodyFrameReady =
                         settingsWebViewFrameIsReady(
@@ -711,7 +613,7 @@ internal fun SettingsWebViewContent(
     ) {
         // Native WebViews apply their own bottom safe-area inset. Extend the shared frame so that
         // inset falls outside the visible slot instead of exposing a second background strip.
-        val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
+        val webViewHeight = maxHeight + raftBottomSafeAreaPadding()
         if (webViewAttachReady) {
             key(generationKey, reloadKey, url) {
                 val navigationOwner = remember { navigationAuthority.acquire() }
@@ -721,13 +623,13 @@ internal fun SettingsWebViewContent(
                         onWebViewInvalidated()
                     }
                 }
-                SlockWebView(
+                RaftWebView(
                     url = url,
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .height(webViewHeight)
-                            .background(SlockColor.SurfaceCream)
+                            .background(RaftColor.SurfaceCream)
                             .padding(bottom = bottomContentPadding)
                             .alpha(if (contentVisible) 1f else 0f),
                     allowNavigation = allowNavigation,
@@ -782,7 +684,7 @@ internal fun SettingsWebViewContent(
             SettingsWebViewPresentation.Error ->
                 SettingsWebViewErrorContent(
                     actionLabel = stringResource(MR.strings.common_retry),
-                    actionIcon = SlockLucideIconName.RefreshCw,
+                    actionIcon = RaftLucideIconName.RefreshCw,
                     onAction = { reloadKey += 1 },
                 )
             SettingsWebViewPresentation.LoadingCover -> SettingsWebViewLoadingCover()
@@ -793,44 +695,44 @@ internal fun SettingsWebViewContent(
 
 @Composable
 internal fun SettingsWebViewLoadingCover() {
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream))
 }
 
 @Composable
 internal fun SettingsWebViewErrorContent(
     actionLabel: String,
-    actionIcon: SlockLucideIconName,
+    actionIcon: RaftLucideIconName,
     onAction: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
             modifier =
                 Modifier
                     .size(52.dp)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .background(RaftColor.BrandYellow)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
             contentAlignment = Alignment.Center,
         ) {
-            SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
+            RaftLucideIcon(RaftLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
         }
         Text(
             stringResource(MR.strings.settings_webview_error_title),
-            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
         )
         Text(
             stringResource(MR.strings.settings_webview_error_body),
-            style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
         )
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = actionLabel,
             onClick = onAction,
             leadingIcon = actionIcon,
-            backgroundColor = SlockColor.SurfaceWhite,
+            backgroundColor = RaftColor.SurfaceWhite,
         )
     }
 }
@@ -851,7 +753,7 @@ internal fun settingsWebViewFrameIsReady(
  */
 private class FeedbackDiagnosticsWebViewHost(
     private val bridge: BridgeModule,
-    private val controller: SlockWebViewController,
+    private val controller: RaftWebViewController,
 ) {
     private class ActiveRequest(
         val requestId: String,
@@ -1023,7 +925,7 @@ private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
             AppLocale.Default.languageTag
         } else {
             try {
-                KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().languageTag
+                KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync().languageTag
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -1074,7 +976,7 @@ internal fun feedbackWebViewBootstrapJavaScript(
     val accessToken = json.encodeToString(session?.accessToken.orEmpty())
     val api = json.encodeToString(apiOrigin)
     val clientVersion = json.encodeToString(feedbackWebViewClientVersion())
-    val clientKind = json.encodeToString(slockFeedbackWebViewClientKind())
+    val clientKind = json.encodeToString(raftFeedbackWebViewClientKind())
     val trustedUrl = json.encodeToString(trustedDocumentUrl)
     return """
         (function() { 'use strict';

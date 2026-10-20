@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/raft_agent_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/raft_widget_background"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:background="@drawable/raft_widget_header_background"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="10dp">
+
+        <TextView
+            android:id="@+id/raft_agent_widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="@font/space_grotesk_bold"
+            android:maxLines="1"
+            android:text="Live Agents"
+            android:textColor="@color/black"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/raft_agent_widget_refresh"
+            android:layout_width="wrap_content"
+            android:layout_height="26dp"
+            android:background="@drawable/raft_widget_stat_background"
+            android:fontFamily="@font/space_grotesk_bold"
+            android:gravity="center"
+            android:minWidth="64dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="Refresh"
+            android:textColor="@color/black"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:id="@+id/raft_agent_widget_rows"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/raft_agent_widget_row_1"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:layout_width="24dp"
+                    android:layout_height="24dp">
+
+                    <ImageView
+                        android:id="@+id/raft_agent_widget_row_1_avatar_image"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/raft_widget_pink_stat_background"
+                        android:scaleType="centerCrop" />
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_1_avatar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/raft_widget_pink_stat_background"
+                        android:fontFamily="@font/space_grotesk_bold"
+                        android:gravity="center"
+                        android:text="A"
+                        android:textColor="@color/black"
+                        android:textSize="11sp" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="7dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_1_status_dot"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/raft_widget_status_dot_offline"
+                        android:text="" />
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_1_detail"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="7dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/space_grotesk_medium"
+                        android:maxLines="1"
+                        android:text="Offline"
+                        android:textColor="#99000000"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/raft_agent_widget_row_2"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="4dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:layout_width="24dp"
+                    android:layout_height="24dp">
+
+                    <ImageView
+                        android:id="@+id/raft_agent_widget_row_2_avatar_image"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/raft_widget_pink_stat_background"
+                        android:scaleType="centerCrop" />
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_2_avatar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/raft_widget_pink_stat_background"
+                        android:fontFamily="@font/space_grotesk_bold"
+                        android:gravity="center"
+                        android:text="A"
+                        android:textColor="@color/black"
+                        android:textSize="11sp" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="7dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_2_status_dot"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/raft_widget_status_dot_offline"
+                        android:text="" />
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_2_detail"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="7dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/space_grotesk_medium"
+                        android:maxLines="1"
+                        android:text="Offline"
+                        android:textColor="#99000000"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/raft_agent_widget_row_3"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="4dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <FrameLayout
+                    android:layout_width="24dp"
+                    android:layout_height="24dp">
+
+                    <ImageView
+                        android:id="@+id/raft_agent_widget_row_3_avatar_image"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/raft_widget_pink_stat_background"
+                        android:scaleType="centerCrop" />
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_3_avatar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/raft_widget_pink_stat_background"
+                        android:fontFamily="@font/space_grotesk_bold"
+                        android:gravity="center"
+                        android:text="A"
+                        android:textColor="@color/black"
+                        android:textSize="11sp" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="7dp"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_3_status_dot"
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:background="@drawable/raft_widget_status_dot_offline"
+                        android:text="" />
+
+                    <TextView
+                        android:id="@+id/raft_agent_widget_row_3_detail"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="7dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/space_grotesk_medium"
+                        android:maxLines="1"
+                        android:text="Offline"
+                        android:textColor="#99000000"
+                        android:textSize="13sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/raft_agent_widget_updated"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="end"
+            android:fontFamily="@font/space_grotesk_regular"
+            android:maxLines="1"
+            android:text="Open Raft to start"
+            android:textColor="#99000000"
+            android:textSize="10sp" />
+    </LinearLayout>
+</LinearLayout>

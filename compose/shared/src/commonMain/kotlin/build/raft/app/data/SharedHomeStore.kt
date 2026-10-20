@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SlockSidebarSortMode
+import build.raft.app.RaftSidebarSortMode
 import build.raft.app.base.putIfAbsent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -24,7 +24,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
@@ -36,8 +36,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.messageStreamChannelId
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -78,7 +78,7 @@ private data class HomeNotificationAuthority(
 )
 
 internal class SharedHomeStore(
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     private var dataSource: SharedHomeDataSource,
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
@@ -122,7 +122,7 @@ internal class SharedHomeStore(
         DataResult.Empty(EmptyReason.NoChannels)
     },
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore =
-        PerReceiverStateVersionStore(InMemorySlockKeyValueStore()),
+        PerReceiverStateVersionStore(InMemoryRaftKeyValueStore()),
     private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     private var readStateV1Canary: ReadStateV1ProductionCanary? = null,
@@ -140,7 +140,7 @@ internal class SharedHomeStore(
      * tests can pin a deterministic clock; production passes a
      * `System.currentTimeMillis` adapter. Use [Long] (not [kotlin.time.Instant])
      * to match the OHOS datetime klib stability rule we adopted in
-     * `d56ed07d`; UI layer formats via `SlockTime` if needed.
+     * `d56ed07d`; UI layer formats via `RaftTime` if needed.
      */
     private val nowMillis: () -> Long = { defaultNowMillis() },
     private val beforeRealtimeHomeStateCommit: () -> Unit = {},
@@ -149,7 +149,7 @@ internal class SharedHomeStore(
     private val conversationIdentityPublicationSink:
         (SharedConversationIdentityCandidatePublication) -> Unit = {},
 ) : SharedConversationIdentityProvider {
-    private val _state = MutableStateFlow(SharedHomeState())
+    private val _state = raftStoreState(SharedHomeState(), "SharedHomeStore")
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
     private val homeConversationIdentityStates = linkedMapOf<String, SharedConversationDirectoryState>()
     private val supplementalConversationIdentityStates =
@@ -635,8 +635,10 @@ internal class SharedHomeStore(
                 setPinnedSortMode(intent.mode)
             is SharedHomeIntent.SetChannelSortMode ->
                 setChannelSortMode(intent.mode)
+            is SharedHomeIntent.SetJointChannelSortMode ->
+                setJointChannelSortMode(intent.mode)
             is SharedHomeIntent.CreateSidebarSection ->
-                createSidebarSection(intent.name, intent.emoji)
+                createSidebarSection(intent.name, intent.emoji, intent.moveConversationId, intent.insertBeforeSectionId)
             is SharedHomeIntent.RenameSidebarSection ->
                 renameSidebarSection(intent.sectionId, intent.name, intent.emoji)
             is SharedHomeIntent.DeleteSidebarSection ->
@@ -687,16 +689,19 @@ internal class SharedHomeStore(
      * make the first paint wait behind the auth refresh. The durable slice remains the sole cache
      * reader; no product content is transported through route/pageData.
     */
-    internal suspend fun hydrateCachedHome(serverId: ServerId): Boolean {
-        withStateDiagnosticsContext(SharedHomeIntent.Start) {
-            hydrateCachedHomeForServer(serverId)
+    internal suspend fun hydrateCachedHome(serverId: ServerId): Boolean =
+        // Called from the app shell's LaunchedEffect (main thread): hop onto the store dispatcher
+        // like dispatch() does, so the Loading write and the diagnostics context stay confined.
+        scope.raftWithStoreScope {
+            withStateDiagnosticsContext(SharedHomeIntent.Start) {
+                hydrateCachedHomeForServer(serverId)
+            }
+            val content = _state.value.content as? SharedHomeContentState.Content ?: return@raftWithStoreScope false
+            content.isDurableIdentityCache &&
+                content.needsNetworkRefresh &&
+                content.snapshot.server.id == serverId &&
+                content.snapshot.currentMember.id.value == content.session.user.id
         }
-        val content = _state.value.content as? SharedHomeContentState.Content ?: return false
-        return content.isDurableIdentityCache &&
-            content.needsNetworkRefresh &&
-            content.snapshot.server.id == serverId &&
-            content.snapshot.currentMember.id.value == content.session.user.id
-    }
 
     private suspend fun hydrateCachedHomeForServer(serverId: ServerId) {
         val session = authStore.readSession() ?: return
@@ -2780,7 +2785,7 @@ internal class SharedHomeStore(
         }
     }
 
-    private suspend fun setPinnedSortMode(mode: SlockSidebarSortMode) {
+    private suspend fun setPinnedSortMode(mode: RaftSidebarSortMode) {
         val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
         if (serverId == null) {
             pinUpdateFailureCallback("Unable to update pinned sort mode: home not loaded")
@@ -2840,7 +2845,7 @@ internal class SharedHomeStore(
                 if (nextChannelOrder != previous.channelOrder) {
                     next = next.copy(
                         channelOrder = nextChannelOrder,
-                        channelSortMode = SlockSidebarSortMode.Manual.wireValue
+                        channelSortMode = RaftSidebarSortMode.Manual.wireValue
                     )
                 }
             }
@@ -2856,9 +2861,11 @@ internal class SharedHomeStore(
                         jointChannelIds.filterNot { it in cleanedJoint })
                         .distinct()
                 if (nextChannelOrder != next.channelOrder) {
+                    // Web keeps a separate Joint Channels sort mode; a manual
+                    // joint reorder flips only that one.
                     next = next.copy(
                         channelOrder = nextChannelOrder,
-                        channelSortMode = SlockSidebarSortMode.Manual.wireValue
+                        jointChannelSortMode = RaftSidebarSortMode.Manual.wireValue
                     )
                 }
             }
@@ -2872,7 +2879,7 @@ internal class SharedHomeStore(
                 if (nextDmOrder != previous.dmOrder) {
                     next = next.copy(
                         dmOrder = nextDmOrder,
-                        dmSortMode = SlockSidebarSortMode.Manual.wireValue
+                        dmSortMode = RaftSidebarSortMode.Manual.wireValue
                     )
                 }
             }
@@ -2889,7 +2896,7 @@ internal class SharedHomeStore(
                     next = next.copy(
                         pinned = nextPinnedOrder.mapNotNull { byId[it] },
                         pinnedOrder = nextPinnedOrder,
-                        pinnedSortMode = SlockSidebarSortMode.Manual.wireValue
+                        pinnedSortMode = RaftSidebarSortMode.Manual.wireValue
                     )
                 }
             }
@@ -2899,6 +2906,7 @@ internal class SharedHomeStore(
         val request = SettingsServerSidebarOrderUpdateRequest(
             channelOrder = next.channelOrder.takeIf { next.channelOrder != previous.channelOrder },
             channelSortMode = next.channelSortMode.takeIf { next.channelOrder != previous.channelOrder || next.channelSortMode != previous.channelSortMode },
+            jointChannelSortMode = next.jointChannelSortMode.takeIf { next.jointChannelSortMode != previous.jointChannelSortMode },
             dmOrder = next.dmOrder.takeIf { next.dmOrder != previous.dmOrder },
             dmSortMode = next.dmSortMode.takeIf { next.dmOrder != previous.dmOrder || next.dmSortMode != previous.dmSortMode },
             pinned = next.pinned.takeIf { next.pinned != previous.pinned },
@@ -2949,7 +2957,7 @@ internal class SharedHomeStore(
         }
     }
 
-    private suspend fun setChannelSortMode(mode: SlockSidebarSortMode) {
+    private suspend fun setChannelSortMode(mode: RaftSidebarSortMode) {
         val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
         if (serverId == null) {
             pinUpdateFailureCallback("Unable to update channel sort mode: home not loaded")
@@ -2970,6 +2978,34 @@ internal class SharedHomeStore(
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
                 pinUpdateFailureCallback("Unable to update channel sort mode")
+            }
+        }
+    }
+
+    private suspend fun setJointChannelSortMode(mode: RaftSidebarSortMode) {
+        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        if (serverId == null) {
+            pinUpdateFailureCallback("Unable to update joint channel sort mode: home not loaded")
+            return
+        }
+        val previous = ensureSidebarOrderLoaded()
+        if (previous == null) {
+            pinUpdateFailureCallback("Unable to update joint channel sort mode: sidebar order not loaded")
+            return
+        }
+        if (previous.jointChannelSortMode == mode.wireValue) return
+        val next = previous.copy(jointChannelSortMode = mode.wireValue)
+        applySidebarOrderLocally(serverId = serverId, next = next)
+        when (
+            val result =
+                updateSidebarOrder(SettingsServerSidebarOrderUpdateRequest(jointChannelSortMode = next.jointChannelSortMode))
+        ) {
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                applySidebarOrderLocally(serverId = serverId, next = previous)
+                pinUpdateFailureCallback("Unable to update joint channel sort mode")
             }
         }
     }
@@ -3044,22 +3080,46 @@ internal class SharedHomeStore(
         }
     }
 
-    private suspend fun createSidebarSection(name: String, emoji: String?) {
+    /**
+     * Web parity (Sidebar.tsx createCustomSection): the section is inserted
+     * before [insertBeforeSectionId] (the section whose menu opened the
+     * dialog) or appended, and the row whose menu opened it is moved straight
+     * into the new section in the same PATCH.
+     */
+    private suspend fun createSidebarSection(
+        name: String,
+        emoji: String?,
+        moveConversationId: String?,
+        insertBeforeSectionId: String?
+    ) {
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) return
         val trimmedEmoji = emoji?.trim()?.takeIf { it.isNotEmpty() }
+        val snapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
         mutateSidebarSections("Unable to create section") { previous ->
             val section =
                 SettingsServerSidebarCustomSection(
                     id = newSidebarSectionId(),
                     name = trimmedName,
                     emoji = trimmedEmoji,
-                    sortMode = SlockSidebarSortMode.Manual.wireValue
+                    sortMode = RaftSidebarSortMode.Manual.wireValue
                 )
-            previous.copy(
-                customSections = previous.customSections + section,
-                sectionOrder = normalizeSidebarSectionOrder(previous.sectionOrder, previous.customSections) + section.id
-            )
+            val created =
+                previous.copy(
+                    customSections = previous.customSections + section,
+                    sectionOrder =
+                        insertSidebarSectionIntoOrder(
+                            order = previous.sectionOrder,
+                            customSections = previous.customSections,
+                            sectionId = section.id,
+                            insertBeforeSectionId = insertBeforeSectionId
+                        )
+                )
+            if (moveConversationId != null && snapshot != null) {
+                created.withConversationInSection(snapshot, moveConversationId, section.id)
+            } else {
+                created
+            }
         }
     }
 
@@ -3090,7 +3150,7 @@ internal class SharedHomeStore(
         }
     }
 
-    private suspend fun setSidebarSectionSortMode(sectionId: String, mode: SlockSidebarSortMode) {
+    private suspend fun setSidebarSectionSortMode(sectionId: String, mode: RaftSidebarSortMode) {
         mutateSidebarSections("Unable to update section sort mode") { previous ->
             val section = previous.customSections.firstOrNull { it.id == sectionId } ?: return@mutateSidebarSections null
             if (section.sortMode == mode.wireValue) return@mutateSidebarSections null
@@ -3110,43 +3170,8 @@ internal class SharedHomeStore(
             return
         }
         mutateSidebarSections("Unable to move conversation to section") { previous ->
-            // Web parity (Sidebar.tsx moveItemToCustomSection): moving into a
-            // custom section unpins the conversation; the two stores stay
-            // mutually exclusive.
-            val pinnedTarget = snapshot.pinnedToggleTarget(SharedHomeIntent.TogglePinned(conversationId))
-            val currentPinned = previous.typedPinnedOrLegacy()
-            val wasPinned =
-                currentPinned.any { it.matchesPinnedTarget(pinnedTarget) } || previous.legacyPinnedContains(pinnedTarget)
-            // LiBai review: the placement key must follow the conversation type —
-            // agent-peer DMs key by their agent member id (kind "agent"),
-            // everything else by channel id (kind "channel") — matching web's
-            // movable-item derivation and the UI's placement resolution.
-            val row = snapshot.findHomeConversation(conversationId)
-            val (placementKind, placementId) =
-                sidebarSectionPlacementKindId(
-                    peerType = row?.directMessagePeerType,
-                    presenceMemberId = row?.presenceMemberId?.value,
-                    conversationId = conversationId
-                )
-            val nextPlacements =
-                if (sectionId == null) {
-                    removeSidebarItemPlacement(previous.sectionPlacements, placementKind, placementId)
-                } else {
-                    if (previous.customSections.none { it.id == sectionId }) return@mutateSidebarSections null
-                    moveSidebarItemToCustomSection(
-                        previous.sectionPlacements,
-                        placementKind,
-                        placementId,
-                        sectionId
-                    )
-                }
-            val next =
-                if (sectionId != null && wasPinned) {
-                    previous.withoutPinnedTarget(pinnedTarget)
-                } else {
-                    previous
-                }
-            val moved = next.copy(sectionPlacements = nextPlacements)
+            if (sectionId != null && previous.customSections.none { it.id == sectionId }) return@mutateSidebarSections null
+            val moved = previous.withConversationInSection(snapshot, conversationId, sectionId)
             if (moved == previous) null else moved
         }
     }
@@ -3752,7 +3777,7 @@ private val HomeDirectMessageRow.isAgentDirectMessage: Boolean
             directMessagePeerType.equals("agent", ignoreCase = true)
 
 class SharedHomeViewModel(
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     dataSource: SharedHomeDataSource,
     diagnosticsLogger: (String) -> Unit = {},
     loadSidebarOrder: suspend (ServerId) -> DataResult<SettingsServerSidebarOrderSnapshot> = { _ ->
@@ -3880,6 +3905,39 @@ private fun SettingsServerSidebarOrderSnapshot.withToggledPinnedTarget(
 }
 
 /** task #512: unpin without toggling — used when a conversation moves into a custom section. */
+/**
+ * Place [conversationId] in custom section [sectionId] (null: back to its
+ * default section). Web parity (Sidebar.tsx moveItemToCustomSection): moving
+ * into a custom section unpins the conversation, so the pinned and sectioned
+ * states stay mutually exclusive. The placement key follows the conversation
+ * type — agent-peer DMs key by their agent member id (kind "agent"), everything
+ * else by channel id (kind "channel") — matching web's movable-item derivation
+ * and the UI's placement resolution.
+ */
+private fun SettingsServerSidebarOrderSnapshot.withConversationInSection(
+    home: HomeSnapshot,
+    conversationId: String,
+    sectionId: String?
+): SettingsServerSidebarOrderSnapshot {
+    val pinnedTarget = home.pinnedToggleTarget(SharedHomeIntent.TogglePinned(conversationId))
+    val wasPinned = typedPinnedOrLegacy().any { it.matchesPinnedTarget(pinnedTarget) } || legacyPinnedContains(pinnedTarget)
+    val row = home.findHomeConversation(conversationId)
+    val (placementKind, placementId) =
+        sidebarSectionPlacementKindId(
+            peerType = row?.directMessagePeerType,
+            presenceMemberId = row?.presenceMemberId?.value,
+            conversationId = conversationId
+        )
+    val nextPlacements =
+        if (sectionId == null) {
+            removeSidebarItemPlacement(sectionPlacements, placementKind, placementId)
+        } else {
+            moveSidebarItemToCustomSection(sectionPlacements, placementKind, placementId, sectionId)
+        }
+    val next = if (sectionId != null && wasPinned) withoutPinnedTarget(pinnedTarget) else this
+    return next.copy(sectionPlacements = nextPlacements)
+}
+
 private fun SettingsServerSidebarOrderSnapshot.withoutPinnedTarget(
     target: PinnedToggleTarget
 ): SettingsServerSidebarOrderSnapshot =
@@ -3964,6 +4022,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.TogglePinned -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pin:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pinned-sort:$mode"
         is SharedHomeIntent.SetChannelSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:channel-sort:$mode"
+        is SharedHomeIntent.SetJointChannelSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:joint-channel-sort:$mode"
         is SharedHomeIntent.CreateSidebarSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-create:$name"
         is SharedHomeIntent.RenameSidebarSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-rename:$sectionId"
         is SharedHomeIntent.DeleteSidebarSection -> "${SharedHomeChannelFoldEvent.Patch.wireName}:section-delete:$sectionId"
@@ -4478,17 +4537,17 @@ internal fun HomeSnapshot.toHomeServerDrawerNormalizedContent(): HomeServerDrawe
         directMessages
             .orderedForHomeServerDrawer(order.dmOrder)
             .filter { row -> row.threadId.value !in order.hiddenDmIds || row.unreadCount > 0 }
-            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.dmSortMode))
+            .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.dmSortMode))
     val regularChannels =
         channels
             .filter { row -> row.kind != ConversationKind.Joint }
             .orderedForHomeServerDrawer(order.channelOrder)
-            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.channelSortMode))
+            .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.channelSortMode))
     val jointChannels =
         channels
             .filter { row -> row.kind == ConversationKind.Joint }
             .orderedForHomeServerDrawer(order.channelOrder)
-            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.channelSortMode))
+            .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.channelSortMode))
     val pinned = homeServerDrawerPinnedConversations(channels, directMessages, order)
     val rows =
         buildList {
@@ -4517,16 +4576,16 @@ private fun List<HomeConversationRow>.orderedForHomeServerDrawer(order: List<Str
     return ordered.values.toList()
 }
 
-private fun List<HomeConversationRow>.sortedForHomeServerDrawer(mode: SlockSidebarSortMode): List<HomeConversationRow> =
+private fun List<HomeConversationRow>.sortedForHomeServerDrawer(mode: RaftSidebarSortMode): List<HomeConversationRow> =
     when (mode) {
-        SlockSidebarSortMode.Manual -> this
-        SlockSidebarSortMode.Recent ->
+        RaftSidebarSortMode.Manual -> this
+        RaftSidebarSortMode.Recent ->
             sortedWith(
                 compareByDescending<HomeConversationRow> {
-                    parseSlockTimestampEpochMillisOrNull(it.lastMessageAt) ?: Long.MIN_VALUE
+                    parseRaftTimestampEpochMillisOrNull(it.lastMessageAt) ?: Long.MIN_VALUE
                 }.thenBy { it.name.trim().lowercase() }.thenBy { it.threadId.value }
             )
-        SlockSidebarSortMode.Az ->
+        RaftSidebarSortMode.Az ->
             sortedWith(compareBy<HomeConversationRow> { it.name.trim().lowercase() }.thenBy { it.threadId.value })
     }
 
@@ -4545,7 +4604,7 @@ private fun homeServerDrawerPinnedConversations(
             else -> null
         }
     }.distinctBy { it.threadId.value }
-        .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.pinnedSortMode))
+        .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.pinnedSortMode))
 }
 
 data class HomeServerDrawerState(
@@ -4657,19 +4716,28 @@ sealed interface SharedHomeIntent {
      * #211: change the Pinned section sort mode (Manual / Recent / A-Z).
      * Persists through the same sidebar-order PATCH as pin/unpin.
      */
-    data class SetPinnedSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
-    data class SetChannelSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
+    data class SetPinnedSortMode(val mode: RaftSidebarSortMode) : SharedHomeIntent
+    data class SetChannelSortMode(val mode: RaftSidebarSortMode) : SharedHomeIntent
+    /** Web parity: the Joint Channels section has its own sort mode (`jointChannelSortMode`). */
+    data class SetJointChannelSortMode(val mode: RaftSidebarSortMode) : SharedHomeIntent
     /**
      * task #512: custom-section CRUD + membership (web channel-sections port).
      * All persist through the sidebar-order PATCH with OCC sectionsVersion;
      * a 409 reloads the sidebar order instead of rolling back.
      */
-    data class CreateSidebarSection(val name: String, val emoji: String?) : SharedHomeIntent
+    data class CreateSidebarSection(
+        val name: String,
+        val emoji: String?,
+        /** Row whose "Move to section > New section…" opened the dialog; moved into the new section. */
+        val moveConversationId: String? = null,
+        /** sectionOrder id of the section whose header menu opened the dialog; the new section goes before it. */
+        val insertBeforeSectionId: String? = null
+    ) : SharedHomeIntent
     data class RenameSidebarSection(val sectionId: String, val name: String, val emoji: String?) : SharedHomeIntent
     data class DeleteSidebarSection(val sectionId: String) : SharedHomeIntent
     /** [sectionId] null removes the conversation from its custom section (back to its default one). */
     data class MoveConversationToSection(val conversationId: String, val sectionId: String?) : SharedHomeIntent
-    data class SetSidebarSectionSortMode(val sectionId: String, val mode: SlockSidebarSortMode) : SharedHomeIntent
+    data class SetSidebarSectionSortMode(val sectionId: String, val mode: RaftSidebarSortMode) : SharedHomeIntent
     data class ReorderSidebar(
         val channelOrder: List<String>? = null,
         val jointChannelOrder: List<String>? = null,
@@ -4724,6 +4792,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.SetJointChannelSortMode,
             is SharedHomeIntent.CreateSidebarSection,
             is SharedHomeIntent.RenameSidebarSection,
             is SharedHomeIntent.DeleteSidebarSection,
@@ -4770,6 +4839,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.SetJointChannelSortMode,
             is SharedHomeIntent.CreateSidebarSection,
             is SharedHomeIntent.RenameSidebarSection,
             is SharedHomeIntent.DeleteSidebarSection,
@@ -4816,6 +4886,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
+            is SharedHomeIntent.SetJointChannelSortMode,
             is SharedHomeIntent.CreateSidebarSection,
             is SharedHomeIntent.RenameSidebarSection,
             is SharedHomeIntent.DeleteSidebarSection,

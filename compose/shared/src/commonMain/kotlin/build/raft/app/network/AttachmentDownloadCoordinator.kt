@@ -1,6 +1,6 @@
 package build.raft.app.network
 
-import build.raft.app.slockLogInfo
+import build.raft.app.raftLogInfo
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
@@ -452,9 +452,9 @@ private object NetworkKmmAttachmentDownloadTransport : AttachmentDownloadTranspo
     private val client: NetworkClient by lazy {
         ensureNetworkKmmInitialized { }
         NetworkClient(
-            slockNetworkClientConfig(
+            raftNetworkClientConfig(
                 diagnosticsLogger = { message ->
-                    slockLogInfo("SlockAttachmentDownload", message)
+                    raftLogInfo("SlockAttachmentDownload", message)
                 }
             )
         )

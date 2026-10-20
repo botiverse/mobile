@@ -11,9 +11,9 @@ import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedThreadNetworkApi
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.ThreadReplyCacheIdentityTransitionAnchor
@@ -32,7 +32,7 @@ import build.raft.app.network.sync.ThreadDurablePageExtender
  */
 internal fun testSharedThreadDataSource(
     networkApi: SharedThreadNetworkApi,
-    sessionStore: SlockAuthSessionStore,
+    sessionStore: RaftAuthSessionStore,
     pendingSendJournal: ThreadPendingSendJournal? = null,
     selectedServerStore: SelectedServerStore? = null,
     memberRepository: MemberRepository? = null,
@@ -50,8 +50,8 @@ internal fun testSharedThreadDataSource(
     durableLastKnownReader: ThreadDurableLastKnownReader? = null,
     enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
     durablePageExtender: ThreadDurablePageExtender? = null,
-    agentsApiClient: SlockAgentsApiClient? = null,
-    actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
+    agentsApiClient: RaftAgentsApiClient? = null,
+    actionCardsApiClient: RaftIntegrationsActionsPushApiClient? = null,
     savedStatusRepository: SavedStatusRepository? = null,
     readReceiptCoordinator: ReadReceiptCoordinator? = null,
     readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,

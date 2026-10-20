@@ -6,22 +6,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.Image
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.text.InlineTextContent
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.onPlaced
-import com.tencent.kuikly.compose.ui.layout.onSizeChanged
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.Placeholder
-import com.tencent.kuikly.compose.ui.text.TextLayoutResult
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.base.Size
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Size
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.annotatorSettings
@@ -31,10 +32,10 @@ import com.tencent.kuiklybase.markdown.compose.LocalImageTransformer
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnimations
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownExtendedSpans
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownAnnotatedStringMemoKeys
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRenderTiming
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownAnnotatedStringMemoKeys
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRenderTiming
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import com.tencent.kuiklybase.markdown.compose.extendedspans.ExtendedSpans
@@ -72,9 +73,9 @@ fun MarkdownText(
     // rebuild-every-recomposition (identity-stable annotators may be
     // dynamic); revision provided = remember by actual inputs + revision.
     // Parse-tree identity is stable per content, so node works as a key.
-    val nodeTiming = LocalSlockMarkdownRenderTiming.current
-    val memoKeys = slockMarkdownAnnotatedStringMemoKeys(
-        content, childNode, style, annotatorSettings, LocalSlockMarkdownAnnotationRevision.current
+    val nodeTiming = LocalRaftMarkdownRenderTiming.current
+    val memoKeys = raftMarkdownAnnotatedStringMemoKeys(
+        content, childNode, style, annotatorSettings, LocalRaftMarkdownAnnotationRevision.current
     )
     val buildStyledText = {
         buildAnnotatedString {
@@ -119,7 +120,7 @@ fun MarkdownText(
     } else {
         content
     }
-    slockMarkdownLogSubTrace {
+    raftMarkdownLogSubTrace {
         "phase=markdown.text.annotated_input textHash=${extendedStyledText.text.hashCode().toString(16)} " +
             "textLength=${extendedStyledText.text.length} spanStyles=${extendedStyledText.spanStyles.size} " +
             "stringAnnotations=${extendedStyledText.getStringAnnotations(0, extendedStyledText.length).size} " +
@@ -220,7 +221,11 @@ internal fun createImageInlineTextContent(
 
     val imageHandler = LocalImageLinkHandler.current
     return InlineTextContent(
-        Placeholder(width = width.value.sp, height = mutableHeight.value.sp)
+        Placeholder(
+            width = width.value.sp,
+            height = mutableHeight.value.sp,
+            placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline
+        )
     ) { link ->
         transformer.transform(link, placeholderState.size)?.let { imageData ->
             imageHandler.store(imageData)

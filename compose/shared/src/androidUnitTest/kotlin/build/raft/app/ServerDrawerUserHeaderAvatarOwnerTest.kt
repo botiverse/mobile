@@ -57,7 +57,7 @@ class ServerDrawerUserHeaderAvatarOwnerTest {
 
         try {
             composition.setContent {
-                val userHeader = rememberSlockServerDrawerUserHeader(session)
+                val userHeader = rememberRaftServerDrawerUserHeader(session)
                 SideEffect { observedCacheServerIds += userHeader.serverId }
             }
             advanceUntilIdle()

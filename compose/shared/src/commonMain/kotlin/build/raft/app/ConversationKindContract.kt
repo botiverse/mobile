@@ -9,12 +9,12 @@ import build.raft.app.model.ConversationKind
  * Rules:
  * 1. Inside shared domain code the ONLY representation of a conversation's
  *    kind is [ConversationKind]. Kind-describing strings
- *    ([KuiklyThreadSurfaceKind] values, wire channel types such as
+ *    ([RaftThreadSurfaceKind] values, wire channel types such as
  *    "public"/"private"/"direct_message", ...) must not travel between layers.
  * 2. Strings may exist at exactly two boundaries, converted exactly once each:
  *    - parse boundary (server wire payloads → domain): [parseConversationKindOrNull]
  *    - Kuikly bridge boundary (domain → route/page payload strings):
- *      [toKuiklySurfaceKind] / [toWireChannelKindOrNull]
+ *      [toRaftSurfaceKind] / [toWireChannelKindOrNull]
  * 3. No silent defaults: [parseConversationKindOrNull] returns null for
  *    unknown input and callers decide explicitly (wait / drop / log) — never
  *    assume Channel. #415's DM-thread misroute grew from a `?: Channel`
@@ -25,13 +25,13 @@ import build.raft.app.model.ConversationKind
  * 5. The Kuikly surface projection is lossy (Joint/Inbox/System all render on
  *    the channel surface). Round-tripping a kind through a string is only
  *    guaranteed via [toWireChannelKindOrNull] for the kinds it covers.
- * 6. Confinement (task #444 lesson): [toKuiklySurfaceKind] may be CALLED only
+ * 6. Confinement (task #444 lesson): [toRaftSurfaceKind] may be CALLED only
  *    where a surface string is being assembled for the bridge — route/launch
  *    payload builders and directory-projection `surfaceKind` fields. It must
  *    never serialize a kind into a field that domain logic later parses back
  *    (the #444 bug: home rows carried the lossy surface as their kind and the
  *    Joint section's `kind == "joint"` filter went permanently false). When a
- *    domain check compares against [KuiklyThreadSurfaceKind.Channel], be
+ *    domain check compares against [RaftThreadSurfaceKind.Channel], be
  *    explicit about intent: that value also matches Joint/Inbox/System per
  *    rule 5 — if the check means "is a plain channel, not joint", it must use
  *    [ConversationKind] (or the lossless wire kind), not the surface.
@@ -43,14 +43,14 @@ import build.raft.app.model.ConversationKind
  */
 internal fun parseConversationKindOrNull(raw: String?): ConversationKind? =
     when (raw?.trim()?.lowercase()) {
-        KuiklyThreadSurfaceKind.DirectMessage,
+        RaftThreadSurfaceKind.DirectMessage,
         "direct_message",
         "direct-message",
         "directmessage",
         "direct" -> ConversationKind.DirectMessage
-        KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
+        RaftThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
         "joint" -> ConversationKind.Joint
-        KuiklyThreadSurfaceKind.Channel,
+        RaftThreadSurfaceKind.Channel,
         "public",
         "private",
         "group" -> ConversationKind.Channel
@@ -59,21 +59,21 @@ internal fun parseConversationKindOrNull(raw: String?): ConversationKind? =
         else -> null
     }
 
-internal fun ConversationKind.toKuiklySurfaceKind(): String =
+internal fun ConversationKind.toRaftSurfaceKind(): String =
     when (this) {
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-        ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+        ConversationKind.Thread -> RaftThreadSurfaceKind.ReplyThread
         ConversationKind.Channel,
         ConversationKind.Joint,
         ConversationKind.Inbox,
-        ConversationKind.System -> KuiklyThreadSurfaceKind.Channel
+        ConversationKind.System -> RaftThreadSurfaceKind.Channel
     }
 
 internal fun ConversationKind.toWireChannelKindOrNull(): String? =
     when (this) {
-        ConversationKind.Channel -> KuiklyThreadSurfaceKind.Channel
+        ConversationKind.Channel -> RaftThreadSurfaceKind.Channel
         ConversationKind.Joint -> "joint"
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
         ConversationKind.Thread,
         ConversationKind.Inbox,
         ConversationKind.System -> null

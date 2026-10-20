@@ -23,7 +23,7 @@ import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -50,11 +50,11 @@ class SqlDelightFoldPersistStoreTest {
         }
     }
 
-    private fun freshDb(): Pair<SlockSqlDatabase, CountingDriver> {
+    private fun freshDb(): Pair<RaftSqlDatabase, CountingDriver> {
         val driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
         driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
-        return SlockSqlDatabase(driver) to driver
+        return RaftSqlDatabase(driver) to driver
     }
 
     private fun scopeKey(
@@ -71,10 +71,10 @@ class SqlDelightFoldPersistStoreTest {
 
     private val scope = scopeKey()
 
-    private fun store(db: SlockSqlDatabase, onDecodeFailure: (SyncScopeKey, String) -> Unit = { _, _ -> }) =
+    private fun store(db: RaftSqlDatabase, onDecodeFailure: (SyncScopeKey, String) -> Unit = { _, _ -> }) =
         SqlDelightFoldPersistStore(db, now = { 100L }, onDecodeFailure = onDecodeFailure)
 
-    private fun adapter(db: SlockSqlDatabase, faultStore: FoldPersistStore? = null) =
+    private fun adapter(db: RaftSqlDatabase, faultStore: FoldPersistStore? = null) =
         DefaultFoldPersistenceAdapter(SqlDelightFoldPersistTransactionRunner(db), faultStore ?: store(db))
 
     private fun row(id: String, seq: Long, scopeKey: SyncScopeKey = scope) = CanonicalMessageRow(

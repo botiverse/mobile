@@ -78,7 +78,7 @@ val handsAlphaDeltaChannelId = handsAlphaDeltaMetadataString("handsChannelId")
 val handsAlphaDeltaChannelSlug = handsAlphaDeltaMetadataString("handsChannelSlug")
 val handsAlphaDeltaDeviceGroupId = handsAlphaDeltaMetadataString("handsDeviceGroupId")
 val handsAlphaDeltaDeviceGroupName = handsAlphaDeltaMetadataString("handsDeviceGroupName")
-val slockAndroidApplicationId = "build.raft.app"
+val raftAndroidApplicationId = "build.raft.app"
 val handsAlphaDeltaApplicationIdSuffix = ".alpha"
 val raftDexUseLegacyPackaging =
     providers.gradleProperty("raftDexUseLegacyPackaging")
@@ -103,7 +103,7 @@ if (handsAlphaDeltaMetadata["schemaVersion"]?.toString() != "1") {
 if (handsAlphaDeltaBuildType != "alpha") {
     throw GradleException("Hands delta updates must be bound only to the alpha build type")
 }
-if (handsAlphaDeltaApplicationId != "$slockAndroidApplicationId$handsAlphaDeltaApplicationIdSuffix") {
+if (handsAlphaDeltaApplicationId != "$raftAndroidApplicationId$handsAlphaDeltaApplicationIdSuffix") {
     throw GradleException(
         "Hands delta applicationId must be exactly build.raft.app.alpha: $handsAlphaDeltaApplicationId"
     )
@@ -296,14 +296,14 @@ val googleServerClientId =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
-fun slockBuildConfigString(name: String, fallback: String): String =
+fun raftBuildConfigString(name: String, fallback: String): String =
     providers.gradleProperty(name)
         .orElse(providers.environmentVariable(name))
         .getOrElse(fallback)
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
-fun slockBuildConfigRawString(name: String, vararg aliases: String): String? =
+fun raftBuildConfigRawString(name: String, vararg aliases: String): String? =
     sequenceOf(name, *aliases)
         .mapNotNull { key ->
             providers.gradleProperty(key)
@@ -314,50 +314,50 @@ fun slockBuildConfigRawString(name: String, vararg aliases: String): String? =
         }
         .firstOrNull()
 
-fun slockBuildConfigInt(name: String, fallback: Int, vararg aliases: String): Int =
-    slockBuildConfigRawString(name, *aliases)?.toIntOrNull() ?: fallback
+fun raftBuildConfigInt(name: String, fallback: Int, vararg aliases: String): Int =
+    raftBuildConfigRawString(name, *aliases)?.toIntOrNull() ?: fallback
 
-fun slockBuildConfigBoolean(name: String, fallback: Boolean): Boolean =
-    slockBuildConfigRawString(name)?.lowercase()?.toBooleanStrictOrNull() ?: fallback
+fun raftBuildConfigBoolean(name: String, fallback: Boolean): Boolean =
+    raftBuildConfigRawString(name)?.lowercase()?.toBooleanStrictOrNull() ?: fallback
 
-fun slockComputeAndroidVersionCode(major: Int, minor: Int, patch: Int, build: Int): Int =
+fun raftComputeAndroidVersionCode(major: Int, minor: Int, patch: Int, build: Int): Int =
     // Mirrors scripts/ci/version_code.sh (task #321): major*10M + minor*100k + patch*1k + build.
     // Kept as a Kotlin-level formula so no shell invocation is needed during the build.
     major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
 
-val slockAndroidVersionMajor = slockBuildConfigInt("versionX", 1, "SLOCK_ANDROID_VERSION_MAJOR")
-val slockAndroidVersionMinor = slockBuildConfigInt("versionY", 0, "SLOCK_ANDROID_VERSION_MINOR")
-val slockAndroidVersionPatch = slockBuildConfigInt("versionZ", 0, "SLOCK_ANDROID_VERSION_PATCH")
-val slockAndroidVersionBuild = slockBuildConfigInt("versionBuild", 0, "SLOCK_ANDROID_VERSION_BUILD")
-val slockAndroidVersionCode =
-    slockBuildConfigRawString("versionCode", "SLOCK_ANDROID_VERSION_CODE")?.toIntOrNull()
-        ?: slockComputeAndroidVersionCode(
-            slockAndroidVersionMajor,
-            slockAndroidVersionMinor,
-            slockAndroidVersionPatch,
-            slockAndroidVersionBuild
+val raftAndroidVersionMajor = raftBuildConfigInt("versionX", 1, "SLOCK_ANDROID_VERSION_MAJOR")
+val raftAndroidVersionMinor = raftBuildConfigInt("versionY", 0, "SLOCK_ANDROID_VERSION_MINOR")
+val raftAndroidVersionPatch = raftBuildConfigInt("versionZ", 0, "SLOCK_ANDROID_VERSION_PATCH")
+val raftAndroidVersionBuild = raftBuildConfigInt("versionBuild", 0, "SLOCK_ANDROID_VERSION_BUILD")
+val raftAndroidVersionCode =
+    raftBuildConfigRawString("versionCode", "SLOCK_ANDROID_VERSION_CODE")?.toIntOrNull()
+        ?: raftComputeAndroidVersionCode(
+            raftAndroidVersionMajor,
+            raftAndroidVersionMinor,
+            raftAndroidVersionPatch,
+            raftAndroidVersionBuild
         )
-val slockAndroidVersionSuffix = slockBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
-val slockAndroidVersionName =
-    slockBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")
+val raftAndroidVersionSuffix = raftBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
+val raftAndroidVersionName =
+    raftBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")
         ?: buildString {
-            append(slockAndroidVersionMajor)
+            append(raftAndroidVersionMajor)
             append(".")
-            append(slockAndroidVersionMinor)
+            append(raftAndroidVersionMinor)
             append(".")
-            append(slockAndroidVersionPatch)
-            slockAndroidVersionSuffix?.let { append("-").append(it) }
-            if (slockAndroidVersionSuffix != null) append("+").append(slockGitCommit())
-            if (slockWorkingTreeDirty()) append("-dirty")
+            append(raftAndroidVersionPatch)
+            raftAndroidVersionSuffix?.let { append("-").append(it) }
+            if (raftAndroidVersionSuffix != null) append("+").append(raftGitCommit())
+            if (raftWorkingTreeDirty()) append("-dirty")
         }
 
-fun slockBuildTime(): String {
+fun raftBuildTime(): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
     formatter.timeZone = TimeZone.getTimeZone("UTC")
     return formatter.format(Date())
 }
 
-fun slockGitCommit(): String =
+fun raftGitCommit(): String =
     try {
         val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
             .directory(rootProject.projectDir)
@@ -370,7 +370,7 @@ fun slockGitCommit(): String =
         "unknown"
     }
 
-fun slockWorkingTreeDirty(): Boolean =
+fun raftWorkingTreeDirty(): Boolean =
     try {
         val process = ProcessBuilder("git", "status", "--porcelain")
             .directory(rootProject.projectDir)
@@ -609,22 +609,22 @@ android {
     testBuildType = "connectedTest"
 
     defaultConfig {
-        applicationId = slockAndroidApplicationId
+        applicationId = raftAndroidApplicationId
         minSdk = 29
         targetSdk = 36
-        versionCode = slockAndroidVersionCode
-        versionName = slockAndroidVersionName
+        versionCode = raftAndroidVersionCode
+        versionName = raftAndroidVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
             "Boolean",
             "SHOW_TEST_BUILD_BADGE",
-            slockBuildConfigBoolean("SLOCK_SHOW_TEST_BUILD_BADGE", false).toString()
+            raftBuildConfigBoolean("SLOCK_SHOW_TEST_BUILD_BADGE", false).toString()
         )
         buildConfigField(
             "Boolean",
             "PERFORMANCE_TRACE_RING_ENABLED",
-            slockBuildConfigBoolean("SLOCK_PERFORMANCE_TRACE_RING_ENABLED", false).toString()
+            raftBuildConfigBoolean("SLOCK_PERFORMANCE_TRACE_RING_ENABLED", false).toString()
         )
         buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "false")
         buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "false")
@@ -636,17 +636,17 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
         manifestPlaceholders["oauthCallbackScheme"] = "raft"
-        buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
-        buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
-        buildConfigField("String", "HANDS_BASE_URL", "\"${slockBuildConfigString("SLOCK_HANDS_BASE_URL", "https://hands.build")}\"")
-        buildConfigField("String", "HANDS_APP_SLUG", "\"${slockBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")}\"")
-        buildConfigField("String", "HANDS_CHANNEL", "\"${slockBuildConfigString("SLOCK_HANDS_CHANNEL", "main")}\"")
-        buildConfigField("String", "HANDS_CLIENT_KEY", "\"${slockBuildConfigString("SLOCK_HANDS_CLIENT_KEY", "qk_40c9c9ab0b91665c85ca6278f3b0268c08d5afa3")}\"")
+        buildConfigField("String", "BUILD_TIME", "\"${raftBuildTime()}\"")
+        buildConfigField("String", "GIT_COMMIT", "\"${raftGitCommit()}\"")
+        buildConfigField("String", "HANDS_BASE_URL", "\"${raftBuildConfigString("SLOCK_HANDS_BASE_URL", "https://hands.build")}\"")
+        buildConfigField("String", "HANDS_APP_SLUG", "\"${raftBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")}\"")
+        buildConfigField("String", "HANDS_CHANNEL", "\"${raftBuildConfigString("SLOCK_HANDS_CHANNEL", "main")}\"")
+        buildConfigField("String", "HANDS_CLIENT_KEY", "\"${raftBuildConfigString("SLOCK_HANDS_CLIENT_KEY", "qk_40c9c9ab0b91665c85ca6278f3b0268c08d5afa3")}\"")
     }
 
     buildTypes {
         getByName("debug") {
-            buildConfigField("String", "HANDS_CHANNEL", "\"${slockBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
+            buildConfigField("String", "HANDS_CHANNEL", "\"${raftBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
         }
         create("alpha") {
@@ -669,7 +669,7 @@ android {
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("Boolean", "QA_SESSION_BOOTSTRAP_ENABLED", "true")
-            buildConfigField("String", "HANDS_CHANNEL", "\"${slockBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
+            buildConfigField("String", "HANDS_CHANNEL", "\"${raftBuildConfigString("SLOCK_HANDS_CHANNEL", "debug")}\"")
             matchingFallbacks += listOf("debug")
         }
         release {
@@ -735,8 +735,6 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
             "com.tencent.kuiklybase:network-android-curl-runtime",
             "com.tencent.kuiklybase:resource-core",
             "com.tencent.kuiklybase:resource-core-android",
-            "com.tencent.kuikly-open:compose",
-            "com.tencent.kuikly-open:compose-android",
             handsAndroidSdkModule
         )
     )
@@ -760,7 +758,7 @@ kotlin {
 
 // Keep the custom connectedTest target on the production dependency graph. Forcing newer
 // lifecycle/savedstate atomic groups here previously upgraded only its Compose runtime to 1.9.x,
-// while Kuikly 2.21 is compiled against the production BOM's 1.7.x CompositionObserver ABI.
+// while the app is compiled against the production Compose runtime.
 val verifyConnectedTestComposeRuntimeAlignment by tasks.registering {
     group = "verification"
     description =
@@ -806,8 +804,11 @@ tasks.matching {
 dependencies {
     add(handsAndroidSdkAar.name, "$handsAndroidSdkCoordinate@aar")
 
-    // Kuikly Compose shared module
+    // Shared app (pages, data layer) on Compose Multiplatform.
     implementation(project(":shared"))
+    // CMP page root/router/host contracts (RaftCmpActivity); see ui-cmp/build.gradle.kts.
+    implementation(project(":ui-cmp"))
+    implementation(project(":designsystem"))
     runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.47")
 
     implementation(libs.androidx.core.ktx)
@@ -821,9 +822,7 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    // Kuikly 2.21 still calls CompositionObserverKt.observe. Runtime 1.8.3 keeps that ABI
-    // and avoids the initial-layout StackOverflow reproduced with the BOM's runtime 1.7.6;
-    // runtime 1.9.x is incompatible because it replaces observe with setObserver.
+    // Pinned to the AndroidX Compose runtime line CMP 1.8.x is built against.
     implementation("androidx.compose.runtime:runtime:1.8.3")
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -843,6 +842,7 @@ dependencies {
     implementation(libs.mmkv)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.installations)
     testImplementation(libs.junit)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation(libs.androidx.junit)

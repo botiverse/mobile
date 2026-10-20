@@ -8,26 +8,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.data.ThreadFollowersNotice
 import build.raft.app.data.ThreadFollowersNoticeKind
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.layout.offset
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
-import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.shadow
-import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.compose.ui.layout.onSizeChanged
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.semantics.contentDescription
-import com.tencent.kuikly.compose.ui.semantics.semantics
-import com.tencent.kuikly.compose.ui.zIndex
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,42 +40,42 @@ import build.raft.app.base.Utils
 import build.raft.app.data.RealThreadAgentFollowersRepository
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedThreadAgentFollowersStore
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.ThreadAgentFollower
 import build.raft.app.data.ThreadAgentFollowersIntent
 import build.raft.app.data.ThreadAgentFollowersState
 import build.raft.app.data.ThreadFollowersError
 import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.heightIn
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.lazy.items
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Composable
 internal fun ThreadAgentFollowersRoute(
     threadId: String?, serverId: String?, accountId: String?,
-    storeScope: SlockShellStoreScope, active: Boolean,
+    storeScope: RaftShellStoreScope, active: Boolean,
 ) {
     if (threadId.isNullOrBlank() || serverId.isNullOrBlank() || accountId.isNullOrBlank()) return
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
-    val shared = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val shared = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val environment by shared.apiEnvironmentStore.state.collectAsState()
     val environmentId = environment.apiBaseUrl.trim().trimEnd('/')
     val scope = rememberCoroutineScope()
@@ -113,7 +113,7 @@ internal fun ThreadAgentFollowersRoute(
 
 private data class FollowersOverlay(
     val state: ThreadAgentFollowersState,
-    val anchor: SlockPopoverAnchorResolver?,
+    val anchor: RaftPopoverAnchorResolver?,
     val dispatch: (ThreadAgentFollowersIntent) -> Unit,
 )
 private class FollowersOverlayOwner {
@@ -137,7 +137,7 @@ internal fun ThreadFollowersOverlayHost(content: @Composable () -> Unit) {
                         canUndo = notice.kind == ThreadFollowersNoticeKind.Removed && overlay.state.undo != null,
                         enabled = !overlay.state.mutating,
                         onUndo = { overlay.dispatch(ThreadAgentFollowersIntent.Undo) },
-                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(SlockFloatingOverlayHostZIndex + 1f),
+                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(RaftFloatingOverlayHostZIndex + 1f),
                     )
                 }
             }
@@ -151,8 +151,6 @@ private fun FollowerNoticeView(
     notice: ThreadFollowersNotice, canUndo: Boolean, enabled: Boolean,
     onUndo: () -> Unit, modifier: Modifier = Modifier,
 ) {
-    val theme = LocalSlockTheme.current
-    val brutal = theme.family == SlockThemeFamily.Brutal
     val isError = notice.kind == ThreadFollowersNoticeKind.RemoveFailed || notice.kind == ThreadFollowersNoticeKind.RestoreFailed
     val label = stringResource(when (notice.kind) {
         ThreadFollowersNoticeKind.Removed -> MR.strings.thread_followers_removed
@@ -160,34 +158,31 @@ private fun FollowerNoticeView(
         ThreadFollowersNoticeKind.RemoveFailed -> MR.strings.thread_followers_remove_failed
         ThreadFollowersNoticeKind.RestoreFailed -> MR.strings.thread_followers_restore_failed
     }, notice.agentLabel)
-    val shape = RoundedCornerShape(if (brutal) 0.dp else 12.dp)
-    val surface = if (brutal) {
-        if (isError) SlockColor.AccentOrange else SlockColor.AccentLime
-    } else Color(0xED2C2C2E)
-    val ink = if (brutal) SlockColor.TextBlack else SlockColor.SurfaceWhite
+    val shape = RoundedCornerShape(12.dp)
+    val surface = Color(0xED2C2C2E)
+    val ink = RaftColor.SurfaceWhite
     Box(modifier.padding(16.dp).widthIn(max = 384.dp)) {
-        if (brutal) Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(SlockColor.ShadowBlack))
         Column(
             Modifier.fillMaxWidth().background(surface, shape)
-                .border(if (brutal) 2.dp else 1.dp, if (brutal) theme.line else Color.White.copy(alpha = 0.2f), shape)
-                .slockNativeDispatchCapture().clickable { }.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(if (brutal) 6.dp else 8.dp),
+                .border(1.dp, Color.White.copy(alpha = 0.2f), shape)
+                .raftNativeDispatchCapture().clickable { }.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SlockLucideIcon(if (isError) SlockLucideIconName.Info else SlockLucideIconName.CircleCheck,
-                    Modifier.size(16.dp), color = if (brutal) SlockColor.TextBlackArgb else SlockColor.SurfaceWhiteArgb)
-                Text(label, style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp,
-                    fontWeight = if (brutal) FontWeight.Bold else FontWeight.Medium), color = ink,
+                RaftLucideIcon(if (isError) RaftLucideIconName.Info else RaftLucideIconName.CircleCheck,
+                    Modifier.size(16.dp), color = RaftColor.SurfaceWhiteArgb)
+                Text(label, style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp,
+                    fontWeight = FontWeight.Medium), color = ink,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
             if (canUndo) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    val buttonShape = RoundedCornerShape(if (brutal) 0.dp else 100.dp)
+                    val buttonShape = RoundedCornerShape(100.dp)
                     Box(Modifier.heightIn(min = 28.dp)
-                        .background(if (brutal) SlockColor.TextBlack else Color.White.copy(alpha = 0.06f), buttonShape)
-                        .border(if (brutal) 2.dp else 1.dp, if (brutal) theme.line else Color.White.copy(alpha = 0.14f), buttonShape)
+                        .background(Color.White.copy(alpha = 0.06f), buttonShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.14f), buttonShape)
                         .clickable(enabled = enabled, onClick = onUndo).padding(horizontal = 8.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(stringResource(MR.strings.common_undo), style = SlockType.Caption, color = SlockColor.SurfaceWhite)
+                        Text(stringResource(MR.strings.common_undo), style = RaftType.Caption, color = RaftColor.SurfaceWhite)
                     }
                 }
             }
@@ -202,28 +197,28 @@ internal fun ThreadAgentFollowersHeader(
 ) {
     val agents = state.roster?.agents.orEmpty()
     val owner = LocalFollowersOverlay.current
-    val anchorRef = remember { SlockLiveRootAnchorRef("thread-followers") }
-    var resolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    val anchorRef = remember { RaftLiveRootAnchorRef("thread-followers") }
+    var resolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
     val latestDispatch by rememberUpdatedState(dispatch)
     val stableDispatch = remember { { intent: ThreadAgentFollowersIntent -> latestDispatch(intent) } }
     SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch) }
     DisposableEffect(owner) { onDispose { owner?.value = null } }
     if (agents.isEmpty() && !state.open && state.error != ThreadFollowersError.Load) return
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
-    Box(Modifier.slockCaptureLiveRootAnchor(anchorRef)) {
+    Box(Modifier.raftCaptureLiveRootAnchor(anchorRef)) {
         if (agents.isNotEmpty() || state.error == ThreadFollowersError.Load) {
             val description = stringResource(MR.strings.thread_followers_count, agents.size)
             ThreadHeaderActionButton(
                 modifier = Modifier.semantics { contentDescription = description },
                 horizontalPadding = 6.dp,
                 onClick = {
-                    resolver = anchorRef.resolver(SlockPopoverLocalPoint.BottomEnd)
+                    resolver = anchorRef.resolver(RaftPopoverLocalPoint.BottomEnd)
                     if (resolver?.resolve() != null) dispatch(ThreadAgentFollowersIntent.Open)
                 },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (state.error == ThreadFollowersError.Load && agents.isEmpty()) {
-                        SlockLucideIcon(SlockLucideIconName.Info, Modifier.size(16.dp))
+                        RaftLucideIcon(RaftLucideIconName.Info, Modifier.size(16.dp))
                     } else {
                         val visibleAvatars = agents.take(3)
                         // Explicit offsets: negative Row spacing does not overlap native Kuikly children.
@@ -234,7 +229,7 @@ internal fun ThreadAgentFollowersHeader(
                                 }
                             }
                         }
-                        Text(agents.size.toString(), style = SlockType.Caption.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack, maxLines = 1)
+                        Text(agents.size.toString(), style = RaftType.Caption.copy(fontWeight = FontWeight.Bold), color = RaftColor.TextBlack, maxLines = 1)
                     }
                 }
             }
@@ -243,9 +238,9 @@ internal fun ThreadAgentFollowersHeader(
 }
 
 @Composable
-private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopoverAnchor, dispatch: (ThreadAgentFollowersIntent) -> Unit) {
+private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopoverAnchor, dispatch: (ThreadAgentFollowersIntent) -> Unit) {
     val agents = state.roster?.agents.orEmpty()
-    val theme = LocalSlockTheme.current
+    val theme = LocalRaftTheme.current
     val density = LocalDensity.current
     var peerHint by remember { mutableStateOf<String?>(null) }
     val width = 288.dp
@@ -253,47 +248,44 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
     var measuredSize by remember { mutableStateOf(Size.Zero) }
     val estimatedHeight = (44 + if (agents.isEmpty()) 80 else agents.take(6).size * 48).dp
     val size = if (measuredSize != Size.Zero) measuredSize else with(density) { Size(width.toPx(), estimatedHeight.toPx()) }
-    SlockAnchoredPopover(
+    RaftAnchoredPopover(
         anchor = anchor, contentSize = size,
         onDismiss = { dispatch(ThreadAgentFollowersIntent.Close) },
         horizontalOffset = 0f,
-        horizontalPlacement = SlockFloatingHorizontalPlacement.Center,
+        horizontalPlacement = RaftFloatingHorizontalPlacement.Center,
         verticalOffset = with(density) { 6.dp.toPx() },
         viewportGap = with(density) { 8.dp.toPx() },
-        verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+        verticalPlacement = RaftFloatingVerticalPlacement.Auto,
         dismissActivationDelayMillis = 0L,
     ) {
         Box(Modifier.onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }) {
-        val shape = RoundedCornerShape(theme.cornerRadius)
-        if (theme.family == SlockThemeFamily.Brutal) {
-            Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(theme.shadow.color))
-        }
+        val shape = RoundedCornerShape(RaftAppRadius.Control)
         Column(Modifier.width(width)
-            .then(if (theme.family == SlockThemeFamily.Elegant) Modifier.shadow(4.dp, shape, clip = false,
-                ambientColor = theme.shadow.color, spotColor = theme.shadow.color) else Modifier)
+            .shadow(4.dp, shape, clip = false,
+                ambientColor = Color.Transparent, spotColor = Color.Transparent)
             .background(theme.surface, shape)
-            .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius)).clickable { }) {
+            .border(theme.lineWidth, theme.line, RoundedCornerShape(RaftAppRadius.Control)).clickable { }) {
             Box(Modifier.fillMaxWidth()
-                .background(if (theme.family == SlockThemeFamily.Brutal) SlockColor.SurfaceCream else theme.surface)
+                .background(theme.surface)
                 .padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(stringResource(MR.strings.thread_followers_title),
-                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)
+                    style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)
             }
             Box(Modifier.fillMaxWidth().height(theme.lineWidth).background(theme.line))
             if (state.loading && agents.isEmpty()) {
                 Box(Modifier.padding(16.dp)) {
-                    Text(stringResource(MR.strings.thread_followers_loading), style = SlockType.Caption, color = theme.inkMuted)
+                    Text(stringResource(MR.strings.thread_followers_loading), style = RaftType.Caption, color = theme.inkMuted)
                 }
             } else if (state.error == ThreadFollowersError.Load) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(MR.strings.thread_followers_load_failed), style = SlockType.Caption, color = theme.inkMuted)
+                    Text(stringResource(MR.strings.thread_followers_load_failed), style = RaftType.Caption, color = theme.inkMuted)
                     Box(Modifier.clickable(enabled = !state.loading) { dispatch(ThreadAgentFollowersIntent.Refresh) }.padding(8.dp)) {
-                        Text(stringResource(MR.strings.common_retry), style = SlockType.Caption, color = theme.ink)
+                        Text(stringResource(MR.strings.common_retry), style = RaftType.Caption, color = theme.ink)
                     }
                 }
             } else if (agents.isEmpty()) {
                 Box(Modifier.padding(16.dp)) {
-                    Text(stringResource(MR.strings.thread_followers_empty), style = SlockType.Caption, color = theme.inkMuted)
+                    Text(stringResource(MR.strings.thread_followers_empty), style = RaftType.Caption, color = theme.inkMuted)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 12.dp)) {
@@ -306,7 +298,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                         val canRemove = agent.canRemove && agent.isCurrentServer
                         val indicator = followerStatusIndicator(agent.status)
                         // Sharing member-row presentation must not replace follower-specific permissions.
-                        SlockModalCompactMemberRow(
+                        RaftModalCompactMemberRow(
                             title = agent.label,
                             subtitle = indicator?.localizedMemberStatusLabel() ?: agent.status,
                             avatarWireValue = agent.avatarUrl,
@@ -316,7 +308,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                             cacheServerId = agent.serverId,
                             sourceBadgeLabel = server.takeUnless { agent.isCurrentServer },
                             clickEnabled = false,
-                            trailingIcon = SlockLucideIconName.X.takeIf { canManage },
+                            trailingIcon = RaftLucideIconName.X.takeIf { canManage },
                             trailingMuted = !canRemove,
                             onTrailingClick = if (canManage) ({
                                 if (!state.mutating && (state.undo == null || !canRemove)) {
@@ -329,7 +321,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
                 }
                 peerHint?.let { hint ->
                     Box(Modifier.fillMaxWidth().background(theme.surfaceMuted).padding(12.dp).clickable { peerHint = null }) {
-                        Text(hint, style = SlockType.Caption, color = theme.inkMuted)
+                        Text(hint, style = RaftType.Caption, color = theme.inkMuted)
                     }
                 }
             }
@@ -340,12 +332,12 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: SlockPopo
 
 @Composable
 private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {
-    SlockAvatar(avatarWireValue = agent.avatarUrl, label = agent.label,
+    RaftAppAvatar(avatarWireValue = agent.avatarUrl, label = agent.label,
         avatarSize = if (compact) 20.dp else 28.dp, cacheServerId = agent.serverId)
 }
 
 /** The follower endpoint carries display status, not external-agent execution mode. */
-internal fun followerStatusIndicator(wireStatus: String): SlockAgentStatusIndicatorState? =
+internal fun followerStatusIndicator(wireStatus: String): RaftAgentStatusIndicatorState? =
     AgentStatus.fromWireValue(wireStatus)?.let {
-        slockAgentStatusIndicatorState(it, it.presence, external = false)
+        raftAgentStatusIndicatorState(it, it.presence, external = false)
     }

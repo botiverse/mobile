@@ -1,17 +1,17 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class SettingsAccountBottomInsetTest {
     @Test
     fun standaloneAccountContentAddsNavigationInsetToSettingsSpacing() {
-        assertEquals(18.dp + SlockSpacing.Lg, settingsAccountStandaloneBottomContentPadding(18.dp))
+        assertEquals(18.dp + RaftAppSpacing.Lg, settingsAccountStandaloneBottomContentPadding(18.dp))
     }
 
     @Test
     fun zeroNavigationInsetKeepsDefaultSettingsSpacing() {
-        assertEquals(SlockSpacing.Lg, settingsAccountStandaloneBottomContentPadding(0.dp))
+        assertEquals(RaftAppSpacing.Lg, settingsAccountStandaloneBottomContentPadding(0.dp))
     }
 }

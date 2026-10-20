@@ -34,7 +34,7 @@ class SharedMessageBodyFontSizeStore(
     private val diagnosticsLogger: (String) -> Unit = {},
 ) {
     private val mutex = Mutex()
-    private val _state = MutableStateFlow(SharedMessageBodyFontSizeState())
+    private val _state = raftStoreState(SharedMessageBodyFontSizeState(), "SharedMessageBodyFontSizeStore")
     val state: StateFlow<SharedMessageBodyFontSizeState> = _state.asStateFlow()
 
     private val loads = mutableMapOf<String, Deferred<DataResult<SettingsAppearanceSnapshot>>>()
@@ -46,6 +46,16 @@ class SharedMessageBodyFontSizeStore(
         loadAppearance: suspend () -> DataResult<SettingsAppearanceSnapshot>,
     ) {
         val normalizedOwnerKey = ownerKey.trim().takeIf { it.isNotBlank() } ?: return
+        // Conversation pages call this from a LaunchedEffect (main thread); the loading-owner write
+        // belongs on the store dispatcher like every other write of this store.
+        scope.raftWithStoreScope { ensureLoadedOnStoreScope(normalizedOwnerKey, force, loadAppearance) }
+    }
+
+    private suspend fun ensureLoadedOnStoreScope(
+        normalizedOwnerKey: String,
+        force: Boolean,
+        loadAppearance: suspend () -> DataResult<SettingsAppearanceSnapshot>,
+    ) {
         val deferred =
             mutex.withLock {
                 val current = _state.value
@@ -117,6 +127,10 @@ class SharedMessageBodyFontSizeStore(
 
     suspend fun acceptAuthoritative(ownerKey: String, snapshot: SettingsAppearanceSnapshot) {
         val normalizedOwnerKey = ownerKey.trim().takeIf { it.isNotBlank() } ?: return
+        scope.raftWithStoreScope { acceptAuthoritativeOnStoreScope(normalizedOwnerKey, snapshot) }
+    }
+
+    private suspend fun acceptAuthoritativeOnStoreScope(normalizedOwnerKey: String, snapshot: SettingsAppearanceSnapshot) {
         mutex.withLock {
             generations[normalizedOwnerKey] = (generations[normalizedOwnerKey] ?: 0L) + 1L
             loads.remove(normalizedOwnerKey)

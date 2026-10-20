@@ -1,34 +1,18 @@
 source 'https://cdn.cocoapods.org/'
 
-kuikly_release = '2.28.0-raft.13'
-kuikly_binary_version = "#{kuikly_release}-2.1.21"
-kuikly_coordinate = "com.tencent.kuikly-open:core-render-ios:#{kuikly_binary_version}"
-kuikly_podspec = "../build/kuikly/core-render-ios-#{kuikly_binary_version}.podspec.json"
-kuikly_podspec_output = File.expand_path(kuikly_podspec, __dir__)
-kuikly_fetcher = File.expand_path('../../scripts/ci/fetch_kuikly_release_artifact.py', __dir__)
-unless system(
-  'python3', kuikly_fetcher,
-  '--release', kuikly_release,
-  '--coordinate', kuikly_coordinate,
-  '--kind', 'podspec-json',
-  '--output', kuikly_podspec_output
-)
-  abort "Kuikly release is incomplete or its iOS podspec failed byte verification"
-end
-
 target 'iosApp' do
   use_frameworks!
   platform :ios, '15.0'
 
-  pod 'OpenKuiklyIOSRender', :podspec => kuikly_podspec
   pod 'shared', :path => '../shared'
 
   pod 'Hands', :git => 'https://github.com/oranix-io/hands.git', :tag => 'ios-v0.2.1'
   pod 'SDWebImage'
-  # task #436: SVG decoding for iOS. Kuikly loads images via UIImage (no native
-  # SVG support), so provider icons shipped as SVG rendered blank. SDWebImage's
-  # official SVG coder (native CoreSVG, iOS 13+) decodes SVG through the image
-  # pipeline once registered at startup (see iOSApp.swift).
+  # task #436: SVG decoding for the durable avatar store (RaftIosAvatarCacheProvider
+  # decodes committed avatar bytes through SDWebImage; UIImage has no native SVG
+  # support). SDWebImage's official SVG coder (native CoreSVG, iOS 13+) is
+  # registered at startup (see iOSApp.swift). Pages draw images with the Kotlin
+  # Raft Coil loader (coil-svg for SVG).
   pod 'SDWebImageSVGCoder'
   pod 'Socket.IO-Client-Swift', '~> 16.1'
   pod 'MMKV', '~> 2.4.0'
@@ -57,7 +41,12 @@ set -e
 # The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),
 # one level up from this target's $SRCROOT (compose/iosApp).
 GRADLE_ROOT="$SRCROOT/.."
+# :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources
+# (Raft fonts) to <App>.app/compose-resources, where the CMP runtime reads them;
+# compose.ios.resources.sync=false keeps the CMP plugin from doing it.
 "$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :shared:copyFrameworkResourcesToApp \\
+  :ui-cmp:syncComposeResourcesForXcodeApp \\
+  -Praft.cmp.resources.dir="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources" \\
   -Ptmm.resources.BUILT_PRODUCTS_DIR="$BUILT_PRODUCTS_DIR" \\
   -Ptmm.resources.CONTENTS_FOLDER_PATH="$CONTENTS_FOLDER_PATH" \\
   -Ptmm.resources.CONFIGURATION="$CONFIGURATION" \\

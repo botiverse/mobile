@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 
 class ThreadUnreadJumpProvenanceTest {
     private fun message(id: String, seq: Long?) =
-        KuiklyThreadMessageItem(
+        RaftThreadMessageItem(
             id = id,
             authorId = "author-$id",
             authorName = "Author $id",
@@ -14,9 +14,9 @@ class ThreadUnreadJumpProvenanceTest {
         )
 
     private fun payload(
-        vararg messages: KuiklyThreadMessageItem,
+        vararg messages: RaftThreadMessageItem,
         gapRefillMessageIds: Set<String> = emptySet(),
-    ) = KuiklyThreadScreenPayload(
+    ) = RaftThreadScreenPayload(
         status = "content",
         messages = messages.toList(),
         gapRefillMessageIds = gapRefillMessageIds,
@@ -85,9 +85,9 @@ class ThreadUnreadJumpProvenanceTest {
 }
 
 /** Test seam mirroring the store's internal merge call shape. */
-private fun KuiklyThreadScreenPayload.mergePagedMessagesForTest(
-    pageMessages: List<KuiklyThreadMessageItem>
-): KuiklyThreadScreenPayload =
+private fun RaftThreadScreenPayload.mergePagedMessagesForTest(
+    pageMessages: List<RaftThreadMessageItem>
+): RaftThreadScreenPayload =
     mergePagedMessages(
         pageMessages = pageMessages,
         before = false,

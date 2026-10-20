@@ -7,13 +7,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import build.raft.app.components.SlockBrutalInputField
-import build.raft.app.components.SlockBrutalSectionLabel
-import build.raft.app.components.SlockBrutalSelectField
-import build.raft.app.components.SlockBrutalSelectOption
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockCheckbox
-import build.raft.app.components.SlockLinkButton
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftBrutalSectionLabel
+import build.raft.app.components.RaftBrutalSelectField
+import build.raft.app.components.RaftBrutalSelectOption
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftAppCheckbox
+import build.raft.app.components.RaftLinkButton
 import build.raft.app.data.DataResult
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Choices
@@ -33,17 +33,17 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
@@ -102,8 +102,8 @@ internal fun RuntimeFormV2Fields(
         if (loaded.form.blockingFieldKeys.isNotEmpty()) {
             Text(
                 text = stringResource(MR.strings.runtime_form_v2_update_required_blocking),
-                style = SlockType.Caption,
-                color = SlockColor.AccentRed
+                style = RaftType.Caption,
+                color = RaftColor.AccentRed
             )
         }
         primary.forEach { field ->
@@ -203,7 +203,7 @@ private fun RuntimeFormV2FieldRow(
     val hint = if (connectionOwned) managedHint else field.hint
     when (field.kind) {
         RuntimeFormV2FieldKind.Text, RuntimeFormV2FieldKind.Url ->
-            SlockBrutalTextField(
+            RaftBrutalTextField(
                 label = field.label,
                 value = current,
                 onValueChange = { onChange(field.key, JsonPrimitive(it)) },
@@ -217,7 +217,7 @@ private fun RuntimeFormV2FieldRow(
             // Masked input keeps its own TextFieldValue so the editing token survives recomposition.
             var secret by remember(field.key) { mutableStateOf(TextFieldValue(current)) }
             if (secret.text != current) secret = TextFieldValue(current)
-            SlockBrutalTextField(
+            RaftBrutalTextField(
                 label = field.label,
                 value = secret,
                 onValueChange = {
@@ -238,15 +238,15 @@ private fun RuntimeFormV2FieldRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockCheckbox(
+                RaftAppCheckbox(
                     checked = values[field.key].booleanValue(),
                     onCheckedChange = { onChange(field.key, JsonPrimitive(it)) },
                     enabled = fieldEnabled
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(field.label, style = SlockType.Caption, color = SlockColor.TextBlack)
-                    hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
-                    error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
+                    Text(field.label, style = RaftType.Caption, color = RaftColor.TextBlack)
+                    hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
+                    error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
                 }
             }
         RuntimeFormV2FieldKind.StringMap -> {
@@ -269,8 +269,8 @@ private fun RuntimeFormV2FieldRow(
                     label = field.label,
                     required = required
                 )
-                hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
-                error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
+                hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
+                error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
             }
         }
         RuntimeFormV2FieldKind.Select,
@@ -278,7 +278,7 @@ private fun RuntimeFormV2FieldRow(
         RuntimeFormV2FieldKind.DerivedSelect ->
             when (val choices = runtimeFormV2Choices(field, loaded.sources, values)) {
                 RuntimeFormV2Choices.FreeText ->
-                    SlockBrutalTextField(
+                    RaftBrutalTextField(
                         label = field.label,
                         value = current,
                         onValueChange = { onChange(field.key, JsonPrimitive(it)) },
@@ -302,23 +302,23 @@ private fun RuntimeFormV2FieldRow(
                     if (!choices.allowCustom && customMode) customMode = false
                     if (choices.allowCustom && unlisted && !customMode) customMode = true
                     val options = buildList {
-                        if (choices.allowEmpty) add(SlockBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
+                        if (choices.allowEmpty) add(RaftBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
                         var lastGroup: String? = null
                         choices.options.forEach { option ->
                             val group = option.group
                             if (grouped && group != null && group != lastGroup) {
                                 val heading = if (group == "saved") savedGroupLabel else directGroupLabel
-                                add(SlockBrutalSelectOption("$RUNTIME_FORM_V2_GROUP_OPTION_PREFIX$group", heading, header = true))
+                                add(RaftBrutalSelectOption("$RUNTIME_FORM_V2_GROUP_OPTION_PREFIX$group", heading, header = true))
                             }
                             lastGroup = group
                             // A bound connection that is unavailable stays visible but cannot be picked again.
-                            add(SlockBrutalSelectOption(option.value, option.label, enabled = !option.unavailable))
+                            add(RaftBrutalSelectOption(option.value, option.label, enabled = !option.unavailable))
                         }
                         if (choices.allowCustom) {
-                            add(SlockBrutalSelectOption(RUNTIME_FORM_V2_CUSTOM_OPTION_ID, customLabel))
+                            add(RaftBrutalSelectOption(RUNTIME_FORM_V2_CUSTOM_OPTION_ID, customLabel))
                         } else if (unlisted) {
                             // A stored value the server no longer offers stays visible, but cannot be re-picked.
-                            add(SlockBrutalSelectOption(current, current, enabled = false))
+                            add(RaftBrutalSelectOption(current, current, enabled = false))
                         }
                     }
                     val selectedId = when {
@@ -339,7 +339,7 @@ private fun RuntimeFormV2FieldRow(
                             CreateAgentSectionLabelWithAction(
                                 label = field.label,
                                 required = required,
-                                actionIcon = SlockLucideIconName.RefreshCw,
+                                actionIcon = RaftLucideIconName.RefreshCw,
                                 actionEnabled = fieldEnabled && refreshableSource !in sourceRefresh.refreshing,
                                 loading = refreshableSource in sourceRefresh.refreshing,
                                 onAction = {
@@ -348,9 +348,9 @@ private fun RuntimeFormV2FieldRow(
                                 }
                             )
                         } else {
-                            SlockBrutalSectionLabel(label = field.label, required = required)
+                            RaftBrutalSectionLabel(label = field.label, required = required)
                         }
-                        SlockBrutalSelectField(
+                        RaftBrutalSelectField(
                             options = options,
                             selectedId = selectedId,
                             selectedLabel = options.firstOrNull { it.id == selectedId }?.label.orEmpty(),
@@ -372,7 +372,7 @@ private fun RuntimeFormV2FieldRow(
                         )
                         if (customMode) {
                             // Label-less input: the select above already carries the field label.
-                            SlockBrutalInputField(
+                            RaftBrutalInputField(
                                 value = current,
                                 onValueChange = { onChange(field.key, JsonPrimitive(it)) },
                                 placeholder = field.placeholder.orEmpty(),
@@ -381,9 +381,9 @@ private fun RuntimeFormV2FieldRow(
                         }
                         // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).
                         choices.options.firstOrNull { it.value == current }?.description?.let {
-                            Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                            Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
                         }
-                        hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                        hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
                         sourceStatus?.let { status ->
                             RuntimeFormV2SourceStatusLine(
                                 status = status,
@@ -401,22 +401,22 @@ private fun RuntimeFormV2FieldRow(
                         if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
                             Text(
                                 stringResource(MR.strings.runtime_form_v2_source_refresh_failed),
-                                style = SlockType.Caption,
-                                color = SlockColor.AccentRed
+                                style = RaftType.Caption,
+                                color = RaftColor.AccentRed
                             )
                         }
-                        error?.let { Text(it, style = SlockType.Caption, color = SlockColor.AccentRed) }
+                        error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
                     }
                 }
                 null -> Unit
             }
         RuntimeFormV2FieldKind.Unsupported ->
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                SlockBrutalSectionLabel(label = field.label, required = field.required)
+                RaftBrutalSectionLabel(label = field.label, required = field.required)
                 Text(
                     text = stringResource(MR.strings.runtime_form_v2_update_required),
-                    style = SlockType.Caption,
-                    color = SlockColor.AccentRed
+                    style = RaftType.Caption,
+                    color = RaftColor.AccentRed
                 )
             }
     }
@@ -435,16 +435,16 @@ private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, ret
         else -> stringResource(MR.strings.runtime_form_v2_source_status_unknown)
     }
     val text = if (status.unavailable) reason else "$reason ${stringResource(MR.strings.runtime_form_v2_source_status_fallback)}"
-    Text(text, style = SlockType.Caption, color = if (status.unavailable) SlockColor.AccentRed else SlockColor.TextMutedGray)
+    Text(text, style = RaftType.Caption, color = if (status.unavailable) RaftColor.AccentRed else RaftColor.TextMutedGray)
     // Retry only when the server says it may help.
     if (status.retryable && onRetry != null) {
-        SlockLinkButton(
+        RaftLinkButton(
             text = stringResource(MR.strings.common_retry),
             onClick = onRetry,
             enabled = !retrying,
             fontSize = 12.sp,
             lineHeight = 16.sp,
-            color = SlockColor.TextBlack
+            color = RaftColor.TextBlack
         )
     }
 }
@@ -527,8 +527,8 @@ internal fun RuntimeFormV2RuntimeSection(
         notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
-        SlockBrutalSelectField(
+        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
             selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label.orEmpty(),

@@ -6,8 +6,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -287,7 +287,7 @@ sealed interface TasksPresentationIntent {
 }
 
 internal class SharedTasksViewModel(
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     dataSource: SharedTasksDataSource,
     private val scope: SharedTasksScope = SharedTasksScope.Server,
     private val sharedTasksDataStore: SharedTasksDataStore? = null,

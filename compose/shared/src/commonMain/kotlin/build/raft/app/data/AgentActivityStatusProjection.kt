@@ -18,7 +18,20 @@ internal data class AgentActivityStatusProjection(
      * older / evidence-less projections, so a late stale REST snapshot can
      * never displace a fresher one.
      */
-    val evidenceTimestamp: Long? = null
+    val evidenceTimestamp: Long? = null,
+    /**
+     * Server `detailKind` of the status this projection came from
+     * ("starting", "runtime_starting", "compacting_context", ...). For a
+     * client-observed `compaction_started` entry it is set to
+     * `compacting_context` so the UI localizes both the same way.
+     */
+    val detailKind: String? = null,
+    /**
+     * Set when [detail] is a client-built tool label (a `tool_start` entry):
+     * the normalized tool name, so the UI can localize the label instead of
+     * printing the English [detail].
+     */
+    val toolName: String? = null
 ) {
     val presence: Presence
         get() = status.presence
@@ -29,7 +42,8 @@ internal fun projectAgentActivityStatus(
     activity: String? = null,
     detail: String? = null,
     text: String? = null,
-    toolName: String? = null
+    toolName: String? = null,
+    detailKind: String? = null
 ): AgentActivityStatusProjection? {
     val normalizedKind = kind?.trim()?.lowercase() ?: return null
     return when (normalizedKind) {
@@ -38,15 +52,19 @@ internal fun projectAgentActivityStatus(
                 status = AgentStatus.Thinking,
                 detail = text.projectionNonBlankOrNull() ?: detail.projectionNonBlankOrNull() ?: "Thinking..."
             )
-        "tool_start" ->
+        "tool_start" -> {
+            val normalizedTool = toolName?.normalizedAgentToolName()
             AgentActivityStatusProjection(
                 status = AgentStatus.Working,
-                detail = toolName?.toAgentToolActivityLabel() ?: "Working"
+                detail = normalizedTool?.toAgentToolActivityLabel() ?: "Working",
+                toolName = normalizedTool
             )
+        }
         "compaction_started" ->
             AgentActivityStatusProjection(
                 status = AgentStatus.Working,
-                detail = "Compacting context..."
+                detail = "Compacting context...",
+                detailKind = AgentActivityDetailKindCompactingContext
             )
         "compaction_finished" ->
             AgentActivityStatusProjection(
@@ -61,7 +79,8 @@ internal fun projectAgentActivityStatus(
                 ) ?: return null
             AgentActivityStatusProjection(
                 status = status,
-                detail = detail ?: ""
+                detail = detail ?: "",
+                detailKind = detailKind?.trim()?.takeIf { it.isNotBlank() }
             )
         }
         else -> null
@@ -77,7 +96,8 @@ internal fun List<AgentActivityEntry>.latestAgentActivityStatusProjection(): Age
                 activity = entry.statusActivity,
                 detail = entry.statusDetail ?: entry.body,
                 text = entry.body,
-                toolName = entry.toolName
+                toolName = entry.toolName,
+                detailKind = entry.statusDetailKind
             )
         // The chosen entry's server timestamp is the projection's freshness
         // evidence (task #137(b)); trajectory entries carry epoch millis,
@@ -133,16 +153,24 @@ internal fun AgentActivityStatusProjection.toMemberPresenceUpdated(
         kind = MemberKind.Agent,
         agentStatus = status,
         statusLabel = detail,
+        detailKind = detailKind,
+        activityToolName = toolName,
         serverSeq = serverSeq
     )
 
-private fun String.toAgentToolActivityLabel(): String {
-    val normalized = trim()
+internal const val AgentActivityDetailKindCompactingContext = "compacting_context"
+
+/** `mcp__chat__read_file` / `chat/read_file` / `chat.read_file` -> `read_file`; null when nothing is left. */
+internal fun String.normalizedAgentToolName(): String? =
+    trim()
         .substringAfterLast("__")
         .substringAfterLast("/")
         .substringAfterLast(".")
         .takeIf { it.isNotBlank() }
-        ?: return "Working"
+
+/** English fallback for a normalized tool name; the UI localizes the same mapping. */
+private fun String.toAgentToolActivityLabel(): String {
+    val normalized = this
     return when (normalized) {
         "read_file" -> "Reading file..."
         "write_file" -> "Writing file..."
@@ -156,7 +184,7 @@ private fun String.toAgentToolActivityLabel(): String {
     }
 }
 
-private fun String.truncateAgentToolLabel(): String =
+internal fun String.truncateAgentToolLabel(): String =
     if (length <= 24) this else take(22) + ".."
 
 private fun String?.projectionNonBlankOrNull(): String? =

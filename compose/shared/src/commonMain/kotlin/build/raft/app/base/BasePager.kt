@@ -1,32 +1,30 @@
 package build.raft.app.base
 
-import build.raft.app.SlockEnvironmentIndicatorHost
-import build.raft.app.slockEnvironmentIndicatorEnabledForPage
-import build.raft.app.slockLogError
-import build.raft.app.slockLogInfo
-import build.raft.app.SlockAdaptivePanePagerEvent
-import build.raft.app.SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
-import build.raft.app.data.SlockEnhancedNotifyCenter
-import build.raft.app.slockPlatformConsumesSnapshotsFromKuikly
+import build.raft.app.RaftEnvironmentIndicatorHost
+import build.raft.app.raftEnvironmentIndicatorEnabledForPage
+import build.raft.app.raftLogError
+import build.raft.app.raftLogInfo
+import build.raft.app.toJsonObject
+import build.raft.app.RaftAdaptivePanePagerEvent
+import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
+import build.raft.app.data.RaftEnhancedNotifyCenter
+import build.raft.app.data.RaftStoreThreading
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.ComposeContainer
-import com.tencent.kuikly.compose.setContent as setKuiklyContent
-import com.tencent.kuikly.core.module.Module
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.IModuleCreator
-import com.tencent.kuikly.core.pager.Pager
-import com.tencent.kuikly.core.reactive.handler.*
+import build.raft.app.compat.pager.ComposeContainer
+import build.raft.app.compat.module.Module
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
 
 internal abstract class BasePager : ComposeContainer() {
-    private var nightModel: Boolean? by observable(null)
-    protected var slockPageVisibleResumeTick by mutableStateOf(0)
+    private var nightModel: Boolean? = null
+    protected var raftPageVisibleResumeTick by mutableStateOf(0)
         private set
-    protected var slockPageVisible by mutableStateOf(false)
+    protected var raftPageVisible by mutableStateOf(false)
         private set
-    private var slockHasAppeared = false
+    private var raftHasAppeared = false
 
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
@@ -35,10 +33,9 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     override fun willInit() {
-        configureSlockComposeSnapshotConsumption()
-        registerSlockExternalModuleCreators()
+        registerRaftExternalModuleCreators()
         super.willInit()
-        configureKuiklyThreadVerification()
+        configureStoreThreadVerification()
     }
 
     /**
@@ -46,16 +43,16 @@ internal abstract class BasePager : ComposeContainer() {
      * Member functions win over extensions at each page's existing `setContent { ... }` callsite,
      * which keeps the non-production environment indicator above auth and product surfaces alike.
      */
-    protected fun setContent(content: @Composable () -> Unit) {
-        setKuiklyContent {
-            SlockEnvironmentIndicatorHost(
-                enabled = slockEnvironmentIndicatorEnabledForPage(pageData.params),
+    override fun setContent(content: @Composable () -> Unit) {
+        super.setContent {
+            RaftEnvironmentIndicatorHost(
+                enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
                 content = content,
             )
         }
     }
 
-    private fun registerSlockExternalModuleCreators() {
+    private fun registerRaftExternalModuleCreators() {
         registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {
             override fun createModule(): Module = BridgeModule()
         })
@@ -68,24 +65,24 @@ internal abstract class BasePager : ComposeContainer() {
 
     override fun pageDidAppear() {
         super.pageDidAppear()
-        slockPageVisible = true
-        val initialAppearance = !slockHasAppeared
-        slockHasAppeared = true
+        raftPageVisible = true
+        val initialAppearance = !raftHasAppeared
+        raftHasAppeared = true
         if (!initialAppearance) {
-            slockPageVisibleResumeTick += 1
+            raftPageVisibleResumeTick += 1
         }
-        onSlockPageDidAppear(isInitialAppearance = initialAppearance)
+        onRaftPageDidAppear(isInitialAppearance = initialAppearance)
     }
 
     override fun pageDidDisappear() {
         super.pageDidDisappear()
-        slockPageVisible = false
-        onSlockPageDidDisappear()
+        raftPageVisible = false
+        onRaftPageDidDisappear()
     }
 
-    protected open fun onSlockPageDidAppear(isInitialAppearance: Boolean) = Unit
+    protected open fun onRaftPageDidAppear(isInitialAppearance: Boolean) = Unit
 
-    protected open fun onSlockPageDidDisappear() = Unit
+    protected open fun onRaftPageDidDisappear() = Unit
 
     override fun themeDidChanged(data: JSONObject) {
         super.themeDidChanged(data)
@@ -94,16 +91,16 @@ internal abstract class BasePager : ComposeContainer() {
 
     override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
         super.onReceivePagerEvent(pagerEvent, eventData)
-        if (pagerEvent == SlockAdaptivePanePagerEvent) {
-            onSlockAdaptivePaneChanged(eventData)
+        if (pagerEvent == RaftAdaptivePanePagerEvent) {
+            onRaftAdaptivePaneChanged(eventData)
         }
-        if (pagerEvent == SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT) {
+        if (pagerEvent == RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT) {
             // task #18 wiring gap (Jony's v12 QA): iOS delivers the commit receipt via the target
             // pager's sendWithEvent, not the shared eventBus — forward it in-process so the
             // shell's settle subscription sees it. Token/authority checks stay in the settle path.
-            SlockEnhancedNotifyCenter.post(
-                eventName = SLOCK_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
-                eventData = eventData,
+            RaftEnhancedNotifyCenter.post(
+                eventName = RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT,
+                eventData = eventData.toJsonObject(),
                 crossProcess = true,
                 source = "pager_commit_result_forward",
             )
@@ -111,7 +108,7 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     /** Host window facts are not route data. Pages opt in when they own a responsive surface. */
-    protected open fun onSlockAdaptivePaneChanged(eventData: JSONObject) = Unit
+    protected open fun onRaftAdaptivePaneChanged(eventData: JSONObject) = Unit
 
     // 是否为夜间模式
     override fun isNightMode(): Boolean {
@@ -126,33 +123,16 @@ internal abstract class BasePager : ComposeContainer() {
         return false
     }
 
-    private fun configureKuiklyThreadVerification() {
-        val params = pageData.params
-        val verifyThread = params.optBoolean(KEY_VERIFY_THREAD, false)
-        val verifyReactiveObserver =
-            params.optBoolean(KEY_VERIFY_REACTIVE_OBSERVER, verifyThread)
-
-        Pager.VERIFY_THREAD = verifyThread
-        Pager.VERIFY_REACTIVE_OBSERVER = verifyReactiveObserver
-
-        if (!verifyThread && !verifyReactiveObserver) {
-            return
-        }
-
-        Pager.verifyFailed { exception ->
-            slockLogError(
-                TAG_VERIFY,
-                "kuikly_verify_failed verifyThread=$verifyThread " +
-                    "verifyReactiveObserver=$verifyReactiveObserver " +
-                    "type=${exception::class.simpleName} message=${exception.message.orEmpty()}"
-            )
-            throw exception
-        }
-        slockLogInfo(
-            TAG_VERIFY,
-            "kuikly_verify_enabled verifyThread=$verifyThread " +
-                "verifyReactiveObserver=$verifyReactiveObserver"
-        )
+    /**
+     * Kuikly's renderer thread verification is gone with Kuikly; the store-dispatcher violation
+     * report it switched on stays behind the same pageData flag.
+     */
+    private fun configureStoreThreadVerification() {
+        if (!pageData.params.optBoolean(KEY_VERIFY_THREAD, false)) return
+        // Debug thread verification also reports process-wide store writes made outside the
+        // store dispatcher (logged, not thrown: see RaftStoreThreading for the known gaps).
+        RaftStoreThreading.installViolationHandler { violation -> raftLogError(TAG_VERIFY, violation.toString()) }
+        raftLogInfo(TAG_VERIFY, "store_verify_enabled")
     }
 
     companion object {
@@ -162,8 +142,4 @@ internal abstract class BasePager : ComposeContainer() {
         private const val TAG_VERIFY = "SlockKuiklyVerify"
     }
 
-}
-
-internal fun configureSlockComposeSnapshotConsumption() {
-    ComposeContainer.enableConsumeSnapshot = slockPlatformConsumesSnapshotsFromKuikly()
 }

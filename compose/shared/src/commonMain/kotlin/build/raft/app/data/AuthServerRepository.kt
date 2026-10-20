@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 
 class AuthServerRepository(
-    private val store: SlockAuthSessionStore,
+    private val store: RaftAuthSessionStore,
     private val authDataSource: SharedAuthDataSource
 ) : ServerRepository {
     override suspend fun getServers(): DataResult<ServerListSnapshot> {

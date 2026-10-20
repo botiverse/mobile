@@ -3,13 +3,13 @@
 // https://github.com/saket/extended-spans
 package com.tencent.kuiklybase.markdown.compose.extendedspans
 
-import com.tencent.kuikly.compose.ui.geometry.Rect
-import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.graphics.drawscope.DrawScope
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 
 abstract class ExtendedSpanPainter {
     /**

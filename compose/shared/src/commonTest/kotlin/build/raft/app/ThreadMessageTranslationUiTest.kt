@@ -28,8 +28,8 @@ private fun message(
     body: String = "你好",
     isOwn: Boolean = false,
     messageType: String = "Chat"
-): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
+): RaftThreadMessageItem =
+    RaftThreadMessageItem(
         id = id,
         authorId = "a1",
         authorName = "Alice",

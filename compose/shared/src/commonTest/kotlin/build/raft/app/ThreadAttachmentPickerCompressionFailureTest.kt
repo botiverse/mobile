@@ -1,7 +1,7 @@
 package build.raft.app
 
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONArray
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,14 +18,14 @@ class ThreadAttachmentPickerCompressionFailureTest {
             JSONArray().apply {
                 put(
                     JSONObject()
-                        .put("errorCode", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                        .put("errorCode", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
                         .put("fileRef", "file:///cache/failed.jpg")
                 )
             }
         val response =
             JSONObject()
                 .put("code", 206)
-                .put("errorCode", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                .put("errorCode", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
                 .put("files", files)
                 .put("errors", errors)
                 .put(
@@ -48,7 +48,7 @@ class ThreadAttachmentPickerCompressionFailureTest {
     fun bodyTextCompressionFailureIsDetectedAndRefsAreCollected() {
         val body =
             JSONObject()
-                .put("errorCode", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                .put("errorCode", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
                 .put(
                     "files",
                     JSONArray().apply {
@@ -60,7 +60,7 @@ class ThreadAttachmentPickerCompressionFailureTest {
                     JSONArray().apply {
                         put(
                             JSONObject()
-                                .put("errorCode", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+                                .put("errorCode", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
                                 .put("temporaryFileRef", "file:///cache/body-failed.jpg")
                         )
                     }

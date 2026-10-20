@@ -781,10 +781,10 @@ Raft baseline paths:
 - `compose/iosApp/iosApp/KuiklyRenderViewPage.swift`
 - `compose/iosApp/iosApp/KuiklyExpand/KuiklyRenderViewController.m`
 - `compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m`
-- `compose/iosApp/iosApp/SlockIosAppScopeMMKV.swift`
-- `compose/iosApp/iosApp/SlockIosRealtimeHost.swift`
+- `compose/iosApp/iosApp/RaftIosAppScopeMMKV.swift`
+- `compose/iosApp/iosApp/RaftIosRealtimeHost.swift`
 - `compose/iosApp/iosApp/ContentView.swift`
-- `compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyHostContract.kt`
+- `compose/androidApp/src/main/java/build/raft/app/shared/RaftHostContract.kt`
 - `compose/ohosApp/entry/src/main/ets/pages/Index.ets`
 - `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`
 - `compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthSessionStore.kt`
@@ -810,7 +810,7 @@ present in the reviewed fork baseline through fork sync commit
 `7afa0f77d86ca91849a8ec66bb3e3eb6707e3ea4`. Its early
 `firstScreenTurboDisplay` value remains candidate truth only.
 
-`SlockIosRealtimeHost` and `RealtimeAuthorityRegistry` are existing generation,
+`RaftIosRealtimeHost` and `RealtimeAuthorityRegistry` are existing generation,
 lease, and stale-callback rejection precedents. A future Turbo coordinator
 should reuse their semantics without coupling artifact state to private realtime
 storage or parsing the raw auth record.

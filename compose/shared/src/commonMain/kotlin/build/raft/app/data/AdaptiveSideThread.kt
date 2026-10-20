@@ -1,47 +1,49 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadSurfaceKind
-import build.raft.app.SlockAdaptiveDetailCloseRequest
-import build.raft.app.SlockAdaptiveDetailIdentity
-import build.raft.app.SlockAdaptiveDetailSelection
-import build.raft.app.SlockAdaptivePaneLayout
-import build.raft.app.SlockAdaptivePaneState
-import build.raft.app.SlockAdaptiveWorkspaceIntent
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftAdaptiveDetailCloseRequest
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftAdaptiveDetailSelection
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftAdaptiveWorkspaceIntent
 import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.acceptsDetailCallback
 import build.raft.app.nextAdaptiveGeneration
-import build.raft.app.reduceSlockAdaptiveWorkspace
-import build.raft.app.toSlockAdaptiveDetailCloseRequestOrNull
-import build.raft.app.toSlockAdaptiveDetailIdentity
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.optString
+import build.raft.app.reduceRaftAdaptiveWorkspace
+import build.raft.app.toRaftAdaptiveDetailCloseRequestOrNull
+import build.raft.app.toRaftAdaptiveDetailIdentity
+import build.raft.app.withEntry
+import kotlinx.serialization.json.JsonObject
 
 /**
  * task #36: below this window width the reply thread keeps replacing the channel in the detail
  * pane (Back returns). It is only the first gate — the actual detail width is checked too.
  */
-internal const val SLOCK_SIDE_THREAD_MIN_WINDOW_DP = 1200f
+internal const val RAFT_SIDE_THREAD_MIN_WINDOW_DP = 1200f
 
 /** Fixed width of the reply-thread column beside the channel. */
-internal const val SLOCK_SIDE_THREAD_COLUMN_DP = 400f
+internal const val RAFT_SIDE_THREAD_COLUMN_DP = 400f
 
 /** Narrowest the channel body may get once the thread column takes its share. */
-internal const val SLOCK_SIDE_THREAD_MAIN_MIN_DP = 440f
+internal const val RAFT_SIDE_THREAD_MAIN_MIN_DP = 440f
 
 /** Divider between the channel body and the thread column. */
-internal const val SLOCK_SIDE_THREAD_DIVIDER_DP = 1f
+internal const val RAFT_SIDE_THREAD_DIVIDER_DP = 1f
 
 /**
  * A reply thread shown in its own column beside the selected channel/DM ([owner]). It has its own
  * identity and generation, so its close request only ever closes the column.
  */
 internal data class AdaptiveSideThread(
-    val owner: SlockAdaptiveDetailSelection,
-    val identity: SlockAdaptiveDetailIdentity,
+    val owner: RaftAdaptiveDetailSelection,
+    val identity: RaftAdaptiveDetailIdentity,
     val payload: WireThreadLaunchPayload,
     val generation: Long,
 ) {
-    fun closeRequest(shellInstanceId: String): SlockAdaptiveDetailCloseRequest =
-        SlockAdaptiveDetailCloseRequest(shellInstanceId, identity.key, generation)
+    fun closeRequest(shellInstanceId: String): RaftAdaptiveDetailCloseRequest =
+        RaftAdaptiveDetailCloseRequest(shellInstanceId, identity.key, generation)
 }
 
 /**
@@ -50,18 +52,18 @@ internal data class AdaptiveSideThread(
  * reaches the breakpoint cannot squeeze the channel body below its minimum. Unknown width (null or
  * not yet measured) means no column.
  */
-internal fun slockSideThreadColumnAvailable(
+internal fun raftSideThreadColumnAvailable(
     desktopModeOnLargeScreen: Boolean,
-    pane: SlockAdaptivePaneState,
+    pane: RaftAdaptivePaneState,
     detailPaneWidthDp: Float?,
 ): Boolean =
     desktopModeOnLargeScreen &&
-        pane.layout == SlockAdaptivePaneLayout.DualPane &&
+        pane.layout == RaftAdaptivePaneLayout.DualPane &&
         pane.density > 0f &&
-        pane.widthPx / pane.density >= SLOCK_SIDE_THREAD_MIN_WINDOW_DP &&
+        pane.widthPx / pane.density >= RAFT_SIDE_THREAD_MIN_WINDOW_DP &&
         detailPaneWidthDp != null &&
         detailPaneWidthDp >=
-        SLOCK_SIDE_THREAD_MAIN_MIN_DP + SLOCK_SIDE_THREAD_DIVIDER_DP + SLOCK_SIDE_THREAD_COLUMN_DP
+        RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
 
 /** task #36: what the caller of [openSideThread] must do. */
 internal sealed interface AdaptiveSideThreadOpen {
@@ -87,7 +89,7 @@ internal sealed interface AdaptiveSideThreadOpen {
  * detail or the current side thread.
  */
 internal fun SharedAdaptiveWorkspaceSession.openSideThread(
-    source: SlockAdaptiveDetailCloseRequest,
+    source: RaftAdaptiveDetailCloseRequest,
     target: WireThreadLaunchPayload,
     serverId: String,
     columnAvailable: Boolean,
@@ -95,19 +97,19 @@ internal fun SharedAdaptiveWorkspaceSession.openSideThread(
     val current = workspace ?: return AdaptiveSideThreadOpen.Ignored
     val main = current.selection ?: return AdaptiveSideThreadOpen.Ignored
     if (current.shellInstanceId != source.shellInstanceId || !current.parentVisible ||
-        current.pane.layout != SlockAdaptivePaneLayout.DualPane || current.serverId != serverId
+        current.pane.layout != RaftAdaptivePaneLayout.DualPane || current.serverId != serverId
     ) return AdaptiveSideThreadOpen.Ignored
     val fromMain = current.acceptsDetailCallback(source.identityKey, source.generation)
     val side = sideThread
     val fromSide = side != null && side.owner == main &&
         side.identity.key == source.identityKey && side.generation == source.generation
     if (!fromMain && !fromSide) return AdaptiveSideThreadOpen.Ignored
-    if (!columnAvailable || main.identity.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+    if (!columnAvailable || main.identity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
         return AdaptiveSideThreadOpen.FallbackToReplace
     }
-    val identity = target.toSlockAdaptiveDetailIdentity(serverId) ?: return AdaptiveSideThreadOpen.FallbackToReplace
+    val identity = target.toRaftAdaptiveDetailIdentity(serverId) ?: return AdaptiveSideThreadOpen.FallbackToReplace
     val mainChannelId = main.identity.channelId ?: main.identity.threadId
-    if (identity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || identity.parentChannelId != mainChannelId) {
+    if (identity.surfaceKind != RaftThreadSurfaceKind.ReplyThread || identity.parentChannelId != mainChannelId) {
         return AdaptiveSideThreadOpen.FallbackToReplace
     }
     if (side?.identity == identity) return AdaptiveSideThreadOpen.Opened(this)
@@ -126,7 +128,7 @@ internal fun SharedAdaptiveWorkspaceSession.openSideThread(
 /** Whether this session's current host can show the side column right now. */
 internal fun SharedAdaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen: Boolean): Boolean {
     val pane = workspace?.pane ?: return false
-    return slockSideThreadColumnAvailable(desktopModeOnLargeScreen, pane, detailPaneWidthDp)
+    return raftSideThreadColumnAvailable(desktopModeOnLargeScreen, pane, detailPaneWidthDp)
 }
 
 /**
@@ -142,7 +144,7 @@ internal fun SharedAdaptiveWorkspaceSession.visibleSideThread(): AdaptiveSideThr
  * An ignored (stale/foreign) source leaves the session untouched.
  */
 internal fun SharedAdaptiveWorkspaceSession.openWithinWideDetail(
-    source: SlockAdaptiveDetailCloseRequest,
+    source: RaftAdaptiveDetailCloseRequest,
     target: WireThreadLaunchPayload,
     serverId: String,
     desktopModeOnLargeScreen: Boolean,
@@ -155,7 +157,7 @@ internal fun SharedAdaptiveWorkspaceSession.openWithinWideDetail(
             val main = workspace?.selection
             val replaceSource =
                 if (main != null && workspace?.acceptsDetailCallback(source.identityKey, source.generation) != true) {
-                    SlockAdaptiveDetailCloseRequest(source.shellInstanceId, main.identity.key, main.generation)
+                    RaftAdaptiveDetailCloseRequest(source.shellInstanceId, main.identity.key, main.generation)
                 } else source
             navigateDetail(replaceSource, target, serverId)
         }
@@ -166,7 +168,7 @@ internal fun SharedAdaptiveWorkspaceSession.openWithinWideDetail(
  * current side thread of that detail. Retired pages (an older main generation, a closed or folded
  * side thread) are not.
  */
-internal fun SharedAdaptiveWorkspaceSession.acceptsAdaptiveSource(source: SlockAdaptiveDetailCloseRequest): Boolean {
+internal fun SharedAdaptiveWorkspaceSession.acceptsAdaptiveSource(source: RaftAdaptiveDetailCloseRequest): Boolean {
     val current = workspace ?: return false
     if (current.shellInstanceId != source.shellInstanceId) return false
     if (current.acceptsDetailCallback(source.identityKey, source.generation)) return true
@@ -184,7 +186,7 @@ internal enum class AdaptiveThreadOpenRoute { WithinDetail, Standalone, Ignored 
  * only a live one may use the standalone fallback when the wide detail cannot take the open.
  */
 internal fun SharedAdaptiveWorkspaceSession.routeThreadOpen(
-    source: SlockAdaptiveDetailCloseRequest?,
+    source: RaftAdaptiveDetailCloseRequest?,
     desktopModeEnabled: Boolean,
     targetServerId: String?,
 ): AdaptiveThreadOpenRoute = when {
@@ -200,7 +202,7 @@ internal fun SharedAdaptiveWorkspaceSession.routeThreadOpen(
  * otherwise the existing one-level Back of the main detail. A retired request changes nothing.
  */
 internal fun SharedAdaptiveWorkspaceSession.closeFromDetailPage(
-    request: SlockAdaptiveDetailCloseRequest,
+    request: RaftAdaptiveDetailCloseRequest,
 ): SharedAdaptiveWorkspaceSession {
     val closedSide = closeSideThread(request)
     return if (closedSide !== this) closedSide else backFromDetail(request)
@@ -214,7 +216,7 @@ internal fun SharedAdaptiveWorkspaceSession.backClosesSideThreadFirst(desktopMod
 
 /** Closes the side column when [request] is the current side thread's own close request. */
 internal fun SharedAdaptiveWorkspaceSession.closeSideThread(
-    request: SlockAdaptiveDetailCloseRequest,
+    request: RaftAdaptiveDetailCloseRequest,
 ): SharedAdaptiveWorkspaceSession {
     val side = sideThread ?: return this
     if (workspace?.shellInstanceId != request.shellInstanceId ||
@@ -233,7 +235,7 @@ internal fun SharedAdaptiveWorkspaceSession.foldSideThreadIntoDetail(): SharedAd
     val current = workspace ?: return copy(sideThread = null)
     val mainPayload = launchPayload ?: return copy(sideThread = null)
     if (current.selection != side.owner) return copy(sideThread = null)
-    val next = reduceSlockAdaptiveWorkspace(current, SlockAdaptiveWorkspaceIntent.ParkSelection(side.identity))
+    val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.ParkSelection(side.identity))
     val selection = next.selection?.takeIf { it.identity == side.identity } ?: return copy(sideThread = null)
     val previous = detailHistory?.takeIf { it.owner == current.selection }?.previous.orEmpty()
     return copy(
@@ -245,20 +247,20 @@ internal fun SharedAdaptiveWorkspaceSession.foldSideThreadIntoDetail(): SharedAd
 }
 
 /** task #36: the side thread's "open parent channel" hands focus to the main detail's parent message. */
-internal const val SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT = "slockAdaptiveDetailFocusMessage"
-internal const val SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID = "slockAdaptiveDetailFocusMessageId"
+internal const val RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT = "slockAdaptiveDetailFocusMessage"
+internal const val RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID = "slockAdaptiveDetailFocusMessageId"
 
 /** Focus [messageId] in the detail page identified by [target] (its own key/generation). */
 internal data class AdaptiveParentFocusRequest(
-    val target: SlockAdaptiveDetailCloseRequest,
+    val target: RaftAdaptiveDetailCloseRequest,
     val messageId: String,
 ) {
-    fun toJson(): JSONObject = target.toJson().put(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
+    fun toJson(): JsonObject = target.toJson().withEntry(RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID, messageId)
 }
 
-internal fun JSONObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocusRequest? {
-    val target = toSlockAdaptiveDetailCloseRequestOrNull() ?: return null
-    val messageId = optString(SLOCK_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID).trim().takeIf(String::isNotBlank) ?: return null
+internal fun JsonObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocusRequest? {
+    val target = toRaftAdaptiveDetailCloseRequestOrNull() ?: return null
+    val messageId = optString(RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_ID).trim().takeIf(String::isNotBlank) ?: return null
     return AdaptiveParentFocusRequest(target, messageId)
 }
 
@@ -268,7 +270,7 @@ internal fun JSONObject.toAdaptiveParentFocusRequestOrNull(): AdaptiveParentFocu
  * any other page, so the existing parent navigation applies.
  */
 internal fun SharedAdaptiveWorkspaceSession.sideThreadParentFocus(
-    source: SlockAdaptiveDetailCloseRequest,
+    source: RaftAdaptiveDetailCloseRequest,
 ): AdaptiveParentFocusRequest? {
     val current = workspace ?: return null
     val main = current.selection ?: return null
@@ -278,14 +280,14 @@ internal fun SharedAdaptiveWorkspaceSession.sideThreadParentFocus(
     ) return null
     val messageId = side.payload.parentMessageId?.trim()?.takeIf(String::isNotBlank) ?: return null
     return AdaptiveParentFocusRequest(
-        SlockAdaptiveDetailCloseRequest(current.shellInstanceId, main.identity.key, main.generation),
+        RaftAdaptiveDetailCloseRequest(current.shellInstanceId, main.identity.key, main.generation),
         messageId,
     )
 }
 
 /** Whether the detail page [page] applies [request]: addressed to it and it is still the main detail. */
 internal fun SharedAdaptiveWorkspaceSession.acceptsParentFocus(
-    page: SlockAdaptiveDetailCloseRequest,
+    page: RaftAdaptiveDetailCloseRequest,
     request: AdaptiveParentFocusRequest,
 ): Boolean {
     val current = workspace ?: return false
@@ -307,7 +309,7 @@ internal enum class AdaptiveParentFocusOutcome(val logValue: String) {
  * dispatches the focus.
  */
 internal fun SharedAdaptiveWorkspaceSession.parentFocusOutcomeAfterWait(
-    page: SlockAdaptiveDetailCloseRequest?,
+    page: RaftAdaptiveDetailCloseRequest?,
     request: AdaptiveParentFocusRequest,
     keyboardClosed: Boolean,
 ): AdaptiveParentFocusOutcome = when {

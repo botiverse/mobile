@@ -1,8 +1,8 @@
 package build.raft.app.base
 
-import com.tencent.kuikly.core.base.BaseObject
-import com.tencent.kuikly.core.manager.BridgeManager
-import com.tencent.kuikly.core.manager.PagerManager
+import build.raft.app.compat.pager.BaseObject
+import build.raft.app.compat.pager.BridgeManager
+import build.raft.app.compat.pager.PagerManager
 
 internal object Utils : BaseObject() {
 

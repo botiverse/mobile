@@ -1,7 +1,7 @@
 package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageRow
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.model.MessageId
 
 /**
@@ -13,11 +13,11 @@ import build.raft.app.model.MessageId
  * output, never a second source of truth.
  *
  * [SqlDelightFoldPersistTransactionRunner] runs one applied frame inside exactly one
- * [SlockSqlDatabase.transaction] (real BEGIN/COMMIT), giving the §9.9 transaction-count invariant on a real
+ * [RaftSqlDatabase.transaction] (real BEGIN/COMMIT), giving the §9.9 transaction-count invariant on a real
  * backend. All of this store's mutations run inside that single transaction.
  */
 internal class SqlDelightFoldPersistStore(
-    private val database: SlockSqlDatabase,
+    private val database: RaftSqlDatabase,
     private val now: () -> Long,
     private val onDecodeFailure: (scope: SyncScopeKey, factId: String) -> Unit = { _, _ -> },
 ) : FoldPersistStore {
@@ -181,7 +181,7 @@ internal class FoldPersistScopeConflict(scope: SyncScopeKey, factId: String) :
 
 /** Binds the fold transaction runner to the real SQLite BEGIN/COMMIT boundary. */
 internal class SqlDelightFoldPersistTransactionRunner(
-    private val database: SlockSqlDatabase,
+    private val database: RaftSqlDatabase,
 ) : FoldPersistTransactionRunner {
     override suspend fun run(block: suspend () -> Unit) {
         database.transaction { block() }

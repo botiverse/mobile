@@ -3,7 +3,7 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -193,7 +193,7 @@ internal data class StrictMessageSqlDelightReaderHooks(
  * a concurrent writer cannot produce an old-facts/new-cursor mixed snapshot.
  */
 internal class SqlDelightStrictMessageScopeSnapshotReader(
-    internal val database: SlockSqlDatabase,
+    internal val database: RaftSqlDatabase,
     internal val validator: StrictMessageScopeSnapshotValidator = StrictMessageScopeSnapshotValidator(),
     internal val hooks: StrictMessageSqlDelightReaderHooks = StrictMessageSqlDelightReaderHooks(),
 ) : StrictMessageScopeSnapshotReader {

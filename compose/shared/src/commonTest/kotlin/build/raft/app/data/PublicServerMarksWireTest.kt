@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  *   `guestVisible` (db/schema.ts:1801) and `archivedAt`.
  */
 class PublicServerMarksWireTest {
-    private class ServersTransport(private val body: String) : SlockAuthTransport by AuthDataSourceTest.FakeAuthApi() {
+    private class ServersTransport(private val body: String) : RaftAuthTransport by AuthDataSourceTest.FakeAuthApi() {
         override suspend fun servers(authorization: String): AuthNetworkResponse = AuthNetworkResponse(200, body)
     }
 
@@ -37,7 +37,7 @@ class PublicServerMarksWireTest {
             """.trimIndent()
 
         val servers = assertIs<AuthApiResult.Success<List<StoredAuthServer>>>(
-            SlockAuthApiClient(ServersTransport(body)).servers("Bearer access")
+            RaftAuthApiClient(ServersTransport(body)).servers("Bearer access")
         ).data
 
         assertEquals(
@@ -51,7 +51,7 @@ class PublicServerMarksWireTest {
 
     @Test
     fun loadServersPersistsPublicPageLiveIntoTheSessionStore() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(
+        val store = InMemoryRaftAuthSessionStore(
             authSessionFixture(servers = listOf(StoredAuthServer(id = "server-1", name = "One", slug = "one")))
         )
         val transport =
@@ -92,7 +92,7 @@ class PublicServerMarksWireTest {
     @Test
     fun channelDetailCarriesGuestVisibleIntoTheDirectoryProjection() {
         val row = assertNotNull(
-            parseSlockChannelDetail(
+            parseRaftChannelDetail(
                 """{"id":"c-public","name":"announcements","type":"channel","guestVisible":true,"archivedAt":null,"joined":true}"""
             )
         )

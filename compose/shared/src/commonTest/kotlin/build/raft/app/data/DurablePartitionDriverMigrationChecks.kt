@@ -6,7 +6,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.db.SqlSchema
-import build.raft.app.shared.data.local.SlockDatabase
+import build.raft.app.shared.data.local.RaftDatabase
 import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -271,7 +271,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             val failure = assertFails("$platformName fail-at-$failAt must abort driver open") {
-                openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt), name).useDriver { driver ->
+                openDriver(FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt), name).useDriver { driver ->
                     driver.scalarLong("SELECT 1")
                 }
             }
@@ -287,7 +287,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
                 assertEquals(expectedOutbox, driver.outboxRow())
             }
 
-            openDriver(SlockDatabase.Schema, name).useDriver { driver ->
+            openDriver(RaftDatabase.Schema, name).useDriver { driver ->
                 assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
                 assertMigratedFixtureIntact(driver, "$platformName fail-at-$failAt retry")
                 assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
@@ -295,7 +295,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
                 seedNewPartitionRows(driver)
             }
 
-            openDriver(SlockDatabase.Schema, name).useDriver { driver ->
+            openDriver(RaftDatabase.Schema, name).useDriver { driver ->
                 assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
                 assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                 assertEquals(
@@ -337,7 +337,7 @@ private fun assertFileBackedV2ToV9RollbackRetry(
 
         for (failAt in 1..20) {
             val failure = assertFails("$platformName v2->v9 fail-at-$failAt must abort driver open") {
-                openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt), name).useDriver { driver ->
+                openDriver(FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt), name).useDriver { driver ->
                     driver.scalarLong("SELECT 1")
                 }
             }
@@ -361,7 +361,7 @@ private fun assertFileBackedV2ToV9RollbackRetry(
             }
         }
 
-        openDriver(SlockDatabase.Schema, name).useDriver { driver ->
+        openDriver(RaftDatabase.Schema, name).useDriver { driver ->
             assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
             assertMigratedFixtureIntact(driver, "$platformName v2 retry")
             assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
@@ -369,7 +369,7 @@ private fun assertFileBackedV2ToV9RollbackRetry(
             seedViewerOverlayRow(driver)
         }
 
-        openDriver(SlockDatabase.Schema, name).useDriver { driver ->
+        openDriver(RaftDatabase.Schema, name).useDriver { driver ->
             assertEquals(9L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
             assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
             assertEquals(

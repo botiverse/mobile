@@ -31,33 +31,33 @@ class NetworkKmmConnectTimeoutTest {
         logs: MutableList<String> = mutableListOf(),
         onRequest: (NetworkRequest) -> Unit
     ) =
-        NetworkKmmSlockHttpExecutor(
+        NetworkKmmRaftHttpExecutor(
             warningLogger = { logs.add(it) },
             requestStarterOverride = { request, onComplete ->
                 onRequest(request)
                 onComplete(okResponse(request))
-                SlockNetworkRequestCancelHandle {}
+                RaftNetworkRequestCancelHandle {}
             }
         )
 
     @Test
     fun factoryAlwaysSetsTheAppConnectTimeout() {
-        val policy = slockNetworkRequestPolicy(totalTimeoutMillis = 30_000L)
+        val policy = raftNetworkRequestPolicy(totalTimeoutMillis = 30_000L)
 
         assertEquals(30_000L, policy.timeoutMillis)
         assertEquals(NetworkPriority.NORMAL, policy.priority)
         assertEquals(
-            SLOCK_CONNECT_TIMEOUT_MILLIS,
+            RAFT_CONNECT_TIMEOUT_MILLIS,
             policy.streamTimeouts.connectTimeoutMillis,
             "the factory must never leave connect to the library default"
         )
-        assertEquals(10_000L, SLOCK_CONNECT_TIMEOUT_MILLIS, "task #1138 pins 10s (equal to today's library default)")
+        assertEquals(10_000L, RAFT_CONNECT_TIMEOUT_MILLIS, "task #1138 pins 10s (equal to today's library default)")
     }
 
     @Test
     fun factoryPassesAnExplicitConnectTimeoutThrough() {
         val policy =
-            slockNetworkRequestPolicy(
+            raftNetworkRequestPolicy(
                 totalTimeoutMillis = 180_000L,
                 priority = NetworkPriority.HIGH,
                 connectTimeoutMillis = 4_321L
@@ -76,7 +76,7 @@ class NetworkKmmConnectTimeoutTest {
 
         val response =
             executor.execute(
-                priority = SlockRequestPriority.Foreground,
+                priority = RaftRequestPriority.Foreground,
                 url = "https://api.test/api/servers",
                 method = "GET",
                 headers = emptyMap(),
@@ -88,14 +88,14 @@ class NetworkKmmConnectTimeoutTest {
         assertEquals(200, response.code)
         assertEquals(30_000L, request.policy.timeoutMillis, "ordinary total budget unchanged")
         assertEquals(
-            SLOCK_CONNECT_TIMEOUT_MILLIS,
+            RAFT_CONNECT_TIMEOUT_MILLIS,
             request.policy.streamTimeouts.connectTimeoutMillis,
             "login/list style requests must not inherit the library connect default"
         )
         val start = logs.firstOrNull { it.startsWith("slock_networkkmm_execute_start") }
         assertNotNull(start, "execute_start line must be logged")
         assertTrue(
-            start.contains("configConnectTimeoutMillis=$SLOCK_CONNECT_TIMEOUT_MILLIS"),
+            start.contains("configConnectTimeoutMillis=$RAFT_CONNECT_TIMEOUT_MILLIS"),
             "telemetry must report the configured connect timeout: $start"
         )
         assertTrue(start.contains("configTotalTimeoutMillis=30000"), start)
@@ -106,7 +106,7 @@ class NetworkKmmConnectTimeoutTest {
         var captured: NetworkRequest? = null
         val logs = mutableListOf<String>()
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = { logs.add(it) },
                 multipartTransportOverride = { request ->
                     captured = request
@@ -115,7 +115,7 @@ class NetworkKmmConnectTimeoutTest {
             )
 
         executor.executeMultipart(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://api.test/api/attachments/upload",
             fields = mapOf("channelId" to "c1"),
             files =
@@ -132,10 +132,10 @@ class NetworkKmmConnectTimeoutTest {
 
         val request = assertNotNull(captured)
         assertEquals(30_000L, request.policy.timeoutMillis)
-        assertEquals(SLOCK_CONNECT_TIMEOUT_MILLIS, request.policy.streamTimeouts.connectTimeoutMillis)
+        assertEquals(RAFT_CONNECT_TIMEOUT_MILLIS, request.policy.streamTimeouts.connectTimeoutMillis)
         val start = logs.firstOrNull { it.startsWith("slock_networkkmm_multipart_start") }
         assertNotNull(start)
-        assertTrue(start.contains("configConnectTimeoutMillis=$SLOCK_CONNECT_TIMEOUT_MILLIS"), start)
+        assertTrue(start.contains("configConnectTimeoutMillis=$RAFT_CONNECT_TIMEOUT_MILLIS"), start)
     }
 
     @Test
@@ -144,7 +144,7 @@ class NetworkKmmConnectTimeoutTest {
         val executor = capturingExecutor { captured = it }
 
         executor.executeBytes(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://example.test/r2-bucket/key",
             method = "PUT",
             headers = emptyMap(),

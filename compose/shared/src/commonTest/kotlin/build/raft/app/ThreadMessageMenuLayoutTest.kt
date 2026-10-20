@@ -1,15 +1,17 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ThreadMessageMenuLayoutTest {
     @Test
     fun contentHeightIsExactBeforeFirstPlacement() {
+        // web MessageItem context menu: 8 rows x 36 + 2 group separators (my-1.5 + 1dp
+        // hairline) x 13 + reaction header (h-9 + 13) + 2 x 6 (p-1.5) inset.
         assertEquals(
-            400f,
+            375f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "copy", "message", "message", "task", "task", "task"),
                 showReactionActions = true
@@ -19,15 +21,16 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun contentHeightTracksRowsGroupDividersAndOptionalReactionHeader() {
+        // 3 rows x 36 + 1 group separator x 13 + 2 x 6 inset.
         assertEquals(
-            141f,
+            133f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = false
             )
         )
         assertEquals(
-            179f,
+            182f,
             threadMessageMenuContentHeightDp(
                 actionGroups = listOf("copy", "copy", "message"),
                 showReactionActions = true
@@ -37,7 +40,7 @@ class ThreadMessageMenuLayoutTest {
 
     @Test
     fun exactHeightChoosesFinalSideBeforeMenuIsDrawn() {
-        val viewport = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         val anchor = Offset(x = 300f, y = 500f)
 
         assertEquals(
@@ -48,7 +51,7 @@ class ThreadMessageMenuLayoutTest {
                 viewportGap = 8f,
                 verticalOffset = 8f,
                 verticalOffsetAbove = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
                 horizontalAutoFlip = true
             )?.y
         )
@@ -60,10 +63,40 @@ class ThreadMessageMenuLayoutTest {
                 viewportGap = 8f,
                 verticalOffset = 8f,
                 verticalOffsetAbove = 8f,
-                verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
                 horizontalAutoFlip = true
             )?.y
         )
+    }
+
+    @Test
+    fun menuWidthIsMinW60OrTheQuickReactionRow() {
+        // 7 x 28 (size-7) + 6 x 4 (gap-1) + 2 x 8 (px-2) + 2 x 6 (p-1.5) = 248.
+        assertEquals(248f, threadMessageMenuWidthDp(showReactionActions = true))
+        assertEquals(240f, threadMessageMenuWidthDp(showReactionActions = false))
+    }
+
+    @Test
+    fun contextMenuPlacementMatchesWebPlaceFloatingOverlay() {
+        val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        fun place(anchor: Offset, content: Size) =
+            viewport.positionContent(
+                anchor = anchor,
+                contentSize = content,
+                viewportGap = 8f,
+                horizontalOffset = 0f,
+                verticalOffset = 0f,
+                verticalOffsetAbove = 0f,
+                verticalPlacement = RaftFloatingVerticalPlacement.ContextMenu,
+                horizontalPlacement = RaftFloatingHorizontalPlacement.ContextMenu
+            )
+        // Fits right/below: the top-left corner sits on the press point.
+        assertEquals(Offset(40f, 100f), place(Offset(40f, 100f), Size(248f, 375f)))
+        // Neither side fits horizontally (the web capture's row-center press):
+        // clamp the anchor 8 inside the viewport -> 390 - 8 - 248 = 134.
+        assertEquals(Offset(134f, 86f), place(Offset(211f, 86f), Size(248f, 375f)))
+        // Fits only to the left/above: end at the press point.
+        assertEquals(Offset(32f, 325f), place(Offset(280f, 700f), Size(248f, 375f)))
     }
 
     @Test
@@ -75,22 +108,22 @@ class ThreadMessageMenuLayoutTest {
     @Test
     fun horizontalPositionCentersWithinViewport() {
         // Viewport 390 wide, content 288 wide, gap 8 -> max X is 390 - 288 - 8 = 94. Center is (390 - 288)/2 = 51
-        val centeredX = slockHorizontalPosition(
+        val centeredX = raftHorizontalPosition(
             localAnchorX = 350f,
             contentWidth = 288f,
             viewportWidth = 390f,
             viewportGap = 8f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Center
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Center
         )
         assertEquals(51f, centeredX)
 
         // Anchor mode places relative to localAnchorX
-        val anchorX = slockHorizontalPosition(
+        val anchorX = raftHorizontalPosition(
             localAnchorX = 50f,
             contentWidth = 288f,
             viewportWidth = 390f,
             viewportGap = 8f,
-            horizontalPlacement = SlockFloatingHorizontalPlacement.Anchor
+            horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor
         )
         assertEquals(50f, anchorX)
     }

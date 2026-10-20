@@ -11,7 +11,7 @@ const hasKmpTokenPath =
 if (command === "token-audit" && !hasKmpTokenPath) {
   process.argv.push(
     "--kmp-token-path",
-    "compose/shared/src/commonMain/kotlin/build/raft/app/SlockDesignTokens.kt",
+    "compose/shared/src/commonMain/kotlin/build/raft/app/RaftDesignTokens.kt",
   );
 }
 

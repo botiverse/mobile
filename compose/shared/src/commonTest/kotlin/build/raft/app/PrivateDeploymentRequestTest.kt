@@ -1,10 +1,10 @@
 package build.raft.app
 
 import build.raft.app.network.MultipartFile
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockHttpExecutorResponse
-import build.raft.app.network.SlockRequestPriority
-import build.raft.app.network.SlockTransferProgress
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftHttpExecutorResponse
+import build.raft.app.network.RaftRequestPriority
+import build.raft.app.network.RaftTransferProgress
 import kotlinx.coroutines.runBlocking
 import build.raft.app.data.SharedApiEnvironmentStore
 import kotlin.test.Test
@@ -84,18 +84,18 @@ class PrivateDeploymentRequestTest {
     }
 
     @Test fun webAddressMustAnswer() = runBlocking {
-        fun executor(answer: () -> SlockHttpExecutorResponse) = object : SlockHttpExecutor {
-            override suspend fun execute(priority: SlockRequestPriority, url: String, method: String,
-                headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): SlockHttpExecutorResponse = answer()
-            override suspend fun executeMultipart(priority: SlockRequestPriority, url: String,
+        fun executor(answer: () -> RaftHttpExecutorResponse) = object : RaftHttpExecutor {
+            override suspend fun execute(priority: RaftRequestPriority, url: String, method: String,
+                headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): RaftHttpExecutorResponse = answer()
+            override suspend fun executeMultipart(priority: RaftRequestPriority, url: String,
                 fields: Map<String, String>, files: List<MultipartFile>, headers: Map<String, String>,
-                onUploadProgress: ((SlockTransferProgress) -> Unit)?): SlockHttpExecutorResponse = error("Unexpected multipart")
+                onUploadProgress: ((RaftTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
         }
         val web = "https://raft.example.com"
-        assertTrue(privateDeploymentWebReachable(executor { SlockHttpExecutorResponse(200, "<html>", null) }, web))
-        assertTrue(privateDeploymentWebReachable(executor { SlockHttpExecutorResponse(302, null, null) }, web))
-        assertFalse(privateDeploymentWebReachable(executor { SlockHttpExecutorResponse(404, null, null) }, web))
-        assertFalse(privateDeploymentWebReachable(executor { SlockHttpExecutorResponse(0, null, null) }, web))
+        assertTrue(privateDeploymentWebReachable(executor { RaftHttpExecutorResponse(200, "<html>", null) }, web))
+        assertTrue(privateDeploymentWebReachable(executor { RaftHttpExecutorResponse(302, null, null) }, web))
+        assertFalse(privateDeploymentWebReachable(executor { RaftHttpExecutorResponse(404, null, null) }, web))
+        assertFalse(privateDeploymentWebReachable(executor { RaftHttpExecutorResponse(0, null, null) }, web))
         assertFalse(privateDeploymentWebReachable(executor { throw IllegalStateException("dns") }, web))
     }
 }

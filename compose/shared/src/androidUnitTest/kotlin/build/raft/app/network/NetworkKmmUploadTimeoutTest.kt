@@ -64,7 +64,7 @@ class NetworkKmmUploadTimeoutTest {
         )
 
     private fun fileBody() =
-        SlockHttpFileBody(
+        RaftHttpFileBody(
             path = "/tmp/large.bin",
             contentType = "application/octet-stream",
             contentLength = 199_229_440L,
@@ -77,9 +77,9 @@ class NetworkKmmUploadTimeoutTest {
             }
         )
 
-    private suspend fun NetworkKmmSlockHttpExecutor.uploadStreaming() =
+    private suspend fun NetworkKmmRaftHttpExecutor.uploadStreaming() =
         executeMultipart(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://api.test/api/attachments/upload",
             fields = mapOf("channelId" to "c1"),
             files = listOf(streamingFile()),
@@ -90,7 +90,7 @@ class NetworkKmmUploadTimeoutTest {
     fun streamingMultipartCarriesThreeMinuteBudget() = runTest {
         var captured: NetworkRequest? = null
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 multipartTransportOverride = { request ->
                     captured = request
@@ -114,18 +114,18 @@ class NetworkKmmUploadTimeoutTest {
     fun presignedFileUploadIsFlaggedForHttp1Only() = runTest {
         var captured: NetworkRequest? = null
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 requestStarterOverride = { request, onComplete ->
                     captured = request
                     onComplete(okResponse(request))
-                    SlockNetworkRequestCancelHandle {}
+                    RaftNetworkRequestCancelHandle {}
                 }
             )
 
         val response =
             executor.executeFile(
-                priority = SlockRequestPriority.Foreground,
+                priority = RaftRequestPriority.Foreground,
                 url = "https://example.test/r2-bucket/key",
                 method = "PUT",
                 headers = emptyMap(),
@@ -146,17 +146,17 @@ class NetworkKmmUploadTimeoutTest {
     fun presignedBytesUploadIsFlaggedForHttp1Only() = runTest {
         var captured: NetworkRequest? = null
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 requestStarterOverride = { request, onComplete ->
                     captured = request
                     onComplete(okResponse(request))
-                    SlockNetworkRequestCancelHandle {}
+                    RaftNetworkRequestCancelHandle {}
                 }
             )
 
         executor.executeBytes(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://example.test/r2-bucket/key",
             method = "PUT",
             headers = emptyMap(),
@@ -176,7 +176,7 @@ class NetworkKmmUploadTimeoutTest {
     fun bytesMultipartKeepsOrdinaryWallClockBound() = runTest {
         var captured: NetworkRequest? = null
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 multipartTransportOverride = { request ->
                     captured = request
@@ -185,7 +185,7 @@ class NetworkKmmUploadTimeoutTest {
             )
 
         executor.executeMultipart(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://api.test/api/attachments/upload",
             fields = emptyMap(),
             files = listOf(bytesFile()),
@@ -201,9 +201,9 @@ class NetworkKmmUploadTimeoutTest {
 
     @Test
     fun multipartForwardsTransportByteProgressWithoutSynthesizingPercentages() = runTest {
-        val observed = mutableListOf<SlockTransferProgress>()
+        val observed = mutableListOf<RaftTransferProgress>()
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 multipartTransportOverride = { request ->
                     request.progress.uploadProgress?.invoke(NetworkTransferProgress(64L, 256L))
@@ -213,7 +213,7 @@ class NetworkKmmUploadTimeoutTest {
             )
 
         executor.executeMultipart(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://api.test/api/attachments/upload",
             fields = emptyMap(),
             files = listOf(bytesFile()),
@@ -222,7 +222,7 @@ class NetworkKmmUploadTimeoutTest {
         )
 
         assertEquals(
-            listOf(SlockTransferProgress(64L, 256L), SlockTransferProgress(256L, 256L)),
+            listOf(RaftTransferProgress(64L, 256L), RaftTransferProgress(256L, 256L)),
             observed
         )
     }
@@ -230,7 +230,7 @@ class NetworkKmmUploadTimeoutTest {
     @Test
     fun transferLongerThanOldWallClockCompletes() = runTest {
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 multipartTransportOverride = { request ->
                     // 120s of virtual transfer — four times the old 30s wall
@@ -254,7 +254,7 @@ class NetworkKmmUploadTimeoutTest {
     @Test
     fun transportTimeoutMapsToOrdinaryFailureResponse() = runTest {
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 multipartTransportOverride = { request ->
                     delay(180_000L)
@@ -287,7 +287,7 @@ class NetworkKmmUploadTimeoutTest {
         var cancellationPropagated = false
         var mappedToFailure = false
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 warningLogger = {},
                 multipartTransportOverride = {
                     try {

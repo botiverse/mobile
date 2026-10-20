@@ -4,7 +4,7 @@ import android.content.Context
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.realtime.CurlSocketIoSocketTransport
 import build.raft.app.core.data.realtime.RealtimeSocketGenerationFence
 import build.raft.app.core.data.realtime.SelectableRealtimeSocketTransport
@@ -14,12 +14,14 @@ import build.raft.app.core.data.realtime.SocketIoSocketTransport
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
+import build.raft.app.data.PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
-import build.raft.app.data.SharedSlockAuthTransport
-import build.raft.app.data.SlockAuthApiClient
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockLocalPreferenceStore
+import build.raft.app.data.SharedRaftAuthTransport
+import build.raft.app.data.RaftAuthApiClient
+import build.raft.app.data.RaftAndroidPushRegistrationBridge
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.buildSystemUnreadNotificationRequestFromPush
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.RealtimeAuth
@@ -27,13 +29,13 @@ import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
-import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
-import build.raft.app.data.realtime.SlockRealtimeHostContext
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeAppScopePolicy
+import build.raft.app.data.realtime.RaftRealtimeHostContext
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.model.ChannelId
 import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
-import build.raft.app.network.SlockAndroidCurlSocketIo
-import build.raft.app.network.SlockCurlSocketIoPolicy
+import build.raft.app.network.RaftAndroidCurlSocketIo
+import build.raft.app.network.RaftCurlSocketIoPolicy
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.NotificationPushReceived
@@ -41,7 +43,11 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -49,17 +55,46 @@ import org.json.JSONObject
 internal class AndroidAppScopeRealtimeHostContext private constructor(
     private val appContext: Context,
     private val scope: CoroutineScope,
-    private val sessionStore: SlockAuthSessionStore,
+    private val sessionStore: RaftAuthSessionStore,
     private val repository: SessionRealtimeRepository,
     val client: SocketIoRealtimeClient
-) : SlockRealtimeHostContext {
+) : RaftRealtimeHostContext {
     // Task #167: same signal iOS posts. Shared consumers (the durable message canary, agent-activity seq) need
     // to know a new socket started before they see its frames.
     // Task #168: frames also carry the epoch of the socket that is current when they are fanned out, so the
     // canary does not depend on the signal reaching it first. 0 = this socket posted no signal.
     @Volatile private var currentPresenceTransportEpoch = 0L
+
+    // The delivery-status answer expires (PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS), so a socket that keeps
+    // receiving in the background must keep it fresh: once per connect, then periodically while it is up.
+    // Declared before the connected subscription, whose listener uses them.
+    private val pushDeliveryStatusRefreshLock = Any()
+    private var pushDeliveryStatusRefreshJob: Job? = null
+
     private val connectedSubscription =
-        client.observeConnected { context -> postPresenceTransportConnected(context) }
+        client.observeConnected { context ->
+            postPresenceTransportConnected(context)
+            startPushDeliveryStatusRefresh()
+        }
+
+    private fun startPushDeliveryStatusRefresh() {
+        synchronized(pushDeliveryStatusRefreshLock) {
+            pushDeliveryStatusRefreshJob?.cancel()
+            pushDeliveryStatusRefreshJob =
+                scope.launch {
+                    RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "realtime_connected")
+                    while (isActive) {
+                        delay(PUSH_DELIVERY_STATUS_REFRESH_INTERVAL_MILLIS)
+                        val state = client.state
+                        if (state != RealtimeConnectionState.Connected && state != RealtimeConnectionState.RoomsJoined) {
+                            break
+                        }
+                        RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "realtime_periodic")
+                    }
+                }
+        }
+    }
+
     private val roomsJoinedSubscription =
         client.observeRoomsJoined { context -> postRealtimeRoomsJoined(context) }
 
@@ -71,16 +106,16 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         currentPresenceTransportEpoch = epoch
         log("presence_transport_connected serverId=${context.serverId.value} presenceEpoch=$epoch")
         postAndroidAppScopeEvent(
-            eventName = SlockRealtimeNotifyContract.EventName,
+            eventName = RaftRealtimeNotifyContract.EventName,
             eventData =
                 JSONObject()
-                    .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionPresenceTransportConnected)
-                    .put(SlockRealtimeNotifyContract.KeyServerId, context.serverId.value)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
-                    .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+                    .put(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionPresenceTransportConnected)
+                    .put(RaftRealtimeNotifyContract.KeyServerId, context.serverId.value)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
+                    .put(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
         )
     }
 
@@ -90,16 +125,16 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         val witness = context.witness
         log("realtime_rooms_joined serverId=${context.serverId.value} presenceEpoch=$epoch")
         postAndroidAppScopeEvent(
-            eventName = SlockRealtimeNotifyContract.EventName,
+            eventName = RaftRealtimeNotifyContract.EventName,
             eventData =
                 JSONObject()
-                    .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRealtimeRoomsJoined)
-                    .put(SlockRealtimeNotifyContract.KeyServerId, context.serverId.value)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
-                    .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
-                    .put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+                    .put(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined)
+                    .put(RaftRealtimeNotifyContract.KeyServerId, context.serverId.value)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
+                    .put(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
         )
     }
 
@@ -127,6 +162,10 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     }
 
     override fun disconnect() {
+        synchronized(pushDeliveryStatusRefreshLock) {
+            pushDeliveryStatusRefreshJob?.cancel()
+            pushDeliveryStatusRefreshJob = null
+        }
         repository.disconnect()
     }
 
@@ -158,7 +197,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         }
 
     override fun log(message: String) {
-        SlockAppLog.d(LOG_TAG, message)
+        RaftAppLog.d(LOG_TAG, message)
     }
 
     override fun fanOutRawRealtimeEvent(
@@ -174,13 +213,13 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         // per open page. Lifecycle/action signals keep the broadcast topic.
         // The epoch was bound when the socket thread received the frame (observeRawEvents), not read now.
         postAndroidAppScopeEvent(
-            eventName = SlockRealtimeNotifyContract.RawIngestEventName,
+            eventName = RaftRealtimeNotifyContract.RawIngestEventName,
             eventData =
                 realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
                     .also { payload ->
                         transportEpoch
                             ?.takeIf { it > 0L }
-                            ?.let { payload.put(SlockRealtimeNotifyContract.KeyPresenceTransportEpoch, it) }
+                            ?.let { payload.put(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, it) }
                     }
         )
     }
@@ -222,7 +261,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
             // Task #154: the Settings switch / `mobile_curl_socketio_v0` pick the Socket.IO stack per connect.
-            SlockCurlSocketIoPolicy.bindUserChoice { readCurlSocketIoUserChoice(appContext) }
+            RaftCurlSocketIoPolicy.bindUserChoice { readCurlSocketIoUserChoice(appContext) }
             val socketFence = RealtimeSocketGenerationFence()
             val transport =
                 SelectableRealtimeSocketTransport(
@@ -232,13 +271,13 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     useCurl = { connection -> useCurlSocketIo(connection.serverId.value) },
                     // One line per connect (`transport_select stack=…`): recorded in release builds too,
                     // where debug/info lines are dropped, so device checks can see which stack connected.
-                    logger = { message -> SlockAppLog.w(LOG_TAG, message) }
+                    logger = { message -> RaftAppLog.w(LOG_TAG, message) }
                 )
             val client =
                 SocketIoRealtimeClient(
                     transport = transport,
                     logger = { message ->
-                        SlockAppLog.d(LOG_TAG, message)
+                        RaftAppLog.d(LOG_TAG, message)
                     }
                 )
             val repository =
@@ -250,15 +289,15 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                         SharedAuthTokenProvider(
                             sessionStore = sessionStore,
                             authApi =
-                                SlockAuthApiClient(
-                                    SharedSlockAuthTransport(
+                                RaftAuthApiClient(
+                                    SharedRaftAuthTransport(
                                         baseUrl = apiBaseUrl,
-                                        warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
+                                        warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) }
                                     )
                                 ),
                             clockMillis = { System.currentTimeMillis() },
-                            logger = { message -> SlockAppLog.auth(LOG_TAG, message) },
-                            warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
+                            logger = { message -> RaftAppLog.auth(LOG_TAG, message) },
+                            warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) }
                         )
                 )
             return AndroidAppScopeRealtimeHostContext(
@@ -273,16 +312,18 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         fun shouldPostBackgroundUnreadNotification(
             hasAttachedConsumers: Boolean,
             preferenceEnabled: Boolean,
-            isAppInForeground: Boolean
+            isAppInForeground: Boolean,
+            remotePushActive: Boolean = false
         ): Boolean =
-            SlockRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
+            RaftRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
                 hasAttachedConsumers = hasAttachedConsumers,
                 preferenceEnabled = preferenceEnabled,
-                isAppInForeground = isAppInForeground
+                isAppInForeground = isAppInForeground,
+                remotePushActive = remotePushActive
             )
 
         fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
-            SlockRealtimeAppScopePolicy.backgroundUnreadNotificationConversationKind(message)
+            RaftRealtimeAppScopePolicy.backgroundUnreadNotificationConversationKind(message)
 
         private fun realtimeNotifyPayload(
             serverId: ServerId,
@@ -291,13 +332,13 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             rawPayload: Any?,
         ): JSONObject =
             JSONObject()
-                .put(SlockRealtimeNotifyContract.KeyServerId, serverId.value)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
-                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
-                .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
-                .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
+                .put(RaftRealtimeNotifyContract.KeyServerId, serverId.value)
+                .put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                .put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                .put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                .put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
+                .put(RaftRealtimeNotifyContract.KeyEventName, eventName)
+                .put(RaftRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
 
         private fun Any?.toRealtimeRawPayloadString(): String =
             when (this) {
@@ -309,21 +350,24 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
         private suspend fun maybePostBackgroundUnreadNotification(
             appContext: Context,
-            sessionStore: SlockAuthSessionStore,
+            sessionStore: RaftAuthSessionStore,
             serverId: ServerId,
             event: NotificationPushReceived,
             isAppInForeground: Boolean
         ) {
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val hasAttachedConsumers = false
-            SlockAppLog.w(
+            // notification:push reaches every server's events over this one socket: decide by the
+            // event's server, not the socket's selected [serverId].
+            val remotePushActive = isRemotePushActive(appContext, sessionStore, event)
+            RaftAppLog.w(
                 LOG_TAG,
-                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
+                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground eventServerId=${event.serverId.value} remote_push_active=$remotePushActive"
             )
-            if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
-                SlockAppLog.w(
+            if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)) {
+                RaftAppLog.w(
                     LOG_TAG,
-                    "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.messageId.value}"
+                    "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground, remotePushActive)} serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
                 return
             }
@@ -334,36 +378,66 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     isAppInForeground = isAppInForeground
                 )
             if (request == null) {
-                SlockAppLog.w(
+                RaftAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
                 return
             }
             val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
-            SlockAppLog.w(
+            RaftAppLog.w(
                 LOG_TAG,
                 "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.messageId.value}"
             )
         }
 
 
+        /**
+         * FCM delivers this server's tray notifications (the server's stored delivery-status answer for
+         * this environment, user and installation says fcmActive for the event's server), so posting here
+         * would show a duplicate. Any unknown input, or a read failure, keeps the local post.
+         */
+        private suspend fun isRemotePushActive(
+            appContext: Context,
+            sessionStore: RaftAuthSessionStore,
+            event: NotificationPushReceived
+        ): Boolean =
+            try {
+                RaftRealtimeAppScopePolicy.isRemotePushActive(
+                    serverId = event.serverId,
+                    environmentId = AndroidAuthApiFactory.currentBaseUrl(appContext),
+                    currentUserId = sessionStore.readSession()?.user?.id,
+                    installationId = RaftAndroidPushRegistrationBridge.installationIdOrNull(),
+                    deliveryStatus = RaftAndroidPushRegistrationBridge.storedDeliveryStatusOrNull(),
+                    nowMillis = System.currentTimeMillis()
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                RaftAppLog.w(
+                    LOG_TAG,
+                    "background_unread_notification_remote_push_check_failed errorType=${error::class.simpleName ?: "unknown"}"
+                )
+                false
+            }
 
         private fun backgroundUnreadNotificationSkipReason(
             hasAttachedConsumers: Boolean,
             preferenceEnabled: Boolean,
-            isAppInForeground: Boolean
+            isAppInForeground: Boolean,
+            remotePushActive: Boolean
         ): String =
-            SlockRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
+            RaftRealtimeAppScopePolicy.backgroundUnreadNotificationSkipReason(
                 hasAttachedConsumers = hasAttachedConsumers,
                 preferenceEnabled = preferenceEnabled,
-                isAppInForeground = isAppInForeground
+                isAppInForeground = isAppInForeground,
+                remotePushActive = remotePushActive
             )
 
         private fun useCurlSocketIo(serverId: String): Boolean {
-            if (!SlockCurlSocketIoPolicy.isEnabledFor(serverId)) return false
-            val unavailable = SlockAndroidCurlSocketIo.unavailableReason() ?: return true
-            SlockAppLog.w(LOG_TAG, "curl_socket_io_selected_but_unavailable reason=$unavailable serverId=$serverId")
+            if (!RaftCurlSocketIoPolicy.isEnabledFor(serverId)) return false
+            val unavailable = RaftAndroidCurlSocketIo.unavailableReason() ?: return true
+            RaftAppLog.w(LOG_TAG, "curl_socket_io_selected_but_unavailable reason=$unavailable serverId=$serverId")
             return false
         }
 
@@ -371,22 +445,22 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         private fun readCurlSocketIoUserChoice(context: Context): Boolean? =
             runCatching {
                 AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
-                val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
-                SlockCurlSocketIoPolicy.parseUserChoice(
+                val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
+                RaftCurlSocketIoPolicy.parseUserChoice(
                     store.decodeString(
                         AndroidRealtimeKeepAliveController.localPreferenceKey(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY),
                         null
                     ) ?: store.decodeString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, null)
                 )
             }.getOrElse { error ->
-                SlockAppLog.w(LOG_TAG, "curl_socket_io_preference_failed message=${error.message.orEmpty()}")
+                RaftAppLog.w(LOG_TAG, "curl_socket_io_preference_failed message=${error.message.orEmpty()}")
                 null
             }
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
             runCatching {
                 AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
-                val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
+                val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
                 val value =
                     store.decodeString(
                         AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
@@ -394,7 +468,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
                 value == "true"
             }.getOrElse { error ->
-                SlockAppLog.w(
+                RaftAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_preference_failed message=${error.message.orEmpty()}"
                 )

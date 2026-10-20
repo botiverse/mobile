@@ -8,7 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
 import build.raft.app.data.AuthSessionEvent
@@ -16,7 +16,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.NetworkSlockTasksApi
+import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
@@ -42,19 +42,19 @@ import build.raft.app.data.SharedMembersStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedThreadNetworkApi
-import build.raft.app.data.SlockHomeApi
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
-import build.raft.app.data.SlockSharedCanonicalFinalIntegrationFactory
-import build.raft.app.data.SlockSharedCanonicalFinalIntegrationFactoryScope
-import build.raft.app.data.SlockSharedStoreFactoryBindingHandle
-import build.raft.app.data.SlockSharedStoreProvider
-import build.raft.app.data.SlockSharedStoreProviderFactory
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockSharedKeyValueStoreProvider
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftHomeApi
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
+import build.raft.app.data.RaftSharedCanonicalFinalIntegrationFactory
+import build.raft.app.data.RaftSharedCanonicalFinalIntegrationFactoryScope
+import build.raft.app.data.RaftSharedStoreFactoryBindingHandle
+import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.app.data.RaftSharedStoreProviderFactory
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftSharedKeyValueStoreProvider
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -74,15 +74,14 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitOutcome
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.annotations.Page
-import com.tencent.kuikly.core.module.CodecModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import com.tencent.kuikly.core.pager.Pager
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.module.CodecModule
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -238,7 +237,7 @@ suspend fun awaitCanonicalFinalSuccessorRetention(
 
 private suspend fun checkSuccessorRetained(
     run: ActualHostRun,
-    provider: SlockSharedStoreProvider,
+    provider: RaftSharedStoreProvider,
     scopeKey: String,
     expectedSurfaces: List<String>,
     forbiddenIdsBySlot: Map<String, String>,
@@ -263,7 +262,7 @@ internal class RealtimeCanonicalFinalActualHostPage : BasePager() {
         require(port in 1..65535) { "actual host loopback port is required" }
         val preconfiguredEnvironment =
             SharedApiEnvironmentStore(
-                SlockSharedKeyValueStoreProvider.create(
+                RaftSharedKeyValueStoreProvider.create(
                     namespace = SharedApiEnvironmentStore.Namespace,
                     storageName = "actual-host API environment",
                 ).store,
@@ -271,15 +270,15 @@ internal class RealtimeCanonicalFinalActualHostPage : BasePager() {
         checkNotNull(preconfiguredEnvironment) { "actual host could not preconfigure the loopback environment" }
         val run = ActualHostRun(nonce = nonce, blackholePort = port)
         run.binding =
-            SlockSharedStoreRegistry.bindFactoryBeforeFirstGet(
-                SlockSharedStoreProviderFactory { request ->
+            RaftSharedStoreRegistry.bindFactoryBeforeFirstGet(
+                RaftSharedStoreProviderFactory { request ->
                     run.recordProviderFactoryCall()
-                    SlockSharedStoreProvider.create(
+                    RaftSharedStoreProvider.create(
                         eventBus = request.eventBus,
                         source = request.source,
-                        bridge = request.bridge,
+                        host = request.host,
                         canonicalFinalIntegrationFactory =
-                            SlockSharedCanonicalFinalIntegrationFactory { dependencies ->
+                            RaftSharedCanonicalFinalIntegrationFactory { dependencies ->
                                 run.recordIntegrationFactoryCall(dependencies)
                                 dependencies.createIntegration(
                                     t4FlagKey = "visual-host-never-enabled-$nonce",
@@ -297,14 +296,14 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val codec = remember(pager.pagerId) { pager.acquireModule<CodecModule>(CodecModule.MODULE_NAME) }
-    val provider = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val sharedScope = remember(run.nonce) { SlockShellStoreScope.create("canonical-final-app-${run.nonce}", ActualHostServerA) }
+    val provider = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val sharedScope = remember(run.nonce) { RaftShellStoreScope.create("canonical-final-app-${run.nonce}", ActualHostServerA) }
     val appShellAuthGateViewModel: SharedAuthGateViewModel =
         viewModel(key = appShellAuthGateViewModelKey(pager.pagerId)) {
             SharedAuthGateViewModel(provider.createAuthDataSourceForCurrentEnvironment(sharedScope))
         }
     val standaloneThreadScope =
-        remember(run.nonce) { SlockShellStoreScope.create("canonical-final-thread-${run.nonce}", ActualHostServerA) }
+        remember(run.nonce) { RaftShellStoreScope.create("canonical-final-thread-${run.nonce}", ActualHostServerA) }
     val standaloneThreadHost =
         remember(provider, standaloneThreadScope, bridge) {
             createActualThreadHost(provider, standaloneThreadScope, bridge, run)
@@ -333,12 +332,12 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
         }
         if (sharedAppA) {
             key("actual-shared-app-a") {
-                SlockAppShellContent(pageVisibleTick = 1)
+                RaftAppShellContent(pageVisibleTick = 1)
             }
         }
         if (sharedAppB) {
             key("actual-shared-app-b") {
-                SlockAppShellContent(pageVisibleTick = 2)
+                RaftAppShellContent(pageVisibleTick = 2)
             }
         }
         if (sharedThreadA) {
@@ -364,10 +363,10 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
             check(run.providerFactoryCount() == 1) { "full provider factory must run exactly once" }
             check(run.integrationFactoryCount() == 1) { "integration factory must run exactly once" }
             check(provider.authStore.readSession() == null) { "actual host requires pm-clear empty auth state" }
-            check(pager.pageData.params.optString(SLOCK_SHELL_INSTANCE_ID) == sharedScope.shellInstanceId) {
+            check(pager.pageData.params.optString(RAFT_SHELL_INSTANCE_ID) == sharedScope.shellInstanceId) {
                 "AppShell page data must carry the exact app host scope"
             }
-            check(pager.pageData.params.optString(SLOCK_SHELL_SERVER_ID) == ActualHostServerA) {
+            check(pager.pageData.params.optString(RAFT_SHELL_SERVER_ID) == ActualHostServerA) {
                 "AppShell page data must carry the exact selected server"
             }
 
@@ -1055,7 +1054,7 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
 
 @Composable
 private fun ActualThreadContent(host: ActualThreadHost) {
-    val timeContextProvider = rememberLiveSlockTimeContext(host.payload.toSlockTimeCapabilities())
+    val timeContextProvider = rememberLiveRaftTimeContext(host.payload.toRaftTimeCapabilities())
     SharedThreadRouteContent(
         initialPayload = host.payload,
         timeContextProvider = timeContextProvider,
@@ -1082,22 +1081,22 @@ private fun ActualThreadContent(host: ActualThreadHost) {
 }
 
 private data class ActualThreadHost(
-    val provider: SlockSharedStoreProvider,
-    val scope: SlockShellStoreScope,
+    val provider: RaftSharedStoreProvider,
+    val scope: RaftShellStoreScope,
     val bridge: build.raft.app.base.BridgeModule,
-    val authStore: build.raft.app.data.SlockAuthSessionStore,
+    val authStore: build.raft.app.data.RaftAuthSessionStore,
     val dataSource: SharedThreadDataSource,
     val forwardTargetRepository: RealForwardMessageTargetRepository,
     val tasksDataSource: SharedTasksDataSource,
     val computersStore: SharedComputersStore,
     val membersStore: SharedMembersStore,
-    val payload: KuiklyThreadScreenPayload,
+    val payload: RaftThreadScreenPayload,
     val run: ActualHostRun,
 )
 
 private fun createActualThreadHost(
-    provider: SlockSharedStoreProvider,
-    scope: SlockShellStoreScope,
+    provider: RaftSharedStoreProvider,
+    scope: RaftShellStoreScope,
     bridge: build.raft.app.base.BridgeModule,
     run: ActualHostRun,
 ): ActualThreadHost {
@@ -1124,7 +1123,7 @@ private fun createActualThreadHost(
         )
     val computersStore =
         SharedComputersStore(
-            computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient)),
+            computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient)),
             scope = routeScope,
         )
     val dataSource =
@@ -1149,11 +1148,11 @@ private fun createActualThreadHost(
                 provider.awaitThreadReplyCacheIdentityTransition(scope, transitionAnchor)
             },
             payloadStore = provider.threadPayloadStore,
-            agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
+            agentsApiClient = RaftAgentsApiClient(RaftAgentsNetworkApi(networkClient)),
             diagnosticsLogger = { message -> bridge.log("actual_host_thread_api $message") },
         )
     val payload =
-        KuiklyThreadScreenPayload(
+        RaftThreadScreenPayload(
             instanceId = "actual-host-thread-${run.nonce}",
             title = "Actual host thread",
             status = "content",
@@ -1187,7 +1186,7 @@ private fun createActualThreadHost(
         authStore = authStore,
         dataSource = dataSource,
         forwardTargetRepository = forwardRepository,
-        tasksDataSource = SharedTasksDataSource(NetworkSlockTasksApi(networkClient)),
+        tasksDataSource = SharedTasksDataSource(NetworkRaftTasksApi(networkClient)),
         computersStore = computersStore,
         membersStore = membersStore,
         payload = payload,
@@ -1275,22 +1274,22 @@ private class ActualHostRun(
     private var lastDispatchDomainHandle = ""
     private var lastDispatchUnreadHandle = ""
     private var canonicalRouter: RealtimeCanonicalFinalSinkLazyRouter? = null
-    lateinit var binding: SlockSharedStoreFactoryBindingHandle
-    var provider: SlockSharedStoreProvider? = null
+    lateinit var binding: RaftSharedStoreFactoryBindingHandle
+    var provider: RaftSharedStoreProvider? = null
         private set
-    var dependencies: SlockSharedCanonicalFinalIntegrationFactoryScope? = null
+    var dependencies: RaftSharedCanonicalFinalIntegrationFactoryScope? = null
         private set
     lateinit var integration: RealtimeCanonicalFinalSinkIntegrationSeam
         private set
 
     fun recordProviderFactoryCall() = synchronized(lock) { providerFactoryCalls += 1 }
-    fun recordIntegrationFactoryCall(scope: SlockSharedCanonicalFinalIntegrationFactoryScope) =
+    fun recordIntegrationFactoryCall(scope: RaftSharedCanonicalFinalIntegrationFactoryScope) =
         synchronized(lock) {
             integrationFactoryCalls += 1
             dependencies = scope
         }
     fun recordIntegration(value: RealtimeCanonicalFinalSinkIntegrationSeam) = synchronized(lock) { integration = value }
-    fun recordProvider(value: SlockSharedStoreProvider) = synchronized(lock) { provider = value }
+    fun recordProvider(value: RaftSharedStoreProvider) = synchronized(lock) { provider = value }
     fun providerFactoryCount(): Int = synchronized(lock) { providerFactoryCalls }
     fun integrationFactoryCount(): Int = synchronized(lock) { integrationFactoryCalls }
     fun recordThreadDataRequest() = synchronized(lock) { threadDataRequests += 1 }
@@ -1331,8 +1330,8 @@ private class ActualHostRun(
     }
 
     suspend fun dispatchCanonical(
-        provider: SlockSharedStoreProvider,
-        scope: SlockShellStoreScope,
+        provider: RaftSharedStoreProvider,
+        scope: RaftShellStoreScope,
         serverId: String,
         entry: RealtimeCanonicalFinalOwnerEntry,
         eventKey: String,
@@ -1378,8 +1377,8 @@ private class ActualHostRun(
     }
 
     fun captureProbe(
-        provider: SlockSharedStoreProvider,
-        scope: SlockShellStoreScope,
+        provider: RaftSharedStoreProvider,
+        scope: RaftShellStoreScope,
         agentId: MemberId,
         homeStore: build.raft.app.data.SharedHomeStore,
     ): ActualHostProbeSnapshot {
@@ -1420,14 +1419,14 @@ private class ActualHostRun(
         return snapshot
     }
 
-    fun registrationTrace(provider: SlockSharedStoreProvider, scopeKey: String): String =
+    fun registrationTrace(provider: RaftSharedStoreProvider, scopeKey: String): String =
         synchronized(lock) {
             registrations(provider.realtimeAuthorityProvider.authorityFlow(scopeKey).value)
         }
 
     fun currentRegistrationHandle(
-        provider: SlockSharedStoreProvider,
-        scope: SlockShellStoreScope,
+        provider: RaftSharedStoreProvider,
+        scope: RaftShellStoreScope,
         surfaceKey: RealtimeCanonicalFinalSinkSurfaceKey,
     ): build.raft.app.data.RealtimeCanonicalFinalSinkRegistrationHandle? =
         synchronized(lock) {
@@ -1436,7 +1435,7 @@ private class ActualHostRun(
                 ?.handle
         }
 
-    fun registrationSurfaces(provider: SlockSharedStoreProvider, scopeKey: String): List<String> =
+    fun registrationSurfaces(provider: RaftSharedStoreProvider, scopeKey: String): List<String> =
         synchronized(lock) {
             capturedRegistrations(provider.realtimeAuthorityProvider.authorityFlow(scopeKey).value)
                 .map { registration ->
@@ -1467,7 +1466,7 @@ private class ActualHostRun(
 
     fun emitPhase(
         codec: CodecModule,
-        provider: SlockSharedStoreProvider,
+        provider: RaftSharedStoreProvider,
         component: String,
         phase: String,
         scopeKey: String,
@@ -1480,7 +1479,7 @@ private class ActualHostRun(
         codec: CodecModule,
         success: Boolean,
         error: String,
-        provider: SlockSharedStoreProvider? = null,
+        provider: RaftSharedStoreProvider? = null,
         scopeKey: String? = null,
     ) {
         val terminalPayload =
@@ -1506,7 +1505,7 @@ private class ActualHostRun(
     }
 
     private fun phasePayload(
-        provider: SlockSharedStoreProvider,
+        provider: RaftSharedStoreProvider,
         component: String,
         phase: String,
         scopeKey: String,
@@ -1584,18 +1583,18 @@ private class ActualHostRun(
             sequence += 1
             if (!terminal) phaseHashes += hash
             // task #58 follow-up: trace evidence must not ride the lossy
-            // shared log queue — SlockPlatformLogQueue can drop an admission
+            // shared log queue — RaftPlatformLogQueue can drop an admission
             // under admissionBusy, which previously produced a
             // contiguous-sequence gap (seq 23 missing at run 37321478598).
             // Write straight to the platform sink (Android: android.util.Log)
             // inside the lock so the emitted line order always matches the
             // assigned sequence numbers.
-            slockPlatformLog(
-                SlockLogLevel.Info,
+            raftPlatformLog(
+                RaftLogLevel.Info,
                 ActualHostLogTag,
                 "$ActualHostTraceMarker payload=$payload sha256=$hash",
                 defaultNowMillis(),
-                SlockPlatformLogHint.None,
+                RaftPlatformLogHint.None,
             )
         }
     }
@@ -1609,13 +1608,13 @@ private class ActualHostRun(
 }
 
 private fun actualHostProbeHomeDataSource(
-    provider: SlockSharedStoreProvider,
-    scope: SlockShellStoreScope,
+    provider: RaftSharedStoreProvider,
+    scope: RaftShellStoreScope,
 ): SharedHomeDataSource =
     SharedHomeDataSource(
         sessionStore = provider.authStore(scope),
         api =
-            object : SlockHomeApi {
+            object : RaftHomeApi {
                 override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
                     HomeNetworkResponse(code = 200, bodyText = "[]")
 
@@ -1716,7 +1715,7 @@ private fun actualHostEnvironmentRequest(nonce: String, port: Int): SharedSettin
 }
 
 private suspend fun waitForAuthority(
-    provider: SlockSharedStoreProvider,
+    provider: RaftSharedStoreProvider,
     scopeKey: String,
     requireServers: Set<String>,
 ): RealtimeScopeAuthority {

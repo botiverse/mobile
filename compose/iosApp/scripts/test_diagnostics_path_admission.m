@@ -4,7 +4,7 @@
 #import <sys/un.h>
 #import <unistd.h>
 
-#import "../iosApp/KuiklyExpand/Modules/RaftDiagnosticsPathAdmission.h"
+#import "../iosApp/Host/RaftDiagnosticsPathAdmission.h"
 
 @interface CharacterDeviceFileManager : NSFileManager
 @end

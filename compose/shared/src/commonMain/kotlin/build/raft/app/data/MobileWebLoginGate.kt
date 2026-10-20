@@ -1,8 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockRequestPriority
-import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftRequestPriority
+import build.raft.app.network.createPlatformRaftHttpExecutor
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -35,7 +35,7 @@ internal const val MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS = 2_000L
  * web login is used.
  */
 class MobileWebLoginGate internal constructor(
-    private val store: SlockKeyValueStore,
+    private val store: RaftKeyValueStore,
     private val fetchLegacyLogin: suspend (apiBaseUrl: String) -> Boolean?,
 ) {
     fun isEnabled(apiBaseUrl: String): Boolean = store.getString(decisionKey(apiBaseUrl)) != LEGACY_LOGIN_ON
@@ -62,12 +62,12 @@ internal fun parsePublicFeatureFlag(code: Int, bodyText: String?, key: String): 
     }.getOrNull()
 }
 
-internal suspend fun fetchPublicLegacyLoginFlag(executor: SlockHttpExecutor, apiBaseUrl: String): Boolean? {
+internal suspend fun fetchPublicLegacyLoginFlag(executor: RaftHttpExecutor, apiBaseUrl: String): Boolean? {
     if (apiBaseUrl.isBlank()) return null
     val response =
         runCatchingPreservingCancellation {
             executor.execute(
-                priority = SlockRequestPriority.Foreground,
+                priority = RaftRequestPriority.Foreground,
                 url = "${apiBaseUrl.trimEnd('/')}/public/feature-flags" +
                     "?keys=$MOBILE_LEGACY_LOGIN_FEATURE_FLAG_KEY&platform=mobile",
                 method = "GET",
@@ -80,11 +80,11 @@ internal suspend fun fetchPublicLegacyLoginFlag(executor: SlockHttpExecutor, api
 }
 
 /** Process-wide gate over the app-scope store that also holds the pending browser login. */
-object SlockMobileWebLoginGate {
+object RaftMobileWebLoginGate {
     private val gate by lazy {
-        val executor = createPlatformSlockHttpExecutor {}
+        val executor = createPlatformRaftHttpExecutor {}
         MobileWebLoginGate(
-            SlockSharedKeyValueStoreProvider.create(SLOCK_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
+            RaftSharedKeyValueStoreProvider.create(RAFT_APP_LOGIN_MMKV_NAMESPACE, "App login").store,
         ) { apiBaseUrl ->
             withTimeoutOrNull(MOBILE_LEGACY_LOGIN_FETCH_TIMEOUT_MS) { fetchPublicLegacyLoginFlag(executor, apiBaseUrl) }
         }

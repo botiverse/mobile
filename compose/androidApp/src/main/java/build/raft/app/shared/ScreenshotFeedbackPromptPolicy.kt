@@ -3,7 +3,7 @@ package build.raft.app.shared
 import android.app.Activity
 import android.os.Build
 import androidx.annotation.RequiresApi
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import java.util.concurrent.Executor
 
 internal const val SCREENSHOT_FEEDBACK_MINIMUM_INTERVAL_MILLIS = 1_500L
@@ -93,10 +93,10 @@ internal class Android14ScreenCaptureObserver(
             .start(callback)
             .onSuccess { registered ->
                 if (registered) {
-                    SlockAppLog.record("SlockScreenshotFeedback", "screen_capture_listener_started")
+                    RaftAppLog.record("SlockScreenshotFeedback", "screen_capture_listener_started")
                 }
             }.onFailure { throwable ->
-                SlockAppLog.record(
+                RaftAppLog.record(
                     "SlockScreenshotFeedback",
                     "screen_capture_listener_start_failed error=${throwable.javaClass.simpleName}",
                 )
@@ -107,7 +107,7 @@ internal class Android14ScreenCaptureObserver(
         registration
             .stop()
             .onFailure { throwable ->
-                SlockAppLog.record(
+                RaftAppLog.record(
                     "SlockScreenshotFeedback",
                     "screen_capture_listener_stop_failed error=${throwable.javaClass.simpleName}",
                 )

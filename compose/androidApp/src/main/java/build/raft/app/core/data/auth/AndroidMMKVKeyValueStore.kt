@@ -1,16 +1,17 @@
 package build.raft.app.core.data.auth
 
 import android.content.Context
-import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
+import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
-import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
-import build.raft.app.data.SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE
-import build.raft.app.data.SLOCK_APP_LOGIN_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_AUTH_SESSION_MMKV_STORAGE_KEY
+import build.raft.app.data.RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_APP_LOGIN_MMKV_NAMESPACE
+import build.raft.app.data.RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
 import build.raft.app.data.SharedApiEnvironmentStore
-import build.raft.app.data.SlockKeyValueStore
-import build.raft.app.data.SlockLocalPreferenceStore
-import build.raft.app.data.SlockSharedKeyValueStoreProvider
+import build.raft.app.data.RaftKeyValueStore
+import build.raft.app.data.RaftLocalPreferenceStore
+import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import com.google.gson.Gson
@@ -19,7 +20,7 @@ import com.tencent.mmkv.MMKV
 class AndroidMMKVKeyValueStore(
     context: Context,
     private val namespace: String
-) : SlockKeyValueStore {
+) : RaftKeyValueStore {
     private val appContext = context.applicationContext
     private val mmapID = namespace
 
@@ -120,8 +121,8 @@ internal object AndroidAppScopeMMKV {
         result: String,
         valueLength: Int? = null
     ) {
-        if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
-        SlockAndroidLocalDiagnostics.recordLog(
+        if (mmapID != RAFT_AUTH_SESSION_MMKV_NAMESPACE || key != RAFT_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        RaftAndroidLocalDiagnostics.recordLog(
             "info",
             "SlockKuikly",
             buildString {
@@ -148,12 +149,12 @@ internal object AndroidAppScopeMMKV {
         key: String,
         encodedSession: String?
     ) {
-        if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        if (mmapID != RAFT_AUTH_SESSION_MMKV_NAMESPACE || key != RAFT_AUTH_SESSION_MMKV_STORAGE_KEY) return
         val session =
             encodedSession
                 ?.takeIf { it.isNotBlank() }
                 ?.let { runCatching { gson.fromJson(it, StoredAuthSession::class.java) }.getOrNull() }
-        SlockAndroidLocalDiagnostics.updateUserContext(
+        RaftAndroidLocalDiagnostics.updateUserContext(
             context = context.applicationContext,
             userId = session?.user?.id,
             selectedServerId = session?.currentServerId,
@@ -162,7 +163,7 @@ internal object AndroidAppScopeMMKV {
     }
 
     private fun maybeUpdateForegroundKeepAlive(context: Context, mmapID: String?, key: String, value: String?) {
-        if (mmapID != SlockLocalPreferenceStore.KuiklyNamespace ||
+        if (mmapID != RaftLocalPreferenceStore.KuiklyNamespace ||
             key != NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY &&
             key != AndroidRealtimeKeepAliveController.localPreferenceKey(
                 NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
@@ -189,30 +190,35 @@ private object AndroidAppScopeKeyValueStores {
         }
 }
 
-private const val SLOCK_NETWORK_RECOVERY_MMKV_NAMESPACE = "slockNetworkRecovery"
+private const val RAFT_NETWORK_RECOVERY_MMKV_NAMESPACE = "slockNetworkRecovery"
 
-fun androidMMKVAuthKeyValueStore(context: Context): SlockKeyValueStore =
-    AndroidAppScopeKeyValueStores.get(context, SLOCK_AUTH_SESSION_MMKV_NAMESPACE)
+fun androidMMKVAuthKeyValueStore(context: Context): RaftKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, RAFT_AUTH_SESSION_MMKV_NAMESPACE)
 
-fun androidMMKVNetworkRecoveryKeyValueStore(context: Context): SlockKeyValueStore =
-    AndroidAppScopeKeyValueStores.get(context, SLOCK_NETWORK_RECOVERY_MMKV_NAMESPACE)
+fun androidMMKVNetworkRecoveryKeyValueStore(context: Context): RaftKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, RAFT_NETWORK_RECOVERY_MMKV_NAMESPACE)
 
-fun androidMMKVApiEnvironmentKeyValueStore(context: Context): SlockKeyValueStore =
+fun androidMMKVApiEnvironmentKeyValueStore(context: Context): RaftKeyValueStore =
     AndroidAppScopeKeyValueStores.get(context, SharedApiEnvironmentStore.Namespace)
 
-fun androidMMKVActivityUnreadKeyValueStore(context: Context): SlockKeyValueStore =
-    AndroidAppScopeKeyValueStores.get(context, SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE)
+fun androidMMKVActivityUnreadKeyValueStore(context: Context): RaftKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE)
+
+/** Shared-code namespaces that get app-scope MMKV storage on Android. */
+internal val androidAppScopeSharedKeyValueNamespaces: List<String> =
+    listOf(
+        RAFT_AUTH_SESSION_MMKV_NAMESPACE,
+        RaftLocalPreferenceStore.KuiklyNamespace,
+        SharedApiEnvironmentStore.Namespace,
+        RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE,
+        RAFT_APP_LOGIN_MMKV_NAMESPACE,
+        RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE
+    )
 
 fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
     val appContext = context.applicationContext
-    listOf(
-        SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
-        SlockLocalPreferenceStore.KuiklyNamespace,
-        SharedApiEnvironmentStore.Namespace,
-        SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE,
-        SLOCK_APP_LOGIN_MMKV_NAMESPACE
-    ).forEach { namespace ->
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(namespace) {
+    androidAppScopeSharedKeyValueNamespaces.forEach { namespace ->
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(namespace) {
             AndroidAppScopeKeyValueStores.get(appContext, namespace)
         }
     }

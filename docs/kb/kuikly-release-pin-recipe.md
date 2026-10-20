@@ -1,8 +1,10 @@
 # Kuikly release-set pin upgrade recipe
 
-Owner: Mahua · Verified at: 2026-10-18 · Status: current
+> **Stale (2026-10-19):** Kuikly UI left Mobile in the Compose Multiplatform switch. The closure, manifest gate and fetcher named below were deleted; nothing in the build consumes a Kuikly release any more. Kept for history only.
 
-How to bump the immutable Kuikly release set (e.g. `2.28.0-raft.N` → `raft.N+1`) in this repo. The same recipe has been used for several consecutive bumps (#3025, #3073).
+Owner: Mahua · Verified at: 2026-10-19 · Status: stale
+
+How to bump the immutable Kuikly release set (e.g. `2.28.0-raft.N` → `raft.N+1`) in this repo. The same recipe has been used for several consecutive bumps (#3025, #3073). HarmonyOS (OHOS) was removed from `main` after the 1.14.x freeze, so `main` bumps no longer touch an OHOS HAR, `oh-package` files or `ohpm`; OHOS pin work happens only on `release/1.14.x`.
 
 ## 1. Bump the pin family atomically
 
@@ -10,29 +12,24 @@ Replace the version string in all of, and only, these files:
 
 - `compose/buildSrc/src/main/java/KotlinBuildVar.kt`
 - `compose/gradle/libs.versions.toml`
-- `compose/gradle/kuikly-release-closure.json` (37 GAVs)
+- `compose/gradle/kuikly-release-closure.json`
 - `scripts/ci/verify_kuikly_release_manifest.sh`
 - `scripts/ci/fetch_kuikly_release_artifact.py`
-- `scripts/ci/verify_kuikly_ohos_renderer.sh`
 - `scripts/ci/test_kuikly_raft_consumer_contract.py`
 - `compose/iosApp/Podfile`
-- `compose/ohosApp/entry/oh-package.json5`
-- `compose/ohosApp/scripts/test_image_decode_policy_source_contract.mjs`
 - `THIRD_PARTY_NOTICES.md`
 
-Do **not** hand-edit `compose/iosApp/Podfile.lock` or `compose/ohosApp/entry/oh-package-lock.json5` — they are regenerated in step 3. Never touch dated historical docs.
+Do **not** hand-edit `compose/iosApp/Podfile.lock` — it is regenerated in step 3. Never touch dated historical docs.
 
 ## 2. Run the source gates
 
-- `scripts/ci/verify_kuikly_ohos_renderer.sh` — downloads and verifies the OHOS HAR (prints its sha256).
 - `scripts/ci/verify_kuikly_release_manifest.sh` — must end in `ALL_COMPLETE_EXACT`.
-- `scripts/ci/test_kuikly_raft_consumer_contract.py` — static consumer contract (fails until step 3 regenerates the lockfiles).
+- `scripts/ci/test_kuikly_raft_consumer_contract.py` — static consumer contract (fails until step 3 regenerates the lockfile).
 - `scripts/ci/check_source_constraints.py` and `git diff --check`.
 
-## 3. Regenerate the native lockfiles for real
+## 3. Regenerate the native lockfile for real
 
-- iOS: `cd compose && ./gradlew :shared:generateDummyFramework --no-daemon`, then `cd iosApp && pod install`. If `pod install` also rewrites `iosApp.xcodeproj/project.pbxproj`, revert that file — it is pre-existing drift, not part of the pin.
-- OHOS: `ohpm install` in `compose/ohosApp/entry` (ohpm from DevEco Studio's toolchain on PATH).
+- iOS: `cd compose && ./gradlew :shared:generateDummyFramework --no-daemon`, then `cd iosApp && pod install`. If `pod install` also rewrites `iosApp.xcodeproj/project.pbxproj`, revert that file — it is pre-existing drift, not part of the pin. Reverting is safe: CI builds only the `iosApp` and `iosAppUITests` schemes, and the `iosAppTests` target (whose `Pods_iosAppTests.framework` reference `pod install` adds) is not built anywhere.
 
 ## 4. Changeset and review
 
@@ -40,5 +37,5 @@ Add a changeset under `change-logs/<version>/changesets/` describing the user-vi
 
 ## Failure modes seen
 
-- Skipping the real `pod install` / `ohpm install` and editing lockfiles by hand: the consumer contract and podspec checksums will not match.
+- Skipping the real `pod install` and editing the lockfile by hand: the consumer contract and podspec checksums will not match.
 - `pod install` pbxproj drift: revert it, do not commit it "because it changed anyway".

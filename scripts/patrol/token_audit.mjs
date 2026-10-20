@@ -4,7 +4,7 @@
 // code. The trigger bug: the image-annotation toolbar's destructive button
 // used `AccentRed.copy(alpha = 0.18f)`, which composited with the brutal
 // black shadow into an unreadable brown (fixed in mobile#996) — and a sibling
-// existed in SlockFilePreview. Not every alpha wash is a bug (some tints
+// existed in RaftFilePreview. Not every alpha wash is a bug (some tints
 // deliberately mirror react bg-*/15), so filings go through the standard
 // patrol verify stage (3×M3) which closes false positives.
 //
@@ -30,13 +30,13 @@ const ROOT = "compose/shared/src/commonMain/kotlin/build/raft/app";
 const PATTERNS = [
   {
     id: "semantic-alpha-decay",
-    re: /SlockColor\.(Accent[A-Za-z]+|BrandYellow|SoftSignal|StateWarningBase)\.copy\(\s*alpha\s*=/,
+    re: /RaftColor\.(Accent[A-Za-z]+|BrandYellow|SoftSignal|StateWarningBase)\.copy\(\s*alpha\s*=/,
     rank: 2,
     why: "Semantic/brand color weakened with alpha: composites unpredictably over shadows/surfaces (the mobile#996 brown-destructive bug class). If the tint is a deliberate react bg-*/N mirror, say so in a comment or move it to a named token.",
   },
   {
     id: "destructive-alpha",
-    re: /destructive.*SlockColor\.AccentRed\.copy\(\s*alpha\s*=|SlockColor\.AccentRed\.copy\(\s*alpha\s*=[^)]*\).*destructive/i,
+    re: /destructive.*RaftColor\.AccentRed\.copy\(\s*alpha\s*=|RaftColor\.AccentRed\.copy\(\s*alpha\s*=[^)]*\).*destructive/i,
     rank: 3,
     why: "DESTRUCTIVE affordance rendered with a transparent red — exactly the mobile#996 bug. Destructive actions use the opaque Danger/AccentRed contract color.",
   },

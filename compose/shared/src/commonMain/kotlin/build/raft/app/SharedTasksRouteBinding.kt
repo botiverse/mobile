@@ -12,7 +12,7 @@ import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksRouteOwner
 import build.raft.app.data.SharedTasksRouteSession
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.TasksUiState
 import kotlinx.coroutines.flow.collect
 
@@ -25,7 +25,7 @@ internal data class SharedTasksRouteBinding(
 @Composable
 internal fun rememberSharedTasksRoute(
     owner: SharedTasksRouteOwner,
-    authStore: SlockAuthSessionStore,
+    authStore: RaftAuthSessionStore,
     dataSource: SharedTasksDataSource,
     sharedTasksDataStore: SharedTasksDataStore
 ): SharedTasksRouteBinding {
@@ -37,7 +37,7 @@ internal fun rememberSharedTasksRoute(
             authStore = authStore,
             dataSource = dataSource,
             sharedTasksDataStore = sharedTasksDataStore,
-            diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
+            diagnosticsLogger = raftLogger("SlockTasks", "shared_tasks")
         )
     }
     DisposableEffect(route) {

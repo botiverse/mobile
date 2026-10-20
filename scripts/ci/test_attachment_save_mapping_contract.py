@@ -17,9 +17,9 @@ The Android mapping additionally has an executable JVM regression:
 and a wrapper-level regression:
   compose/androidApp/src/test/java/build/raft/app/shared/
       AttachmentSavePreparationFailurePayloadTest.kt
-This source contract locks the production mapping expressions on all three
-hosts so the iOS/OHOS bridges (which are not JVM-unit-testable here) still fail
-closed when the mapping drifts.
+This source contract locks the production mapping expressions on both hosts
+so the iOS bridge (which is not JVM-unit-testable here) still fails closed
+when the mapping drifts.
 
 Usage:
   test_attachment_save_mapping_contract.py                enforce
@@ -33,9 +33,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 FILES = {
-    "android": Path("compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"),
-    "ios": Path("compose/iosApp/iosApp/KuiklyExpand/Modules/HRBridgeModule.m"),
-    "ohos": Path("compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets"),
+    "android": Path("compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"),
+    "ios": Path("compose/iosApp/iosApp/Host/HRBridgeModule.m"),
 }
 
 # Each marker must appear in the named host source. The android cancelled arm
@@ -58,14 +57,6 @@ MARKERS = {
         '[result.status isEqualToString:@"cancelled"]',
         '? @"cancelled"',
         ': (storageFailure ? @"storage_failed" : @"download_failed")',
-    ],
-    "ohos": [
-        'if (status === "cancelled") {',
-        'return downloadResult;',
-        'errorKind === "storage_write" ||',
-        'errorKind === "storage_prepare" ||',
-        'errorKind === "storage_publish";',
-        'storageFailure ? "storage_failed" : "download_failed"',
     ],
 }
 

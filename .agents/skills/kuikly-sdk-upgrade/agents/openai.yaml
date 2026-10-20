@@ -1,4 +1,0 @@
-interface:
-  display_name: "Kuikly SDK Upgrade"
-  short_description: "Consume immutable Kuikly release sets in Raft Mobile."
-  default_prompt: "Upgrade Raft Mobile to an exact manifest-backed Kuikly release set and validate Android/OHOS/iOS alignment without local fallbacks."

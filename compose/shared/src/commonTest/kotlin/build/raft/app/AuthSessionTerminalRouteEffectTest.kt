@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.AuthSessionClearReason
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.AuthSessionTerminalSnapshot
-import build.raft.app.data.SlockAuthSessionTerminalSource
+import build.raft.app.data.RaftAuthSessionTerminalSource
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.authSessionFixture
 import kotlinx.coroutines.CompletableDeferred
@@ -74,7 +74,7 @@ class AuthSessionTerminalRouteEffectTest {
 private class FakeTerminalSource(
     generation: Long,
     session: StoredAuthSession?,
-) : SlockAuthSessionTerminalSource {
+) : RaftAuthSessionTerminalSource {
     private val mutex = Mutex()
     private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
     private var generation = generation

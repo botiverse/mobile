@@ -84,7 +84,7 @@ def main() -> int:
     p.add_argument("--package", required=True)
     p.add_argument("--component", required=True,
                    help="Launcher activity component, e.g. build.raft.app/.MainActivity. "
-                        "SlockKuiklyActivity is not exported.")
+                        "RaftLegacyHostActivity is not exported.")
     p.add_argument("--checkpoints", nargs="+", type=float,
                    default=[0.5, 1.0, 2.0, 3.0, 5.0, 8.0])
     p.add_argument("--out", default="artifacts/perf-coldstart")

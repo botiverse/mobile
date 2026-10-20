@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.model.ServerId
-import build.raft.app.slockLogInfo
+import build.raft.app.raftLogInfo
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
 import build.raft.app.network.sync.CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
 import build.raft.app.network.sync.CanonicalConversationContextV2
@@ -49,7 +49,7 @@ import kotlinx.serialization.json.intOrNull
  */
 internal fun canonicalMessageV2SelfTaggedLogger(
     platformTag: String,
-    sink: (tag: String, message: String) -> Unit = { tag, message -> slockLogInfo(tag, message) },
+    sink: (tag: String, message: String) -> Unit = { tag, message -> raftLogInfo(tag, message) },
 ): (String) -> Unit = { message -> sink(platformTag, message) }
 
 internal fun interface CanonicalMessageV2OwnerGateway {
@@ -126,7 +126,7 @@ internal sealed interface CanonicalMessageV2PageConversion {
  * only the id); a non-null value must match the server's answer (the canary path).
  */
 internal class CanonicalMessageV2RestSnapshotFetcher(
-    private val networkClient: SlockNetworkClient,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
 ) {
     suspend fun fetch(

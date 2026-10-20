@@ -372,7 +372,7 @@ export function collectSources(entry, opts) {
   // Both sides' concrete token values (bg-brutal-yellow hex etc.) live in one
   // canonical file per repo; truth derivation needs them for every case.
   const reactTokens = sourceRecord(opts.slockRoot, path.join(opts.slockRoot, "packages/web/src/index.css"));
-  const androidTokens = sourceRecord(opts.mobileRoot, path.join(opts.mobileRoot, "compose/shared/src/commonMain/kotlin/build/raft/app/SlockDesignTokens.kt"));
+  const androidTokens = sourceRecord(opts.mobileRoot, path.join(opts.mobileRoot, "compose/shared/src/commonMain/kotlin/build/raft/app/RaftDesignTokens.kt"));
   const androidSeedSources = rankedSources([sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)]);
   const androidExpandedSources = rankedSources([sourceMatches(
     path.join(opts.mobileRoot, "compose"),

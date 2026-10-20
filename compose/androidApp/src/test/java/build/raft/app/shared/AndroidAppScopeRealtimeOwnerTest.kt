@@ -8,9 +8,9 @@ import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
-import build.raft.app.data.realtime.SlockRealtimeAppScopeConnection
-import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
-import build.raft.app.data.realtime.SlockRealtimeAppScopeSink
+import build.raft.app.data.realtime.RaftRealtimeAppScopeConnection
+import build.raft.app.data.realtime.RaftRealtimeAppScopeRuntime
+import build.raft.app.data.realtime.RaftRealtimeAppScopeSink
 import build.raft.app.data.realtime.bootstrapRealtime
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.model.ChannelId
@@ -25,12 +25,32 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ConversationKind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AndroidAppScopeRealtimeOwnerTest {
+    // AndroidAppScopeRealtimeOwner's scope runs on Dispatchers.Main.immediate; since the CMP switch
+    // (kotlinx-coroutines 1.10) a JVM unit test has no platform Main dispatcher to fall back to.
+    @Before
+    fun installTestMainDispatcher() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+    }
+
+    @After
+    fun resetTestMainDispatcher() {
+        Dispatchers.resetMain()
+    }
+
     @Test
     fun processVisibilityTracksStartedActivitiesAndIgnoresPageDuplicates() {
         val transitions = mutableListOf<Pair<Boolean, Long>>()
@@ -88,11 +108,11 @@ class AndroidAppScopeRealtimeOwnerTest {
     @Test
     fun lifecycleEventsKeepTheActualActivityPageIdentity() {
         assertEquals(
-            SlockKuiklyActivity.PAGE_THREAD,
-            normalizedAndroidLifecyclePageName(SlockKuiklyActivity.PAGE_THREAD)
+            RaftCmpActivity.PAGE_THREAD,
+            normalizedAndroidLifecyclePageName(RaftCmpActivity.PAGE_THREAD)
         )
         assertEquals(
-            SlockKuiklyActivity.PAGE_APP_SHELL,
+            RaftCmpActivity.PAGE_APP_SHELL,
             normalizedAndroidLifecyclePageName("  ")
         )
     }
@@ -125,6 +145,15 @@ class AndroidAppScopeRealtimeOwnerTest {
                 hasAttachedConsumers = false,
                 preferenceEnabled = true,
                 isAppInForeground = true
+            )
+        )
+        // FCM covers this server: the background socket must not post a second copy.
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(
+                hasAttachedConsumers = false,
+                preferenceEnabled = true,
+                isAppInForeground = false,
+                remotePushActive = true
             )
         )
     }
@@ -283,7 +312,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             parentMessageId = parentMessageId?.let(::MessageId)
         )
 
-    private fun realtimeRuntime(): SlockRealtimeAppScopeRuntime =
+    private fun realtimeRuntime(): RaftRealtimeAppScopeRuntime =
         bootstrapRealtime(
             connection = FakeAppScopeConnection(),
             sink = FakeAppScopeSink(),
@@ -291,7 +320,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             dispatch = { block -> kotlinx.coroutines.runBlocking { block() } }
         )
 
-    private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
+    private class FakeAppScopeConnection : RaftRealtimeAppScopeConnection {
         override val state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
 
         override suspend fun connect(
@@ -315,7 +344,7 @@ class AndroidAppScopeRealtimeOwnerTest {
             RealtimeSubscription {}
     }
 
-    private class FakeAppScopeSink : SlockRealtimeAppScopeSink {
+    private class FakeAppScopeSink : RaftRealtimeAppScopeSink {
         override fun log(message: String) = Unit
 
         override fun fanOutRawRealtimeEvent(

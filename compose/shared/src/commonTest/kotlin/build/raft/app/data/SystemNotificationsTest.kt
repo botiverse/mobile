@@ -20,7 +20,7 @@ class SystemNotificationsTest {
     @Test
     fun notificationPreferenceDefaultsToEnabledWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+            KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
         )
 
         val snapshot = repository.getNotificationPreference()
@@ -33,7 +33,7 @@ class SystemNotificationsTest {
     @Test
     fun notificationPreferencePersistsSelectedState() = runBlocking {
         val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+            KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
         )
 
         val enabled = repository.setNotificationEnabled(true)
@@ -50,7 +50,7 @@ class SystemNotificationsTest {
     @Test
     fun foregroundKeepAlivePreferenceDefaultsOffAndPersistsSelectedState() = runBlocking {
         val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+            KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
         )
 
         val initial = repository.getNotificationPreference()
@@ -70,7 +70,7 @@ class SystemNotificationsTest {
     @Test
     fun offlineComputerAlertsDefaultOffForExistingInstallsAndPersistSelectedState() = runBlocking {
         val repository = PersistentNotificationPreferenceRepository(
-            KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
+            KeyValueNotificationPreferenceStore(InMemoryRaftKeyValueStore())
         )
 
         val initial = repository.getNotificationPreference()

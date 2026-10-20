@@ -17,7 +17,7 @@ internal fun settingsWebViewAuthStorageMutations(
         add(SettingsWebStorageMutation(key = "slock_refresh_token", value = null))
         add(
             SettingsWebStorageMutation(
-                key = SLOCK_HOST_AUTH_BINDING_STORAGE_KEY,
+                key = RAFT_HOST_AUTH_BINDING_STORAGE_KEY,
                 value = hostBinding?.takeIf { session != null }?.let(::settingsWebViewHostAuthBindingJson),
             )
         )
@@ -95,4 +95,4 @@ internal fun settingsWebViewRuntimeAccessTokenJavaScript(
 }
 
 private val settingsWebViewAuthJson = Json
-internal const val SLOCK_HOST_AUTH_BINDING_STORAGE_KEY = "slock_host_auth_binding"
+internal const val RAFT_HOST_AUTH_BINDING_STORAGE_KEY = "slock_host_auth_binding"

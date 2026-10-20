@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.base.BridgeModule
 
-internal actual fun createSlockSqlDatabase(bridge: BridgeModule): SlockSqlDatabase =
+internal actual fun createRaftSqlDatabase(): RaftSqlDatabase =
     error("Slock SQLDelight relational store is not supported on JS yet")

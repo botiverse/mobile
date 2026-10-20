@@ -18,7 +18,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun createRejectionForceRefreshesFormAndRequestsExplicitRetry() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val recovery = async {
             DataResult.Error(ScreenError("form_definition_ref_required"))
                 .recoverRejectedCreateAgentForm(store, "server-1", "machine-1")
@@ -35,7 +35,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun unrelatedCreateErrorDoesNotRefreshRuntimeForm() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
 
         val result =
             DataResult.Error(ScreenError("http_409"))
@@ -48,7 +48,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun createFormRecoveryFailsClosedWithoutServerOrMachineIdentity() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
 
         listOf("" to "machine-1", "server-1" to "").forEach { (serverId, machineId) ->
             val result =
@@ -69,7 +69,7 @@ class SharedCreateAgentFormStoreTest {
                     "\"canSelectInThisContext\":false"
                 )
             )
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
 
         val result =
             DataResult.Error(ScreenError("stale_form_schema"))
@@ -82,7 +82,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun exactFormLoadsAreSingleFlightAndCachedByExactRef() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val first = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
         val firstResponse = api.definitionResponses.receive()
         val joined = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
@@ -102,7 +102,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun dialogOpenRefreshesCachedCatalogAndExactFormContract() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val initialLoad = async { store.loadSupportedBuiltInForm("server-1", "machine-1") }
         api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
         val initial = assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(initialLoad.await()).data
@@ -133,7 +133,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun staleForcedCompletionCannotReplaceNewerExactFormGeneration() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val older = async { store.loadExactForm("server-1", "machine-1", supportedRef, force = true) }
         val olderResponse = api.definitionResponses.receive()
         val newer = async { store.loadExactForm("server-1", "machine-1", supportedRef, force = true) }
@@ -160,7 +160,7 @@ class SharedCreateAgentFormStoreTest {
                 "\"availableForNew\":false"
             )
         )
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(unavailableApi), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(unavailableApi), this)
 
         val result = store.loadSupportedBuiltInForm("server-1", "machine-1")
 
@@ -177,7 +177,7 @@ class SharedCreateAgentFormStoreTest {
                     .replace("\"availableForNew\":true", "\"availableForNew\":false")
                     .replace("\"canSelectInThisContext\":true", "\"canSelectInThisContext\":false")
             val api = SequencedFormComputersApi(runtimeOptionsBody = currentManageableBody)
-            val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+            val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
 
             val createResult = store.loadSupportedBuiltInForm("server-1", "machine-1")
             assertEquals(
@@ -196,7 +196,7 @@ class SharedCreateAgentFormStoreTest {
     @Test
     fun resolvedSourcesBuildPresetAndGatewayWithoutClientCatalogs() = runPortableCoroutineTest {
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val load = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
         api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
         val form = assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(load.await()).data
@@ -239,7 +239,7 @@ class SharedCreateAgentFormStoreTest {
         val generation = SharedAuthLoginGeneration()
         var session = formSession(user = "account-1", accessToken = "access-1")
         val store = SharedCreateAgentFormStore(
-            SlockComputersApiClient(api),
+            RaftComputersApiClient(api),
             this,
             ownerProvider = { sharedCreateAgentFormOwner(session, "https://api.example.test/", generation.current()) }
         )
@@ -327,7 +327,7 @@ class SharedCreateAgentFormStoreTest {
     fun storeStateAndDiagnosticsNeverContainWriteOnlySecret() = runPortableCoroutineTest {
         val logs = mutableListOf<String>()
         val api = SequencedFormComputersApi()
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this, logs::add)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this, logs::add)
         val load = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
         api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
         val form = assertIs<DataResult.Content<SharedResolvedAgentCreateForm>>(load.await()).data
@@ -358,7 +358,7 @@ class SharedCreateAgentFormStoreTest {
                 )
             )
         )
-        val store = SharedCreateAgentFormStore(SlockComputersApiClient(api), this)
+        val store = SharedCreateAgentFormStore(RaftComputersApiClient(api), this)
         val load = async { store.loadExactForm("server-1", "machine-1", supportedRef) }
         api.definitionResponses.receive().complete(ok(canonicalDefinitionBody))
 
@@ -374,7 +374,7 @@ class SharedCreateAgentFormStoreTest {
         var owner = SharedCreateAgentFormOwner("https://api-a.example.test", "account-a", "session-a")
         val api = SequencedFormComputersApi()
         val store = SharedCreateAgentFormStore(
-            computersApiClient = SlockComputersApiClient(api),
+            computersApiClient = RaftComputersApiClient(api),
             scope = this,
             ownerProvider = { owner }
         )
@@ -398,7 +398,7 @@ class SharedCreateAgentFormStoreTest {
         var runtimeOptionsBody: String = canonicalRuntimeOptionsBody,
         var sourceBodies: Map<String, String> =
             mapOf("provider" to canonicalProviderSourceBody, "model" to canonicalModelSourceBody)
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         val definitionResponses = Channel<CompletableDeferred<HomeNetworkResponse>>(Channel.UNLIMITED)
         var runtimeOptionsCallCount = 0
         var definitionCallCount = 0

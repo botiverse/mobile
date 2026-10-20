@@ -3,10 +3,10 @@
 
 Android's resource compiler trims leading/trailing whitespace of an unquoted
 <string> value, so `"I agree to the "` reaches the app as `"I agree to the"` and
-`prefix + bold(name) + suffix` renders as `deleteVisual Serverand`. iOS/OHOS keep
+`prefix + bold(name) + suffix` renders as `deleteVisual Serverand`. iOS keeps
 the space, so the same fixture renders differently per platform. The repo's
-precedent (auth_legal_notice_*) is the `&#160;` entity, which survives on all
-three targets. This check has no allow-list on purpose: an edge space in a
+precedent (auth_legal_notice_*) is the `&#160;` entity, which survives on every
+target. This check has no allow-list on purpose: an edge space in a
 resource is never what the author meant.
 
 Usage: check_string_edge_spaces.py [--fix] [paths...]

@@ -28,9 +28,9 @@ raise "push path filters would suppress the stable CI gate" if events.fetch("pus
 
 jobs = workflow.fetch("jobs")
 expected_jobs = %w[
-  plan kuikly-artifacts android android-device
+  plan android android-device
   android-minimum-supported-attachment-runtime android-canonical-final-actual-host
-  ios ohos-receipt-selftest ohos ohos-host ci-gate
+  ios ci-gate
 ]
 raise "Test workflow job set drifted" unless jobs.keys == expected_jobs
 raise "stable required context changed" unless jobs.dig("ci-gate", "name") == "CI gate"
@@ -62,28 +62,17 @@ raise "gitlink publication still calls the unavailable REST Issues API" if
   publish_step.fetch("run", "").include?("issues/$PR_NUMBER/comments")
 
 expected_needs = {
-  "kuikly-artifacts" => ["plan"],
-  "android" => ["plan", "kuikly-artifacts"],
+  "android" => ["plan"],
   "android-device" => ["plan", "android"],
   "android-minimum-supported-attachment-runtime" => ["plan", "android"],
   "android-canonical-final-actual-host" => ["plan", "android"],
-  "ios" => ["plan", "kuikly-artifacts"],
-  "ohos-receipt-selftest" => ["plan"],
-  "ohos" => ["plan", "kuikly-artifacts"],
-  "ohos-host" => ["plan", "kuikly-artifacts"],
+  "ios" => ["plan"],
 }
 expected_needs.each do |job, needs|
   raise "#{job} needs drifted" unless Array(jobs.dig(job, "needs")) == needs
 end
-raise "Kuikly manifest gate must follow every Kuikly consumer platform" unless
-  jobs.dig("kuikly-artifacts", "if").include?("run_android") &&
-  jobs.dig("kuikly-artifacts", "if").include?("run_ios") &&
-  jobs.dig("kuikly-artifacts", "if").include?("run_ohos")
 raise "Android compile is not Android-path gated" unless jobs.dig("android", "if").include?("run_android")
 raise "iOS compile is not iOS-path gated" unless jobs.dig("ios", "if").include?("run_ios")
-%w[ohos-receipt-selftest ohos ohos-host].each do |job|
-  raise "#{job} is not OHOS-path gated" unless jobs.dig(job, "if").include?("run_ohos")
-end
 raise "android-device suite is not device-suite gated" unless
   jobs.dig("android-device", "if").include?("run_device_suite")
 raise "canonical-final is not nightly/manual gated" unless
@@ -92,7 +81,7 @@ raise "attachment authority is not API-level selected" unless
   jobs.dig("android-minimum-supported-attachment-runtime", "if").include?("attachment_api_levels")
 android_steps = jobs.fetch("android").fetch("steps")
 fixture_build_index = android_steps.index { |step| step["name"] == "Build Android connected-test APKs" }
-unit_test_index = android_steps.index { |step| step["name"] == "Run shared + Android app unit tests" }
+unit_test_index = android_steps.index { |step| step["name"] == "Run core + shared + Android app unit tests" }
 raise "Android visual-fixture build step missing" unless fixture_build_index
 raise "Android unit-test step missing" unless unit_test_index
 raise "unit-test failures can mask visual-fixture compilation" unless fixture_build_index < unit_test_index
@@ -111,17 +100,16 @@ fixture_build_tokens.each do |argument|
   raise "Android visual-fixture build lost #{argument}" unless
     includes_shell_tokens?(fixture_build, [argument])
 end
-kuikly_steps = jobs.fetch("kuikly-artifacts").fetch("steps")
-raise "Kuikly manifest admission gate is not hosted" unless kuikly_steps.any? do |step|
-  step["run"]&.include?("verify_kuikly_release_manifest.sh")
-end
-raise "Kuikly gate regressed to gitlink/source publication" if kuikly_steps.any? do |step|
+# Kuikly UI left Mobile in the CMP switch (scripts/ci/test_kuikly_raft_consumer_contract.py
+# guards the retired plumbing); no Test job may rebuild or admit it again.
+raise "Test workflow re-wired retired Kuikly UI plumbing" if jobs.values.flat_map { |job| Array(job["steps"]) }.any? do |step|
   run = step["run"].to_s
-  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh") || run.include?("mavenLocal")
+  run.include?("third_party/kuikly-ui") || run.include?("build_kuikly_fork.sh") ||
+    run.include?("verify_kuikly_release_manifest.sh")
 end
 
 plan_outputs = jobs.fetch("plan").fetch("outputs").keys
-raise "platform plan outputs drifted" unless plan_outputs == %w[run_android run_ios run_ohos run_device_suite run_canonical_final attachment_api_levels reason]
+raise "platform plan outputs drifted" unless plan_outputs == %w[run_android run_ios run_device_suite run_canonical_final attachment_api_levels reason]
 plan_script = jobs.fetch("plan").fetch("steps").find { |step| step["id"] == "plan" }.fetch("run")
 raise "PR diff does not use merge-base semantics" unless plan_script.include?('write_changed_paths "$BASE_SHA" "$HEAD_SHA" merge-base')
 raise "main push diff is not directly path-scoped" unless plan_script.include?('write_changed_paths "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" direct')

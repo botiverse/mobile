@@ -30,38 +30,38 @@ const val COMPRESS_THREAD_IMAGE = "compressThreadImage"
 const val CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage"
     '''
     preview = '''
-const val SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE = "attachment_image_compression_failed"
-const val SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
-class SlockFilePreviewComposerImageOperationGate {
+const val RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE = "attachment_image_compression_failed"
+const val RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE = "composer_image_compressor"
+class RaftFilePreviewComposerImageOperationGate {
   fun begin() = Unit; fun complete() = Unit; fun cancel() = Unit; fun retire() = Unit
 }
-data class SlockFilePreviewPayload(
+data class RaftFilePreviewPayload(
   val composerImageCompressAfterEdit: Boolean = false,
   val composerImageEditCompleted: Boolean = false,
   val composerImageCompressed: Boolean = false
 )
-internal fun parseSlockFilePreviewCompressedImageResult(response: JSONObject?) {
+internal fun parseRaftFilePreviewCompressedImageResult(response: JSONObject?) {
   val filesJson = response?.optJSONArray("files")
-  if (filesJson == null || filesJson.length() != 1) return SlockFilePreviewCompressedImageResult.Failure()
+  if (filesJson == null || filesJson.length() != 1) return RaftFilePreviewCompressedImageResult.Failure()
   val rawMimeType = filesJson.optJSONObject(0).optString("mimeType")
   val rawSource = filesJson.optJSONObject(0).optString("source")
-  if (rawMimeType != "image/jpeg" || rawSource != SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE) return SlockFilePreviewCompressedImageResult.Failure()
-  return SlockFilePreviewCompressedImageResult.Success()
+  if (rawMimeType != "image/jpeg" || rawSource != RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE) return RaftFilePreviewCompressedImageResult.Failure()
+  return RaftFilePreviewCompressedImageResult.Success()
 }
 fun hasPendingComposerImageFinalization() = true
 fun withComposerImageFinalResult() = Unit
 fun markComposerImageFinalized() = Unit
-internal fun slockComposerImagePickerIsStrictImage(fileName: String, mimeType: String): Boolean {
+internal fun raftComposerImagePickerIsStrictImage(fileName: String, mimeType: String): Boolean {
   val mime = mimeType.substringBefore(';').trim().lowercase()
   val extension = fileName.substringAfterLast('.').lowercase()
-  return mime.startsWith("image/") && extension in SlockFilePreviewImageExtensions
+  return mime.startsWith("image/") && extension in RaftFilePreviewImageExtensions
 }
-private val SlockFilePreviewImageExtensions = setOf("jpg")
-private val SlockFilePreviewVideoExtensions = setOf("mp4", "flv")
+private val RaftFilePreviewImageExtensions = setOf("jpg")
+private val RaftFilePreviewVideoExtensions = setOf("mp4", "flv")
     '''
     thread = '''
 internal fun shouldCompressThreadAttachmentPickerImages(action: String, originalImage: Boolean): Boolean = false
-internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean = true
+internal fun raftComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean = true
 val compressPickerImages = shouldCompressThreadAttachmentPickerImages("attachFile", currentDraftState.originalImage)
 val response = bridge.threadAttachmentUpload(channelId = id, imageOnly = true,
   compressImages = compressPickerImages)
@@ -70,8 +70,8 @@ threadComposerUploadedImagePreviewPayload(files = listOf(file), originalImage = 
 internal fun threadComposerImageAnnotationPayload(originalImage: Boolean) {
   val finalPolicy = composerImageCompressAfterEdit = !originalImage
 }
-private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload() = Unit
-slockComposerImagePickerIsStrictImage(name, mime)
+private fun RaftThreadAttachmentItem.toThreadAttachmentPreviewPayload() = Unit
+raftComposerImagePickerIsStrictImage(name, mime)
 resolveThreadPickedAttachmentComposerAction(action, count, allFilesAreImages = true)
 ThreadPickedAttachmentComposerAction.OpenImageAnnotation
 ThreadPickedAttachmentComposerAction.UploadToComposer
@@ -105,12 +105,12 @@ internal fun threadPendingSendOwnedTemporaryFileRefs(
     .filter { attachment ->
       val mime = attachment.mimeType.orEmpty().substringBefore(';').trim().lowercase()
       val extension = attachment.fileName.substringAfterLast('.').lowercase()
-      !mime.startsWith("video/") && extension !in SlockFilePreviewVideoExtensions
+      !mime.startsWith("video/") && extension !in RaftFilePreviewVideoExtensions
     }
     .filter { it.source in ownedTemporarySources }
     .mapNotNull { it.fileRef?.trim()?.takeIf(String::isNotBlank) }
 }
-private val SlockFilePreviewVideoExtensions = setOf("mp4")
+private val RaftFilePreviewVideoExtensions = setOf("mp4")
 internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount: Int): String = draftText
     '''
     android = '''
@@ -156,16 +156,16 @@ private data class ThreadImageCompressionOperation(val terminal: AtomicBoolean)
 if (!successful || operation.isCancelled()) outputFile.delete()
     '''
     ios = '''
-static BOOL SlockThreadImageCompressionInputIsImage(NSString *name, NSString *mime, NSURL *url) {
+static BOOL RaftThreadImageCompressionInputIsImage(NSString *name, NSString *mime, NSURL *url) {
   if (![mime hasPrefix:@"image/"]) return NO;
   NSSet *videoExtensions = [NSSet setWithArray:@[@"mp4", @"flv"]];
   NSString *extension = name.pathExtension.lowercaseString;
   return ![videoExtensions containsObject:extension];
 }
-static BOOL SlockAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL *sourceURL) {
-  NSString *normalizedMimeType = SlockBridgeString(mimeType).lowercaseString;
+static BOOL RaftAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL *sourceURL) {
+  NSString *normalizedMimeType = RaftBridgeString(mimeType).lowercaseString;
   normalizedMimeType = [[normalizedMimeType componentsSeparatedByString:@";"] firstObject] ?: @"";
-  NSString *nameExtension = SlockBridgeString(fileName).pathExtension.lowercaseString;
+  NSString *nameExtension = RaftBridgeString(fileName).pathExtension.lowercaseString;
   NSString *sourceExtension = sourceURL.pathExtension.lowercaseString;
   NSSet<NSString *> *videoExtensions = [NSSet setWithArray:@[@"mp4", @"flv"]];
   if ([videoExtensions containsObject:nameExtension] ||
@@ -174,8 +174,8 @@ static BOOL SlockAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL
   if ([normalizedMimeType hasPrefix:@"image/"]) return YES;
   return NO;
 }
-static NSError *SlockThreadAttachmentImageCompressionError(NSString *message) { return nil; }
-static NSString *SlockCompressedAttachmentFileName(NSString *name) { return name; }
+static NSError *RaftThreadAttachmentImageCompressionError(NSString *message) { return nil; }
+static NSString *RaftCompressedAttachmentFileName(NSString *name) { return name; }
 @interface FixtureCompressionOperation : NSObject
 @property(nonatomic, strong) NSRecursiveLock *outputLock;
 @property(nonatomic, strong) NSURL *outputURL;
@@ -195,7 +195,7 @@ static NSString *SlockCompressedAttachmentFileName(NSString *name) { return name
   FixtureCompressionOperation *operation = [FixtureCompressionOperation new];
   NSURL *outputURL = [NSURL fileURLWithPath:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"jpg"]];
   [operation.outputLock lock];
-  SlockWriteCompressedPickedImage([NSURL URLWithString:fileRef], outputURL, nil);
+  RaftWriteCompressedPickedImage([NSURL URLWithString:fileRef], outputURL, nil);
   [operation.outputLock unlock];
   NSDictionary *file = @{@"source": @"composer_image_compressor", @"mimeType": @"image/jpeg"};
   [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil];
@@ -204,53 +204,7 @@ static NSString *SlockCompressedAttachmentFileName(NSString *name) { return name
 if (!encoded) { [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil]; }
 attachment_image_compression_failed
     '''
-    ohos = '''
-const S = "composer_image_compressor";
-class KRBridgeModule {
-  static readonly COMPRESS_THREAD_IMAGE = "compressThreadImage";
-  static readonly CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage";
-  call(method: string) { switch (method) {
-    case KRBridgeModule.COMPRESS_THREAD_IMAGE: this.compressThreadImage({}, cb); break;
-    case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE: this.cancelCompressThreadImage({}); break;
-  }}
-  private isOhosImageAttachment(uri: string, mimeType: string, imageOnly: boolean) {
-    if (mimeType.startsWith('video/')) return false;
-    const lowerUri = uri.toLowerCase().split('?')[0];
-    if (/\\.(mp4|flv)$/.test(lowerUri)) return false;
-    if (mimeType.startsWith('image/')) return true;
-    if (/\\.(avif|bmp|gif|heic|heif|jpe?g|png|webp|tiff?)$/.test(uri)) return true;
-    return false;
-  }
-  private async cacheCompressedPickedThreadImage() { }
-  private async isThreadImageCompressionInput(fileName: string, mimeType: string, sourcePath: string) {
-    const normalizedMimeType = mimeType.split(';')[0].trim().toLowerCase();
-    if (!normalizedMimeType.startsWith('image/')) return false;
-    const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
-    if (['mp4', 'flv'].includes(extension)) return false;
-    const normalizedSourcePath = sourcePath.toLowerCase().split('?')[0].split('#')[0];
-    if (/\\.(mp4|flv)$/.test(normalizedSourcePath)) return false;
-    const sourceStat = await fs.stat(sourcePath);
-    return sourceStat.isFile() && sourceStat.size > 0;
-  }
-  private threadImageCompressionOutputName(fileName: string) { return fileName; }
-  private async compressThreadImage(params: KRAny, callback: KuiklyRenderCallback) {
-    const requestId = params["requestId"]; const fileRef = params["fileRef"];
-    const fileName = params["fileName"]; const mimeType = params["mimeType"];
-    const targetPath = `${UUID.randomUUID()}.jpg`;
-    await this.cacheCompressedPickedThreadImage();
-    await packer.packToFile(pixelMap, fd, { format: 'image/jpeg' });
-    callback({ source: "composer_image_compressor", mimeType: "image/jpeg" });
-    await fs.unlink(targetPath);
-  }
-  private cancelCompressThreadImage(params: KRAny) { }
-  private async cacheCompressedPickedThreadImage() {
-    await packer.packToFile(pixelMap, fd, { format: 'image/jpeg' });
-    await fs.unlink(targetPath);
-  }
-  attachment_image_compression_failed
-}
-    '''
-    return {"bridge": bridge, "preview": preview, "thread": thread, "android": android, "ios": ios, "ohos": ohos,
+    return {"bridge": bridge, "preview": preview, "thread": thread, "android": android, "ios": ios,
             "uploaded_preview": "threadComposerImageAnnotationPayload(threadInstanceKey, actionId, files, originalImage)"}
 
 
@@ -330,10 +284,6 @@ def self_test() -> int:
             lambda s: s.__setitem__("ios", s["ios"].replace("- (void)compressThreadImage:", "- (void)otherThreadImage:", 1)),
         ),
         (
-            "OHOS cancellation dispatch",
-            lambda s: s.__setitem__("ohos", s["ohos"].replace("case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE", "case KRBridgeModule.OTHER", 1)),
-        ),
-        (
             "video-first guard",
             lambda s: s.__setitem__("android", s["android"].replace('if (extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false', "", 1)),
         ),
@@ -399,55 +349,13 @@ def self_test() -> int:
             lambda s: s.__setitem__("ios", s["ios"].replace("removeItemAtURL:outputURL", "", 1)),
         ),
         (
-            "OHOS source-path video guard",
-            lambda s: s.__setitem__(
-                "ohos",
-                _replace_in_region(
-                    s["ohos"],
-                    "private async isThreadImageCompressionInput(",
-                    "private threadImageCompressionOutputName(",
-                    r"if (/\.(mp4|flv)$/.test(normalizedSourcePath)) return false;",
-                    "",
-                    "OHOS source-path video guard mutation",
-                ),
-            ),
-        ),
-        (
-            "OHOS source-path shared flv parity",
-            lambda s: s.__setitem__(
-                "ohos",
-                _replace_in_region(
-                    s["ohos"],
-                    "private async isThreadImageCompressionInput(",
-                    "private threadImageCompressionOutputName(",
-                    "mp4|flv",
-                    "mp4",
-                    "OHOS source-path flv parity mutation",
-                ),
-            ),
-        ),
-        (
-            "OHOS picker shared flv parity",
-            lambda s: s.__setitem__(
-                "ohos",
-                _replace_in_region(
-                    s["ohos"],
-                    "private isOhosImageAttachment(",
-                    "private async cacheCompressedPickedThreadImage(",
-                    r"mp4|flv",
-                    "mp4",
-                    "OHOS picker flv parity mutation",
-                ),
-            ),
-        ),
-        (
             "iOS picker video guard",
             lambda s: s.__setitem__(
                 "ios",
                 _replace_in_region(
                     s["ios"],
-                    "static BOOL SlockAttachmentIsImage(",
-                    "static NSError *SlockThreadAttachmentImageCompressionError(",
+                    "static BOOL RaftAttachmentIsImage(",
+                    "static NSError *RaftThreadAttachmentImageCompressionError(",
                     "  if ([videoExtensions containsObject:nameExtension] ||\n"
                     "      [videoExtensions containsObject:sourceExtension] ||\n"
                     "      [normalizedMimeType hasPrefix:@\"video/\"]) return NO;\n",
@@ -462,8 +370,8 @@ def self_test() -> int:
                 "ios",
                 _replace_in_region(
                     s["ios"],
-                    "static BOOL SlockAttachmentIsImage(",
-                    "static NSError *SlockThreadAttachmentImageCompressionError(",
+                    "static BOOL RaftAttachmentIsImage(",
+                    "static NSError *RaftThreadAttachmentImageCompressionError(",
                     "[videoExtensions containsObject:sourceExtension] ||\n      ",
                     "",
                     "iOS picker source-extension guard mutation",

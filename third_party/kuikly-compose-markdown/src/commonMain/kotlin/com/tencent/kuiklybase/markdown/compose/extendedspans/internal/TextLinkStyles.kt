@@ -1,7 +1,7 @@
 package com.tencent.kuiklybase.markdown.compose.extendedspans.internal
 
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 
 /**
  * Updates the [TextLinkStyles] with the provided [block].

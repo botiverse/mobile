@@ -1,11 +1,12 @@
 package build.raft.app
 
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 
-internal fun slockMessageBodyTextStyle(preferenceKey: String?): TextStyle =
+internal fun raftMessageBodyTextStyle(preferenceKey: String?): TextStyle =
     when (preferenceKey?.trim()?.lowercase()) {
-        "sm" -> SlockType.Body.copy(fontSize = 12.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
-        "lg" -> SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp, color = SlockColor.TextBlack)
-        else -> SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
+        // Medium is the shared content size (RaftTextSize); small/large are one step either side.
+        "sm" -> RaftType.Body.copy(fontSize = 12.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
+        "lg" -> RaftType.Body.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
+        else -> RaftType.Body.copy(color = RaftColor.TextBlack)
     }

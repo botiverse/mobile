@@ -1,8 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadMessageItem
+import build.raft.app.RaftThreadMessageItem
 import build.raft.app.seedThreadAuthorProfiles
-import build.raft.app.slockScopedAgentStatusResolver
+import build.raft.app.raftScopedAgentStatusResolver
 import build.raft.app.model.*
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesReadModel
@@ -20,6 +20,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SharedServerMembersStoreTest {
@@ -30,7 +31,7 @@ class SharedServerMembersStoreTest {
         val uploadedAvatar =
             "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
         val fullHistory =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "history-message",
                 authorId = "agent-1",
                 authorName = "Argus",
@@ -59,7 +60,7 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(FakeMemberRepository())
         val serverId = ServerId("server-1")
         val fallback =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "first-message",
                 authorId = "agent-1",
                 authorName = "Argus",
@@ -94,7 +95,7 @@ class SharedServerMembersStoreTest {
         val uploadedAvatar =
             "https://cdn.raft.build/avatars/users/0123456789abcdef0123456789abcdef.webp"
         val message =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "parent-message",
                 authorId = "agent-1",
                 authorName = "Argus",
@@ -147,7 +148,7 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seed(MemberSnapshot(server("server-1"), listOf(hydrated)))
         val staleMessage =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "stale-message",
                 authorId = "agent-1",
                 authorName = "Argus",
@@ -294,7 +295,7 @@ class SharedServerMembersStoreTest {
         store.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "late-message",
                     authorId = "agent-1",
                     authorName = "Agent",
@@ -342,7 +343,7 @@ class SharedServerMembersStoreTest {
         store.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "old-message",
                     authorId = "agent-1",
                     authorName = "Argus",
@@ -370,7 +371,7 @@ class SharedServerMembersStoreTest {
         store.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "late-old-message",
                     authorId = "agent-1",
                     authorName = "Argus",
@@ -2958,11 +2959,11 @@ class SharedServerMembersStoreTest {
         )
 
         val routeStatus =
-            slockScopedAgentStatusResolver(store, "server-route")
+            raftScopedAgentStatusResolver(store, "server-route")
                 .invoke("agent-friday")
                 .first()
         val unknownScopeStatus =
-            slockScopedAgentStatusResolver(store, null)
+            raftScopedAgentStatusResolver(store, null)
                 .invoke("agent-friday")
                 .first()
 
@@ -2983,7 +2984,7 @@ class SharedServerMembersStoreTest {
         store.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "cold-start-message",
                     authorId = "agent-1",
                     authorName = "Argus",
@@ -2994,7 +2995,7 @@ class SharedServerMembersStoreTest {
         )
 
         assertNull(
-            slockScopedAgentStatusResolver(store, serverId.value).invoke("agent-1").first(),
+            raftScopedAgentStatusResolver(store, serverId.value).invoke("agent-1").first(),
             "a stripped seed must not render any dot, least of all one labelled Offline"
         )
 
@@ -3012,7 +3013,7 @@ class SharedServerMembersStoreTest {
                 )
             )
         )
-        val hydrated = slockScopedAgentStatusResolver(store, serverId.value).invoke("agent-1").first()
+        val hydrated = raftScopedAgentStatusResolver(store, serverId.value).invoke("agent-1").first()
         assertEquals(AgentStatus.Working, hydrated?.status)
         assertEquals("Working", hydrated?.label)
     }
@@ -3088,7 +3089,7 @@ class SharedServerMembersStoreTest {
         seedOnlyStore.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "cold-start-message",
                     authorId = "agent-1",
                     authorName = "Argus",
@@ -3128,7 +3129,7 @@ class SharedServerMembersStoreTest {
         seedOnlyStore.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "cold-start-message",
                     authorId = "agent-1",
                     authorName = "Argus",
@@ -3168,7 +3169,7 @@ class SharedServerMembersStoreTest {
         store.seedThreadAuthorProfiles(
             serverId,
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "cold-start-message",
                     authorId = "agent-1",
                     authorName = "Argus",
@@ -3319,7 +3320,8 @@ class SharedServerMembersStoreTest {
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun deleteAgent(
             priority: DataRequestPriority,
-            agentId: MemberId
+            agentId: MemberId,
+            workspaceChoice: AgentArchiveWorkspaceChoice
         ): DataResult<AgentLifecycleActionResult> {
             deleteAgentCalls += 1
             if (!retainDeletedAgentsInRoster) {

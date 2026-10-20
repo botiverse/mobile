@@ -333,7 +333,7 @@ internal class CanonicalFinalGatewayFixture(
     val auth = FakeCanonicalFinalAuthStore()
     private val registry =
         RealtimeAuthorityRegistry(
-            authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+            authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
             processInstanceId = "gateway-fixture-${nextFixtureId++}",
         )
     val dispatcher = ManualCanonicalFinalDispatcher()
@@ -417,7 +417,7 @@ internal class CanonicalFinalGatewayFixture(
     }
 }
 
-internal class FakeCanonicalFinalAuthStore : SlockAuthSessionStore, SlockAuthSessionEventSource {
+internal class FakeCanonicalFinalAuthStore : RaftAuthSessionStore, RaftAuthSessionEventSource {
     private var session: StoredAuthSession? = null
     private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
     override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()

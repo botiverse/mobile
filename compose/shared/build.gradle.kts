@@ -5,7 +5,6 @@ plugins {
     kotlin("native.cocoapods")
     kotlin("plugin.serialization")
     id("com.android.library")
-    id("com.google.devtools.ksp")
     id("maven-publish")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
@@ -13,34 +12,33 @@ plugins {
     id("com.tencent.kuiklybase.resource.generator")
 }
 
-val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
-val generatedSlockDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
+val generatedRaftDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
-val slockKuiklyBaseDatetimeEnabled =
+val raftKuiklyBaseDatetimeEnabled =
     providers.gradleProperty("slock.kuiklyBaseDatetime.enabled")
         .orElse(providers.environmentVariable("SLOCK_KUIKLYBASE_DATETIME_ENABLED"))
         .map { value ->
             value.trim().lowercase() !in setOf("0", "false", "no", "off")
         }
         .orElse(true)
-val generateSlockDatetimeBuildConfig by tasks.registering {
+val generateRaftDatetimeBuildConfig by tasks.registering {
     val outputFile =
-        generatedSlockDatetimeConfigDir.map {
-            it.file("build/raft/app/data/SlockDatetimeBuildConfig.kt")
+        generatedRaftDatetimeConfigDir.map {
+            it.file("build/raft/app/data/RaftDatetimeBuildConfig.kt")
         }
-    inputs.property("kuiklyBaseDatetimeEnabled", slockKuiklyBaseDatetimeEnabled)
+    inputs.property("kuiklyBaseDatetimeEnabled", raftKuiklyBaseDatetimeEnabled)
     outputs.file(outputFile)
     doLast {
-        val enabled = slockKuiklyBaseDatetimeEnabled.get()
+        val enabled = raftKuiklyBaseDatetimeEnabled.get()
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
             writeText(
                 """
                 package build.raft.app.data
 
-                internal const val SlockKuiklyBaseDatetimeEnabledByBuild: Boolean = $enabled
+                internal const val RaftKuiklyBaseDatetimeEnabledByBuild: Boolean = $enabled
                 """.trimIndent() + "\n"
             )
         }
@@ -50,7 +48,7 @@ val pinnedNetworkCurlCaBundle =
     layout.projectDirectory.file("src/commonMain/assets/network/cacert-2026-05-14.pem")
 val pinnedNetworkCurlCaSha256 =
     "86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c"
-val slockVisualFixturesEnabled =
+val raftVisualFixturesEnabled =
     providers.gradleProperty("slockVisualFixtures")
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
         .map { it.equals("true", ignoreCase = true) }
@@ -79,11 +77,14 @@ kotlin {
     // suppression (KT-61573) — zero behavior change.
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
+        // :core declarations that are public only for :shared (see RaftCoreInternalApi).
+        optIn.add("build.raft.app.RaftCoreInternalApi")
     }
 
     androidTarget {
         compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+            // Coil 3 ships JVM 11 bytecode with inline functions :shared calls.
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
         publishLibraryVariants("release")
     }
@@ -109,6 +110,9 @@ kotlin {
                     "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
             isStatic = true
             license = "MIT"
+            // Compose Multiplatform pages: Swift/ObjC reach RaftCmpIos (view controller factory,
+            // routing, bridge/navigator protocols). Not transitive: :core stays unexported.
+            export(project(":ui-cmp"))
         }
         extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
         extraSpecAttributes["resources"] = "['src/commonMain/assets/**', 'src/commonMain/resources/MR/assets/**']"
@@ -119,48 +123,68 @@ kotlin {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
             kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
-            kotlin.srcDir(generatedSlockDatetimeConfigDir)
-            if (slockVisualFixturesEnabled) {
+            kotlin.srcDir(generatedRaftDatetimeConfigDir)
+            if (raftVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
                 // Visual fixture DATA follows the gated host into commonMain, so the visual
                 // @Page can read the fixtures it renders. When the flag is off it goes to
                 // commonTest instead (see below) — exactly one source set per build, so the
                 // same declarations are never compiled twice.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
+            } else {
+                // Empty RaftVisualFixturePages (the generated one lives in src/visualFixtures).
+                kotlin.srcDir("src/visualFixturesOff/kotlin")
             }
             dependencies {
-                implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
-                implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
-                implementation("com.tencent.kuikly-open:compose:${Version.getKuiklyVersion()}")
+                // UI-free foundation (models, network base, JSON helpers, HostCapabilities, store
+                // dispatcher). Not exported to the iOS framework: Swift uses none of it yet.
+                api(project(":core"))
+                // CMP switch (Phase A): :shared's UI renders on upstream Compose Multiplatform
+                // through the :ui-cmp hosts (RaftCmpRoot). The Kuikly compose fork, Kuikly core
+                // (Pager/Module/nvi JSON) and core-render-android are gone; their remaining API
+                // surface lives in the build.raft.app.compat package (TODO(cmp-switch) shims).
+                api(project(":ui-cmp"))
+                implementation(project(":designsystem"))
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.ui)
+                implementation(compose.material3)
+                implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composePlugin.get()}")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+                // Coil 3.2.0 is the last line built for Kotlin 2.1 / CMP 1.8.0 (3.3+ needs Kotlin 2.2).
+                implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+                // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
+                // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
+                implementation("io.coil-kt.coil3:coil-svg:3.2.0")
 
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 // Common platform-safe monitor used by the synchronous shell-store cache.
                 implementation("org.jetbrains.kotlinx:atomicfu:0.25.0")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.4")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.5")
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
                 // Unified network infra (task #12): all platforms' HTTP goes
-                // through NetworkKMM behind the SlockHttpExecutor seam.
+                // through NetworkKMM behind the RaftHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
+                // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
+                // by the commonMain Compose Canvas renderer (RaftMermaidCanvas); mermaid-kuikly is gone.
+                implementation("build.raft.mermaid:mermaid-core:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
             }
         }
         val commonTest by getting {
-            if (!slockVisualFixturesEnabled) {
+            if (!raftVisualFixturesEnabled) {
                 // Production builds must ship zero fixture code, but fixture-contract unit tests
                 // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
                 // data here (and only here) keeps both true without a second gated test source set.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
-                // SOURCE-SET CHANGES MUST BE MADE IN BOTH FILES: this one and
-                // compose/shared/build.ohos.gradle.kts. The OHOS leg does not build from this file
-                // at all — it runs `-c settings.ohos.gradle.kts`, which sets buildFileName to
-                // build.ohos.gradle.kts — so wiring added only here is invisible to
-                // compileTestKotlinOhosArm64. That file reads no slockVisualFixtures flag, so it
-                // registers this directory on commonTest unconditionally.
             }
             dependencies {
                 implementation(kotlin("test"))
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.4")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.5")
                 // Virtual-time coroutine testing (runTest/advanceTimeBy) — the
                 // required default for new async tests; see AGENTS.md unit-test
                 // rules (task #18). Version tracks kotlinx-coroutines-core above.
@@ -170,14 +194,15 @@ kotlin {
         val androidMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
             dependencies {
-                api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}") {
-                    isChanging = true
-                }
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
+                // RaftVideoPlayer (Media3 PlayerView inside AndroidView; replaces the Kuikly
+                // VideoView adapter that lived in androidApp).
+                implementation(libs.androidx.media3.exoplayer)
+                implementation(libs.androidx.media3.ui)
+                implementation(libs.androidx.core.ktx)
+                implementation(libs.androidx.activity.compose)
+                // CMP switch: RaftSandboxWebView (document-start scripts, web message listener).
+                implementation(libs.androidx.webkit)
             }
         }
         val androidUnitTest by getting {
@@ -190,7 +215,6 @@ kotlin {
                 implementation("build.raft.mermaid:mermaid-core:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
                 implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
             }
         }
         val androidInstrumentedTest by getting {
@@ -211,10 +235,6 @@ kotlin {
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
-                implementation("build.raft.mermaid:mermaid-core:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.11")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.11")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.11")
             }
         }
         val iosX64Test by getting
@@ -247,16 +267,12 @@ publishing {
 
 sqldelight {
     databases {
-        create("SlockDatabase") {
+        create("RaftDatabase") {
             packageName.set("build.raft.app.shared.data.local")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
             verifyMigrations.set(true)
         }
     }
-}
-
-ksp {
-    arg(KEY_PAGE_NAME, getPageName())
 }
 
 fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
@@ -284,11 +300,19 @@ tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
     dependsOn(stageTmmCommonSources, "generateMRandroidMain")
 }
 
-tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
+// The afterEvaluate setSrcDirs above drops the SQLDelight source dir's task dependency; the
+// Kuikly KSP tasks used to carry it. Kotlin compilations now depend on the generator directly.
+tasks.matching { task ->
+    task.name.startsWith("compile") && task.name.contains("Kotlin") && !task.name.contains("Test")
+}.configureEach {
+    dependsOn("generateCommonMainRaftDatabaseInterface")
 }
 
-if (slockVisualFixturesEnabled) {
+tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
+    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainRaftDatabaseInterface")
+}
+
+if (raftVisualFixturesEnabled) {
     tasks.matching { task ->
         task.name in setOf(
             "bundleLibRuntimeToJarDebug",
@@ -308,7 +332,7 @@ tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
             else -> null
         }
     if (generatedResourcesTask != null) {
-        dependsOn(stageTmmCommonSources, generatedResourcesTask, "generateCommonMainSlockDatabaseInterface")
+        dependsOn(stageTmmCommonSources, generatedResourcesTask, "generateCommonMainRaftDatabaseInterface")
     }
 }
 
@@ -316,23 +340,15 @@ tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
     dependsOn(stageTmmCommonSources)
 }
 
-tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
-}
-
-tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
-}
-
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
 }
 
 tasks.matching { it.name.startsWith("compile") || it.name.startsWith("ksp") }.configureEach {
-    dependsOn(generateSlockDatetimeBuildConfig)
+    dependsOn(generateRaftDatetimeBuildConfig)
 }
 
-tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
+tasks.matching { it.name == "generateMRandroidMain" }.configureEach {
     mustRunAfter(stageTmmCommonSources)
 }
 
@@ -353,18 +369,14 @@ gradle.taskGraph.whenReady {
     }
 }
 
-dependencies {
-    compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
-        add("kspAndroid", this)
-        add("kspIosArm64", this)
-        add("kspIosX64", this)
-        add("kspIosSimulatorArm64", this)
-    }
-}
-
 android {
     namespace = "build.raft.app.shared"
-    compileSdk = 34
+    // Upstream Compose 1.8 (CMP 1.8.2) requires compileSdk 35, same as :ui-cmp.
+    compileSdk = 35
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
     defaultConfig {
         minSdk = 21
         targetSdk = 34
@@ -445,7 +457,7 @@ val verifyNetworkCurlCaBundle by tasks.registering {
 val verifyNetworkTransportClientWiring by tasks.registering {
     val clientSources =
         listOf(
-            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/NetworkKmmSlockHttpExecutor.kt"),
+            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/NetworkKmmRaftHttpExecutor.kt"),
             layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/SharedBinaryDownloader.kt"),
             layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt")
         )
@@ -453,7 +465,7 @@ val verifyNetworkTransportClientWiring by tasks.registering {
     doLast {
         clientSources.forEach { source ->
             val text = source.asFile.readText()
-            check("slockNetworkClientConfig(" in text) {
+            check("raftNetworkClientConfig(" in text) {
                 "${source.asFile.name} must use the app-global NetworkKMM selector/diagnostics helper"
             }
         }
@@ -466,14 +478,9 @@ tasks.named("check").configure {
 
 tasks.matching { task ->
     task.name == "preBuild" ||
-        task.name.startsWith("compileKotlinIos") ||
-        task.name == "compileKotlinOhosArm64"
+        task.name.startsWith("compileKotlinIos")
 }.configureEach {
     dependsOn(verifyNetworkCurlCaBundle)
-}
-
-fun getPageName(): String {
-    return (project.properties[KEY_PAGE_NAME] as? String) ?: ""
 }
 
 fun getCommonCompilerArgs(): List<String> {

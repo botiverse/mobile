@@ -22,12 +22,12 @@ class SharedSettingsAvatarCacheTest {
                 listOf(settingsMember("member-2", "Member"))
             )
         )
-        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
                 settingsRepository = repository,
                 serverMembersStore = membersStore
             ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
@@ -36,10 +36,10 @@ class SharedSettingsAvatarCacheTest {
             dataSource.removeServerMember("member-2")
         )
 
-        val expectedSubject: SlockAvatarCacheSubject =
-            SlockAvatarCacheSubject.Member(MemberKind.Human, "member-2")
+        val expectedSubject: RaftAvatarCacheSubject =
+            RaftAvatarCacheSubject.Member(MemberKind.Human, "member-2")
         assertEquals(
-            listOf(owner.nativePartitionKey to slockAvatarNativeSubjectKey(owner, expectedSubject)),
+            listOf(owner.nativePartitionKey to raftAvatarNativeSubjectKey(owner, expectedSubject)),
             native.retiredSubjects
         )
         assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
@@ -56,12 +56,12 @@ class SharedSettingsAvatarCacheTest {
                 listOf(settingsMember("system-1", "System").copy(kind = MemberKind.System))
             )
         )
-        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
                 settingsRepository = repository,
                 serverMembersStore = membersStore
             ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
@@ -94,12 +94,12 @@ class SharedSettingsAvatarCacheTest {
                     ),
                 connectedAccounts = emptyList()
             )
-        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(session),
+                sessionStore = InMemoryRaftAuthSessionStore(session),
                 settingsRepository = fixtures.avatarSettingsRepository(DataResult.Content(resultSnapshot)),
                 platformCapabilities =
                     fixtures.avatarSettingsCapabilities(
@@ -117,10 +117,10 @@ class SharedSettingsAvatarCacheTest {
         val result = assertIs<DataResult.Content<AccountSettingsSnapshot>>(dataSource.uploadAccountAvatar())
 
         assertEquals(avatarUrl, result.data.profile.avatarUrl)
-        val expectedSubject: SlockAvatarCacheSubject =
-            SlockAvatarCacheSubject.Member(MemberKind.Human, "user-1")
+        val expectedSubject: RaftAvatarCacheSubject =
+            RaftAvatarCacheSubject.Member(MemberKind.Human, "user-1")
         assertEquals(
-            listOf(owner.nativePartitionKey to slockAvatarNativeSubjectKey(owner, expectedSubject)),
+            listOf(owner.nativePartitionKey to raftAvatarNativeSubjectKey(owner, expectedSubject)),
             native.retiredSubjects
         )
         assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
@@ -128,12 +128,12 @@ class SharedSettingsAvatarCacheTest {
 
     @Test
     fun failedAccountAvatarUploadDoesNotRetireCapturedSubject() = runBlocking {
-        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
                 settingsRepository =
                     fixtures.avatarSettingsRepository(
                         DataResult.Error(ScreenError("account_avatar_upload_failed"))
@@ -164,7 +164,7 @@ class SharedSettingsAvatarCacheTest {
                 fixtures.avatarSettingsMemberRepository(DataResult.Content(profile))
             )
         store.seed(MemberSnapshot(settingsServer("server-1"), listOf(profile)))
-        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
 
@@ -183,10 +183,10 @@ class SharedSettingsAvatarCacheTest {
             )
 
         assertEquals(avatarUrl, result.data.avatarUrl)
-        val expectedSubject: SlockAvatarCacheSubject =
-            SlockAvatarCacheSubject.Member(MemberKind.Agent, "agent-1")
+        val expectedSubject: RaftAvatarCacheSubject =
+            RaftAvatarCacheSubject.Member(MemberKind.Agent, "agent-1")
         assertEquals(
-            listOf(owner.nativePartitionKey to slockAvatarNativeSubjectKey(owner, expectedSubject)),
+            listOf(owner.nativePartitionKey to raftAvatarNativeSubjectKey(owner, expectedSubject)),
             native.retiredSubjects
         )
         assertEquals(listOf(owner to expectedSubject), metadata.clearedSubjects)
@@ -204,7 +204,7 @@ class SharedSettingsAvatarCacheTest {
             SharedServerMembersStore(
                 fixtures.avatarSettingsMemberRepository(DataResult.Content(mismatchedProfile))
             )
-        val owner = SlockAvatarCacheOwner("https://api.example", "user-1", "server-1")
+        val owner = RaftAvatarCacheOwner("https://api.example", "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
 
@@ -227,9 +227,9 @@ class SharedSettingsAvatarCacheTest {
 
     @Test
     fun deleteAndLeaveServerRetireOnlyTheCapturedCurrentOwner() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val owner =
-            SlockAvatarCacheOwner(
+            RaftAvatarCacheOwner(
                 environmentStore.current().apiBaseUrl.trimEnd('/'),
                 "user-1",
                 "server-1"
@@ -239,7 +239,7 @@ class SharedSettingsAvatarCacheTest {
         val native = RecordingAvatarNativeCache()
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
                 settingsRepository = repository,
                 apiEnvironmentStore = environmentStore
             ).withAvatarCacheRuntime(avatarRuntime(metadata) { owner }, native)
@@ -255,14 +255,14 @@ class SharedSettingsAvatarCacheTest {
 
     @Test
     fun environmentChangeCapturesOldEnvironmentOwnerBeforeSessionAndEnvironmentMutation() = runBlocking {
-        val sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession())
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val oldEnvironment = environmentStore.current().apiBaseUrl.trimEnd('/')
-        val oldOwner = SlockAvatarCacheOwner(oldEnvironment, "user-1", "server-1")
+        val oldOwner = RaftAvatarCacheOwner(oldEnvironment, "user-1", "server-1")
         val metadata = RecordingAvatarMetadataStore()
         val native = RecordingAvatarNativeCache()
         val runtime = avatarRuntime(metadata) { requested ->
-            SlockAvatarCacheOwner(
+            RaftAvatarCacheOwner(
                 environmentStore.current().apiBaseUrl.trimEnd('/'),
                 "user-1",
                 requested ?: "server-1"
@@ -300,7 +300,7 @@ class SharedSettingsAvatarCacheTest {
             val capabilities = RecordingAvatarClearCapabilities(case.nativeSuccess)
             val dataSource =
                 SharedSettingsDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(fixtures.sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(fixtures.sampleSession()),
                     platformCapabilities = capabilities
                 ).withAvatarCacheRuntime(
                     avatarRuntime(metadata) { null },
@@ -317,58 +317,58 @@ class SharedSettingsAvatarCacheTest {
 
     private fun avatarRuntime(
         metadata: RecordingAvatarMetadataStore,
-        owner: suspend (String?) -> SlockAvatarCacheOwner?
-    ): SlockAvatarCacheRuntime =
-        SlockAvatarCacheRuntime(
-            coordinator = SlockAvatarCacheCoordinator(metadata) { 100L },
+        owner: suspend (String?) -> RaftAvatarCacheOwner?
+    ): RaftAvatarCacheRuntime =
+        RaftAvatarCacheRuntime(
+            coordinator = RaftAvatarCacheCoordinator(metadata) { 100L },
             currentOwner = owner
         )
 
-    private class RecordingAvatarMetadataStore : SlockAvatarCacheMetadataStore {
-        val clearedOwners = mutableListOf<SlockAvatarCacheOwner>()
-        val clearedSubjects = mutableListOf<Pair<SlockAvatarCacheOwner, SlockAvatarCacheSubject>>()
+    private class RecordingAvatarMetadataStore : RaftAvatarCacheMetadataStore {
+        val clearedOwners = mutableListOf<RaftAvatarCacheOwner>()
+        val clearedSubjects = mutableListOf<Pair<RaftAvatarCacheOwner, RaftAvatarCacheSubject>>()
         var clearAllCalls = 0
         var failClearAll = false
 
         override suspend fun readCommittedForOwner(
-            owner: SlockAvatarCacheOwner,
+            owner: RaftAvatarCacheOwner,
             nowMs: Long,
             limit: Long
-        ): List<SlockAvatarCacheMetadata> = emptyList()
+        ): List<RaftAvatarCacheMetadata> = emptyList()
 
-        override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
-            SlockAvatarCacheStoredState(null, null)
+        override suspend fun read(key: RaftAvatarCacheKey): RaftAvatarCacheStoredState =
+            RaftAvatarCacheStoredState(null, null)
 
         override suspend fun commitSuccess(
-            metadata: SlockAvatarCacheMetadata,
-            guard: SlockAvatarCacheCommitGuard
-        ): SlockAvatarCacheCommitResult = SlockAvatarCacheCommitResult.Accepted
+            metadata: RaftAvatarCacheMetadata,
+            guard: RaftAvatarCacheCommitGuard
+        ): RaftAvatarCacheCommitResult = RaftAvatarCacheCommitResult.Accepted
 
         override suspend fun commitFailure(
-            failure: SlockAvatarCacheFailure,
+            failure: RaftAvatarCacheFailure,
             retireMatchingMetadata: Boolean,
-            guard: SlockAvatarCacheCommitGuard
-        ): SlockAvatarCacheCommitResult = SlockAvatarCacheCommitResult.Accepted
+            guard: RaftAvatarCacheCommitGuard
+        ): RaftAvatarCacheCommitResult = RaftAvatarCacheCommitResult.Accepted
 
         override suspend fun restoreAfterNativeFinalizeFailure(
-            key: SlockAvatarCacheKey,
-            expectedCommittedState: SlockAvatarCacheStoredState,
-            previousState: SlockAvatarCacheStoredState,
-            guard: SlockAvatarCacheCommitGuard
-        ): SlockAvatarCacheCommitResult = SlockAvatarCacheCommitResult.Accepted
+            key: RaftAvatarCacheKey,
+            expectedCommittedState: RaftAvatarCacheStoredState,
+            previousState: RaftAvatarCacheStoredState,
+            guard: RaftAvatarCacheCommitGuard
+        ): RaftAvatarCacheCommitResult = RaftAvatarCacheCommitResult.Accepted
 
-        override suspend fun clearFailure(key: SlockAvatarCacheKey) = Unit
+        override suspend fun clearFailure(key: RaftAvatarCacheKey) = Unit
 
-        override suspend fun clearTemporaryFailures(owner: SlockAvatarCacheOwner) = Unit
+        override suspend fun clearTemporaryFailures(owner: RaftAvatarCacheOwner) = Unit
 
         override suspend fun clearSubject(
-            owner: SlockAvatarCacheOwner,
-            subject: SlockAvatarCacheSubject
+            owner: RaftAvatarCacheOwner,
+            subject: RaftAvatarCacheSubject
         ) {
             clearedSubjects += owner to subject
         }
 
-        override suspend fun clearOwner(owner: SlockAvatarCacheOwner) {
+        override suspend fun clearOwner(owner: RaftAvatarCacheOwner) {
             clearedOwners += owner
         }
 
@@ -378,7 +378,7 @@ class SharedSettingsAvatarCacheTest {
         }
     }
 
-    private class RecordingAvatarNativeCache : SlockAvatarNativeCache {
+    private class RecordingAvatarNativeCache : RaftAvatarNativeCache {
         val retiredOwners = mutableListOf<String>()
         val retiredSubjects = mutableListOf<Pair<String, String>>()
 
@@ -386,30 +386,30 @@ class SharedSettingsAvatarCacheTest {
             nativePartitionKey: String,
             nativeSubjectKey: String,
             nativeBytesKey: String
-        ): SlockAvatarNativeInspection = SlockAvatarNativeInspection.Unsupported
+        ): RaftAvatarNativeInspection = RaftAvatarNativeInspection.Unsupported
 
-        override suspend fun awaitResult(request: SlockAvatarNativeRequest): SlockAvatarNativeLoadResult =
-            SlockAvatarNativeLoadResult.Unsupported
+        override suspend fun awaitResult(request: RaftAvatarNativeRequest): RaftAvatarNativeLoadResult =
+            RaftAvatarNativeLoadResult.Unsupported
 
         override suspend fun finalize(
-            request: SlockAvatarNativeRequest,
-            outcome: SlockAvatarNativeFinalizeOutcome
-        ): SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
+            request: RaftAvatarNativeRequest,
+            outcome: RaftAvatarNativeFinalizeOutcome
+        ): RaftAvatarNativeMutationResult = RaftAvatarNativeMutationResult.Accepted
 
-        override suspend fun rollback(request: SlockAvatarNativeRequest): SlockAvatarNativeMutationResult =
-            SlockAvatarNativeMutationResult.Accepted
+        override suspend fun rollback(request: RaftAvatarNativeRequest): RaftAvatarNativeMutationResult =
+            RaftAvatarNativeMutationResult.Accepted
 
-        override suspend fun retireOwner(nativePartitionKey: String): SlockAvatarNativeMutationResult {
+        override suspend fun retireOwner(nativePartitionKey: String): RaftAvatarNativeMutationResult {
             retiredOwners += nativePartitionKey
-            return SlockAvatarNativeMutationResult.Accepted
+            return RaftAvatarNativeMutationResult.Accepted
         }
 
         override suspend fun retireSubject(
             nativePartitionKey: String,
             nativeSubjectKey: String
-        ): SlockAvatarNativeMutationResult {
+        ): RaftAvatarNativeMutationResult {
             retiredSubjects += nativePartitionKey to nativeSubjectKey
-            return SlockAvatarNativeMutationResult.Accepted
+            return RaftAvatarNativeMutationResult.Accepted
         }
     }
 

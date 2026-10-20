@@ -3,19 +3,19 @@ package com.tencent.kuiklybase.markdown.compose.elements
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownParagraphFillWidth
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownAnnotatedStringMemoKeys
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownParagraphFillWidth
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownAnnotatedStringMemoKeys
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.annotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRenderTiming
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRenderTiming
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownLogSubTrace
 
 import org.intellij.markdown.ast.ASTNode
 
@@ -23,7 +23,7 @@ import org.intellij.markdown.ast.ASTNode
 fun MarkdownParagraph(
     content: String,
     node: ASTNode,
-    // Slock (task #800): null resolves against LocalSlockMarkdownParagraphFillWidth
+    // Slock (task #800): null resolves against LocalRaftMarkdownParagraphFillWidth
     // (default true = legacy fill). Right-aligned chat bubbles provide false so a
     // short paragraph wraps to its text and can hug the End edge; every other
     // caller keeps the legacy fill behavior untouched.
@@ -31,13 +31,13 @@ fun MarkdownParagraph(
     style: TextStyle = LocalMarkdownTypography.current.paragraph,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
 ) {
-    val paragraphFillWidth = LocalSlockMarkdownParagraphFillWidth.current
+    val paragraphFillWidth = LocalRaftMarkdownParagraphFillWidth.current
     val resolvedModifier = modifier ?: if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier
     // t6-a paragraph sub-phases: annotate = AnnotatedString build (plain
     // block, measured via the timing's clock), textCall = MarkdownText
     // composable call (sequential enter/exit). Null timing = untimed path.
     // Memoization is OPT-IN via the host annotation revision (see
-    // LocalSlockMarkdownAnnotationRevision): without one, the legacy
+    // LocalRaftMarkdownAnnotationRevision): without one, the legacy
     // rebuild-every-recomposition semantics are preserved because an
     // identity-stable annotator can still change its output. With one, the
     // build is remembered by its actual inputs + the revision, so unchanged
@@ -45,9 +45,9 @@ fun MarkdownParagraph(
     // once. Hits report annotate=0 (honest attribution: no work happened);
     // hit/rebuild counts are recorded ONLY on the memoized path, so a
     // legacy rebuild is never misreported as a memo rebuild.
-    val nodeTiming = LocalSlockMarkdownRenderTiming.current
-    val memoKeys = slockMarkdownAnnotatedStringMemoKeys(
-        content, node, style, annotatorSettings, LocalSlockMarkdownAnnotationRevision.current
+    val nodeTiming = LocalRaftMarkdownRenderTiming.current
+    val memoKeys = raftMarkdownAnnotatedStringMemoKeys(
+        content, node, style, annotatorSettings, LocalRaftMarkdownAnnotationRevision.current
     )
     val buildStyledText = {
         if (nodeTiming != null) {
@@ -78,7 +78,7 @@ fun MarkdownParagraph(
             if (rebuilt) nodeTiming?.recordAnnotatedStringRebuild() else nodeTiming?.recordAnnotatedStringHit()
             remembered
         }
-    slockMarkdownLogSubTrace {
+    raftMarkdownLogSubTrace {
         "phase=markdown.paragraph.annotated contentHash=${content.hashCode().toString(16)} " +
             "nodeStart=${node.startOffset} nodeEnd=${node.endOffset} textLength=${styledText.text.length} " +
             "spanStyles=${styledText.spanStyles.size} stringAnnotations=${styledText.getStringAnnotations(0, styledText.length).size} " +

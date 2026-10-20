@@ -15,7 +15,6 @@ authors = [
 dependencies = []
 
 [project.scripts]
-harmony-use = "harmony_use.cli:main"
 android-use = "android_use.cli:main"
 ios-use = "ios_use.cli:main"
 

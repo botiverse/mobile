@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Contract tooth for the SlockMarkdownSpike diagnostics channel (task #20,
 # PR #1496 review requirement): every spike line must go through the single
-# gated lazy helper `slockMarkdownLogSubTrace` in
+# gated lazy helper `raftMarkdownLogSubTrace` in
 # third_party/kuikly-compose-markdown/.../compose/Markdown.kt. A direct
 # `println` of a SlockMarkdownSpike line anywhere else re-introduces ungated
 # production cost (eager string interpolation + annotation scans + a logcat
@@ -13,18 +13,18 @@
 # - each println's FULL argument span is walked paren-balanced, so a spike
 #   literal any number of lines below the call is still attributed to it;
 # - across the whole vendor tree there must be EXACTLY ONE spike-println,
-#   and its position must lie inside the body of `slockMarkdownLogSubTrace`
+#   and its position must lie inside the body of `raftMarkdownLogSubTrace`
 #   in the approved file — textual equality with the canonical call is NOT
 #   an exemption (a copy of the canonical line outside the helper fails).
 #
-# Sink-based emissions (SlockMarkdownNodeTiming's `sink.emit("SlockMarkdownSpike
+# Sink-based emissions (RaftMarkdownNodeTiming's `sink.emit("SlockMarkdownSpike
 # ...")`) are NOT violations: the sink only exists while diagnostics are ON
 # (gate-before-construction), so only direct println calls are policed.
 set -euo pipefail
 
 vendor_root="third_party/kuikly-compose-markdown/src"
 approved_file="third_party/kuikly-compose-markdown/src/commonMain/kotlin/com/tencent/kuiklybase/markdown/compose/Markdown.kt"
-helper_name="slockMarkdownLogSubTrace"
+helper_name="raftMarkdownLogSubTrace"
 
 usage() {
   cat <<'EOF'
@@ -131,28 +131,28 @@ self_test() {
   trap 'rm -rf "$tmp"' RETURN
   mkdir -p "$tmp/src/pkg"
   local approved="$tmp/src/pkg/Approved.kt"
-  local canonical_helper='internal inline fun slockMarkdownLogSubTrace(message: () -> String) {
-    if (!SlockMarkdownSubTrace.enabled) return
+  local canonical_helper='internal inline fun raftMarkdownLogSubTrace(message: () -> String) {
+    if (!RaftMarkdownSubTrace.enabled) return
     println("SlockMarkdownSpike ${message()}")
 }'
 
   # Case 1: rogue direct println in the APPROVED FILE, beside the helper —
   # must FAIL (review round-2 counterexample).
   printf '%s\ninternal fun accidentalUngatedSpikeInApprovedFile() {\n    println("SlockMarkdownSpike phase=regression.outside_helper")\n}\n' "$canonical_helper" > "$approved"
-  if scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: rogue println beside the helper in the approved file was not detected"
   fi
 
   # Case 2: byte-identical COPY of the canonical call outside the helper —
   # must FAIL (review round-3 counterexample: text equality is no exemption).
   printf '%s\ninternal fun accidentalCanonicalDuplicate(message: () -> String) {\n    println("SlockMarkdownSpike ${message()}")\n}\n' "$canonical_helper" > "$approved"
-  if scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: canonical-call duplicate outside the helper was not detected"
   fi
 
   # Case 3: whitespace between println and '(' — must FAIL (round-3).
   printf '%s\ninternal fun accidentalWhitespaceBypass() {\n    println ("SlockMarkdownSpike phase=regression.whitespace")\n}\n' "$canonical_helper" > "$approved"
-  if scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: 'println (' whitespace form was not detected"
   fi
 
@@ -169,7 +169,7 @@ fun bad() {
     )
 }
 KT
-  if scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: spike literal several lines below println( was not detected"
   fi
   rm "$tmp/src/pkg/Bad.kt"
@@ -180,18 +180,18 @@ fun bad2() {
     println("SlockMarkdownSpike phase=self.test.single_line")
 }
 KT
-  if scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: direct single-line spike println was not detected"
   fi
   rm "$tmp/src/pkg/Bad2.kt"
 
   # Case 6: helper's emit removed entirely (zero spike-printlns) — must FAIL.
   cat > "$approved" <<'KT'
-internal inline fun slockMarkdownLogSubTrace(message: () -> String) {
-    if (!SlockMarkdownSubTrace.enabled) return
+internal inline fun raftMarkdownLogSubTrace(message: () -> String) {
+    if (!RaftMarkdownSubTrace.enabled) return
 }
 KT
-  if scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: zero spike-printlns (channel removed) was not detected"
   fi
 
@@ -200,11 +200,11 @@ KT
   cat > "$tmp/src/pkg/Ok.kt" <<'KT'
 fun ok(sink: (String) -> Unit) {
     sink("SlockMarkdownSpike phase=self.test.sink_emit")
-    slockMarkdownLogSubTrace { "phase=self.test.helper" }
+    raftMarkdownLogSubTrace { "phase=self.test.helper" }
     println("unrelated line without the marker")
 }
 KT
-  if ! scan "$tmp/src" "$approved" "slockMarkdownLogSubTrace" 2>/dev/null; then
+  if ! scan "$tmp/src" "$approved" "raftMarkdownLogSubTrace" 2>/dev/null; then
     fail "self-test failed: canonical helper / sink.emit / unrelated println were flagged"
   fi
   echo "self-test OK"

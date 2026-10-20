@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
-import build.raft.app.SlockLucideIconName
+import build.raft.app.RaftLucideIconName
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RealtimeEvent
@@ -9,11 +9,11 @@ import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
-import build.raft.app.network.SlockCurlSocketIoPolicy
-import build.raft.app.network.currentSlockNetworkTransportController
-import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
-import com.tencent.kuikly.lifecycle.ViewModel
-import com.tencent.kuikly.lifecycle.viewModelScope
+import build.raft.app.network.RaftCurlSocketIoPolicy
+import build.raft.app.network.currentRaftNetworkTransportController
+import build.raft.app.network.updateRaftNetworkKmmRecoveryEnvironment
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -123,7 +123,7 @@ data class SharedSettingsNavItem(
     val destination: SharedSettingsDestination,
     val title: String,
     val subtitle: String,
-    val iconName: SlockLucideIconName,
+    val iconName: RaftLucideIconName,
     val value: String? = null,
     val productVisible: Boolean = true
 )
@@ -353,8 +353,14 @@ private data class ServerNotificationModeMutation(
 
 sealed interface SharedSettingsIntent {
     data object Start : SharedSettingsIntent
-    /** Loads content for the Pager that already owns this store; it never performs navigation. */
-    data class LoadPageContent(val page: SharedSettingsDestination) : SharedSettingsIntent
+    /**
+     * Loads content for the Pager that already owns this store; it never performs navigation.
+     * [itemId] names the item of an item page (the machine of [SharedSettingsDestination.ComputerDetail]).
+     */
+    data class LoadPageContent(
+        val page: SharedSettingsDestination,
+        val itemId: String? = null
+    ) : SharedSettingsIntent
     data class OpenComputer(val machineId: String) : SharedSettingsIntent
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
@@ -461,6 +467,7 @@ sealed interface SharedSettingsIntent {
     data class SetRealtimeCurlSocketIoEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHttp3Enabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadReverseLayoutEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetNativePullToRefreshEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -578,11 +585,11 @@ interface SharedSettingsPlatformCapabilities {
 
 private data class AccountAvatarRetirementCapture(
     val userId: String,
-    val capture: SlockAvatarSubjectRetirementCapture
+    val capture: RaftAvatarSubjectRetirementCapture
 )
 
 class SharedSettingsDataSource(
-    private val sessionStore: SlockAuthSessionStore,
+    private val sessionStore: RaftAuthSessionStore,
     private val settingsRepository: SettingsRepository? = null,
     private val computersSource: SharedSettingsComputersSource? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
@@ -601,21 +608,22 @@ class SharedSettingsDataSource(
     private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
+    private val nativePullToRefreshPreferenceStore: RaftNativePullToRefreshPreferenceStore? = null,
     private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
-    private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
-    private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+    private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
+    private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
 
     internal fun withAvatarCacheRuntime(
-        runtime: SlockAvatarCacheRuntime?,
-        nativeCache: SlockAvatarNativeCache
+        runtime: RaftAvatarCacheRuntime?,
+        nativeCache: RaftAvatarNativeCache
     ): SharedSettingsDataSource = apply {
         avatarCacheRuntime = runtime
         avatarCacheNativeCache = nativeCache
     }
 
     val authSessionEvents: SharedFlow<AuthSessionEvent>?
-        get() = (sessionStore as? SlockAuthSessionEventSource)?.authSessionEvents
+        get() = (sessionStore as? RaftAuthSessionEventSource)?.authSessionEvents
 
     suspend fun currentMobileSettingsOwnerKey(): String? =
         sessionStore.readSession()?.let { session ->
@@ -762,7 +770,7 @@ class SharedSettingsDataSource(
                 is DataResult.Error -> DataResult.Error(sharedComputer.error)
                 is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
                 null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            }.withComputerManageGate(session.canManageCurrentServer())
+            }.withComputerManageGate(session)
         if (result is DataResult.Content && serverId != null) {
             refreshServerMembersForSettingsStatus(serverId, force = forceComputers)
         }
@@ -915,7 +923,7 @@ class SharedSettingsDataSource(
         val avatarRetirement =
             if (serverId.isNotBlank() && cleanMemberId.isNotBlank() && memberKind != null) {
                 avatarCacheRuntime?.captureCurrentSubjectRetirement(
-                    subject = SlockAvatarCacheSubject.Member(memberKind, cleanMemberId),
+                    subject = RaftAvatarCacheSubject.Member(memberKind, cleanMemberId),
                     serverId = serverId
                 )
             } else {
@@ -1115,9 +1123,9 @@ class SharedSettingsDataSource(
                 ?: return DataResult.Error(ScreenError("settings_font_unavailable", retryable = false))
         val font = FontPreference.fromStorageKey(fontKey)
         repository.selectFontPreference(font)
-        // SlockDesignTokens already imports from this package, so reference the state by its
+        // RaftDesignTokens already imports from this package, so reference the state by its
         // fully-qualified name instead of adding another import edge.
-        build.raft.app.SlockFontFaceState.apply(font)
+        build.raft.app.RaftFontFaceState.apply(font)
         return loadMobilePreferences()
     }
 
@@ -1297,6 +1305,30 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setNativePullToRefreshEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val store =
+            nativePullToRefreshPreferenceStore
+                ?: return DataResult.Error(ScreenError("settings_native_pull_to_refresh_unavailable", retryable = false))
+        store.saveNativePullToRefreshEnabled(enabled)
+        diagnosticsLogger?.invoke("native_pull_to_refresh enabled=$enabled")
+        return loadMobilePreferences()
+    }
+
+    /** Off (default) = Raft's custom pull-to-refresh; on = the platform's own style. Applies live. */
+    private fun SettingsMobileSnapshot.withNativePullToRefreshPreference(): SettingsMobileSnapshot {
+        val store = nativePullToRefreshPreferenceStore ?: return this
+        val enabled = store.readNativePullToRefreshEnabledSync()
+        return copy(
+            nativePullToRefresh =
+                SettingsMobileToggleSnapshot(
+                    enabled = enabled,
+                    available = true,
+                    statusLabel = if (enabled) "Enabled" else "Off",
+                    detail = "Use the system pull-to-refresh style of this platform. When off, keep Raft's pull-to-refresh."
+                )
+        )
+    }
+
     /** The switch shows the user's choice when there is one, otherwise the default it follows. Applies to the next thread open. */
     private suspend fun SettingsMobileSnapshot.withThreadReverseLayoutPreference(): SettingsMobileSnapshot {
         val store = threadReverseLayoutPreferenceStore ?: return this
@@ -1319,7 +1351,7 @@ class SharedSettingsDataSource(
      */
     private fun SettingsMobileSnapshot.withHttp3Preference(): SettingsMobileSnapshot {
         val store = http3PreferenceStore ?: return this
-        val controller = currentSlockNetworkTransportController() ?: return this
+        val controller = currentRaftNetworkTransportController() ?: return this
         val transport = controller.getPreferenceSync()
         if (transport.availability == NetworkTransportPreferenceAvailability.Http3Unsupported) return this
         val enabled = store.readHttp3UserChoiceSync() ?: transport.requestedHttp3Enabled
@@ -1335,15 +1367,15 @@ class SharedSettingsDataSource(
     }
 
     /**
-     * Task #154: the switch shows the effective value, i.e. SlockCurlSocketIoPolicy.isEnabledFor(currentServerId):
+     * Task #154: the switch shows the effective value, i.e. RaftCurlSocketIoPolicy.isEnabledFor(currentServerId):
      * the user's explicit choice when there is one, otherwise the server flag for the selected server.
      * The choice is read from this data source's own store so the row reflects a save immediately.
      */
     private suspend fun SettingsMobileSnapshot.withRealtimeCurlSocketIoPreference(): SettingsMobileSnapshot {
         val store = realtimeTransportPreferenceStore ?: return this
-        if (!SlockCurlSocketIoPolicy.platformSupported) return this
+        if (!RaftCurlSocketIoPolicy.platformSupported) return this
         val serverId = sessionStore.readSession()?.currentServerId?.trim()?.takeIf(String::isNotEmpty)
-        val enabled = store.readCurlSocketIoUserChoiceSync() ?: SlockCurlSocketIoPolicy.serverDefaultFor(serverId)
+        val enabled = store.readCurlSocketIoUserChoiceSync() ?: RaftCurlSocketIoPolicy.serverDefaultFor(serverId)
         return copy(
             realtimeCurlSocketIo =
                 SettingsMobileToggleSnapshot(
@@ -1371,10 +1403,10 @@ class SharedSettingsDataSource(
             }
         val result = nativeResult
             ?: return DataResult.Error(ScreenError("settings_storage_clear_failed", retryable = true))
-        if (receipt is SlockAvatarCacheClearReceipt.Success) return result
+        if (receipt is RaftAvatarCacheClearReceipt.Success) return result
         diagnosticsLogger?.invoke(
             "avatar_cache_clear result=failure stages=" +
-                (receipt as SlockAvatarCacheClearReceipt.Failed).stages.joinToString(",") { it.name.lowercase() }
+                (receipt as RaftAvatarCacheClearReceipt.Failed).stages.joinToString(",") { it.name.lowercase() }
         )
         return when (result) {
             is DataResult.Content ->
@@ -1458,7 +1490,7 @@ class SharedSettingsDataSource(
                     session = sessionStore.readSession()
                 )
             runCatching {
-                updateSlockNetworkKmmRecoveryEnvironment(
+                updateRaftNetworkKmmRecoveryEnvironment(
                     environmentKey = after.key,
                     apiBaseUrl = after.apiBaseUrl
                 )
@@ -1490,17 +1522,17 @@ class SharedSettingsDataSource(
         )
     }
 
-    private suspend fun captureCurrentAvatarOwnerRetirement(): SlockAvatarOwnerRetirementCapture? {
+    private suspend fun captureCurrentAvatarOwnerRetirement(): RaftAvatarOwnerRetirementCapture? {
         val environmentId = apiEnvironmentStore?.current()?.apiBaseUrl ?: return null
         val session = sessionStore.readSession() ?: return null
         val currentServerId = session.currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val owner =
-            slockCurrentAvatarCacheOwner(
+            raftCurrentAvatarCacheOwner(
                 environmentId = environmentId,
                 session = session,
                 requestedServerId = currentServerId
             ) ?: return null
-        return SlockAvatarOwnerRetirementCapture(setOf(owner))
+        return RaftAvatarOwnerRetirementCapture(setOf(owner))
     }
 
     private suspend fun captureCurrentAccountAvatarRetirement(): AccountAvatarRetirementCapture? {
@@ -1510,21 +1542,21 @@ class SharedSettingsDataSource(
         val serverId = session.currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val capture =
             runtime.captureCurrentSubjectRetirement(
-                subject = SlockAvatarCacheSubject.Member(MemberKind.Human, userId),
+                subject = RaftAvatarCacheSubject.Member(MemberKind.Human, userId),
                 serverId = serverId
             ) ?: return null
         return AccountAvatarRetirementCapture(userId = userId, capture = capture)
     }
 
     private suspend fun retireCapturedAvatarOwners(
-        capture: SlockAvatarOwnerRetirementCapture?,
+        capture: RaftAvatarOwnerRetirementCapture?,
         source: String
     ) {
         val runtime = avatarCacheRuntime ?: return
         val captured = capture ?: return
         when (val receipt = runtime.retireOwners(captured, avatarCacheNativeCache)) {
-            SlockAvatarCacheClearReceipt.Success -> Unit
-            is SlockAvatarCacheClearReceipt.Failed ->
+            RaftAvatarCacheClearReceipt.Success -> Unit
+            is RaftAvatarCacheClearReceipt.Failed ->
                 diagnosticsLogger?.invoke(
                     "avatar_cache_retire result=failure source=$source stages=" +
                         receipt.stages.joinToString(",") { it.name.lowercase() }
@@ -1533,13 +1565,13 @@ class SharedSettingsDataSource(
     }
 
     private suspend fun retireCapturedAvatarSubject(
-        capture: SlockAvatarSubjectRetirementCapture,
+        capture: RaftAvatarSubjectRetirementCapture,
         source: String
     ) {
         val runtime = avatarCacheRuntime ?: return
         when (val receipt = runtime.retireSubject(capture, avatarCacheNativeCache)) {
-            SlockAvatarCacheClearReceipt.Success -> Unit
-            is SlockAvatarCacheClearReceipt.Failed ->
+            RaftAvatarCacheClearReceipt.Success -> Unit
+            is RaftAvatarCacheClearReceipt.Failed ->
                 diagnosticsLogger?.invoke(
                     "avatar_cache_retire result=failure source=$source stages=" +
                         receipt.stages.joinToString(",") { it.name.lowercase() }
@@ -1581,7 +1613,7 @@ class SharedSettingsDataSource(
         // Task #179: cold start. Publish the stored face to the observable state so the very
         // first composition renders the chosen font, not the default and then a swap.
         fontPreferenceRepository?.getFontPreference()?.current?.let { stored ->
-            build.raft.app.SlockFontFaceState.apply(stored)
+            build.raft.app.RaftFontFaceState.apply(stored)
         }
         val chatLayout = chatLayoutPreferenceRepository?.getChatLayoutPreference()
         val linkOpenMode = linkOpenPreferenceRepository?.getLinkOpenMode()
@@ -1750,6 +1782,7 @@ class SharedSettingsDataSource(
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
         ).withRealtimeCurlSocketIoPreference().withHttp3Preference().withThreadReverseLayoutPreference()
+            .withNativePullToRefreshPreference()
     }
 
     private fun SettingsMobileSnapshot.withSystemNotificationPermission(
@@ -1862,7 +1895,8 @@ class SharedSettingsViewModel(
             SharedSettingsStore(
                 dataSource = dataSource,
                 scope = viewModelScope,
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                standaloneNavigation = true
             )
         }
     private val contractDelegate =
@@ -1964,11 +1998,18 @@ class SharedSettingsStore(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val diagnosticsRefreshDelay: suspend (Long) -> Unit = { delay(it) },
+    /**
+     * Each standalone settings page owns one destination; navigating is the host's job. A store in
+     * this mode never switches its own route to another page, it only emits the navigation effect.
+     */
+    private val standaloneNavigation: Boolean = false,
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private val pendingMachineRealtimeIds = LinkedHashSet<String>()
+    private var machineRealtimeDrainActive = false
     private var diagnosticsRefreshJob: Job? = null
     private var diagnosticsRefreshToken: Long = 0L
     private var authOwnerObservationJob: Job? = null
@@ -2015,7 +2056,11 @@ class SharedSettingsStore(
                 if (intent.page != SharedSettingsDestination.Notifications) {
                     retireServerNotificationModeMutation()
                 }
-                _state.value = _state.value.copy(route = SharedSettingsRoute(intent.page), routeErrorCode = null)
+                _state.value =
+                    _state.value.copy(
+                        route = SharedSettingsRoute(intent.page, intent.itemId?.trim()?.takeIf { it.isNotBlank() }),
+                        routeErrorCode = null
+                    )
                 loadCurrentRoute()
             }
             is SharedSettingsIntent.OpenComputer -> {
@@ -2038,7 +2083,8 @@ class SharedSettingsStore(
                     )
                 loadHome()
             }
-            SharedSettingsIntent.Refresh -> loadCurrentRoute()
+            // An explicit refresh bypasses the computers cache (the in-memory computers slice).
+            SharedSettingsIntent.Refresh -> loadCurrentRoute(forceComputers = true)
             SharedSettingsIntent.RefreshComputers -> refreshComputers()
             is SharedSettingsIntent.ScanComputerWorkspaces -> {
                 runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
@@ -2622,6 +2668,14 @@ class SharedSettingsStore(
                 dataSource.setThreadReverseLayoutEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_THREAD_REVERSE_LAYOUT)
             }
+            is SharedSettingsIntent.SetNativePullToRefreshEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_NATIVE_PULL_TO_REFRESH, inProgress = true)
+                    )
+                dataSource.setNativePullToRefreshEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_NATIVE_PULL_TO_REFRESH)
+            }
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled -> {
                 _state.value =
                     _state.value.copy(
@@ -2696,15 +2750,15 @@ class SharedSettingsStore(
         dataSource.loadHome().applyToState(SharedSettingsDestination.Home) { copy(home = it) }
     }
 
-    private suspend fun loadCurrentRoute() {
+    private suspend fun loadCurrentRoute(forceComputers: Boolean = false) {
         when (val destination = _state.value.route.destination) {
             SharedSettingsDestination.Home -> loadHome()
             SharedSettingsDestination.Account ->
                 dataSource.loadAccount().applyToState(destination) { copy(account = it) }
             SharedSettingsDestination.Computers ->
-                dataSource.loadComputers().applyToState(destination) { copy(computers = it) }
+                dataSource.loadComputers(forceComputers = forceComputers).applyToState(destination) { copy(computers = it) }
             SharedSettingsDestination.ComputerDetail ->
-                loadComputerDetail(_state.value.route.itemId.orEmpty())
+                loadComputerDetail(_state.value.route.itemId.orEmpty(), forceComputers = forceComputers)
             SharedSettingsDestination.Server ->
                 dataSource.loadServer().applyToState(destination) { copy(server = it) }
             SharedSettingsDestination.Administration ->
@@ -2742,7 +2796,7 @@ class SharedSettingsStore(
             .applyToState(SharedSettingsDestination.Computers) { copy(computers = it) }
     }
 
-    private suspend fun loadComputerDetail(machineId: String) {
+    private suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false) {
         if (machineId.isBlank()) {
             _state.value =
                 _state.value.copy(
@@ -2751,7 +2805,7 @@ class SharedSettingsStore(
                 )
             return
         }
-        dataSource.loadComputerDetail(machineId).applyToState(SharedSettingsDestination.ComputerDetail) {
+        dataSource.loadComputerDetail(machineId, forceComputers = forceComputers).applyToState(SharedSettingsDestination.ComputerDetail) {
             copy(computerDetail = it)
         }
     }
@@ -2830,17 +2884,42 @@ class SharedSettingsStore(
         when (_state.value.route.destination) {
             SharedSettingsDestination.ComputerDetail -> {
                 val openId = _state.value.route.itemId.orEmpty()
-                if (openId.isNotBlank() && openId == machineId) {
-                    dataSource
-                        .loadComputerDetail(machineId, forceComputers = true)
-                        .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+                if (openId.isBlank() || openId != machineId) return
+            }
+            SharedSettingsDestination.Computers -> Unit
+            else -> return
+        }
+        // Single-flight: a burst of machine:status / machine:updated frames coalesces into one
+        // in-flight reload plus at most one follow-up that covers every machine seen meanwhile.
+        pendingMachineRealtimeIds += machineId
+        if (machineRealtimeDrainActive) {
+            diagnosticsLogger("settings_machines_realtime_coalesce machineId=$machineId")
+            return
+        }
+        machineRealtimeDrainActive = true
+        try {
+            while (pendingMachineRealtimeIds.isNotEmpty()) {
+                val machineIds = pendingMachineRealtimeIds.toList()
+                pendingMachineRealtimeIds.clear()
+                when (_state.value.route.destination) {
+                    SharedSettingsDestination.ComputerDetail -> {
+                        val openId = _state.value.route.itemId.orEmpty()
+                        if (openId.isNotBlank() && openId in machineIds) {
+                            dataSource
+                                .loadComputerDetail(openId, forceComputers = true)
+                                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+                        }
+                    }
+                    SharedSettingsDestination.Computers -> {
+                        dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+                        machineIds.forEach(::maybeAdvanceAddComputerDialogFromMachines)
+                    }
+                    else -> Unit
                 }
             }
-            SharedSettingsDestination.Computers -> {
-                dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                maybeAdvanceAddComputerDialogFromMachines(machineId)
-            }
-            else -> Unit
+        } finally {
+            machineRealtimeDrainActive = false
+            pendingMachineRealtimeIds.clear()
         }
     }
 
@@ -2877,6 +2956,15 @@ class SharedSettingsStore(
             dataSource.renameComputer(SettingsComputerRenameRequest(machineId = machineId, name = finalName))
         }
         dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+        if (standaloneNavigation) {
+            // The list page stays the list; the host opens the new machine's own detail page.
+            _state.value =
+                _state.value.copy(
+                    addComputerDialog = null,
+                    effect = SharedSettingsEffect.OpenComputer(machineId)
+                )
+            return
+        }
         _state.value =
             _state.value.copy(
                 addComputerDialog = null,
@@ -3759,6 +3847,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled,
             is SharedSettingsIntent.SetHttp3Enabled,
             is SharedSettingsIntent.SetThreadReverseLayoutEnabled,
+            is SharedSettingsIntent.SetNativePullToRefreshEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -3818,14 +3907,52 @@ private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
     }
 
 private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
-    canManageServer: Boolean
+    session: StoredAuthSession?
 ): DataResult<SettingsComputerDetailSnapshot> =
     when (this) {
-        is DataResult.Content -> DataResult.Content(data.copy(canManageMachines = canManageServer))
+        is DataResult.Content -> {
+            val permissions =
+                settingsComputerPermissions(
+                    serverRole = session.settingsCurrentServer()?.role,
+                    currentUserId = session?.user?.id,
+                    computer = data.computer
+                )
+            DataResult.Content(
+                data.copy(
+                    canManageMachines = permissions.canEdit || permissions.canRemove,
+                    canEditMachine = permissions.canEdit,
+                    canRemoveMachine = permissions.canRemove
+                )
+            )
+        }
         is DataResult.Empty -> this
         is DataResult.Error -> this
         is DataResult.NoPermission -> this
     }
+
+internal data class SettingsComputerPermissions(val canEdit: Boolean, val canRemove: Boolean)
+
+/**
+ * Mirrors the server gate `canManageMachineResource` (slock packages/server/src/routes/servers.ts):
+ * the machine creator (`machines.userId`) or a role holding `editMachines` (PATCH) /
+ * `removeMachines` (DELETE). Per packages/shared/src/serverPermissions.ts only owner and admin hold
+ * those capabilities. Like the web detail panel, attaching the backing Computer also counts.
+ */
+internal fun settingsComputerPermissions(
+    serverRole: String?,
+    currentUserId: String?,
+    computer: SettingsComputerSnapshot
+): SettingsComputerPermissions {
+    val role = serverRole?.trim()
+    val roleGrantsMachineCapabilities = role == "owner" || role == "admin"
+    val userId = currentUserId?.trim()?.takeIf { it.isNotBlank() }
+    val isCreator = userId != null && computer.creatorUserId?.trim() == userId
+    val ownsMachine = isCreator || computer.attachedByCurrentUser
+    return SettingsComputerPermissions(
+        canEdit = roleGrantsMachineCapabilities || ownsMachine,
+        canRemove = roleGrantsMachineCapabilities || ownsMachine
+    )
+}
 
 private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(): AddComputerDialogState {
     val snapshot = (this as? ScreenLoadState.Content)?.data
@@ -3848,11 +3975,15 @@ private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(
     )
 }
 
+/**
+ * The server the settings route is scoped to. Never another server: without a current server id
+ * (or with an id the session no longer lists) there is no server, so no role and no add/manage
+ * authority is borrowed from whichever server happens to be first.
+ */
 private fun StoredAuthSession?.settingsCurrentServer(): StoredAuthServer? {
     val session = this ?: return null
-    val selectedId = session.currentServerId
-    return selectedId?.let { id -> session.servers.firstOrNull { it.id == id } }
-        ?: session.servers.firstOrNull()
+    val selectedId = session.currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return session.servers.firstOrNull { it.id == selectedId }
 }
 
 private fun StoredAuthSession?.canManageCurrentServer(): Boolean =
@@ -3862,7 +3993,6 @@ private fun StoredAuthSession?.currentServerSlugForSettings(): String? {
     val session = this ?: return null
     return session.selectedServerSlug?.takeIf { it.isNotBlank() }
         ?: session.settingsCurrentServer()?.slug?.takeIf { it.isNotBlank() }
-        ?: session.servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
 }
 
 private fun ScreenLoadState<*>.routeErrorCode(): String? =
@@ -3963,6 +4093,7 @@ internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val MOBILE_ACTION_REALTIME_CURL_SOCKETIO = "realtimeCurlSocketIo"
 internal const val MOBILE_ACTION_HTTP3 = "http3"
 internal const val MOBILE_ACTION_THREAD_REVERSE_LAYOUT = "threadReverseLayout"
+internal const val MOBILE_ACTION_NATIVE_PULL_TO_REFRESH = "nativePullToRefresh"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
@@ -4160,7 +4291,7 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileLongMessageCollapseSnap
         enabled = longMessageCollapseEnabled,
         available = true,
         statusLabel = if (longMessageCollapseEnabled) "Enabled" else "Off",
-        detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
+        detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSnapshot(): SettingsMobileToggleSnapshot =
@@ -4351,18 +4482,18 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(): SharedSettingsHom
         subtitle = "",
         items =
             listOf(
-                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, this?.user?.bestDisplayName),
-                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null),
-                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null),
-                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null),
-                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, server?.role?.titleLabel()),
-                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, server?.plan?.titleLabel()),
-                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null),
-                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null),
-                nav(SharedSettingsDestination.About, "About", "Version and build information", SlockLucideIconName.BadgeInfo, null)
+                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", RaftLucideIconName.User, this?.user?.bestDisplayName),
+                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", RaftLucideIconName.Languages, null),
+                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", RaftLucideIconName.Type, null),
+                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", RaftLucideIconName.Bell, null),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", RaftLucideIconName.Smartphone, null),
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", RaftLucideIconName.Archive, null),
+                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", RaftLucideIconName.Building2, server?.role?.titleLabel()),
+                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", RaftLucideIconName.CreditCard, server?.plan?.titleLabel()),
+                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", RaftLucideIconName.Shield, null),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", RaftLucideIconName.Link2, null),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", RaftLucideIconName.Monitor, null),
+                nav(SharedSettingsDestination.About, "About", "Version and build information", RaftLucideIconName.BadgeInfo, null)
             )
     )
 }
@@ -4371,7 +4502,7 @@ private fun nav(
     destination: SharedSettingsDestination,
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     value: String?,
 ): SharedSettingsNavItem =
     SharedSettingsNavItem(

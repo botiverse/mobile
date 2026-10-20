@@ -1,13 +1,13 @@
 package build.raft.app.markdown
 
-import com.tencent.kuikly.compose.ui.text.LinkAnnotation
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.TextLinkStyles
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
@@ -206,7 +206,7 @@ class MarkdownContentIntegrityTest {
 
         testCases.forEach { case ->
             val parserContent = MarkdownParserContent.from(case.source).parserContent
-            val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+            val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
             val paragraphs = mutableListOf<org.intellij.markdown.ast.ASTNode>()
             fun collect(node: org.intellij.markdown.ast.ASTNode) {
                 if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -218,7 +218,7 @@ class MarkdownContentIntegrityTest {
                 DefaultAnnotatorSettings(
                     linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                     codeSpanStyle = SpanStyle(),
-                    annotator = slockMarkdownAnnotator(parserContent),
+                    annotator = raftMarkdownAnnotator(parserContent),
                 )
             val annotated =
                 buildAnnotatedString {
@@ -254,7 +254,7 @@ class MarkdownContentIntegrityTest {
             if (case.assertBold) {
                 assertTrue(
                     annotated.spanStyles.any {
-                        it.item.fontWeight == com.tencent.kuikly.compose.ui.text.font.FontWeight.Bold &&
+                        it.item.fontWeight == androidx.compose.ui.text.font.FontWeight.Bold &&
                             it.start == case.urlStart && it.end == case.urlEnd
                     },
                     "Bold SpanStyle missing or bounded incorrectly for ${case.source}; spans=${annotated.spanStyles}",
@@ -263,7 +263,7 @@ class MarkdownContentIntegrityTest {
             if (case.assertItalic) {
                 assertTrue(
                     annotated.spanStyles.any {
-                        it.item.fontStyle == com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic &&
+                        it.item.fontStyle == androidx.compose.ui.text.font.FontStyle.Italic &&
                             it.start == case.urlStart && it.end == case.urlEnd
                     },
                     "Italic SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
@@ -272,7 +272,7 @@ class MarkdownContentIntegrityTest {
             if (case.assertStrikethrough) {
                 assertTrue(
                     annotated.spanStyles.any {
-                        it.item.textDecoration == com.tencent.kuikly.compose.ui.text.style.TextDecoration.LineThrough &&
+                        it.item.textDecoration == androidx.compose.ui.text.style.TextDecoration.LineThrough &&
                             it.start == case.urlStart && it.end == case.urlEnd
                     },
                     "Strikethrough SpanStyle missing for ${case.source}; spans=${annotated.spanStyles}",
@@ -365,7 +365,7 @@ class MarkdownContentIntegrityTest {
     fun cjkAdjacentInlineCodeUrlStaysCodeAndUnlinked() {
         val source = "回归测试从`http://internal/`、反代HTTP、恶意Host三种入站验证，最终`return_to`始终等于注册的外部HTTPS callback。"
         val parserContent = MarkdownParserContent.from(source).parserContent
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val allNodes = buildList {
             fun collect(node: ASTNode) {
                 add(node)
@@ -441,10 +441,10 @@ class MarkdownContentIntegrityTest {
 
 
     private fun renderTopParagraphs(content: String): List<String> {
-        // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
+        // Uses the PRODUCTION annotator (raftMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -455,18 +455,18 @@ class MarkdownContentIntegrityTest {
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                 codeSpanStyle = SpanStyle(),
-                annotator = slockMarkdownAnnotator(parserContent)
+                annotator = raftMarkdownAnnotator(parserContent)
             )
         return paragraphs.map { paragraph ->
             buildAnnotatedString {
                 buildMarkdownAnnotatedString(parserContent, paragraph, settings)
-            }.text
+            }.raftTextWithoutInlineGaps()
         }
     }
 
     private fun renderTopParagraphsWithLinks(content: String): List<RenderedParagraph> {
         val parserContent = MarkdownParserContent.from(content).parserContent
-        val tree = MarkdownParser(SlockGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
         val paragraphs = mutableListOf<ASTNode>()
         fun collect(node: ASTNode) {
             if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
@@ -477,7 +477,7 @@ class MarkdownContentIntegrityTest {
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                 codeSpanStyle = SpanStyle(),
-                annotator = slockMarkdownAnnotator(parserContent),
+                annotator = raftMarkdownAnnotator(parserContent),
             )
         return paragraphs.map { paragraph ->
             val annotated =
@@ -485,7 +485,8 @@ class MarkdownContentIntegrityTest {
                     buildMarkdownAnnotatedString(parserContent, paragraph, settings)
                 }
             RenderedParagraph(
-                text = annotated.text,
+                // Reserved chip gaps are layout-only placeholders, not source characters.
+                text = annotated.raftTextWithoutInlineGaps(),
                 urls =
                     annotated
                         .getLinkAnnotations(0, annotated.length)

@@ -46,8 +46,8 @@ internal data class CreateAgentRequest(
 )
 
 internal class SharedCreateAgentCoordinator(
-    private val agentsApiClient: SlockAgentsApiClient,
-    private val computersApiClient: SlockComputersApiClient,
+    private val agentsApiClient: RaftAgentsApiClient,
+    private val computersApiClient: RaftComputersApiClient,
     private val logger: (String) -> Unit = {}
 ) {
     suspend fun createAgent(request: CreateAgentRequest): DataResult<AgentSummary> {

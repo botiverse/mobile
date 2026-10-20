@@ -10,9 +10,9 @@ class ThreadReplyHeaderPreviewTitleTest {
         body: String = "",
         authorName: String = "Alice",
         authorHandle: String = "alice",
-        attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
+        attachments: List<RaftThreadAttachmentItem> = emptyList(),
         externalAuthor: ExternalMessageAuthor? = null
-    ) = KuiklyThreadMessageItem(
+    ) = RaftThreadMessageItem(
         id = "msg-1",
         authorId = "user-1",
         authorName = authorName,
@@ -22,7 +22,7 @@ class ThreadReplyHeaderPreviewTitleTest {
         attachments = attachments
     )
 
-    private fun title(origin: KuiklyThreadMessageItem?) =
+    private fun title(origin: RaftThreadMessageItem?) =
         replyThreadHeaderPreviewTitle(origin, imageLabel = "[图片]", fileLabel = "[文件]")
 
     @Test
@@ -45,8 +45,8 @@ class ThreadReplyHeaderPreviewTitleTest {
 
     @Test
     fun attachmentOnlyRootUsesKindLabel() {
-        val image = KuiklyThreadAttachmentItem(id = "a1", name = "p.png", mimeType = "image/png")
-        val file = KuiklyThreadAttachmentItem(id = "a2", name = "r.pdf", mimeType = "application/pdf")
+        val image = RaftThreadAttachmentItem(id = "a1", name = "p.png", mimeType = "image/png")
+        val file = RaftThreadAttachmentItem(id = "a2", name = "r.pdf", mimeType = "application/pdf")
         assertEquals("@Alice: [图片]", title(origin(attachments = listOf(image))))
         assertEquals("@Alice: [文件]", title(origin(attachments = listOf(file))))
         assertEquals("@Alice: 看这个", title(origin(body = "看这个", attachments = listOf(image))))
@@ -88,11 +88,11 @@ class ThreadReplyHeaderPreviewTitleTest {
     @Test
     fun headerReplyCountSurvivesTheRenderProjection() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "t1143",
                 title = ThreadReplyPageTitle,
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 originMessage = origin(body = "root").copy(replyCount = 12)
             )
         // Same three projections SharedThreadState.toRenderSlice() hands the route.
@@ -111,11 +111,11 @@ class ThreadReplyHeaderPreviewTitleTest {
     @Test
     fun headerReplyCountIsZeroWithoutLoadedOrigin() {
         val payload =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "t1143-empty",
                 title = ThreadReplyPageTitle,
                 status = "loading",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread
             )
         assertEquals(0, threadHeaderOriginReplyCount(payload.toThreadTimelineSlice(), payload.toThreadReplyMetadataMap()))
     }

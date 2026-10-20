@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsAboutSnapshot
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

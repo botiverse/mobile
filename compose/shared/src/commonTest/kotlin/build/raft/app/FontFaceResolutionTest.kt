@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.FontPreference
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,14 +17,14 @@ import kotlin.test.assertTrue
  */
 class FontFaceResolutionTest {
     // The face state is process-wide, so a test that leaves it switched would leak into unrelated
-    // tests that resolve SlockType/SlockMarkdown styles. Always restore the default.
+    // tests that resolve RaftType/RaftMarkdown styles. Always restore the default.
     @AfterTest
     fun restoreDefaultFace() {
-        SlockFontFaceState.apply(FontPreference.Default)
+        RaftFontFaceState.apply(FontPreference.Default)
     }
 
     private fun select(preference: FontPreference) {
-        SlockFontFaceState.apply(preference)
+        RaftFontFaceState.apply(preference)
     }
 
     @Test
@@ -36,11 +36,11 @@ class FontFaceResolutionTest {
         // render proportionally.
         assertEquals(
             FontFamily.Monospace,
-            slockMonoFamilyForWeight(null),
+            raftMonoFamilyForWeight(null),
             "system mono must resolve to the platform monospace face"
         )
         assertTrue(
-            slockMonoFamilyForWeight(null) != FontFamily.Default,
+            raftMonoFamilyForWeight(null) != FontFamily.Default,
             "system mono must not be the default proportional face"
         )
     }
@@ -50,7 +50,7 @@ class FontFaceResolutionTest {
         select(FontPreference.System)
 
         // Body text has no bundled family either, and there the default face IS the host face.
-        assertEquals(FontFamily.Default, slockFontFamilyForWeight(null))
+        assertEquals(FontFamily.Default, raftFontFamilyForWeight(null))
     }
 
     @Test
@@ -58,11 +58,11 @@ class FontFaceResolutionTest {
         FontPreference.entries.filter { it.sansFamily != null }.forEach { preference ->
             select(preference)
             assertTrue(
-                slockFontFamilyForWeight(null) != FontFamily.Default,
+                raftFontFamilyForWeight(null) != FontFamily.Default,
                 "$preference must resolve a bundled body family"
             )
             assertTrue(
-                slockMonoFamilyForWeight(null) != FontFamily.Default,
+                raftMonoFamilyForWeight(null) != FontFamily.Default,
                 "$preference must resolve a bundled mono family"
             )
         }
@@ -73,12 +73,12 @@ class FontFaceResolutionTest {
         // Changing the picker has to reach the renderer, otherwise the setting saves but nothing
         // repaints. Compare the resolved family across a switch.
         select(FontPreference.HankenGrotesk)
-        val hankenBody = slockFontFamilyForWeight(null)
-        val hankenMono = slockMonoFamilyForWeight(null)
+        val hankenBody = raftFontFamilyForWeight(null)
+        val hankenMono = raftMonoFamilyForWeight(null)
 
         select(FontPreference.SpaceGrotesk)
-        val spaceBody = slockFontFamilyForWeight(null)
-        val spaceMono = slockMonoFamilyForWeight(null)
+        val spaceBody = raftFontFamilyForWeight(null)
+        val spaceMono = raftMonoFamilyForWeight(null)
 
         assertTrue(hankenBody != spaceBody, "body face must change when the option changes")
         assertTrue(hankenMono != spaceMono, "mono face must change when the option changes")
@@ -91,7 +91,7 @@ class FontFaceResolutionTest {
         FontPreference.entries.forEach { preference ->
             select(preference)
             listOf(null, FontWeight.Bold).forEach { weight ->
-                val resolved = slockMonoFamilyForWeight(weight)
+                val resolved = raftMonoFamilyForWeight(weight)
                 assertTrue(
                     resolved != FontFamily.Default || preference.monoFamily != null,
                     "$preference mono at weight=$weight fell back to the proportional face"
@@ -102,20 +102,39 @@ class FontFaceResolutionTest {
 
     @Test
     fun theTypeTokensThemselvesFollowTheFaceNotAFrozenSnapshot() {
-        // Guards a bug this change actually shipped for one round: SlockType's members were `val`s,
-        // so they captured the face at object initialisation. Every ~970 call site reads SlockType,
+        // Guards a bug this change actually shipped for one round: RaftType's members were `val`s,
+        // so they captured the face at object initialisation. Every ~970 call site reads RaftType,
         // so switching the option wrote the preference and repainted nothing. Asserting the token
         // (not just the resolver helper) is what catches that.
         select(FontPreference.SpaceGrotesk)
-        val spaceBody = SlockType.Body.fontFamily
+        val spaceBody = RaftType.Body.fontFamily
 
         select(FontPreference.HankenGrotesk)
-        val hankenBody = SlockType.Body.fontFamily
+        val hankenBody = RaftType.Body.fontFamily
 
         assertTrue(
             spaceBody != hankenBody,
-            "SlockType.Body must follow the selected face; it stayed on one snapshot"
+            "RaftType.Body must follow the selected face; it stayed on one snapshot"
         )
-        assertEquals(SlockType.Body.fontFamily, slockFontFamilyForWeight(FontWeight.Normal))
+        assertEquals(RaftType.Body.fontFamily, raftFontFamilyForWeight(FontWeight.Normal))
+    }
+
+    // The Android host styles native EditTexts from raftInputFontFaceName(); it used to be a fixed
+    // Space Grotesk face, so the composer ignored Settings > Appearance.
+    @Test
+    fun nativeInputFaceFollowsTheSelectedFont() {
+        select(FontPreference.HankenGrotesk)
+        assertEquals("HankenGrotesk-Regular", raftInputFontFaceName())
+        select(FontPreference.GeistInter)
+        assertEquals("Geist-Regular", raftInputFontFaceName())
+        select(FontPreference.SpaceGrotesk)
+        assertEquals("SpaceGrotesk-Regular", raftInputFontFaceName())
+        select(FontPreference.System)
+        assertEquals(null, raftInputFontFaceName())
+    }
+
+    @Test
+    fun defaultNativeInputFaceFollowsTheDefaultFont() {
+        assertEquals("SpaceGrotesk-Regular", raftInputFontFaceName())
     }
 }

@@ -101,7 +101,7 @@ The current KMP code already has partial system-message support:
 
 - `ThreadMessagesParser.kt` maps wire `messageType=system` to thread item `messageType="System"` and blank `authorKind`.
 - `RealtimeEventMapper.kt` maps wire `messageType=="system"` to `MessageType.System`.
-- `ThreadPage.kt` detects `KuiklyThreadMessageItem.isSystemMessage()` and renders `ThreadSystemMessageRow`.
+- `ThreadPage.kt` detects `RaftThreadMessageItem.isSystemMessage()` and renders `ThreadSystemMessageRow`.
 
 The remaining risk to verify/fix is end-to-end retention: thread REST, realtime `message:new`, sync/recovery, store reducers, gap handling, and list rendering must all keep the server's system row and append/render it in the current thread. A local status update without the parallel `message:new` row is not enough.
 

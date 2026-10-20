@@ -7,7 +7,7 @@ remain disabled until the shared integration and end-to-end checks pass.
 
 ## Prepare the editor with the existing native reader
 
-Use `SlockTextFieldNativeEditingStateReader.readCurrentValue` (BasicWidget) on the source
+Use `RaftTextFieldNativeEditingStateReader.readCurrentValue` (BasicWidget) on the source
 composer's bound editor. It resolves the actual `AutoHeightTextAreaView`, calls
 `getTextInputState`, and rejects the response if the native binding has changed. This returns
 text, selection and composition, including changes not yet delivered by ordinary Compose
@@ -89,7 +89,7 @@ those remain required before enabling the capability.
 
 The production Foundation transaction test also checks post-read text/selection drift, equal-text
 editor replacement, unavailable/composing snapshots, editor destruction, repeated prepare and
-no revival after rejection. `SlockAdaptiveEditorSnapshotTests` exercises real UITextView text,
+no revival after rejection. `RaftAdaptiveEditorSnapshotTests` exercises real UITextView text,
 UTF-16 selection and marked composition; the iOS CI job runs this focused simulator suite.
 Neither these tests nor host compilation is A4 end-to-end or physical-device acceptance.
 

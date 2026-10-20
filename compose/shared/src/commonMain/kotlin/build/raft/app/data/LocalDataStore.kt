@@ -137,7 +137,7 @@ private fun HomeConversationRow.matchesLocalHomeChannel(channelId: ChannelId): B
     this.channelId == channelId || threadId.value == channelId.value
 
 class RelationalComposeLocalDataStore(
-    private val store: SlockRelationalStore,
+    private val store: RaftRelationalStore,
     private val clock: () -> Long = { 0L },
     private val diagnosticsLogger: (String) -> Unit = {}
 ) : ComposeLocalDataStore {
@@ -196,13 +196,13 @@ class RelationalComposeLocalDataStore(
 
     private suspend inline fun <T> decodeLocalSnapshot(source: String, encoded: String, crossinline decoder: () -> T): T? {
         val startedAt = TimeSource.Monotonic.markNow()
-        val result = withContext(SlockJsonParseDispatcher) {
+        val result = withContext(RaftJsonParseDispatcher) {
             runCatching(decoder)
         }
         diagnosticsLogger(
             "local_cache_decode source=$source result=${if (result.isSuccess) "success" else "failure"} " +
                 "responseBytes=${encoded.encodeToByteArray().size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         return result.getOrNull()
     }

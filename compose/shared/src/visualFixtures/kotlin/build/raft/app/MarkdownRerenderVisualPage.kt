@@ -1,30 +1,29 @@
 package build.raft.app
 
 import build.raft.app.base.BasePager
-import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.setContent
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.compose.ui.unit.dp
-import com.tencent.kuikly.compose.ui.unit.sp
-import com.tencent.kuikly.core.annotations.Page
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.Modifier
+import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import build.raft.app.compat.pager.Page
 
-const val SLOCK_MARKDOWN_RERENDER_VISUAL_PAGE = "compose_markdown_rerender_visual"
+const val RAFT_MARKDOWN_RERENDER_VISUAL_PAGE = "compose_markdown_rerender_visual"
 
-@Page(SLOCK_MARKDOWN_RERENDER_VISUAL_PAGE, supportInLocal = true)
+@Page(RAFT_MARKDOWN_RERENDER_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeMarkdownRerenderVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
@@ -49,15 +48,15 @@ private fun MarkdownRerenderVisualScreen() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
                 .padding(start = 20.dp, top = (statusBarHeight + 32).dp, end = 20.dp)
     ) {
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .background(RaftColor.SurfaceWhite)
                     .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -66,13 +65,13 @@ private fun MarkdownRerenderVisualScreen() {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .background(SlockColor.SurfaceWhite)
+                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                            .background(RaftColor.SurfaceWhite)
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    SlockMarkdownBody(
+                    RaftMarkdownBody(
                         body = bodies[index],
-                        textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                        textStyle = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
                         highlightedMentions = setOf("artin"),
                         isTagValid = ::isMarkdownRerenderTagValid,
                         performanceKey = "markdown-rerender-list-$index",

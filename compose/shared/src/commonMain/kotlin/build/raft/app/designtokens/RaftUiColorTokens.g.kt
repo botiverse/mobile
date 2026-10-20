@@ -2,13 +2,13 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:raft-ui@0.5.52/dist/styles.css sha256=0364ae6684db4e91
-//   npm:raft-ui@0.5.52/dist/foundation.css sha256=ca55eef3ab99b131
-//   botiverse/slock@782cb129be698321aa9051f67d1b69386f6770df:packages/web/src/index.css sha256=e3015311362c000b
+//   npm:@botiverse/raft-ui@0.7.1/dist/styles.css sha256=03a09bc2cc12b8af
+//   npm:@botiverse/raft-ui@0.7.1/dist/foundation.css sha256=8bea55d645010db8
+//   botiverse/slock@b09755fcefeaea6286e42f0445388da97d98f1fe:packages/web/src/index.css sha256=e661c0943fed16c9
 
 package build.raft.app.designtokens
 
-import com.tencent.kuikly.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color
 
 /** Theme-invariant Web colours: raw ramps, brand colours and the Tailwind palette. */
 internal object RaftUiPalette {
@@ -19,11 +19,11 @@ internal object RaftUiPalette {
     /** `--accent-300` */
     val accent300 = Color(0xFFFEA0BC)
     /** `--accent-400` */
-    val accent400 = Color(0xFFFE7DA8)
+    val accent400 = Color(0xFFFF99C3)
     /** `--accent-50` */
     val accent50 = Color(0xFFFFF0F4)
     /** `--accent-500` */
-    val accent500 = Color(0xFFFE2F8B)
+    val accent500 = Color(0xFFFE7DA8)
     /** `--accent-600` */
     val accent600 = Color(0xFFD4086F)
     /** `--accent-700` */
@@ -34,8 +34,68 @@ internal object RaftUiPalette {
     val accent900 = Color(0xFF42011E)
     /** `--accent-950` */
     val accent950 = Color(0xFF2F0014)
+    /** `--accent-active` */
+    val accentActive = Color(0xFFE389AE)
+    /** `--accent-hover` */
+    val accentHover = Color(0xFFE389AE)
+    /** `--attention-100` */
+    val attention100 = Color(0xFFFFE1E8)
+    /** `--attention-200` */
+    val attention200 = Color(0xFFFEC1D2)
+    /** `--attention-300` */
+    val attention300 = Color(0xFFFEA0BC)
+    /** `--attention-400` */
+    val attention400 = Color(0xFFFF99C3)
+    /** `--attention-50` */
+    val attention50 = Color(0xFFFFF0F4)
+    /** `--attention-500` */
+    val attention500 = Color(0xFFFE7DA8)
+    /** `--attention-600` */
+    val attention600 = Color(0xFFD4086F)
+    /** `--attention-700` */
+    val attention700 = Color(0xFF9F0551)
+    /** `--attention-800` */
+    val attention800 = Color(0xFF700238)
+    /** `--attention-900` */
+    val attention900 = Color(0xFF42011E)
+    /** `--attention-950` */
+    val attention950 = Color(0xFF2F0014)
+    /** `--attention-active` */
+    val attentionActive = Color(0xFFE389AE)
+    /** `--attention-hover` */
+    val attentionHover = Color(0xFFE389AE)
+    /** `--brand-100` */
+    val brand100 = Color(0xFFFFF6E3)
+    /** `--brand-200` */
+    val brand200 = Color(0xFFFFE9B9)
+    /** `--brand-300` */
+    val brand300 = Color(0xFFFFDF91)
+    /** `--brand-400` */
+    val brand400 = Color(0xFFFFD440)
+    /** `--brand-50` */
+    val brand50 = Color(0xFFFFF9ED)
+    /** `--brand-500` */
+    val brand500 = Color(0xFFD3AD03)
+    /** `--brand-600` */
+    val brand600 = Color(0xFFA78802)
+    /** `--brand-700` */
+    val brand700 = Color(0xFF7A6300)
+    /** `--brand-800` */
+    val brand800 = Color(0xFF534300)
+    /** `--brand-900` */
+    val brand900 = Color(0xFF2D2300)
+    /** `--brand-950` */
+    val brand950 = Color(0xFF1C1500)
+    /** `--brand-active` */
+    val brandActive = Color(0xFFE3BD3A)
+    /** `--brand-edge` */
+    val brandEdge = Color(0xFF141111)
+    /** `--brand-glow` */
+    val brandGlow = Color(0xFFFFD440)
+    /** `--brand-hover` */
+    val brandHover = Color(0xFFE3BD3A)
     /** `--color-accent` */
-    val accent = Color(0xFFFE7DA8)
+    val accent = Color(0xFFFF99C3)
     /** `--color-amber-100` */
     val amber100 = Color(0xFFFEF3C6)
     /** `--color-amber-200` */
@@ -58,6 +118,8 @@ internal object RaftUiPalette {
     val amber900 = Color(0xFF7B3306)
     /** `--color-amber-950` */
     val amber950 = Color(0xFF461901)
+    /** `--color-attention` */
+    val attention = Color(0xFFFF99C3)
     /** `--color-black` */
     val black = Color(0xFF000000)
     /** `--color-blue-100` */
@@ -82,8 +144,8 @@ internal object RaftUiPalette {
     val blue900 = Color(0xFF1C398E)
     /** `--color-blue-950` */
     val blue950 = Color(0xFF162456)
-    /** `--color-brutal-black` */
-    val brutalBlack = Color(0xFF141111)
+    /** `--color-brand` */
+    val brand = Color(0xFFFFD440)
     /** `--color-brutal-cream` */
     val brutalCream = Color(0xFFFFFAEF)
     /** `--color-brutal-cream-100` */
@@ -109,7 +171,7 @@ internal object RaftUiPalette {
     /** `--color-brutal-cream-950` */
     val brutalCream950 = Color(0xFF191300)
     /** `--color-brutal-cyan` */
-    val brutalCyan = Color(0xFF27CCF3)
+    val brutalCyan = Color(0xFF28CCF3)
     /** `--color-brutal-cyan-100` */
     val brutalCyan100 = Color(0xFFD7F2FE)
     /** `--color-brutal-cyan-200` */
@@ -277,7 +339,7 @@ internal object RaftUiPalette {
     /** `--color-brutal-stone-950` */
     val brutalStone950 = Color(0xFF141312)
     /** `--color-brutal-yellow` */
-    val brutalYellow = Color(0xFFFFD440)
+    val brutalYellow = Color(0xFFFFD441)
     /** `--color-brutal-yellow-100` */
     val brutalYellow100 = Color(0xFFFFF6E3)
     /** `--color-brutal-yellow-200` */
@@ -564,6 +626,24 @@ internal object RaftUiPalette {
     val orange900 = Color(0xFF7E2A0C)
     /** `--color-orange-950` */
     val orange950 = Color(0xFF441306)
+    /** `--color-palette-cream` */
+    val paletteCream = Color(0xFFFFFAEF)
+    /** `--color-palette-cyan` */
+    val paletteCyan = Color(0xFF28CCF3)
+    /** `--color-palette-lavender` */
+    val paletteLavender = Color(0xFFBBAFE6)
+    /** `--color-palette-lime` */
+    val paletteLime = Color(0xFFA9D877)
+    /** `--color-palette-orange` */
+    val paletteOrange = Color(0xFFF8A16F)
+    /** `--color-palette-pink` */
+    val palettePink = Color(0xFFFE7DA8)
+    /** `--color-palette-red` */
+    val paletteRed = Color(0xFFF97264)
+    /** `--color-palette-stone` */
+    val paletteStone = Color(0xFFC0B9B1)
+    /** `--color-palette-yellow` */
+    val paletteYellow = Color(0xFFFFD441)
     /** `--color-pink-100` */
     val pink100 = Color(0xFFFCE7F3)
     /** `--color-pink-200` */
@@ -587,7 +667,7 @@ internal object RaftUiPalette {
     /** `--color-pink-950` */
     val pink950 = Color(0xFF510424)
     /** `--color-primary` */
-    val primary = Color(0xFFFFD441)
+    val primary = Color(0xFFFFD440)
     /** `--color-purple-100` */
     val purple100 = Color(0xFFF3E8FF)
     /** `--color-purple-200` */
@@ -701,9 +781,7 @@ internal object RaftUiPalette {
     /** `--color-slate-950` */
     val slate950 = Color(0xFF020618)
     /** `--color-soft-signal` */
-    val softSignal = Color(0xFFFFD440)
-    /** `--color-status-busy` */
-    val statusBusy = Color(0xFFFFD440)
+    val softSignal = Color(0xFFFFD441)
     /** `--color-stone-100` */
     val stone100 = Color(0xFFF5F5F4)
     /** `--color-stone-200` */
@@ -839,11 +917,235 @@ internal object RaftUiPalette {
     /** `--color-zinc-950` */
     val zinc950 = Color(0xFF09090B)
     /** `--danger` */
-    val danger = Color(0xFFF70720)
+    val danger = Color(0xFFF97264)
+    /** `--danger-active` */
+    val dangerActive = Color(0xFFDE665A)
     /** `--danger-foreground` */
-    val dangerForeground = Color(0xFFFFFFFF)
+    val dangerForeground = Color(0xFF141111)
+    /** `--danger-hover` */
+    val dangerHover = Color(0xFFDE665A)
+    /** `--foreground-on-frame-active` */
+    val foregroundOnFrameActive = Color(0xFF141111)
+    /** `--inactive` */
+    val inactive = Color(0xFFC0B9B1)
+    /** `--inactive-foreground` */
+    val inactiveForeground = Color(0xFF141111)
     /** `--info` */
-    val info = Color(0xFF28CCF3)
+    val info = Color(0xFF27CCF3)
+    /** `--info-active` */
+    val infoActive = Color(0xFF25B6D8)
+    /** `--info-hover` */
+    val infoHover = Color(0xFF25B6D8)
+    /** `--line-frame-active` */
+    val lineFrameActive = Color(0xFF141111)
+    /** `--palette-cream-100` */
+    val paletteCream100 = Color(0xFFFFFCF5)
+    /** `--palette-cream-200` */
+    val paletteCream200 = Color(0xFFFFFAEF)
+    /** `--palette-cream-300` */
+    val paletteCream300 = Color(0xFFF9ECCF)
+    /** `--palette-cream-400` */
+    val paletteCream400 = Color(0xFFEBD38F)
+    /** `--palette-cream-50` */
+    val paletteCream50 = Color(0xFFFFFDF9)
+    /** `--palette-cream-500` */
+    val paletteCream500 = Color(0xFFD2B100)
+    /** `--palette-cream-600` */
+    val paletteCream600 = Color(0xFFA78C00)
+    /** `--palette-cream-700` */
+    val paletteCream700 = Color(0xFF7C6800)
+    /** `--palette-cream-800` */
+    val paletteCream800 = Color(0xFF554500)
+    /** `--palette-cream-900` */
+    val paletteCream900 = Color(0xFF312700)
+    /** `--palette-cream-950` */
+    val paletteCream950 = Color(0xFF191300)
+    /** `--palette-cyan-100` */
+    val paletteCyan100 = Color(0xFFD7F2FE)
+    /** `--palette-cyan-200` */
+    val paletteCyan200 = Color(0xFFA9E6FE)
+    /** `--palette-cyan-300` */
+    val paletteCyan300 = Color(0xFF68DAFD)
+    /** `--palette-cyan-400` */
+    val paletteCyan400 = Color(0xFF28CCF3)
+    /** `--palette-cyan-50` */
+    val paletteCyan50 = Color(0xFFECF9FF)
+    /** `--palette-cyan-500` */
+    val paletteCyan500 = Color(0xFF1EA6C6)
+    /** `--palette-cyan-600` */
+    val paletteCyan600 = Color(0xFF15849F)
+    /** `--palette-cyan-700` */
+    val paletteCyan700 = Color(0xFF0E6276)
+    /** `--palette-cyan-800` */
+    val paletteCyan800 = Color(0xFF06414F)
+    /** `--palette-cyan-900` */
+    val paletteCyan900 = Color(0xFF02252F)
+    /** `--palette-cyan-950` */
+    val paletteCyan950 = Color(0xFF01161C)
+    /** `--palette-lavender-100` */
+    val paletteLavender100 = Color(0xFFEFECF9)
+    /** `--palette-lavender-200` */
+    val paletteLavender200 = Color(0xFFDCD7F2)
+    /** `--palette-lavender-300` */
+    val paletteLavender300 = Color(0xFFCCC4EC)
+    /** `--palette-lavender-400` */
+    val paletteLavender400 = Color(0xFFBBAFE6)
+    /** `--palette-lavender-50` */
+    val paletteLavender50 = Color(0xFFF7F6FC)
+    /** `--palette-lavender-500` */
+    val paletteLavender500 = Color(0xFF9D8ADA)
+    /** `--palette-lavender-600` */
+    val paletteLavender600 = Color(0xFF7F62CB)
+    /** `--palette-lavender-700` */
+    val paletteLavender700 = Color(0xFF6341B0)
+    /** `--palette-lavender-800` */
+    val paletteLavender800 = Color(0xFF442B7C)
+    /** `--palette-lavender-900` */
+    val paletteLavender900 = Color(0xFF251548)
+    /** `--palette-lavender-950` */
+    val paletteLavender950 = Color(0xFF170C31)
+    /** `--palette-lime-100` */
+    val paletteLime100 = Color(0xFFDCFAC1)
+    /** `--palette-lime-200` */
+    val paletteLime200 = Color(0xFFC0F588)
+    /** `--palette-lime-300` */
+    val paletteLime300 = Color(0xFFB4E67F)
+    /** `--palette-lime-400` */
+    val paletteLime400 = Color(0xFFA9D877)
+    /** `--palette-lime-50` */
+    val paletteLime50 = Color(0xFFF1FDE9)
+    /** `--palette-lime-500` */
+    val paletteLime500 = Color(0xFF8AB261)
+    /** `--palette-lime-600` */
+    val paletteLime600 = Color(0xFF6B8B4A)
+    /** `--palette-lime-700` */
+    val paletteLime700 = Color(0xFF506836)
+    /** `--palette-lime-800` */
+    val paletteLime800 = Color(0xFF344522)
+    /** `--palette-lime-900` */
+    val paletteLime900 = Color(0xFF1C2711)
+    /** `--palette-lime-950` */
+    val paletteLime950 = Color(0xFF101808)
+    /** `--palette-orange-100` */
+    val paletteOrange100 = Color(0xFFFDE6DE)
+    /** `--palette-orange-200` */
+    val paletteOrange200 = Color(0xFFFBD1C0)
+    /** `--palette-orange-300` */
+    val paletteOrange300 = Color(0xFFF9B899)
+    /** `--palette-orange-400` */
+    val paletteOrange400 = Color(0xFFF8A16F)
+    /** `--palette-orange-50` */
+    val paletteOrange50 = Color(0xFFFEF5F1)
+    /** `--palette-orange-500` */
+    val paletteOrange500 = Color(0xFFDD7E34)
+    /** `--palette-orange-600` */
+    val paletteOrange600 = Color(0xFFAD6127)
+    /** `--palette-orange-700` */
+    val paletteOrange700 = Color(0xFF83481A)
+    /** `--palette-orange-800` */
+    val paletteOrange800 = Color(0xFF5B310F)
+    /** `--palette-orange-900` */
+    val paletteOrange900 = Color(0xFF331905)
+    /** `--palette-orange-950` */
+    val paletteOrange950 = Color(0xFF220E02)
+    /** `--palette-pink-100` */
+    val palettePink100 = Color(0xFFFFE1E8)
+    /** `--palette-pink-200` */
+    val palettePink200 = Color(0xFFFEC1D2)
+    /** `--palette-pink-300` */
+    val palettePink300 = Color(0xFFFEA0BC)
+    /** `--palette-pink-400` */
+    val palettePink400 = Color(0xFFFE7DA8)
+    /** `--palette-pink-50` */
+    val palettePink50 = Color(0xFFFFF0F4)
+    /** `--palette-pink-500` */
+    val palettePink500 = Color(0xFFFE2F8B)
+    /** `--palette-pink-600` */
+    val palettePink600 = Color(0xFFD4086F)
+    /** `--palette-pink-700` */
+    val palettePink700 = Color(0xFF9F0551)
+    /** `--palette-pink-800` */
+    val palettePink800 = Color(0xFF700238)
+    /** `--palette-pink-900` */
+    val palettePink900 = Color(0xFF42011E)
+    /** `--palette-pink-950` */
+    val palettePink950 = Color(0xFF2F0014)
+    /** `--palette-red-100` */
+    val paletteRed100 = Color(0xFFFDDEDD)
+    /** `--palette-red-200` */
+    val paletteRed200 = Color(0xFFFBBDB9)
+    /** `--palette-red-300` */
+    val paletteRed300 = Color(0xFFFA9991)
+    /** `--palette-red-400` */
+    val paletteRed400 = Color(0xFFF97264)
+    /** `--palette-red-50` */
+    val paletteRed50 = Color(0xFFFEF1F0)
+    /** `--palette-red-500` */
+    val paletteRed500 = Color(0xFFEB4423)
+    /** `--palette-red-600` */
+    val paletteRed600 = Color(0xFFBB3419)
+    /** `--palette-red-700` */
+    val paletteRed700 = Color(0xFF8E2510)
+    /** `--palette-red-800` */
+    val paletteRed800 = Color(0xFF621708)
+    /** `--palette-red-900` */
+    val paletteRed900 = Color(0xFF3E0B03)
+    /** `--palette-red-950` */
+    val paletteRed950 = Color(0xFF280501)
+    /** `--palette-stone-100` */
+    val paletteStone100 = Color(0xFFEFEDEB)
+    /** `--palette-stone-200` */
+    val paletteStone200 = Color(0xFFE0DCD7)
+    /** `--palette-stone-300` */
+    val paletteStone300 = Color(0xFFD2CBC2)
+    /** `--palette-stone-400` */
+    val paletteStone400 = Color(0xFFC0B9B1)
+    /** `--palette-stone-50` */
+    val paletteStone50 = Color(0xFFF7F6F5)
+    /** `--palette-stone-500` */
+    val paletteStone500 = Color(0xFF9D9891)
+    /** `--palette-stone-600` */
+    val paletteStone600 = Color(0xFF7B7671)
+    /** `--palette-stone-700` */
+    val paletteStone700 = Color(0xFF5D5955)
+    /** `--palette-stone-800` */
+    val paletteStone800 = Color(0xFF3E3B38)
+    /** `--palette-stone-900` */
+    val paletteStone900 = Color(0xFF23211F)
+    /** `--palette-stone-950` */
+    val paletteStone950 = Color(0xFF141312)
+    /** `--palette-yellow-100` */
+    val paletteYellow100 = Color(0xFFFFF6E3)
+    /** `--palette-yellow-200` */
+    val paletteYellow200 = Color(0xFFFFE9B9)
+    /** `--palette-yellow-300` */
+    val paletteYellow300 = Color(0xFFFFDF91)
+    /** `--palette-yellow-400` */
+    val paletteYellow400 = Color(0xFFFFD441)
+    /** `--palette-yellow-50` */
+    val paletteYellow50 = Color(0xFFFFF9ED)
+    /** `--palette-yellow-500` */
+    val paletteYellow500 = Color(0xFFD3AD03)
+    /** `--palette-yellow-600` */
+    val paletteYellow600 = Color(0xFFA78802)
+    /** `--palette-yellow-700` */
+    val paletteYellow700 = Color(0xFF7A6300)
+    /** `--palette-yellow-800` */
+    val paletteYellow800 = Color(0xFF534300)
+    /** `--palette-yellow-900` */
+    val paletteYellow900 = Color(0xFF2D2300)
+    /** `--palette-yellow-950` */
+    val paletteYellow950 = Color(0xFF1C1500)
+    /** `--presence-busy` */
+    val presenceBusy = Color(0xFFFFD440)
+    /** `--presence-error` */
+    val presenceError = Color(0xFFF8A16F)
+    /** `--presence-external` */
+    val presenceExternal = Color(0xFF27CCF3)
+    /** `--presence-offline` */
+    val presenceOffline = Color(0xFFC0B9B1)
+    /** `--presence-online` */
+    val presenceOnline = Color(0xFFA9D877)
     /** `--primary-100` */
     val primary100 = Color(0xFFFFF6E3)
     /** `--primary-200` */
@@ -851,7 +1153,7 @@ internal object RaftUiPalette {
     /** `--primary-300` */
     val primary300 = Color(0xFFFFDF91)
     /** `--primary-400` */
-    val primary400 = Color(0xFFFFD441)
+    val primary400 = Color(0xFFFFD440)
     /** `--primary-50` */
     val primary50 = Color(0xFFFFF9ED)
     /** `--primary-500` */
@@ -866,8 +1168,14 @@ internal object RaftUiPalette {
     val primary900 = Color(0xFF2D2300)
     /** `--primary-950` */
     val primary950 = Color(0xFF1C1500)
+    /** `--primary-active` */
+    val primaryActive = Color(0xFFE3BD3A)
+    /** `--primary-edge` */
+    val primaryEdge = Color(0xFF141111)
     /** `--primary-glow` */
-    val primaryGlow = Color(0xFFF4C931)
+    val primaryGlow = Color(0xFFFFD440)
+    /** `--primary-hover` */
+    val primaryHover = Color(0xFFE3BD3A)
     /** `--secondary-100` */
     val secondary100 = Color(0xFFEFEDEB)
     /** `--secondary-200` */
@@ -890,46 +1198,62 @@ internal object RaftUiPalette {
     val secondary900 = Color(0xFF23211F)
     /** `--secondary-950` */
     val secondary950 = Color(0xFF141312)
+    /** `--sticker-ink` */
+    val stickerInk = Color(0xFF141111)
+    /** `--sticker-paper` */
+    val stickerPaper = Color(0xFFFFFFFF)
+    /** `--sticker-pressed` */
+    val stickerPressed = Color(0x1F141111)
     /** `--success` */
-    val success = Color(0xFF20C16B)
+    val success = Color(0xFFA9D877)
     /** `--success-foreground` */
-    val successForeground = Color(0xFFFFFFFF)
+    val successForeground = Color(0xFF141111)
+    /** `--task-status-in-progress` */
+    val taskStatusInProgress = Color(0xFF27CCF3)
     /** `--warning` */
-    val warning = Color(0xFFFF6900)
+    val warning = Color(0xFFF8A16F)
+    /** `--warning-active` */
+    val warningActive = Color(0xFFDD9064)
     /** `--warning-foreground` */
-    val warningForeground = Color(0xFFFFFFFF)
+    val warningForeground = Color(0xFF141111)
+    /** `--warning-hover` */
+    val warningHover = Color(0xFFDD9064)
 }
 
 /**
- * Colours that change with the Web theme (`data-theme` and light/dark).
+ * Colours that change with the Web theme (raft light / raft dark).
  * One object per theme; an abstract class (not a constructor) so the token
  * count is not bounded by the JVM's 255-slot parameter limit.
  */
 internal sealed class RaftUiThemeColors {
-    /** `--accent-active` */
-    abstract val accentActive: Color
-    /** `--accent-hover` */
-    abstract val accentHover: Color
     /** `--accent-soft` */
     abstract val accentSoft: Color
     /** `--accent-strong` */
     abstract val accentStrong: Color
+    /** `--attention-soft` */
+    abstract val attentionSoft: Color
+    /** `--attention-strong` */
+    abstract val attentionStrong: Color
+    /** `--brand-soft` */
+    abstract val brandSoft: Color
+    /** `--brand-strong` */
+    abstract val brandStrong: Color
     /** `--color-code-foreground` */
     abstract val codeForeground: Color
     /** `--color-code-surface` */
     abstract val codeSurface: Color
-    /** `--danger-active` */
-    abstract val dangerActive: Color
-    /** `--danger-hover` */
-    abstract val dangerHover: Color
     /** `--danger-muted` */
     abstract val dangerMuted: Color
     /** `--danger-soft` */
     abstract val dangerSoft: Color
     /** `--danger-strong` */
     abstract val dangerStrong: Color
+    /** `--fill-frame-pressed` */
+    abstract val fillFramePressed: Color
     /** `--fill-muted` */
     abstract val fillMuted: Color
+    /** `--fill-pressed` */
+    abstract val fillPressed: Color
     /** `--fill-strong` */
     abstract val fillStrong: Color
     /** `--foreground` */
@@ -946,20 +1270,24 @@ internal sealed class RaftUiThemeColors {
     abstract val foregroundIcon: Color
     /** `--foreground-inverse` */
     abstract val foregroundInverse: Color
+    /** `--foreground-link` */
+    abstract val foregroundLink: Color
     /** `--foreground-muted` */
     abstract val foregroundMuted: Color
+    /** `--foreground-on-frame` */
+    abstract val foregroundOnFrame: Color
+    /** `--foreground-on-frame-muted` */
+    abstract val foregroundOnFrameMuted: Color
+    /** `--foreground-on-hud` */
+    abstract val foregroundOnHud: Color
+    /** `--foreground-on-hud-muted` */
+    abstract val foregroundOnHudMuted: Color
     /** `--foreground-placeholder` */
     abstract val foregroundPlaceholder: Color
     /** `--foreground-strong` */
     abstract val foregroundStrong: Color
-    /** `--inactive` */
-    abstract val inactive: Color
-    /** `--inactive-foreground` */
-    abstract val inactiveForeground: Color
-    /** `--info-active` */
-    abstract val infoActive: Color
-    /** `--info-hover` */
-    abstract val infoHover: Color
+    /** `--inactive-soft` */
+    abstract val inactiveSoft: Color
     /** `--info-muted` */
     abstract val infoMuted: Color
     /** `--info-soft` */
@@ -994,6 +1322,12 @@ internal sealed class RaftUiThemeColors {
     abstract val layerCanvasMuted: Color
     /** `--layer-card` */
     abstract val layerCard: Color
+    /** `--layer-code` */
+    abstract val layerCode: Color
+    /** `--layer-frame` */
+    abstract val layerFrame: Color
+    /** `--layer-frame-active` */
+    abstract val layerFrameActive: Color
     /** `--layer-hud` */
     abstract val layerHud: Color
     /** `--layer-hud-foreground` */
@@ -1004,6 +1338,8 @@ internal sealed class RaftUiThemeColors {
     abstract val layerPanel: Color
     /** `--layer-popover` */
     abstract val layerPopover: Color
+    /** `--layer-sidebar` */
+    abstract val layerSidebar: Color
     /** `--line` */
     abstract val line: Color
     /** `--line-field` */
@@ -1014,18 +1350,16 @@ internal sealed class RaftUiThemeColors {
     abstract val lineHairline: Color
     /** `--line-muted` */
     abstract val lineMuted: Color
+    /** `--line-seam` */
+    abstract val lineSeam: Color
     /** `--line-strong` */
     abstract val lineStrong: Color
-    /** `--primary-active` */
-    abstract val primaryActive: Color
-    /** `--primary-edge` */
-    abstract val primaryEdge: Color
-    /** `--primary-hover` */
-    abstract val primaryHover: Color
     /** `--primary-soft` */
     abstract val primarySoft: Color
     /** `--primary-strong` */
     abstract val primaryStrong: Color
+    /** `--sticker-edge` */
+    abstract val stickerEdge: Color
     /** `--success-muted` */
     abstract val successMuted: Color
     /** `--success-soft` */
@@ -1044,8 +1378,6 @@ internal sealed class RaftUiThemeColors {
     abstract val taskStatusDoneSoft: Color
     /** `--task-status-done-strong` */
     abstract val taskStatusDoneStrong: Color
-    /** `--task-status-in-progress` */
-    abstract val taskStatusInProgress: Color
     /** `--task-status-in-progress-soft` */
     abstract val taskStatusInProgressSoft: Color
     /** `--task-status-in-progress-strong` */
@@ -1062,10 +1394,6 @@ internal sealed class RaftUiThemeColors {
     abstract val taskStatusTodoSoft: Color
     /** `--task-status-todo-strong` */
     abstract val taskStatusTodoStrong: Color
-    /** `--warning-active` */
-    abstract val warningActive: Color
-    /** `--warning-hover` */
-    abstract val warningHover: Color
     /** `--warning-muted` */
     abstract val warningMuted: Color
     /** `--warning-soft` */
@@ -1073,77 +1401,83 @@ internal sealed class RaftUiThemeColors {
     /** `--warning-strong` */
     abstract val warningStrong: Color
 
-    data object Brutal : RaftUiThemeColors() {
-        override val accentActive = Color(0xFFEB739B)
-        override val accentHover = Color(0xFFF578A2)
+    data object RaftLight : RaftUiThemeColors() {
         override val accentSoft = Color(0xFFFFD6E2)
         override val accentStrong = Color(0xFFC00064)
+        override val attentionSoft = Color(0xFFFFD6E2)
+        override val attentionStrong = Color(0xFFC00064)
+        override val brandSoft = Color(0xFFFFF0BD)
+        override val brandStrong = Color(0xFF564919)
         override val codeForeground = Color(0xFF24292E)
         override val codeSurface = Color(0xFFFFFFFF)
-        override val dangerActive = Color(0xFFDB051B)
-        override val dangerHover = Color(0xFFE5061D)
         override val dangerMuted = Color(0xFFFBBDB9)
         override val dangerSoft = Color(0xFFFDDEDD)
-        override val dangerStrong = Color(0xFF621708)
+        override val dangerStrong = Color(0xFFB5321A)
+        override val fillFramePressed = Color(0x1F141111)
         override val fillMuted = Color(0xFFF3F3F3)
-        override val fillStrong = Color(0xFFEBEBEB)
-        override val foreground = Color(0xFF141110)
-        override val foregroundActive = Color(0xFF43433F)
-        override val foregroundDisabled = Color(0x4C141110)
-        override val foregroundHint = Color(0xFF5D5D5D)
-        override val foregroundHover = Color(0xFF4D4D4A)
-        override val foregroundIcon = Color(0xAD141110)
+        override val fillPressed = Color(0x14141111)
+        override val fillStrong = Color(0xFFEAEAEA)
+        override val foreground = Color(0xFF141111)
+        override val foregroundActive = Color(0xFF141111)
+        override val foregroundDisabled = Color(0x4D141111)
+        override val foregroundHint = Color(0x9E141111)
+        override val foregroundHover = Color(0xFF141111)
+        override val foregroundIcon = Color(0xAD141111)
         override val foregroundInverse = Color(0xFFFFFFFF)
-        override val foregroundMuted = Color(0x99141110)
-        override val foregroundPlaceholder = Color(0x80141110)
-        override val foregroundStrong = Color(0xFF141110)
-        override val inactive = Color(0xFF787878)
-        override val inactiveForeground = Color(0xFFEDEDED)
-        override val infoActive = Color(0xFF22B4D7)
-        override val infoHover = Color(0xFF24BDE1)
+        override val foregroundLink = Color(0xFF1447E6)
+        override val foregroundMuted = Color(0xAD141111)
+        override val foregroundOnFrame = Color(0xFF141111)
+        override val foregroundOnFrameMuted = Color(0xFF564919)
+        override val foregroundOnHud = Color(0xFFF3F3F5)
+        override val foregroundOnHudMuted = Color(0xB2F3F3F5)
+        override val foregroundPlaceholder = Color(0x9E141111)
+        override val foregroundStrong = Color(0xFF141111)
+        override val inactiveSoft = Color(0xFFE0DCD7)
         override val infoMuted = Color(0xFFA9E6FE)
         override val infoSoft = Color(0xFFD7F2FE)
         override val infoStrong = Color(0xFF06414F)
-        override val ink = Color(0xFF000000)
-        override val ink10 = Color(0x1A000000)
-        override val ink16 = Color(0x29000000)
-        override val ink2 = Color(0x05000000)
-        override val ink20 = Color(0x33000000)
-        override val ink30 = Color(0x4C000000)
-        override val ink4 = Color(0x0A000000)
-        override val ink40 = Color(0x66000000)
-        override val ink6 = Color(0x0F000000)
-        override val ink8 = Color(0x14000000)
+        override val ink = Color(0xFF141111)
+        override val ink10 = Color(0x1A141111)
+        override val ink16 = Color(0x29141111)
+        override val ink2 = Color(0x05141111)
+        override val ink20 = Color(0x33141111)
+        override val ink30 = Color(0x4C141111)
+        override val ink4 = Color(0x0A141111)
+        override val ink40 = Color(0x66141111)
+        override val ink6 = Color(0x0F141111)
+        override val ink8 = Color(0x14141111)
         override val layerBackdrop = Color(0xA6000000)
         override val layerCanvas = Color(0xFFFFFFFF)
-        override val layerCanvasMuted = Color(0xFFFFFFFF)
-        override val layerCard = Color(0xFFFBFAF8)
+        override val layerCanvasMuted = Color(0xFFFFFAEF)
+        override val layerCard = Color(0xFFFFFFFF)
+        override val layerCode = Color(0xFFFFFFFF)
+        override val layerFrame = Color(0xFFFFD440)
+        override val layerFrameActive = Color(0xFFFFFFFF)
         override val layerHud = Color(0xFF252429)
         override val layerHudForeground = Color(0xFFF3F3F5)
-        override val layerInset = Color(0xFFFCFCFA)
+        override val layerInset = Color(0xFFF3F3F3)
         override val layerPanel = Color(0xFFFFFFFF)
         override val layerPopover = Color(0xFFFFFFFF)
-        override val line = Color(0xFF141110)
-        override val lineField = Color(0x14000000)
-        override val lineFieldHover = Color(0x1A000000)
-        override val lineHairline = Color(0x26141110)
-        override val lineMuted = Color(0x4C141110)
-        override val lineStrong = Color(0xFF141110)
-        override val primaryActive = Color(0xFFECC43B)
-        override val primaryEdge = Color(0xB2E8C44E)
-        override val primaryHover = Color(0xFFF6CC3E)
+        override val layerSidebar = Color(0xFFFFFAEF)
+        override val line = Color(0x73141111)
+        override val lineField = Color(0xFF141111)
+        override val lineFieldHover = Color(0xFF141111)
+        override val lineHairline = Color(0x26141111)
+        override val lineMuted = Color(0x26141111)
+        override val lineSeam = Color(0x73141111)
+        override val lineStrong = Color(0xFF141111)
         override val primarySoft = Color(0xFFFFF0BD)
-        override val primaryStrong = Color(0xFF655000)
-        override val successMuted = Color(0xFF8CFEB2)
-        override val successSoft = Color(0xFFC6FED5)
-        override val successStrong = Color(0xFF074C27)
+        override val primaryStrong = Color(0xFF564919)
+        override val stickerEdge = Color(0x00141111)
+        override val successMuted = Color(0xFFC0F588)
+        override val successSoft = Color(0xFFDCFAC1)
+        override val successStrong = Color(0xFF344522)
         override val taskStatusClosed = Color(0xFFC0B9B1)
         override val taskStatusClosedSoft = Color(0xFFE0DCD7)
         override val taskStatusClosedStrong = Color(0xFF3E3B38)
         override val taskStatusDone = Color(0xFFA9D877)
         override val taskStatusDoneSoft = Color(0xFFDCFAC1)
         override val taskStatusDoneStrong = Color(0xFF344522)
-        override val taskStatusInProgress = Color(0xFF28CCF3)
         override val taskStatusInProgressSoft = Color(0xFFD7F2FE)
         override val taskStatusInProgressStrong = Color(0xFF06414F)
         override val taskStatusInReview = Color(0xFFBBAFE6)
@@ -1152,127 +1486,43 @@ internal sealed class RaftUiThemeColors {
         override val taskStatusTodo = Color(0xFFF8A16F)
         override val taskStatusTodoSoft = Color(0xFFFDE6DE)
         override val taskStatusTodoStrong = Color(0xFF5B310F)
-        override val warningActive = Color(0xFFE25C00)
-        override val warningHover = Color(0xFFEC6100)
-        override val warningMuted = Color(0xFFFFD8C7)
-        override val warningSoft = Color(0xFFFFE9E0)
-        override val warningStrong = Color(0xFF6A2700)
+        override val warningMuted = Color(0xFFFBD1C0)
+        override val warningSoft = Color(0xFFFDE6DE)
+        override val warningStrong = Color(0xFF5B310F)
     }
 
-    data object ElegantLight : RaftUiThemeColors() {
-        override val accentActive = Color(0xFFEB749C)
-        override val accentHover = Color(0xFFF8CAD8)
-        override val accentSoft = Color(0xFFFFD6E2)
-        override val accentStrong = Color(0xFFC00064)
-        override val codeForeground = Color(0xFF24292E)
-        override val codeSurface = Color(0xFFFFFFFF)
-        override val dangerActive = Color(0xFFDB0C1E)
-        override val dangerHover = Color(0xFFE50B1E)
-        override val dangerMuted = Color(0xFFFAC2BE)
-        override val dangerSoft = Color(0xFFFDD1CE)
-        override val dangerStrong = Color(0xFF96240E)
-        override val fillMuted = Color(0xFFF4F4F3)
-        override val fillStrong = Color(0xFFEEEEED)
-        override val foreground = Color(0xFF191815)
-        override val foregroundActive = Color(0xFF43433F)
-        override val foregroundDisabled = Color(0xFF9F9F9A)
-        override val foregroundHint = Color(0xFF5D5D5D)
-        override val foregroundHover = Color(0xFF4D4D4A)
-        override val foregroundIcon = Color(0xAD3D3D3A)
-        override val foregroundInverse = Color(0xFFFFFFFF)
-        override val foregroundMuted = Color(0xFF3D3D3A)
-        override val foregroundPlaceholder = Color(0xFF72726E)
-        override val foregroundStrong = Color(0xFF0A0A0A)
-        override val inactive = Color(0xFF787878)
-        override val inactiveForeground = Color(0xFFEDEDED)
-        override val infoActive = Color(0xFF25B5D7)
-        override val infoHover = Color(0xFF26BDE1)
-        override val infoMuted = Color(0xFFA2DFF7)
-        override val infoSoft = Color(0xFFBAEAFD)
-        override val infoStrong = Color(0xFF0A5C71)
-        override val ink = Color(0xFF191815)
-        override val ink10 = Color(0x1A191815)
-        override val ink16 = Color(0x29191815)
-        override val ink2 = Color(0x05191815)
-        override val ink20 = Color(0x33191815)
-        override val ink30 = Color(0x4C191815)
-        override val ink4 = Color(0x0A191815)
-        override val ink40 = Color(0x66191815)
-        override val ink6 = Color(0x0F191815)
-        override val ink8 = Color(0x14191815)
-        override val layerBackdrop = Color(0x59000000)
-        override val layerCanvas = Color(0xFFFFFFFF)
-        override val layerCanvasMuted = Color(0xFFF8F8F7)
-        override val layerCard = Color(0xFFFBFAF8)
-        override val layerHud = Color(0xFF252429)
-        override val layerHudForeground = Color(0xFFF3F3F5)
-        override val layerInset = Color(0xFFFCFCFB)
-        override val layerPanel = Color(0xFFFFFFFF)
-        override val layerPopover = Color(0xFFFFFFFF)
-        override val line = Color(0xFFCBCBC6)
-        override val lineField = Color(0x14191815)
-        override val lineFieldHover = Color(0x1A191815)
-        override val lineHairline = Color(0x14191815)
-        override val lineMuted = Color(0xFFE5E5E2)
-        override val lineStrong = Color(0xFF191815)
-        override val primaryActive = Color(0xFFECC43C)
-        override val primaryEdge = Color(0xB2E8C44E)
-        override val primaryHover = Color(0xFFF3E4B3)
-        override val primarySoft = Color(0xFFFFF0BD)
-        override val primaryStrong = Color(0xFF655000)
-        override val successMuted = Color(0xFF82F0B8)
-        override val successSoft = Color(0xFF9FF9C9)
-        override val successStrong = Color(0xFF025F2C)
-        override val taskStatusClosed = Color(0xFF787878)
-        override val taskStatusClosedSoft = Color(0xFFF4F4F3)
-        override val taskStatusClosedStrong = Color(0xFF9F9F9A)
-        override val taskStatusDone = Color(0xFF20C16B)
-        override val taskStatusDoneSoft = Color(0xFF9FF9C9)
-        override val taskStatusDoneStrong = Color(0xFF025F2C)
-        override val taskStatusInProgress = Color(0xFF28CCF3)
-        override val taskStatusInProgressSoft = Color(0xFFBAEAFD)
-        override val taskStatusInProgressStrong = Color(0xFF0A5C71)
-        override val taskStatusInReview = Color(0xFF7F62CB)
-        override val taskStatusInReviewSoft = Color(0xFFDCD7F2)
-        override val taskStatusInReviewStrong = Color(0xFF442B7C)
-        override val taskStatusTodo = Color(0xFFFF6900)
-        override val taskStatusTodoSoft = Color(0xFFFFE9DE)
-        override val taskStatusTodoStrong = Color(0xFFC53200)
-        override val warningActive = Color(0xFFE25D06)
-        override val warningHover = Color(0xFFEC6104)
-        override val warningMuted = Color(0xFFFFDCCD)
-        override val warningSoft = Color(0xFFFFE9DE)
-        override val warningStrong = Color(0xFFD84100)
-    }
-
-    data object ElegantDark : RaftUiThemeColors() {
-        override val accentActive = Color(0xFFFD9BB8)
-        override val accentHover = Color(0x58F492B1)
+    data object RaftDark : RaftUiThemeColors() {
         override val accentSoft = Color(0x29D0457C)
         override val accentStrong = Color(0xFFFFACC7)
+        override val attentionSoft = Color(0x29D0457C)
+        override val attentionStrong = Color(0xFFFFACC7)
+        override val brandSoft = Color(0x29876F1F)
+        override val brandStrong = Color(0xFFFFD440)
         override val codeForeground = Color(0xFFF0F3F6)
         override val codeSurface = Color(0xFF0A0C10)
-        override val dangerActive = Color(0xFFF88485)
-        override val dangerHover = Color(0xFFF86E70)
         override val dangerMuted = Color(0x4CD33C30)
         override val dangerSoft = Color(0x2EC93126)
         override val dangerStrong = Color(0xFFF8A49D)
+        override val fillFramePressed = Color(0x14FAFAF7)
         override val fillMuted = Color(0xFF32322F)
-        override val fillStrong = Color(0xFF393936)
-        override val foreground = Color(0xFFD8D8D5)
-        override val foregroundActive = Color(0xFFD8D8D5)
-        override val foregroundDisabled = Color(0xFF8F8F8C)
-        override val foregroundHint = Color(0xFF989895)
-        override val foregroundHover = Color(0xFFCECECB)
-        override val foregroundIcon = Color(0xADC4C4C1)
-        override val foregroundInverse = Color(0xFF0A0A0A)
+        override val fillPressed = Color(0x14FAFAF7)
+        override val fillStrong = Color(0xFF3A3A37)
+        override val foreground = Color(0xFFE5E5E2)
+        override val foregroundActive = Color(0xFFE5E5E2)
+        override val foregroundDisabled = Color(0xFF636360)
+        override val foregroundHint = Color(0xFF9E9E9B)
+        override val foregroundHover = Color(0xFFE5E5E2)
+        override val foregroundIcon = Color(0xFFC4C4C1)
+        override val foregroundInverse = Color(0xFF1B1B19)
+        override val foregroundLink = Color(0xFF8EC5FF)
         override val foregroundMuted = Color(0xFFC4C4C1)
-        override val foregroundPlaceholder = Color(0xFF8C8C89)
+        override val foregroundOnFrame = Color(0xFFE5E5E2)
+        override val foregroundOnFrameMuted = Color(0xFF9E9E9B)
+        override val foregroundOnHud = Color(0xFFE5E5E2)
+        override val foregroundOnHudMuted = Color(0xFFC4C4C1)
+        override val foregroundPlaceholder = Color(0xFF9E9E9B)
         override val foregroundStrong = Color(0xFFE5E5E2)
-        override val inactive = Color(0xFF8F8F8D)
-        override val inactiveForeground = Color(0xFF0A0A09)
-        override val infoActive = Color(0xFF88D8F4)
-        override val infoHover = Color(0xFF73D4F3)
+        override val inactiveSoft = Color(0xFF32322F)
         override val infoMuted = Color(0x47007592)
         override val infoSoft = Color(0x2E005F7A)
         override val infoStrong = Color(0xFF6CCDEA)
@@ -1287,35 +1537,37 @@ internal sealed class RaftUiThemeColors {
         override val ink6 = Color(0x0FFAFAF7)
         override val ink8 = Color(0x14FAFAF7)
         override val layerBackdrop = Color(0x99000000)
-        override val layerCanvas = Color(0xFF141411)
+        override val layerCanvas = Color(0xFF1B1B19)
         override val layerCanvasMuted = Color(0xFF0D0D0B)
-        override val layerCard = Color(0xFF1B1B19)
-        override val layerHud = Color(0xFF1D1C21)
-        override val layerHudForeground = Color(0xFFB7B7BB)
-        override val layerInset = Color(0xFF131311)
-        override val layerPanel = Color(0xFF242422)
+        override val layerCard = Color(0xFF242422)
+        override val layerCode = Color(0xFF0A0C10)
+        override val layerFrame = Color(0xFF0D0D0B)
+        override val layerFrameActive = Color(0xFFFFD440)
+        override val layerHud = Color(0xFF292927)
+        override val layerHudForeground = Color(0xFFE5E5E2)
+        override val layerInset = Color(0xFF32322F)
+        override val layerPanel = Color(0xFF1B1B19)
         override val layerPopover = Color(0xFF292927)
-        override val line = Color(0xFF757571)
-        override val lineField = Color(0x29FAFAF7)
-        override val lineFieldHover = Color(0x33FAFAF7)
-        override val lineHairline = Color(0x0FFAFAF7)
+        override val layerSidebar = Color(0xFF0D0D0B)
+        override val line = Color(0x42FAFAF7)
+        override val lineField = Color(0xFFE5E5E2)
+        override val lineFieldHover = Color(0xFFE5E5E2)
+        override val lineHairline = Color(0x1AFAFAF7)
         override val lineMuted = Color(0x1AFAFAF7)
-        override val lineStrong = Color(0xFFEFEFEC)
-        override val primaryActive = Color(0xFFFEDB79)
-        override val primaryEdge = Color(0x66FBD452)
-        override val primaryHover = Color(0x58D7B859)
+        override val lineSeam = Color(0x42FAFAF7)
+        override val lineStrong = Color(0xFFE5E5E2)
         override val primarySoft = Color(0x29876F1F)
-        override val primaryStrong = Color(0xFFF6D56B)
+        override val primaryStrong = Color(0xFFFFD440)
+        override val stickerEdge = Color(0x59FAFAF7)
         override val successMuted = Color(0x470C7D43)
         override val successSoft = Color(0x2E167641)
-        override val successStrong = Color(0xFF6ED892)
+        override val successStrong = Color(0xFFB7E18C)
         override val taskStatusClosed = Color(0xFF8F8F8D)
         override val taskStatusClosedSoft = Color(0xFF32322F)
-        override val taskStatusClosedStrong = Color(0xFF8F8F8C)
+        override val taskStatusClosedStrong = Color(0xFF9E9E9B)
         override val taskStatusDone = Color(0xFF20C16B)
         override val taskStatusDoneSoft = Color(0x2E167641)
         override val taskStatusDoneStrong = Color(0xFF6ED892)
-        override val taskStatusInProgress = Color(0xFF28CCF3)
         override val taskStatusInProgressSoft = Color(0x2E005F7A)
         override val taskStatusInProgressStrong = Color(0xFF6CCDEA)
         override val taskStatusInReview = Color(0xFF9D8ADA)
@@ -1324,8 +1576,6 @@ internal sealed class RaftUiThemeColors {
         override val taskStatusTodo = Color(0xFFFF6900)
         override val taskStatusTodoSoft = Color(0x2E9E511E)
         override val taskStatusTodoStrong = Color(0xFFFFAF76)
-        override val warningActive = Color(0xFFFE9D82)
-        override val warningHover = Color(0xFFFE8E6C)
         override val warningMuted = Color(0x47AC571D)
         override val warningSoft = Color(0x2E9E511E)
         override val warningStrong = Color(0xFFFFAF76)

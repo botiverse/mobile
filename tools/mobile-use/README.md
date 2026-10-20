@@ -5,19 +5,13 @@ repeatable Raft mobile device automation from a host machine.
 
 The platform entrypoints are intentionally separate:
 
-- `harmony-use` is HarmonyOS/OHOS only.
 - `android-use` is Android/ADB only.
 - `ios-use` is iOS/Xcode/simctl only.
 
 Only neutral lower-level helpers are shared (`device_use` command runner, SSH
 remote execution, shell quoting, and result models). Platform command semantics
-stay in the platform package so Harmony-specific behavior does not grow Android
-or iOS flags.
-
-`harmony-use` wraps the commands we repeat during Raft OHOS work: DevEco
-environment discovery, HDC target control, DevEco emulator start/stop, remote
-host/device connection, Hvigor build/install/launch flows, screenshots, UI
-layout dumps, and HiLog capture/analysis.
+stay in the platform package so Android-specific behavior does not grow iOS flags
+and vice versa.
 
 `android-use` packages the older `scripts/slock_android_adb.py` workflow into a
 library/CLI: ADB device discovery, install/launch/intent helpers, Kuikly
@@ -30,8 +24,11 @@ install/launch/terminate, open URL, screenshot, log capture, log analysis, and
 remote SSH wrappers.
 
 The package is intentionally not tied to a single checkout. Defaults match the
-Raft OHOS app, but every path and identifier can be overridden by CLI flags or
-environment variables.
+Raft Android/iOS apps, but every path and identifier can be overridden by CLI
+flags or environment variables.
+
+The former `harmony-use` (HarmonyOS/OHOS) CLI was removed when OHOS support was
+frozen at the 1.14.x line; it remains available on the `release/1.14.x` branch.
 
 ## Install
 
@@ -44,97 +41,10 @@ python3 -m pip install ./tools/mobile-use
 For one-off use without installing:
 
 ```bash
-PYTHONPATH=tools/mobile-use/src python3 -m harmony_use --help
+PYTHONPATH=tools/mobile-use/src python3 -m android_use --help
 ```
-
-## Environment
-
-By default `harmony-use` looks for DevEco Studio at:
-
-```text
-/Applications/DevEco-Studio.app/Contents
-```
-
-Overrides:
-
-- `DEVECO_HOME` or `SDK_HOME` for the DevEco app contents directory.
-- `DEVECO_SDK_HOME` for the SDK directory.
-- `HDC_BIN` for a specific `hdc` executable.
-- `OHOS_SERIAL` for a default device target.
-- `HARMONY_USE_PROJECT` for the OHOS app project directory.
 
 ## Common Commands
-
-### Harmony/OHOS
-
-Inspect host setup:
-
-```bash
-harmony-use doctor --pretty
-harmony-use env
-```
-
-List and connect targets:
-
-```bash
-harmony-use devices --pretty
-harmony-use connect 192.168.50.129:5555 --pretty
-```
-
-Start/stop a DevEco emulator:
-
-```bash
-harmony-use emulator-list --details --pretty
-harmony-use emulator-start "Phone API 20" --bootmode coldboot --pretty
-harmony-use emulator-stop "Phone API 20" --pretty
-```
-
-Run HDC commands through a remote host over SSH:
-
-```bash
-harmony-use remote-devices builder-mac.local --pretty
-harmony-use remote-connect builder-mac.local 192.168.50.129:5555 --pretty
-harmony-use remote-run builder-mac.local -- hdc list targets
-```
-
-Build, install, and launch the Raft OHOS app:
-
-```bash
-harmony-use build-hap --project compose/ohosApp --pretty
-harmony-use install --project compose/ohosApp --pretty
-harmony-use launch --bundle build.raft.mobile --pretty
-harmony-use run-app --project compose/ohosApp --bundle build.raft.mobile --pretty
-```
-
-Capture device state:
-
-```bash
-harmony-use screenshot --out /tmp/harmony-use --pretty
-harmony-use dump-layout --out /tmp/harmony-use --pretty
-harmony-use state --out /tmp/harmony-use --pretty
-```
-
-Drive basic UI input:
-
-```bash
-harmony-use tap 540 1200
-harmony-use swipe --direction up
-harmony-use key Back
-```
-
-Capture or analyze HiLog:
-
-```bash
-harmony-use hilog --bundle build.raft.mobile --duration 20 --out /tmp/harmony-use --pretty
-harmony-use analyze-log "/path/to/HiLog.txt" --pretty
-```
-
-`analyze-log` groups the OHOS auth/network failures we repeatedly need during
-Raft validation:
-
-- old Ktor/CIO native TLS stub regressions (`TLS_sessions_are_not_supported_on_Native_platform`)
-- NetworkKMM execution/init/internal errors (`slock_networkkmm*`)
-- TLS certificate verification failures (`CURLE_SSL*`, peer/certificate verify text)
 
 ### Android
 
@@ -256,14 +166,7 @@ ios-use remote-run builder-mac.local -- xcrun simctl list devices
 
 ```python
 from android_use import AndroidConfig, AndroidDevice
-from harmony_use import HarmonyConfig, HarmonyDevice, HarmonyEmulator
 from ios_use import IosConfig, IosSimulator
-
-config = HarmonyConfig.from_defaults(project="compose/ohosApp")
-device = HarmonyDevice(config)
-print(device.devices())
-device.launch(bundle="build.raft.mobile")
-print(HarmonyEmulator(config).list().stdout)
 
 android = AndroidDevice(AndroidConfig.from_defaults())
 print(android.devices())
@@ -279,6 +182,6 @@ print(ios.devices())
   snippets.
 - No credentials, signing material, or device addresses are stored in the
   package.
-- The package prefers explicit failures: missing DevEco tools, no connected
-  target, missing ADB/Xcode tools, unsigned HAP, missing APK/app bundles, and
-  unsupported device commands are reported as actionable errors.
+- The package prefers explicit failures: no connected target, missing
+  ADB/Xcode tools, missing APK/app bundles, and unsupported device commands
+  are reported as actionable errors.

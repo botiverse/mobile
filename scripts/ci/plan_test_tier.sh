@@ -27,7 +27,6 @@ is_deterministic_all_path() {
 mark_all_platforms() {
   run_android=true
   run_ios=true
-  run_ohos=true
 }
 
 # Task #26 option A (artin 2026-08-09): main pushes keep the iOS compile only
@@ -49,7 +48,7 @@ change_keeps_ios() {
       return 0
     fi
     case "$path" in
-      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*)
+      compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*|compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*|compose/core/src/iosMain/*|compose/core/src/iosTest/*|compose/ui-cmp/src/iosMain/*)
         return 0
         ;;
     esac
@@ -75,12 +74,8 @@ classify_relevant_path() {
     compose/iosApp/*|compose/shared/src/iosMain/*|compose/shared/src/iosTest/*)
       run_ios=true
       ;;
-    compose/ohosApp/*|compose/ohosBridge/*|compose/shared/src/ohosArm64Main/*|compose/shared/src/ohosArm64Test/*)
-      run_ohos=true
-      ;;
     compose/shared/src/nativeMain/*|compose/shared/src/nativeInterop/*)
       run_ios=true
-      run_ohos=true
       ;;
     compose/*)
       # commonMain/commonTest, shared build files, version catalogs, Gradle
@@ -92,7 +87,7 @@ classify_relevant_path() {
     .gitmodules|.github/actions/*|.github/gradle-cache-epoch|.github/gradle-cache-quarantine)
       mark_all_platforms
       ;;
-    scripts/check_commonmain_map_compat.sh|scripts/check_markdown_spike_println_gate.sh|scripts/check_auth_session_writes.sh|scripts/check_attachment_mapper_formatting.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_server_activity_unread_fixture.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_read_state_sync_domain_registration.sh|scripts/audit_translucent_action_tokens.py|scripts/prepare_*.sh|scripts/test_kuikly_plugin_source_contract.mjs|scripts/test_mr_resource_staging_source_contract.mjs|scripts/test_process_network_lifecycle_source_contract.mjs|scripts/ci/*)
+    scripts/check_commonmain_map_compat.sh|scripts/check_markdown_spike_println_gate.sh|scripts/check_auth_session_writes.sh|scripts/check_attachment_mapper_formatting.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_server_activity_unread_fixture.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_read_state_sync_domain_registration.sh|scripts/audit_translucent_action_tokens.py|scripts/prepare_*.sh|scripts/ci/*)
       mark_all_platforms
       ;;
     third_party/kuikly-compose-markdown/*|third_party/markdown-parser/*)
@@ -114,10 +109,6 @@ platform_summary() {
   if test "$run_ios" = true; then
     test -n "$summary" && summary+=","
     summary+="ios"
-  fi
-  if test "$run_ohos" = true; then
-    test -n "$summary" && summary+=","
-    summary+="ohos"
   fi
   test -n "$summary" || summary="none"
   printf '%s' "$summary"
@@ -164,7 +155,6 @@ emit_plan() {
   local dispatch_scope="${5:-}"
   run_android=false
   run_ios=false
-  run_ohos=false
   local run_device_suite=false
   local run_canonical_final=false
   local attachment_api_levels="[]"
@@ -266,14 +256,13 @@ emit_plan() {
       # Task #37 (artin 2026-10-09): manual dispatch defaults to the
       # PR-equivalent tier instead of an unconditional full readback. A
       # dispatch has no trustworthy PR diff, so the pr tier is a fixed set:
-      # Linux gates + Android/OHOS compile, no iOS, no device suite. scope=full
+      # Linux gates + Android compile, no iOS, no device suite. scope=full
       # keeps the deliberate full readback. An empty/unknown scope is rejected
       # so the choice is always explicit in the workflow input.
       case "$dispatch_scope" in
         pr)
           run_android=true
           run_ios=false
-          run_ohos=true
           run_device_suite=false
           run_canonical_final=false
           attachment_api_levels="[]"
@@ -313,7 +302,6 @@ emit_plan() {
 
   printf 'run_android=%s\n' "$run_android"
   printf 'run_ios=%s\n' "$run_ios"
-  printf 'run_ohos=%s\n' "$run_ohos"
   printf 'run_device_suite=%s\n' "$run_device_suite"
   printf 'run_canonical_final=%s\n' "$run_canonical_final"
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
@@ -342,39 +330,36 @@ self_test() {
   }
 
   local ds=false; local cf=false; local att='[]'
-  local none=$'run_android=false\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local android=$'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local ohos=$'run_android=false\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local all=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
-  local full_ci_pr=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=false\nattachment_api_levels=[31]'
-  local nightly=$'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=true\nrun_canonical_final=true\nattachment_api_levels=[29,31,34]'
+  local none=$'run_android=false\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local android=$'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local all=$'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local full_ci_pr=$'run_android=true\nrun_ios=true\nrun_device_suite=true\nrun_canonical_final=false\nattachment_api_levels=[31]'
+  local nightly=$'run_android=true\nrun_ios=true\nrun_device_suite=true\nrun_canonical_final=true\nattachment_api_levels=[29,31,34]'
 
   assert_plan "$none"$'\nreason=pull-request-no-test-paths' \
     pull_request false feature $'docs/readme.md\n'
   assert_plan "$android"$'\nreason=pull-request-paths:android' \
     pull_request false feature $'compose/androidApp/src/main/kotlin/Example.kt\n'
-  assert_plan "$ohos"$'\nreason=pull-request-paths:ohos' \
-    pull_request false feature $'compose/ohosApp/entry/src/main/ets/Example.ets\n'
   # Task #26 Agent-era CI downshift: ordinary PR pushes (commonMain catch-all)
-  # compile Android/OHOS only; explicit full-ci PR or nightly readback covers iOS.
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
+  # compile Android only; explicit full-ci PR or nightly readback covers iOS.
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
     pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
     pull_request false feature $'compose/gradle/libs.versions.toml\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
-    pull_request false feature $'scripts/test_process_network_lifecycle_source_contract.mjs\n'
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
+    pull_request false feature $'scripts/check_auth_session_writes.sh\n'
   # Task #37 (artin 2026-10-09): ordinary PRs never compile iOS, including PRs
   # that touch iOS-specific paths. iOS breakage surfaces on the main push
   # readback; the full-ci label is the explicit escape hatch.
   assert_plan "$none"$'\nreason=pull-request-paths:none' \
     pull_request false feature $'compose/iosApp/iosApp/Example.swift\n'
-  assert_plan "$ohos"$'\nreason=pull-request-paths:ohos' \
+  assert_plan "$none"$'\nreason=pull-request-paths:none' \
     pull_request false feature $'compose/shared/src/nativeMain/kotlin/Example.kt\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android,ohos' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-paths:android' \
     pull_request false feature $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
   assert_plan "$none"$'\nreason=pull-request-paths:none' \
     pull_request false feature $'compose/shared/src/iosMain/kotlin/Example.kt\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-ci-control' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=pull-request-ci-control' \
     pull_request false feature $'.github/workflows/test.yml\n'
   # Fail-closed exception: an unavailable diff still selects every platform.
   assert_plan "$all"$'\nreason=pull-request-diff-unavailable-fail-closed' \
@@ -387,29 +372,29 @@ self_test() {
     merge_group false gh-readonly-queue/main/pr-1 ''
   assert_plan "$none"$'\nreason=main-push-no-test-paths' \
     push false main $'docs/readme.md\n'
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android' \
     push false main $'compose/androidApp/src/main/kotlin/Example.kt\n'
-  assert_plan $'run_android=false\nrun_ios=true\nrun_ohos=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:ios' \
+  assert_plan $'run_android=false\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:ios' \
     push false main $'compose/iosApp/iosApp/Example.swift\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-diff-unavailable-fail-closed' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-diff-unavailable-fail-closed' \
     push false main "$UNKNOWN_PATH_SENTINEL"$'\n'
   # Task #26 option A: ordinary main pushes (commonMain catch-all) no longer
   # compile iOS; the nightly readback covers them.
-  assert_plan $'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android,ohos' \
+  assert_plan $'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android' \
     push false main $'compose/shared/src/commonMain/kotlin/Example.kt\n'
   # Pushes that can affect iOS keep the iOS compile.
-  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android,ios,ohos' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-paths:android,ios' \
     push false main $'compose/shared/src/commonMain/kotlin/Example.kt\ncompose/iosApp/iosApp/Example.swift\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-ci-control' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=main-push-ci-control' \
     push false main $'.github/workflows/test.yml\n'
-  assert_plan $'run_android=true\nrun_ios=true\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=release-push-full-readback' \
+  assert_plan $'run_android=true\nrun_ios=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]\nreason=release-push-full-readback' \
     push false release-1.9.0 $'docs/readme.md\n'
   assert_plan "$nightly"$'\nreason=schedule-full-readback' \
     schedule false main ''
   # Task #37 (artin 2026-10-09): manual dispatch defaults to the PR-equivalent
   # tier; scope=full keeps the deliberate full readback; the scope is mandatory
   # and validated.
-  local pr_tier=$'run_android=true\nrun_ios=false\nrun_ohos=true\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
+  local pr_tier=$'run_android=true\nrun_ios=false\nrun_device_suite=false\nrun_canonical_final=false\nattachment_api_levels=[]'
   assert_plan "$pr_tier"$'\nreason=workflow_dispatch-pr-tier' \
     workflow_dispatch false main '' pr
   assert_plan "$nightly"$'\nreason=workflow_dispatch-full-readback' \

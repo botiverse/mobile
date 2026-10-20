@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.flowOf
  * work to the repository. Store reducers only receive typed results.
  */
 class SharedTasksUseCase(
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     private val repository: SharedTasksRepository,
     private val scope: SharedTasksScope = SharedTasksScope.Server
 ) {

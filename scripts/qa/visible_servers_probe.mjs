@@ -18,9 +18,9 @@
 // goes red — after the invitation, not instead of it.
 //
 // Endpoints are read from the app's own client, not guessed:
-//   POST {base}auth/login   SharedSlockNetworkClient.kt:590
-//   GET  {base}servers      SharedSlockNetworkClient.kt:687   (Authorization: Bearer <token>)
-//   base                    SlockApiEndpoints.kt:3  https://api.raft.build/api/
+//   POST {base}auth/login   SharedRaftNetworkClient.kt:590
+//   GET  {base}servers      SharedRaftNetworkClient.kt:687   (Authorization: Bearer <token>)
+//   base                    RaftApiEndpoints.kt:3  https://api.raft.build/api/
 //   element shape           StoredAuthServer — { id, name, slug?, ... }  AuthSessionStore.kt:546
 // Found by @LiBai after my own search missed it: I grepped `api/servers`, but the path literal
 // is "servers" — the `api/` lives in the base URL. My control (4 files matched `api/servers`)

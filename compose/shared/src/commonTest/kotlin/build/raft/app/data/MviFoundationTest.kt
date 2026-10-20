@@ -241,7 +241,7 @@ class MviFoundationTest {
 
     @Test
     fun persistMiddlewareWritesPartialSnapshotAndHydratesBeforeNetworkState() {
-        val storage = InMemorySlockKeyValueStore()
+        val storage = InMemoryRaftKeyValueStore()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val firstRuntime =
             persistRuntime(
@@ -273,7 +273,7 @@ class MviFoundationTest {
     @Test
     fun persistMiddlewareDropsUnsupportedVersionWithoutMigration() {
         val storage =
-            InMemorySlockKeyValueStore(
+            InMemoryRaftKeyValueStore(
                 mapOf("persist:test" to """{"version":99,"snapshot":{"value":42}}""")
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -295,7 +295,7 @@ class MviFoundationTest {
     fun persistMiddlewareRollsBackStoreTransitionWhenSnapshotEncodingFails() {
         val previousSnapshot = """{"version":1,"snapshot":{"value":3}}"""
         val storage =
-            InMemorySlockKeyValueStore(
+            InMemoryRaftKeyValueStore(
                 mapOf("persist:test" to previousSnapshot)
             )
         val diagnostics = mutableListOf<String>()

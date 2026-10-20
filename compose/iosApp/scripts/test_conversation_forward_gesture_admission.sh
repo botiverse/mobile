@@ -2,9 +2,9 @@
 set -euo pipefail
 
 IOS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-HEADER="$IOS_ROOT/iosApp/FDFullscreenPopGesture/SlockConversationForwardGestureAdmission.h"
+HEADER="$IOS_ROOT/iosApp/FDFullscreenPopGesture/RaftConversationForwardGestureAdmission.h"
 NAVIGATION_SOURCE="$IOS_ROOT/iosApp/FDFullscreenPopGesture/UINavigationController+FDFullscreenPopGesture.m"
-RENDER_SOURCE="$IOS_ROOT/iosApp/KuiklyExpand/KuiklyRenderViewController.m"
+RENDER_SOURCE="$IOS_ROOT/iosApp/Cmp/RaftPageViewController.m"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -23,17 +23,17 @@ require_source "$NAVIGATION_SOURCE" "fd_setConversationForwardGestureEnabled:(BO
 require_source "$NAVIGATION_SOURCE" "gestureRecognizer.enabled = NO;"
 require_source "$NAVIGATION_SOURCE" "removeGestureRecognizer:gestureRecognizer"
 require_source "$NAVIGATION_SOURCE" "gestureRecognizer.enabled = YES;"
-require_source "$RENDER_SOURCE" "setSlockConversationForwardGestureEnabled:(BOOL)enabled"
+require_source "$RENDER_SOURCE" "setRaftConversationForwardGestureEnabled:(BOOL)enabled"
 require_source "$RENDER_SOURCE" "fd_setConversationForwardGestureEnabled:"
 
 CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
 "$CC_BIN" -std=c11 -Wall -Wextra -Werror -I"$(dirname "$HEADER")" -x c -o "$TMP_DIR/forward-admission" - <<'C'
 #include <assert.h>
-#include "SlockConversationForwardGestureAdmission.h"
+#include "RaftConversationForwardGestureAdmission.h"
 
-static SlockConversationForwardGestureAdmission allowed(void) {
-    return (SlockConversationForwardGestureAdmission) {
+static RaftConversationForwardGestureAdmission allowed(void) {
+    return (RaftConversationForwardGestureAdmission) {
         .enabled = true,
         .appShellIsTop = true,
         .navigationStackAtRoot = true,
@@ -43,29 +43,29 @@ static SlockConversationForwardGestureAdmission allowed(void) {
 }
 
 int main(void) {
-    SlockConversationForwardGestureAdmission input = allowed();
-    assert(SlockConversationForwardGestureShouldBegin(input));
+    RaftConversationForwardGestureAdmission input = allowed();
+    assert(RaftConversationForwardGestureShouldBegin(input));
 
     input = allowed(); input.enabled = false;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.appShellIsTop = false;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.navigationStackAtRoot = false;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.transitioning = true;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.modalPresented = true;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.interactivePopActive = true;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.childGestureConflict = true;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.textInputActive = true;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.velocityX = 600.0;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     input = allowed(); input.velocityX = -50.0; input.velocityY = 200.0;
-    assert(!SlockConversationForwardGestureShouldBegin(input));
+    assert(!RaftConversationForwardGestureShouldBegin(input));
     return 0;
 }
 C

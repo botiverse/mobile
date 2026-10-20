@@ -1,7 +1,7 @@
 package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.MessageAggregateField
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
@@ -348,7 +348,7 @@ class CanonicalMessageV2ScopePoisoned(
  * only fills in what it did not know.
  */
 internal class SqlDelightCanonicalMessageV2Store(
-    private val database: SlockSqlDatabase,
+    private val database: RaftSqlDatabase,
     private val now: () -> Long,
     private val faultHook: PersistFaultHook = PersistFaultHook.Never,
     private val retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),

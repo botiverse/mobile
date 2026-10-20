@@ -21,4 +21,4 @@ fi
 "$ROOT_DIR/compose/gradlew" \
   --project-dir "$ROOT_DIR/compose" \
   :androidApp:testDebugUnitTest \
-  --tests build.raft.app.core.data.network.LiveSlockDbFlowTest
+  --tests build.raft.app.core.data.network.LiveRaftDbFlowTest

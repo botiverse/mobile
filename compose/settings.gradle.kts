@@ -13,10 +13,6 @@ pluginManagement {
             content {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
                 includeModule(
-                    "com.tencent.kuiklybase.network.ohos-runtime",
-                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
-                )
-                includeModule(
                     "com.tencent.kuiklybase.resource.generator",
                     "com.tencent.kuiklybase.resource.generator.gradle.plugin"
                 )
@@ -56,25 +52,25 @@ plugins {
 }
 
 dependencyResolutionManagement {
-    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyRelease() {
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKbaMetadata() {
         exclusiveContent {
             forRepository {
                 maven {
-                    name = "RaftArtifactsKuiklyRelease"
+                    name = "RaftArtifactsKbaMetadata"
                     url = uri("https://maven.artifacts.botiverse.dev")
                 }
             }
             filter {
-                includeGroup("com.tencent.kuikly-open")
-                includeGroupByRegex("com\\.tencent\\.kuikly-open\\.compose\\..+")
+                // Kuikly UI (com.tencent.kuikly-open) left the Gradle build with the CMP
+                // switch; this repo now only serves the KBA metadata below.
+                // KuiklyBase resource-core 0.1.0-raft.5 / knoi 0.0.4 still declare these
+                // KuiklyBase (KBA) versions; conflict resolution upgrades them to the
+                // upstream Kotlin/atomicfu pins, but their metadata must stay resolvable.
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.21-KBA-003")
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib-common", "2.0.21-KBA-003")
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.21-KBA-010")
                 includeVersion("org.jetbrains.kotlin", "kotlin-stdlib-common", "2.0.21-KBA-010")
                 includeVersion("org.jetbrains.kotlinx", "atomicfu", "0.23.2-KBA-001")
-                includeVersion("org.jetbrains.kotlinx", "atomicfu-ohosarm64", "0.23.2-KBA-001")
-                includeVersion("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.8.0-KBA-002")
-                includeVersion("org.jetbrains.kotlinx", "kotlinx-coroutines-core-ohosarm64", "1.8.0-KBA-002")
             }
         }
     }
@@ -85,10 +81,6 @@ dependencyResolutionManagement {
             url = uri("https://maven.artifacts.botiverse.dev")
             content {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "network.*")
-                includeModule(
-                    "com.tencent.kuiklybase.network.ohos-runtime",
-                    "com.tencent.kuiklybase.network.ohos-runtime.gradle.plugin"
-                )
                 includeModule(
                     "com.tencent.kuiklybase.resource.generator",
                     "com.tencent.kuiklybase.resource.generator.gradle.plugin"
@@ -116,7 +108,7 @@ dependencyResolutionManagement {
     }
 
     repositories {
-        raftArtifactsKuiklyRelease()
+        raftArtifactsKbaMetadata()
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
         mavenLocal()
@@ -131,4 +123,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "compose"
 include(":androidApp")
+include(":core")
 include(":shared")
+include(":designsystem")
+include(":ui-cmp")

@@ -11,16 +11,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.clickable
-import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
-import com.tencent.kuikly.compose.ui.Alignment
-import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun ForegroundBannerVisualContent() {
@@ -30,7 +30,7 @@ internal fun ForegroundBannerVisualContent() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         Box(
             modifier =
@@ -40,7 +40,7 @@ internal fun ForegroundBannerVisualContent() {
                     .height(70.dp)
                     .clickable { underlayClicked = true }
         )
-        SlockForegroundMessageBannerView(
+        RaftForegroundMessageBannerView(
             banner =
                 foregroundBannerVisualBanner(
                     id = "channel",
@@ -55,15 +55,15 @@ internal fun ForegroundBannerVisualContent() {
                     context = "#visual-testing",
                     threadContext = null,
                     body = "Updated the capture manifest and fixture seed.",
-                    iconKind = SlockForegroundMessageBannerIconKind.Channel,
-                    iconName = SlockLucideIconName.Hash,
+                    iconKind = RaftForegroundMessageBannerIconKind.Channel,
+                    iconName = RaftLucideIconName.Hash,
                     avatarWireValue = "pixel:agent-cindy",
                     avatarLabel = "CI"
                 ),
             topSafeArea = 10.dp,
             onClick = { bannerClicked = true }
         )
-        SlockForegroundMessageBannerView(
+        RaftForegroundMessageBannerView(
             banner =
                 foregroundBannerVisualBanner(
                     id = "thread",
@@ -77,7 +77,7 @@ internal fun ForegroundBannerVisualContent() {
                                     parentChannelId = ChannelId("native"),
                                     parentMessageId = MessageId("origin-message"),
                                     streamChannelId = ChannelId("thread-stream"),
-                                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                                    parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                                     parentChannelKind = "channel"
                                 ),
                             kind = ConversationKind.Thread
@@ -86,15 +86,15 @@ internal fun ForegroundBannerVisualContent() {
                     context = "#native - thread",
                     threadContext = "Retry Hands OHPM publish after package-group auth",
                     body = "HAR ref bump is ready; waiting on device validation.",
-                    iconKind = SlockForegroundMessageBannerIconKind.Channel,
-                    iconName = SlockLucideIconName.MessageSquare,
+                    iconKind = RaftForegroundMessageBannerIconKind.Channel,
+                    iconName = RaftLucideIconName.MessageSquare,
                     avatarWireValue = "pixel:agent-jingke",
                     avatarLabel = "JK"
                 ),
             topSafeArea = 86.dp,
             onClick = {}
         )
-        SlockForegroundMessageBannerView(
+        RaftForegroundMessageBannerView(
             banner =
                 foregroundBannerVisualBanner(
                     id = "dm",
@@ -102,14 +102,14 @@ internal fun ForegroundBannerVisualContent() {
                         ThreadLaunchConversationIdentity(
                             threadId = ThreadId("dm-artin"),
                             channelId = ChannelId("dm-artin"),
-                            channelType = KuiklyThreadSurfaceKind.DirectMessage,
+                            channelType = RaftThreadSurfaceKind.DirectMessage,
                             kind = ConversationKind.DirectMessage
                         ),
                     title = "artin",
                     context = "@artin - direct message",
                     threadContext = null,
                     body = "Can you check this connected test result?",
-                    iconKind = SlockForegroundMessageBannerIconKind.DirectMessage,
+                    iconKind = RaftForegroundMessageBannerIconKind.DirectMessage,
                     iconName = null,
                     avatarWireValue = "pixel:robot",
                     avatarLabel = "AR"
@@ -124,7 +124,7 @@ internal fun ForegroundBannerVisualContent() {
                         .align(Alignment.BottomStart)
                         .fillMaxWidth(0.5f)
                         .height(20.dp)
-                        .background(SlockColor.AccentLime)
+                        .background(RaftColor.AccentLime)
             )
         }
         if (underlayClicked) {
@@ -134,7 +134,7 @@ internal fun ForegroundBannerVisualContent() {
                         .align(Alignment.BottomEnd)
                         .fillMaxWidth(0.5f)
                         .height(20.dp)
-                        .background(SlockColor.AccentRed)
+                        .background(RaftColor.AccentRed)
             )
         }
     }
@@ -147,12 +147,12 @@ private fun foregroundBannerVisualBanner(
     context: String,
     threadContext: String?,
     body: String,
-    iconKind: SlockForegroundMessageBannerIconKind,
-    iconName: SlockLucideIconName?,
+    iconKind: RaftForegroundMessageBannerIconKind,
+    iconName: RaftLucideIconName?,
     avatarWireValue: String? = null,
     avatarLabel: String = ""
-): SlockForegroundMessageBanner =
-    SlockForegroundMessageBanner(
+): RaftForegroundMessageBanner =
+    RaftForegroundMessageBanner(
         id = "visual-foreground-$id",
         serverId = VisualFixtureData.Server.ID,
         focusedMessageId = "visual-message-$id",

@@ -13,10 +13,10 @@ Status: Historical design; syntax ownership superseded by `raft-markdown-dialect
 
 Thread markdown currently has two rendering paths for inline product tokens:
 
-- the Slock inline fast path in `SlockMarkdownBody`, used for single-line content without block markdown;
+- the Slock inline fast path in `RaftMarkdownBody`, used for single-line content without block markdown;
 - the vendored `kuikly-compose-markdown` renderer, used for block markdown and richer content.
 
-Both paths eventually call `slockMarkdownAnnotator`, but the token rules and UI are embedded inside one Slock-specific annotator. The full markdown path can paint a default text/span frame before `InlineTextContent` replacement is fully applied, so tokens such as `@alice` can briefly appear with the wrong/default style and then flash into the intended Slock style.
+Both paths eventually call `raftMarkdownAnnotator`, but the token rules and UI are embedded inside one Slock-specific annotator. The full markdown path can paint a default text/span frame before `InlineTextContent` replacement is fully applied, so tokens such as `@alice` can briefly appear with the wrong/default style and then flash into the intended Slock style.
 
 This is most visible for mentions because the desired Slock rendering is not just a color span. It may be an inline composable with underline, click handling, label resolution, highlighted mention state, and fixed placeholder width.
 
@@ -38,13 +38,13 @@ This is most visible for mentions because the desired Slock rendering is not jus
 
 ## Current Pipeline
 
-`SlockMarkdownBody` normalizes the body, creates a `MarkdownAnnotator`, then chooses one of three paths:
+`RaftMarkdownBody` normalizes the body, creates a `MarkdownAnnotator`, then chooses one of three paths:
 
 1. plain text fast path: direct `KuiklyText`;
 2. inline text fast path: parse a small markdown tree, build an `AnnotatedString`, then call `KuiklyText` with inline content;
 3. full markdown path: call vendored `Markdown(...)`, which parses and renders markdown blocks, then `MarkdownText`/`MarkdownBasicText` calls `TextProvider.RichText`.
 
-The Slock token behavior is concentrated in `slockMarkdownAnnotator`:
+The Slock token behavior is concentrated in `raftMarkdownAnnotator`:
 
 - scan content for `ThreadInlineTagMatch` and inline-code matches;
 - replace token ranges with `appendInlineContent(id, alternateText)`;
@@ -93,7 +93,7 @@ The registry is evaluated once per normalized `content` before choosing a render
 
 ```kotlin
 val tokenPlan = remember(content, highlightedMentions, resolveLabelVersion) {
-    SlockMarkdownInlineTokenRegistry.plan(
+    RaftMarkdownInlineTokenRegistry.plan(
         content = content,
         highlightedMentions = highlightedMentions,
         resolveTagLabel = resolveTagLabel
@@ -153,11 +153,11 @@ The token plan signature should include token ids, ranges, kind, label, placehol
 
 ## Migration Steps
 
-1. Extract current Slock token scan/render logic from `slockMarkdownAnnotator` into `MarkdownInlineTokenRule` implementations.
-2. Add `MarkdownInlineTokenPlan` and derive it once in `SlockMarkdownBody`.
+1. Extract current Slock token scan/render logic from `raftMarkdownAnnotator` into `MarkdownInlineTokenRule` implementations.
+2. Add `MarkdownInlineTokenPlan` and derive it once in `RaftMarkdownBody`.
 3. Change the inline fast path to build annotated text from the token plan instead of rescanning content inside the annotator.
 4. Add a vendored markdown hook that accepts a replacement provider and inline content map before rendering text nodes.
-5. Adapt `slockMarkdownAnnotator` to be a thin bridge from `MarkdownInlineTokenPlan` to the existing `MarkdownAnnotator` API.
+5. Adapt `raftMarkdownAnnotator` to be a thin bridge from `MarkdownInlineTokenPlan` to the existing `MarkdownAnnotator` API.
 6. Add visual/log proof: first `provider_rich_text` for a message with `@user` must already contain inline content and never paint default/white token text.
 
 ## Tests

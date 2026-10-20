@@ -18,7 +18,7 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SystemUnreadNotificationRequest
 import build.raft.app.data.conversationKindWireValue
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.systemUnreadNotificationServerGate
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -185,10 +185,10 @@ internal object AndroidUnreadNotificationPoster {
     internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
         val appContext = context.applicationContext
         val basePageData =
-            SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
+            RaftCmpActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
         val multiShellHostEnabled =
             runCatching {
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readMultiShellHostEnabledSync()
             }.getOrDefault(false)
         val pageData =
@@ -198,9 +198,9 @@ internal object AndroidUnreadNotificationPoster {
             }
         val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
         val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
-        return Intent(appContext, slockAppShellHostActivityClass(target))
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
-            .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(resolvedPageData).text)
+        return Intent(appContext, raftAppShellHostActivityClass(target))
+            .putExtra(RaftCmpActivity.KEY_PAGE_NAME, RaftCmpActivity.PAGE_APP_SHELL)
+            .putExtra(RaftCmpActivity.KEY_PAGE_DATA, RaftPageData.fromJson(resolvedPageData).text)
             .apply {
                 if (target.documentShell) {
                     data = Uri.parse(target.shellInstanceId)

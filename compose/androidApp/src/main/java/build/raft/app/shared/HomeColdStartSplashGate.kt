@@ -16,11 +16,11 @@ internal const val HOME_COLD_START_SPLASH_TIMEOUT_MILLIS = 5_000L
 internal const val HOME_COLD_START_SPLASH_FALLBACK_TIMEOUT_MILLIS = 10_000L
 
 internal fun shouldInstallHomeColdStartSplash(pageName: String, pageDataText: String?): Boolean {
-    if (pageName != SlockKuiklyActivity.PAGE_APP_SHELL) return false
+    if (pageName != RaftCmpActivity.PAGE_APP_SHELL) return false
     val initialTab =
         runCatching {
             JSONObject(pageDataText.orEmpty())
-                .optString(SlockKuiklyActivity.KEY_APP_SHELL_INITIAL_TAB)
+                .optString(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB)
         }
             .getOrDefault("")
     return initialTab.isBlank() || initialTab == "home"
@@ -30,20 +30,24 @@ internal fun isHomeAppShellChildPageData(pageDataText: String): Boolean =
     runCatching { JSONObject(pageDataText).optString("tab") == "home" }
         .getOrDefault(false)
 
-internal fun slockKuiklyHostActivityClass(pageName: String): Class<out Activity> =
-    if (pageName == SlockKuiklyActivity.PAGE_APP_SHELL) {
-        SlockAppShellActivity::class.java
+/**
+ * Host Activity for [pageName]: the app shell gets its task-owning [RaftAppShellActivity], every
+ * other page a [RaftCmpActivity] (all pages render on Compose Multiplatform).
+ */
+internal fun raftHostActivityClass(pageName: String): Class<out Activity> =
+    if (pageName == RaftCmpActivity.PAGE_APP_SHELL) {
+        RaftAppShellActivity::class.java
     } else {
-        SlockKuiklyActivity::class.java
+        RaftCmpActivity::class.java
     }
 
-internal fun slockAppShellHostActivityClass(
+internal fun raftAppShellHostActivityClass(
     target: AndroidShellLaunchTarget,
 ): Class<out Activity> =
     if (target.documentShell) {
-        SlockDocumentShellActivity::class.java
+        RaftDocumentShellActivity::class.java
     } else {
-        SlockAppShellActivity::class.java
+        RaftAppShellActivity::class.java
     }
 
 internal class HomeColdStartSplashGate(

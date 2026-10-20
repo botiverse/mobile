@@ -99,10 +99,10 @@ All packages under `build.raft.app.*` move as-is. The `compose/androidApp` alrea
 
 | Outer app file | Merge action |
 |---|---|
-| `SlockApplication.kt` | Take outer; drop inner `KRApplication.kt` |
+| `RaftApplication.kt` | Take outer; drop inner `KRApplication.kt` |
 | `MainActivity.kt` | Take outer |
-| `SlockKuiklyActivity.kt` | Take outer; drop inner `KuiklyRenderActivity.kt` |
-| `SlockKuiklyHostContract.kt` | Take outer |
+| `RaftLegacyHostActivity.kt` | Take outer; drop inner `KuiklyRenderActivity.kt` |
+| `RaftHostContract.kt` | Take outer |
 | `SlockKuiklyNetworkModule.kt` | Take outer |
 | `SlockKuiklyPerformanceDiagnostics.kt` | Take outer |
 | `SlockKuiklyTextFieldViews.kt` | Take outer |
@@ -117,15 +117,15 @@ All packages under `build.raft.app.*` move as-is. The `compose/androidApp` alrea
 | `core/data/realtime/*.kt` (4 files) | Take outer |
 | `core/data/sample/*.kt` (1 file) | Take outer |
 | `core/data/storage/*.kt` (1 file) | Take outer |
-| `core/model/SlockModels.kt` | Take outer; review overlap with shared models |
+| `core/model/RaftModels.kt` | Take outer; review overlap with shared models |
 | `core/state/ScreenLoadState.kt` | Take outer |
 | `feature/**/*.kt` | Take outer |
 | `shared/**/*.kt` | Take outer |
 | `ui/**/*.kt` | Take outer |
-| Inner `compose/androidApp/.../adapter/*.kt` | **DROP** — outer `SlockKuiklyAdapters` replaces them |
-| Inner `compose/androidApp/.../module/*.kt` | **DROP** — outer `SlockKuiklyBridgeModule` / `SlockKuiklyNetworkModule` replaces them |
-| Inner `KRApplication.kt` | **DROP** — outer `SlockApplication.kt` replaces |
-| Inner `KuiklyRenderActivity.kt` | **DROP** — outer `SlockKuiklyActivity.kt` replaces |
+| Inner `compose/androidApp/.../adapter/*.kt` | **DROP** — outer `RaftAdapters` replaces them |
+| Inner `compose/androidApp/.../module/*.kt` | **DROP** — outer `RaftBridgeModule` / `SlockKuiklyNetworkModule` replaces them |
+| Inner `KRApplication.kt` | **DROP** — outer `RaftApplication.kt` replaces |
+| Inner `KuiklyRenderActivity.kt` | **DROP** — outer `RaftLegacyHostActivity.kt` replaces |
 | Inner `SkinIniFile.kt` | **DROP** — unused in production |
 
 ### 3.2 Resources: `app/src/main/res/` → `compose/androidApp/src/main/res/`
@@ -135,7 +135,7 @@ inner androidApp resources (the inner project has minimal resources):
 
 | Outer resource | Merge action |
 |---|---|
-| `layout/activity_slock_kuikly.xml` | Take outer; drop inner `activity_hr.xml` |
+| `layout/activity_raft.xml` | Take outer; drop inner `activity_hr.xml` |
 | `drawable/*.xml` | Take all outer |
 | `mipmap-*/*` | Take all outer (launcher icons) |
 | `values/*.xml` (themes, colors, strings) | Take outer |
@@ -321,7 +321,7 @@ will switch to `build.raft.app` namespace. Ensure no package conflicts.
 resolve through the `:shared` project dependency normally.
 
 ### 5.2 Duplicate SQLDelight Database Names
-The migration should avoid duplicate generated `SlockDatabase` classes by retiring the
+The migration should avoid duplicate generated `RaftDatabase` classes by retiring the
 Android-only SQLDelight schema. Only `:shared` should configure SQLDelight.
 
 ### 5.3 Kuikly Version Mismatch
@@ -573,6 +573,5 @@ outer `.idea/`.
 - External `botiverse/slock` checkout (`SLOCK_SOURCE_REPO`) — upstream
   TypeScript server reference; record the exact source SHA used for any
   contract decision.
-- `.agents/skills/kuikly-sdk-upgrade/SKILL.md` — Kuikly version management
 - `compose/buildSrc/` — current Kuikly version definitions
 - `gradle/libs.versions.toml` — outer project version catalog

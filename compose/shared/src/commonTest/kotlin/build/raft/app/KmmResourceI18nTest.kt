@@ -442,6 +442,46 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun threadDateDividerAndMentionActorResourcesAreGenerated() {
+        val literalResources =
+            listOf(
+                MR.strings.thread_date_divider_today,
+                MR.strings.thread_date_divider_yesterday,
+                MR.strings.thread_date_divider_weekday_sunday,
+                MR.strings.thread_date_divider_weekday_monday,
+                MR.strings.thread_date_divider_weekday_tuesday,
+                MR.strings.thread_date_divider_weekday_wednesday,
+                MR.strings.thread_date_divider_weekday_thursday,
+                MR.strings.thread_date_divider_weekday_friday,
+                MR.strings.thread_date_divider_weekday_saturday,
+                MR.strings.thread_date_divider_month_january,
+                MR.strings.thread_date_divider_month_february,
+                MR.strings.thread_date_divider_month_march,
+                MR.strings.thread_date_divider_month_april,
+                MR.strings.thread_date_divider_month_may,
+                MR.strings.thread_date_divider_month_june,
+                MR.strings.thread_date_divider_month_july,
+                MR.strings.thread_date_divider_month_august,
+                MR.strings.thread_date_divider_month_september,
+                MR.strings.thread_date_divider_month_october,
+                MR.strings.thread_date_divider_month_november,
+                MR.strings.thread_date_divider_month_december,
+                MR.strings.composer_mention_actor_human,
+                MR.strings.composer_mention_actor_agent
+            )
+        literalResources.forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "thread date divider and mention actor resources must produce ResourceStringDesc entries"
+            )
+        }
+        assertTrue(
+            MR.strings.thread_date_divider_date.format(listOf("MONDAY", "JANUARY", 5)) is ResourceFormattedStringDesc,
+            "thread date divider date must be a formatted resource"
+        )
+    }
+
+    @Test
     fun threadFlowStringResourcesAreGenerated() {
         val literalResources =
             listOf(
@@ -567,9 +607,6 @@ class KmmResourceI18nTest {
             MR.strings.settings_storage_row_downloads_detail,
             MR.strings.settings_storage_row_temporary,
             MR.strings.settings_storage_row_temporary_detail,
-            MR.strings.settings_storage_ohos_database_detail,
-            MR.strings.settings_storage_ohos_image_cache_detail,
-            MR.strings.settings_storage_ohos_temporary_detail,
             MR.strings.settings_storage_feedback_image_cleared,
             MR.strings.settings_storage_feedback_downloads_cleared,
             MR.strings.settings_storage_feedback_temporary_cleared,
@@ -887,12 +924,21 @@ class KmmResourceI18nTest {
             MR.strings.settings_mobile_long_message_collapse_detail,
             MR.strings.settings_mobile_long_message_collapse_enabled,
             MR.strings.settings_mobile_long_message_collapse_disabled,
+            MR.strings.conversation_long_message_collapse,
+            MR.strings.conversation_long_message_collapse_follows_global_on,
+            MR.strings.conversation_long_message_collapse_follows_global_off,
+            MR.strings.conversation_long_message_collapse_override_on,
+            MR.strings.conversation_long_message_collapse_override_off,
+            MR.strings.thread_long_message_show_more,
+            MR.strings.thread_long_message_show_less,
             MR.strings.settings_mobile_single_tap_thread,
             MR.strings.settings_mobile_single_tap_thread_detail,
             MR.strings.settings_mobile_single_tap_thread_enabled,
             MR.strings.settings_mobile_single_tap_thread_disabled,
             MR.strings.settings_mobile_thread_reverse_layout,
             MR.strings.settings_mobile_thread_reverse_layout_detail,
+            MR.strings.settings_mobile_native_pull_to_refresh,
+            MR.strings.settings_mobile_native_pull_to_refresh_detail,
             MR.strings.settings_mobile_conversation_forward_gesture,
             MR.strings.settings_mobile_conversation_forward_gesture_detail,
             MR.strings.settings_mobile_conversation_forward_gesture_accessibility,
@@ -956,10 +1002,6 @@ class KmmResourceI18nTest {
             MR.strings.settings_computers_workspace_scan_title,
             MR.strings.settings_computers_workspace_scan_detail,
             MR.strings.settings_computers_section_actions,
-            MR.strings.settings_computers_rotate_key_title,
-            MR.strings.settings_computers_rotate_key_detail,
-            MR.strings.settings_computers_rotate_key_action,
-            MR.strings.settings_computers_rotate_key_busy,
             MR.strings.settings_computers_delete_title,
             MR.strings.settings_computers_delete_detail,
             MR.strings.settings_computers_delete_action,
@@ -1090,7 +1132,7 @@ class KmmResourceI18nTest {
     @Test
     fun hostLayerStringResourcesAreGenerated() {
         // Native-host alert/toast copy resolves through the shared
-        // SlockHostStrings facade on Android and iOS.
+        // RaftHostStrings facade on Android and iOS.
         listOf(
             MR.strings.host_feedback_prompt_message,
             MR.strings.host_feedback_prompt_placeholder,

@@ -389,5 +389,5 @@ private fun ReadReceiptTarget.covers(other: ReadReceiptTarget): Boolean =
         is ReadReceiptTarget.ToSeq -> other is ReadReceiptTarget.ToSeq && seq >= other.seq
     }
 
-private fun DataResult<ReadReceiptResult>.isReadReceiptSuccess(): Boolean =
+internal fun DataResult<ReadReceiptResult>.isReadReceiptSuccess(): Boolean =
     this is DataResult.Content || this is DataResult.Empty

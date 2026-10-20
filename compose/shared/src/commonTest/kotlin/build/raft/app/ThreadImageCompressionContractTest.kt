@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.PlatformFile
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import build.raft.app.compat.json.JSONArray
+import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +23,7 @@ class ThreadImageCompressionContractTest {
     @Test
     fun originalImageChoiceResetsWhenSameInstanceMovesToAnotherDraftKey() {
         val store = SharedThreadComposerDraftStore()
-        val composer = KuiklyThreadComposerPayload(instanceId = "composer-1")
+        val composer = RaftThreadComposerPayload(instanceId = "composer-1")
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
@@ -52,7 +52,7 @@ class ThreadImageCompressionContractTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = "composer-send",
                         seedText = "hello"
                     ),
@@ -74,7 +74,7 @@ class ThreadImageCompressionContractTest {
         store.dispatch(
             SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
                 attachmentIds = setOf(attachment.id),
-                errorCode = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
+                errorCode = RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
             )
         )
         store.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(attachment.id))
@@ -102,7 +102,7 @@ class ThreadImageCompressionContractTest {
     @Test
     fun composerUiStateCarriesSessionOnlyImagePolicy() {
         val uiState =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 instanceId = "composer-ui",
                 originalImageOptionEnabled = true,
                 originalImage = true
@@ -115,7 +115,7 @@ class ThreadImageCompressionContractTest {
     @Test
     fun originalImageConfirmScreenTogglesCompressionWithoutComposerChrome() {
         val confirmPayload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 composerImageActionId = "composer-image-confirm",
                 composerImageFileRef = "file:///picked/photo.png",
                 composerImageCompressAfterEdit = true,
@@ -136,7 +136,7 @@ class ThreadImageCompressionContractTest {
         assertTrue(compressedAgain.composerImageCompressAfterEdit)
 
         val feedbackPayload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 composerImageActionId = "feedback-image-group-a",
                 composerImageFileRef = "file:///picked/photo.png",
                 composerImageCompressAfterEdit = true,
@@ -150,24 +150,24 @@ class ThreadImageCompressionContractTest {
     @Test
     fun composerImageEventMetadataUsesClosedSourceAndCompressionVocabulary() {
         assertEquals(
-            SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE,
-            slockFilePreviewComposerImageEventSource(compressed = true)
+            RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE,
+            raftFilePreviewComposerImageEventSource(compressed = true)
         )
         assertEquals(
-            SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
-            slockFilePreviewComposerImageEventSource(compressed = false)
+            RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+            raftFilePreviewComposerImageEventSource(compressed = false)
         )
 
         assertTrue(
-            slockFilePreviewComposerImageEventMetadataIsValid(
-                source = SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE,
+            raftFilePreviewComposerImageEventMetadataIsValid(
+                source = RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE,
                 compressed = true,
                 mimeType = "image/jpeg"
             )
         )
         assertTrue(
-            slockFilePreviewComposerImageEventMetadataIsValid(
-                source = SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
+            raftFilePreviewComposerImageEventMetadataIsValid(
+                source = RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE,
                 compressed = false,
                 mimeType = "image/png"
             )
@@ -178,20 +178,20 @@ class ThreadImageCompressionContractTest {
     fun composerImageEventMetadataRejectsMissingUnknownOrMismatchedFinalization() {
         val invalidCases =
             listOf(
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, false, "image/jpeg"),
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, true, "image/png"),
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, true, "image/png"),
+                Triple(RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, false, "image/jpeg"),
+                Triple(RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, true, "image/png"),
+                Triple(RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, true, "image/png"),
                 Triple("platform_picker", false, "image/png"),
                 Triple("", false, "image/png"),
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, true, "image/jpeg; charset=binary"),
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, true, "IMAGE/JPEG"),
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, false, "video/mp4"),
-                Triple(SLOCK_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, false, "")
+                Triple(RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, true, "image/jpeg; charset=binary"),
+                Triple(RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_SOURCE, true, "IMAGE/JPEG"),
+                Triple(RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, false, "video/mp4"),
+                Triple(RAFT_FILE_PREVIEW_IMAGE_EDITOR_SOURCE, false, "")
             )
 
         invalidCases.forEachIndexed { index, (source, compressed, mimeType) ->
             assertFalse(
-                slockFilePreviewComposerImageEventMetadataIsValid(
+                raftFilePreviewComposerImageEventMetadataIsValid(
                     source = source,
                     compressed = compressed,
                     mimeType = mimeType
@@ -204,18 +204,18 @@ class ThreadImageCompressionContractTest {
     @Test
     fun composerImageGalleryEventsFailClosedForOneMalformedMember() {
         val payload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 composerImageActionId = "gallery-action",
                 composerImageGroupId = "gallery-group",
                 imageGallery =
                     listOf(
-                        SlockFilePreviewGalleryImage(
+                        RaftFilePreviewGalleryImage(
                             attachmentId = "image-1",
                             name = "one.png",
                             mimeType = "image/png",
                             composerImageFileRef = "file:///cache/one.png"
                         ),
-                        SlockFilePreviewGalleryImage(
+                        RaftFilePreviewGalleryImage(
                             attachmentId = "image-2",
                             name = "two.png",
                             mimeType = "image/png",
@@ -226,7 +226,7 @@ class ThreadImageCompressionContractTest {
             )
 
         val events =
-            slockFilePreviewComposerImageEventsForPayload(
+            raftFilePreviewComposerImageEventsForPayload(
                 eventPayload = payload,
                 singleEvent = { _, _, _ -> error("gallery payload must not use single branch") },
                 galleryEvent = { index, image, groupId, groupTotal ->
@@ -249,18 +249,18 @@ class ThreadImageCompressionContractTest {
     @Test
     fun composerImageGalleryEventsEmitTheCompleteNNBatch() {
         val payload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 composerImageActionId = "gallery-action",
                 composerImageGroupId = "gallery-group",
                 imageGallery =
                     listOf(
-                        SlockFilePreviewGalleryImage(
+                        RaftFilePreviewGalleryImage(
                             attachmentId = "image-1",
                             name = "one.png",
                             mimeType = "image/png",
                             composerImageFileRef = "file:///cache/one.png"
                         ),
-                        SlockFilePreviewGalleryImage(
+                        RaftFilePreviewGalleryImage(
                             attachmentId = "image-2",
                             name = "two.png",
                             mimeType = "image/png",
@@ -270,7 +270,7 @@ class ThreadImageCompressionContractTest {
             )
 
         val events =
-            slockFilePreviewComposerImageEventsForPayload(
+            raftFilePreviewComposerImageEventsForPayload(
                 eventPayload = payload,
                 singleEvent = { _, _, _ -> error("gallery payload must not use single branch") },
                 galleryEvent = { index, image, groupId, groupTotal ->
@@ -292,14 +292,14 @@ class ThreadImageCompressionContractTest {
     @Test
     fun composerImageEventsPreserveLegacyNoGroupAndGroupedSingleN1Semantics() {
         val legacyPayload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 composerImageActionId = "legacy-action",
                 composerImageFileRef = "file:///cache/legacy.png"
             )
         var legacyGroupTotal: Int? = null
         var legacyGroupId: String? = null
         val legacyEvents =
-            slockFilePreviewComposerImageEventsForPayload(
+            raftFilePreviewComposerImageEventsForPayload(
                 eventPayload = legacyPayload,
                 singleEvent = { groupId, _, groupTotal ->
                     legacyGroupId = groupId
@@ -317,7 +317,7 @@ class ThreadImageCompressionContractTest {
             legacyPayload.copy(composerImageGroupId = "single-group")
         var groupedSingleTotal: Int? = null
         val groupedSingleEvents =
-            slockFilePreviewComposerImageEventsForPayload(
+            raftFilePreviewComposerImageEventsForPayload(
                 eventPayload = groupedSinglePayload,
                 singleEvent = { _, groupIndex, groupTotal ->
                     assertEquals(0, groupIndex)
@@ -378,8 +378,8 @@ class ThreadImageCompressionContractTest {
                 source = "composer_image_compressor"
             )
 
-        val success = assertIs<SlockFilePreviewCompressedImageResult.Success>(
-            parseSlockFilePreviewCompressedImageResult(response)
+        val success = assertIs<RaftFilePreviewCompressedImageResult.Success>(
+            parseRaftFilePreviewCompressedImageResult(response)
         )
         assertEquals("file:///cache/compressed.jpg", success.file.fileRef)
         assertEquals("photo.jpg", success.file.fileName)
@@ -403,11 +403,11 @@ class ThreadImageCompressionContractTest {
             )
 
         cases.forEachIndexed { index, response ->
-            val failure = assertIs<SlockFilePreviewCompressedImageResult.Failure>(
-                parseSlockFilePreviewCompressedImageResult(response)
+            val failure = assertIs<RaftFilePreviewCompressedImageResult.Failure>(
+                parseRaftFilePreviewCompressedImageResult(response)
             )
             assertEquals(
-                SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE,
+                RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE,
                 failure.errorCode,
                 "malformed compression response case $index must fail closed"
             )
@@ -421,21 +421,21 @@ class ThreadImageCompressionContractTest {
                 code = 409,
                 fileRef = "file:///cache/should-not-be-adopted.jpg",
                 source = "composer_image_compressor"
-            ).put("errorCode", SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
+            ).put("errorCode", RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE)
 
-        val failure = assertIs<SlockFilePreviewCompressedImageResult.Failure>(
-            parseSlockFilePreviewCompressedImageResult(response)
+        val failure = assertIs<RaftFilePreviewCompressedImageResult.Failure>(
+            parseRaftFilePreviewCompressedImageResult(response)
         )
-        assertEquals(SLOCK_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE, failure.errorCode)
+        assertEquals(RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE, failure.errorCode)
         assertEquals(
             setOf("file:///cache/should-not-be-adopted.jpg"),
-            slockFilePreviewCompressionResponseFileRefs(response)
+            raftFilePreviewCompressionResponseFileRefs(response)
         )
     }
 
     @Test
     fun imageCompressionOperationGateRejectsDuplicateAndLateCallbacks() {
-        val gate = SlockFilePreviewComposerImageOperationGate { generation -> "req-$generation" }
+        val gate = RaftFilePreviewComposerImageOperationGate { generation -> "req-$generation" }
         val first = requireNotNull(gate.begin())
         assertEquals(1L, first.generation)
         assertEquals("req-1", first.requestId)
@@ -456,7 +456,7 @@ class ThreadImageCompressionContractTest {
 
     @Test
     fun imageCompressionOperationGateRetirementInvalidatesOutstandingAndFutureRequests() {
-        val gate = SlockFilePreviewComposerImageOperationGate()
+        val gate = RaftFilePreviewComposerImageOperationGate()
         val token = requireNotNull(gate.begin("request-1"))
         gate.retire()
 
@@ -478,7 +478,7 @@ class ThreadImageCompressionContractTest {
             )
         accepted.forEach { (fileName, mimeType) ->
             assertTrue(
-                slockComposerImagePickerIsStrictImage(fileName, mimeType),
+                raftComposerImagePickerIsStrictImage(fileName, mimeType),
                 "$fileName / $mimeType should be a strict image"
             )
         }
@@ -495,7 +495,7 @@ class ThreadImageCompressionContractTest {
             )
         rejected.forEach { (fileName, mimeType) ->
             assertFalse(
-                slockComposerImagePickerIsStrictImage(fileName, mimeType),
+                raftComposerImagePickerIsStrictImage(fileName, mimeType),
                 "$fileName / $mimeType must not enter image compression"
             )
         }
@@ -508,13 +508,13 @@ class ThreadImageCompressionContractTest {
                 PlatformFile("photo", "photo.jpg", mimeType = "image/jpeg"),
                 PlatformFile("clip", "clip.mp4", mimeType = "video/mp4")
             )
-        assertFalse(slockComposerImagePickerFilesAreStrictImages(files))
+        assertFalse(raftComposerImagePickerFilesAreStrictImages(files))
         assertEquals(
             ThreadPickedAttachmentComposerAction.UploadToComposer,
             resolveThreadPickedAttachmentComposerAction(
                 action = ThreadComposerAttachImageAction,
                 fileCount = files.size,
-                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files)
+                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files)
             )
         )
     }
@@ -568,7 +568,7 @@ class ThreadImageCompressionContractTest {
             resolveThreadPickedAttachmentComposerAction(
                 action = ThreadComposerAttachImageAction,
                 fileCount = 1,
-                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(listOf(source))
+                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(listOf(source))
             )
         )
     }

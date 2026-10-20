@@ -19,12 +19,12 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
-      - "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt"
-      - "compose/iosApp/iosApp/SlockIosMobileOAuthHost.swift"
+      - "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"
+      - "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
       - "compose/iosApp/iosApp/iosApp.entitlements"
       - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
       - "compose/shared/src/commonMain/resources/MR/base/strings.xml"
@@ -37,6 +37,14 @@ on:
       - "scripts/ci/check_source_constraints.py"
       - "scripts/ci/check_string_edge_spaces.py"
       - "scripts/ci/verify_no_production_visual_pages.py"
+      # verify_no_production_visual_pages.py also scans the platform production
+      # source sets and the generated CMP page registries.
+      - "compose/shared/src/androidMain/kotlin/**/*.kt"
+      - "compose/shared/src/iosMain/kotlin/**/*.kt"
+      - "compose/shared/src/visualFixtures/**"
+      - "compose/shared/src/visualFixturesOff/**"
+      - "compose/androidApp/src/main/java/**/*.kt"
+      - "scripts/cmp_generate_page_registry.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
     branches:
