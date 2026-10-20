@@ -551,7 +551,6 @@ private fun ChannelSettingsMemberAvatar(member: MemberProfile) {
         avatarWireValue = member.avatarWireValueForAvatarSlot(),
         label = member.avatarLabel.ifBlank { member.displayName.take(1) },
         avatarSize = 44.dp,
-        borderWidth = RaftAppStroke.Default,
         cacheSubject = member.raftAvatarCacheSubject(),
         cacheServerId = member.serverId?.value
     )

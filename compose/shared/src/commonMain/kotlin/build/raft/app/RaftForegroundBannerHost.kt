@@ -605,7 +605,6 @@ private fun RaftForegroundBannerAvatar(
         avatarWireValue = memberAvatarWireValue ?: banner.avatarWireValue,
         label = avatarLabel,
         avatarSize = ForegroundBannerAvatarSize,
-        borderWidth = RaftAppStroke.Default,
         cacheSubject = profile?.raftAvatarCacheSubject(),
         cacheServerId = profile?.serverId?.value ?: currentServerId?.value
     )

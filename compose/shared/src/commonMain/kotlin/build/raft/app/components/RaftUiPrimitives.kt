@@ -375,7 +375,6 @@ internal fun RaftAvatarListRow(
                 avatarWireValue = avatarWireValue,
                 label = avatarLabel,
                 avatarSize = avatarSize,
-                borderWidth = RaftAppStroke.Thin
             )
             FlowRow(
                 modifier = Modifier.weight(1f),

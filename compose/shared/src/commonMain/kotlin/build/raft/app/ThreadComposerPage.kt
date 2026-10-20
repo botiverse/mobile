@@ -3675,7 +3675,6 @@ private fun ComposerMemberSuggestionRow(
                 avatarWireValue = member.avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
                 avatarSize = ComposerMemberSuggestionAvatarSize,
-                borderWidth = RaftAppStroke.Thin,
                 cacheSubject = raftMemberAvatarCacheSubject(member.kind, member.memberId),
                 cacheServerId = member.sourceServerId
             )
@@ -4039,7 +4038,6 @@ private fun PendingMentionActionAvatarStack(
                 avatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
                 label = suggestion?.avatarLabel?.takeIf(String::isNotBlank) ?: action.targetInitial(),
                 avatarSize = 24.dp,
-                borderWidth = RaftAppStroke.Default
             )
         }
         val overflowCount = (actions.size - 2).coerceAtLeast(0)
@@ -4221,7 +4219,6 @@ private fun PendingMentionActionCompactRow(
             avatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
             label = targetAvatarLabel,
             avatarSize = 28.dp,
-            borderWidth = RaftAppStroke.Default
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
@@ -4353,7 +4350,6 @@ private fun PendingMentionActionRow(
                 avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
-                borderWidth = RaftAppStroke.Default
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

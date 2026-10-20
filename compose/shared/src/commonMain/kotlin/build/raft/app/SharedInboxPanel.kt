@@ -1940,8 +1940,10 @@ private fun SharedActivityAppAvatar(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .size(ActivitySenderAvatarSize)
+                // The same raft-ui sticker as the member avatars beside it.
+                .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 .background(RaftColor.SoftSignal)
-                .border(ActivitySenderAvatarBorder, RaftColor.BorderBlack),
+                .border(ActivitySenderAvatarBorder, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
         contentAlignment = Alignment.Center
     ) {
         Text(

@@ -12388,7 +12388,6 @@ private fun MembersAgentDmRow(
                 avatarWireValue = row.peerAvatarUrl,
                 label = row.peerName.take(1).uppercase(),
                 avatarSize = 22.dp,
-                borderWidth = RaftAppStroke.Thin,
                 cacheSubject = avatarCacheIdentity?.subject,
                 cacheServerId = avatarCacheIdentity?.serverId
             )

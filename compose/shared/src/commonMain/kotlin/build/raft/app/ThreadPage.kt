@@ -16307,7 +16307,6 @@ private fun ThreadDmPeerAvatarTile(
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
             avatarSize = ThreadHeaderChannelTileSize,
-            borderWidth = RaftAppStroke.Default,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId
         )
@@ -27618,7 +27617,6 @@ private fun ThreadInlineReplyRow(
             avatarWireValue = avatarWireValue,
             label = displayName.take(1).uppercase(),
             avatarSize = 20.dp,
-            borderWidth = RaftAppStroke.Thin,
             cacheSubject =
                 raftMemberAvatarCacheSubject(
                     participant?.kind?.parsedMemberKindOrNull(),
@@ -29267,7 +29265,6 @@ private fun ThreadMessageAvatar(
                     diagnostics = avatarDiagnostics,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 36.dp,
-                    borderWidth = RaftAppStroke.Default,
                     cacheSubject = cacheSubject
                 )
                 }
@@ -29276,7 +29273,7 @@ private fun ThreadMessageAvatar(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f))
+                                .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f), RoundedCornerShape(RaftAppRadius.Sticker))
                     )
                 }
             }
@@ -29291,8 +29288,9 @@ private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
         modifier =
             Modifier
                 .fillMaxSize()
+                .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 .background(RaftColor.AccentCyan)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Default, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
                 .alpha(if (muted) 0.62f else 1f),
         contentAlignment = Alignment.Center
     ) {
@@ -29333,7 +29331,6 @@ private fun ThreadMessageStaticAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 36.dp,
-                borderWidth = RaftAppStroke.Default,
                 cacheSubject = cacheSubject
             )
         }
@@ -31818,7 +31815,6 @@ private fun <T> ThreadForwardTargetRow(
                         avatarWireValue = target.avatarWireValue,
                         label = target.avatarLabel,
                         avatarSize = 38.dp,
-                        borderWidth = RaftAppStroke.Default,
                         cacheSubject =
                             raftMemberAvatarCacheSubject(
                                 target.cacheMemberKind,

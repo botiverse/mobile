@@ -131,9 +131,12 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -149,6 +152,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
@@ -7129,10 +7133,14 @@ internal fun RaftAppAvatar(
     label: String,
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = RaftAppStroke.Thin,
+    // raft-ui `border-[1.5px] border-sticker-ink` at every size; 0 when the caller draws its own frame.
+    borderWidth: Dp = RaftAppStroke.Control,
     diagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: RaftAvatarCacheSubject? = null,
-    cacheServerId: String? = null
+    cacheServerId: String? = null,
+    // The sticker fill under a photo or initials: `palette-lavender` (people) by default;
+    // raft-ui agents sit on `inactive` until their pixel avatar covers it.
+    fallbackFill: Color = RaftColor.AccentLavender
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
     // avatar is rendered for every channel row in Home + every participant in
@@ -7153,40 +7161,131 @@ internal fun RaftAppAvatar(
             displayAvatarWireValue?.toPixelAvatarSpec()
         }
     }
-    // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
-    // never circles; brutal keeps square corners.
-    val frameModifier =
-        if (raftActive()) modifier.clip(RoundedCornerShape(RaftAppRadius.Sticker)) else modifier
+    val step = RaftAvatarStep.nearest(avatarSize)
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
-            PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
+            RaftPixelAvatarDrawCache.onCompose()
+            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, pixelSpec.background) {
+                RaftNativePixelAvatar(pixelSpec)
+            }
         }
-        httpAvatarSource != null -> Box(
-            modifier = frameModifier
-                .size(width = avatarSize, height = avatarSize)
-                .background(RaftColor.AccentLavender)
-                .border(borderWidth, RaftColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            // task #343: an uploaded avatar must not flash the generic icon while its cached
+        httpAvatarSource != null -> RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fallbackFill) {
+            // task #343: an uploaded avatar must not flash the fallback while its cached
             // bytes are still being resolved (cold start reads them from SQLite + native). Keep
-            // the neutral background until the load settles; draw the icon only on a definitive
-            // failure. Gravatar keeps the immediate icon: it is often unreachable (CN) and the
-            // icon is its expected fallback.
-            if (gravatarHttpSource != null) DefaultUserAvatarIcon(avatarSize)
+            // the neutral background until the load settles; draw the fallback only on a
+            // definitive failure. Gravatar keeps the immediate fallback: it is often unreachable
+            // (CN) and the fallback is its expected face.
+            if (gravatarHttpSource != null) RaftAppAvatarFallback(label, step)
             RaftAvatarHttpImage(
                 source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize(),
                 diagnostics = diagnostics,
                 cacheSubject = cacheSubject,
                 cacheServerId = cacheServerId,
-                fallback = { if (gravatarHttpSource == null) DefaultUserAvatarIcon(avatarSize) }
+                fallback = { if (gravatarHttpSource == null) RaftAppAvatarFallback(label, step) }
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            DefaultUserAvatar(frameModifier, avatarSize, borderWidth)
+            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fallbackFill) {
+                RaftAppAvatarFallback(label, step)
+            }
         }
     }
+}
+
+/**
+ * raft-ui Avatar root + image slot: an [avatarSize] square sticker (`rounded-sticker`, 4dp)
+ * on [fill], with a [borderWidth] `sticker-ink` edge and, outside it, the 1.5dp
+ * `sticker-edge` ring (transparent in light, the die-cut edge in dark; it takes no layout
+ * space). The [face] fills the inside of the edge with 2dp corners (`rounded-[2px]`), so a
+ * photo or pixel face is never painted under the ink. Brutal keeps square corners.
+ */
+@Composable
+private fun RaftAppAvatarFrame(
+    modifier: Modifier,
+    avatarSize: Dp,
+    borderWidth: Dp,
+    fill: Color,
+    face: @Composable BoxScope.() -> Unit
+) {
+    val raft = raftActive()
+    val shape = if (raft) RoundedCornerShape(RaftAppRadius.Sticker) else RectangleShape
+    val edgeColor = if (raft) RaftColor.StickerInk else RaftColor.BorderBlack
+    val ringColor = if (raft && borderWidth > 0.dp) RaftColor.StickerEdge else Color.Transparent
+    Box(
+        modifier =
+            modifier
+                .then(
+                    if (ringColor.alpha > 0f) {
+                        Modifier.drawBehind {
+                            // `shadow-[0_0_0_1.5px_var(--sticker-edge)]`: a band outside the
+                            // box whose corners follow the sticker radius.
+                            val ring = RaftAppStroke.Control.toPx()
+                            val outset = ring / 2f
+                            drawRoundRect(
+                                color = ringColor,
+                                topLeft = Offset(-outset, -outset),
+                                size = Size(size.width + outset * 2f, size.height + outset * 2f),
+                                cornerRadius = CornerRadius(RaftAppRadius.Sticker.toPx() + outset),
+                                style = Stroke(width = ring)
+                            )
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
+                .size(width = avatarSize, height = avatarSize)
+                .clip(shape)
+                .background(fill)
+                .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, edgeColor, shape) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(borderWidth)
+                    .clip(if (raft) RoundedCornerShape(RaftAvatarFaceRadius) else RectangleShape),
+            contentAlignment = Alignment.Center,
+            content = face
+        )
+    }
+}
+
+// raft-ui `image` / `fallback` slots: `rounded-[2px]` inside the 1.5dp ink edge.
+private val RaftAvatarFaceRadius = 2.dp
+
+/**
+ * raft-ui AvatarFallback: a person without a photo shows their initials (Space Grotesk
+ * bold, `leading-none`, -0.01em, `sticker-ink`, sized per avatar step: 40 / 22 / 15 / 13 /
+ * 11 / 8); with no name to take them from, the placeholder person icon at the step's size.
+ */
+@Composable
+private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep) {
+    val initials = remember(label, step) { raftAppAvatarInitials(label, step) }
+    if (initials.isEmpty()) {
+        RaftLucideIcon(
+            RaftLucideIconName.User,
+            modifier = Modifier.size(step.iconSize),
+            color = raftArgbHex(RaftColor.StickerInk)
+        )
+        return
+    }
+    Text(
+        text = initials,
+        style =
+            RaftType.Body
+                .withRaftFontWeight(FontWeight.Bold)
+                .copy(
+                    fontSize = step.initialsSize,
+                    lineHeight = step.initialsSize,
+                    letterSpacing = (-0.01).em,
+                    textAlign = TextAlign.Center
+                ),
+        color = RaftColor.StickerInk,
+        maxLines = 1,
+        softWrap = false
+    )
 }
 
 @Composable
@@ -7618,61 +7717,10 @@ private fun AsyncImagePainter.State.toRaftAvatarHttpPainterPhase(): RaftAvatarHt
         is AsyncImagePainter.State.Error -> RaftAvatarHttpPainterPhase.Error
     }
 
-@Composable
-private fun DefaultUserAvatar(
-    modifier: Modifier = Modifier,
-    avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = RaftAppStroke.Thin
-) {
-    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender).border(borderWidth, RaftColor.BorderBlack), contentAlignment = Alignment.Center) {
-        DefaultUserAvatarIcon(avatarSize)
-    }
-}
-
-@Composable
-private fun DefaultUserAvatarIcon(avatarSize: Dp) {
-    RaftLucideIcon(RaftLucideIconName.User, modifier = Modifier.size((avatarSize.value * 0.56f).dp), color = RaftColor.TextBlackArgb)
-}
-
 private val RaftAppPresence.homeRowColor: Color
     get() = when (this) { RaftAppPresence.Online -> RaftColor.AccentLime; RaftAppPresence.Offline -> RaftColor.StatusNeutralGray; RaftAppPresence.Unknown -> RaftColor.BrandYellow }
 
-@Composable
-private fun PixelAvatar(
-    spec: PixelAvatarSpec,
-    modifier: Modifier = Modifier,
-    avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = RaftAppStroke.Thin
-) {
-    RaftPixelAvatarDrawCache.onCompose()
-    if (isRaftNativePixelAvatarViewSupported()) {
-        RaftNativePixelAvatar(
-            spec = spec,
-            modifier = modifier,
-            avatarSize = avatarSize,
-            borderWidth = borderWidth
-        )
-        return
-    }
-    // Non-Android hosts keep the shared Canvas fallback. The Android host registers a native
-    // render view that consumes the same precomputed spans and caches the bitmap by spec/size.
-    Canvas(modifier = modifier.size(width = avatarSize, height = avatarSize).border(borderWidth, RaftColor.BorderBlack)) {
-        drawRect(spec.background)
-        spec.spans.forEach { span ->
-            val left = pixelAvatarGridEdge(span.startColumnIndex, size.width)
-            val right = pixelAvatarGridEdge(span.startColumnIndex + span.columnCount, size.width)
-            val top = pixelAvatarGridEdge(span.rowIndex, size.height)
-            val bottom = pixelAvatarGridEdge(span.rowIndex + 1, size.height)
-            drawRect(
-                span.color,
-                topLeft = Offset(left, top),
-                size = Size(right - left, bottom - top)
-            )
-        }
-    }
-}
-
-private fun pixelAvatarGridEdge(index: Int, extent: Float): Float =
+internal fun pixelAvatarGridEdge(index: Int, extent: Float): Float =
     when {
         index <= 0 -> 0f
         index >= PixelAvatarGridCellCount -> extent
@@ -7813,7 +7861,6 @@ private object RaftPixelAvatarDrawCache {
 }
 
 internal expect fun logPixelAvatarDrawCache(message: String)
-internal expect fun isRaftNativePixelAvatarViewSupported(): Boolean
 private val PixelAvatarKnownBackgroundArgb: Map<Color, String> =
     pixelAvatarKnownBackgroundArgb(
         palette = PixelAvatarPalette,
