@@ -56,6 +56,8 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.RaftPopoverSurface
+import androidx.compose.foundation.layout.widthIn
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftDialogHeader
@@ -254,6 +256,25 @@ class RaftInteractiveSemanticsTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
                 .performClick()
             assertTrue(closed)
+        }
+
+    /** A popover is 300dp by default; without a width it takes the room it is given, never under 220dp. */
+    @Test
+    fun aPopoverIs300dpOrTheRoomItIsGiven() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(1000.dp)) {
+                        RaftPopoverSurface(Modifier.testTag("default")) { RaftText("Snooze") }
+                        RaftPopoverSurface(Modifier.testTag("bounded").widthIn(max = 260.dp), width = null) { RaftText("Raft Labs") }
+                        RaftPopoverSurface(Modifier.testTag("narrow").widthIn(max = 120.dp), width = null) { RaftText("Acme") }
+                    }
+                },
+            )
+            fun width(tag: String) = onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.width / density.density
+            assertEquals(300f, width("default"), 0.5f)
+            assertEquals(260f, width("bounded"), 0.5f)
+            assertEquals(120f, width("narrow"), 0.5f, "a caller's max still wins over the 220dp minimum")
         }
 
     @Test

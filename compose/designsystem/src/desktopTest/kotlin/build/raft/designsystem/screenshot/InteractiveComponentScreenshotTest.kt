@@ -2,6 +2,7 @@ package build.raft.designsystem.screenshot
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.background
@@ -63,6 +64,7 @@ import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.designsystem.components.RaftRadioRow
@@ -689,6 +691,41 @@ class InteractiveComponentScreenshotTest {
                             RaftRadioRow("Raft Labs", selected = true, onClick = {})
                             RaftRadioRow("Acme", selected = false, onClick = {})
                         }
+                    }
+                }
+            }
+        }
+
+    /**
+     * [RaftPopoverSurface]: the 300dp rename popover (field, ghost Cancel, Default confirm),
+     * and a hugging list panel with edge-to-edge rows (no padding) under a search header.
+     */
+    @Test
+    fun popoverSurface() =
+        capture("popover_surface") {
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.padding(bottom = 24.dp)) {
+                    Caption("Popover: 300dp, 16dp padding", Modifier.padding(bottom = 8.dp))
+                    RaftPopoverSurface {
+                        RaftField(label = "Channel name") { RaftTextField("design-lab", {}, prefix = "/") }
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        ) {
+                            RaftButton("Cancel", {}, variant = RaftButtonVariant.Ghost)
+                            RaftButton("Rename", {})
+                        }
+                    }
+                }
+                Column(Modifier.width(280.dp).padding(bottom = 24.dp)) {
+                    Caption("Panel: no width, no padding, header", Modifier.padding(bottom = 8.dp))
+                    RaftPopoverSurface(
+                        width = null,
+                        contentPadding = PaddingValues(0.dp),
+                        header = { RaftMenuSearchField("", {}, placeholder = "Search servers") },
+                    ) {
+                        RaftListRow("Raft Labs", variant = RaftListRowVariant.Plain, onClick = {}, selected = true)
+                        RaftListRow("Acme", variant = RaftListRowVariant.Plain, onClick = {}, divider = true)
                     }
                 }
             }
