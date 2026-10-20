@@ -4846,9 +4846,11 @@ internal class MembersCreateAgentInputs(
     val createAgentTakenAgentNames: List<String> = emptyList()
 )
 
-/** Agent @names (handles) of live agents, so a suggested create-agent name avoids them. */
+/** @names (handles) of live agents and humans, so a suggested create-agent name avoids them. */
 internal fun List<MemberProfile>.takenAgentNames(): List<String> =
-    filter { it.kind == MemberKind.Agent && it.agentDeletedAt.isNullOrBlank() }.map { it.handle }
+    filter {
+        (it.kind == MemberKind.Agent && it.agentDeletedAt.isNullOrBlank()) || it.kind == MemberKind.Human
+    }.map { it.handle }
 
 internal class MembersInviteHumanInputs(
     /**
