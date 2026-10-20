@@ -489,20 +489,45 @@ class DisplayComponentScreenshotTest {
             }
         }
 
-    /** `components.ui.avatar-list-row.states`: 342 wide, 16 padding on `layer-panel`, a 310dp card. */
+    /**
+     * `components.ui.avatar-list-row.states`, with the web case's content: 342 wide, 16
+     * padding, the two rows in one ListRowGroup (a 310dp card), human placeholder avatars,
+     * the second row selected with the divider from the text column.
+     */
     @Test
     fun avatarListRow() =
         appearances.forEach { appearance ->
             RaftScreenshot.capture("avatar_list_row_states_${appearance.name.lowercase()}", appearance) {
-                Box(Modifier.width(342.dp).background(RaftTheme.colors.layerPanel).padding(16.dp)) {
+                Box(Modifier.width(342.dp).background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
+                    RaftListRowGroup(Modifier.fillMaxWidth()) {
+                        RaftListRow(
+                            title = "Cindy",
+                            subtitle = "Claude Code",
+                            onClick = {},
+                            leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                            trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) },
+                        )
+                        RaftListRow(
+                            title = "Product UX Designer",
+                            subtitle = "product@slock.ai",
+                            onClick = {},
+                            divider = true,
+                            selected = true,
+                            leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                            trailing = { RaftButton("Open", onClick = {}) },
+                        )
+                    }
+                }
+            }
+            // An agent row with a presence light cut out of the card and of the selected wash.
+            RaftScreenshot.capture("avatar_list_row_presence_${appearance.name.lowercase()}", appearance) {
+                Box(Modifier.width(342.dp).background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
                     RaftListRowGroup(Modifier.fillMaxWidth()) {
                         RaftListRow(
                             title = "Wug",
                             subtitle = "@wug · claude-code",
                             onClick = {},
-                            leading = {
-                                RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online)
-                            },
+                            leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online) },
                             trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) },
                         )
                         RaftListRow(
@@ -511,10 +536,7 @@ class DisplayComponentScreenshotTest {
                             onClick = {},
                             divider = true,
                             selected = true,
-                            // The light is cut out of the surface by default: the card, the cyan wash.
-                            leading = {
-                                RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Offline)
-                            },
+                            leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Offline) },
                             trailing = { RaftButton("Open", onClick = {}) },
                         )
                     }

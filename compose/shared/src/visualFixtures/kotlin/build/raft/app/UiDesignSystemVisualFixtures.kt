@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -17,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -24,6 +28,8 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxShape
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftFonts
@@ -130,6 +136,36 @@ internal fun UiBadgeVisualContent() {
             RaftBadge("Built In", variant = RaftBadgeVariant.Muted)
             RaftBadge("task #273", variant = RaftBadgeVariant.Danger)
             RaftBadge("Install", variant = RaftBadgeVariant.Accent)
+        }
+    }
+}
+
+@Composable
+internal fun UiAvatarListRowVisualContent() {
+    // web `ui-avatar-list-row`: two AvatarListRows flush inside one raft-ui <ListRowGroup>
+    // (container radius, 1dp hairline, `layer-card`, clipped; components/list-row.md), not
+    // two surface cards 12dp apart. Each row: the 35dp human placeholder avatar, a 16/24
+    // semibold title over a Space Mono subtitle, the trailing slot centred. The second row
+    // is selected (`info-soft` across the row) and carries the hairline from the text
+    // column (63dp). "Online" is a solid success badge, "Open" a 32dp default button.
+    UiDesignSystemFrame(height = 168.dp) {
+        RaftListRowGroup(Modifier.fillMaxWidth()) {
+            RaftListRow(
+                title = "Cindy",
+                subtitle = "Claude Code",
+                onClick = {},
+                leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) }
+            )
+            RaftListRow(
+                title = "Product UX Designer",
+                subtitle = "product@slock.ai",
+                onClick = {},
+                divider = true,
+                selected = true,
+                leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                trailing = { RaftButton("Open", onClick = {}) }
+            )
         }
     }
 }
