@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAvatarStep
 import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftBrutalDropdownMenuItem
 import build.raft.app.RaftMonoFamily
@@ -775,7 +776,9 @@ internal fun RaftUiAvatar(
         // raft-ui Avatar: the app avatar's square sticker (4dp radius, 1.5dp sticker-ink
         // edge, sticker-edge ring; agents on `inactive`, humans lavender, initials sized per
         // step) with the AvatarBadge presence light scaled to the nearest raft-ui step.
-        Box(modifier = modifier.size(size + if (badge) 4.dp else 0.dp)) {
+        // Reserve what the light passes the avatar's edge by: its overhang plus the cut-out.
+        val step = RaftAvatarStep.nearest(size)
+        Box(modifier = modifier.size(size + if (badge) step.badgeOverhang + step.badgeCutout else 0.dp)) {
             RaftAvatarWithStatus(
                 statusColor = if (badge) RaftColor.PresenceOnline else null,
                 avatarSize = size

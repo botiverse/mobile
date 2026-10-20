@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.strictProjectionDiagnosticsLogger
@@ -1256,7 +1257,7 @@ private fun memberFrom(
         displayName = label,
         handle = label,
         kind = kind,
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline
     )
 }

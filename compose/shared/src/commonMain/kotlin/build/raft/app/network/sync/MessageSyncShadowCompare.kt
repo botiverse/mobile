@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.data.realtime.RealtimeSocketEvents
@@ -200,7 +201,7 @@ private fun MemberProfile.toShadowParityView(): MemberProfile = MemberProfile(
     // description: compared as-is. Empty-string vs null is NOT a registered delta — projection must
     // reproduce legacy (keep the empty string); surfacing any divergence here is intentional (AD2 #2).
     description = description,
-    avatarLabel = displayName.ifBlank { id.value }.take(1).uppercase(),
+    avatarLabel = displayName.ifBlank { id.value }.toRaftAvatarLabel(),
 )
 
 /**

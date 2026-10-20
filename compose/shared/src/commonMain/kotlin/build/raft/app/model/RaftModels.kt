@@ -1,5 +1,6 @@
 package build.raft.app.model
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.network.sync.ReplyPreview
@@ -334,7 +335,7 @@ data class MemberProfile(
     val gravatarHash: String? = null,
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = null,
-    val avatarLabel: String = displayName.take(1).uppercase(),
+    val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val presence: Presence = Presence.Offline,
     val agentStatus: AgentStatus? = null,
     /**
@@ -413,7 +414,7 @@ data class ChannelExternalMemberProfile(
     val handles: List<String> = emptyList(),
     val actorKind: String? = null,
     val avatarUrl: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase(),
+    val avatarLabel: String = displayName.toRaftAvatarLabel(),
     /** External-agent credential last use; Web considers this online for 120s. */
     val lastSeenAt: String? = null
 )
@@ -428,7 +429,7 @@ data class AgentProfile(
     val roleDescription: String? = null,
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = null,
-    val avatarLabel: String = displayName.take(1).uppercase(),
+    val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val presence: Presence = Presence.Offline,
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -455,7 +456,7 @@ private fun WireServerMemberProfile.toMemberProfile(): MemberProfile {
         description = description,
         roleDescription = role?.toSettingsRoleLabel(),
         avatarUrl = avatarUrl,
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
         agentStatus = AgentStatus.Offline,
     )

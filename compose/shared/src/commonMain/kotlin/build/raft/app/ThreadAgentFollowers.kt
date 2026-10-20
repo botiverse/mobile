@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.MemberKind
 import build.raft.app.base.Utils
 import build.raft.app.data.RealThreadAgentFollowersRepository
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -311,6 +312,7 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopov
                             subtitle = indicator?.localizedMemberStatusLabel() ?: agent.status,
                             avatarWireValue = agent.avatarUrl,
                             avatarLabel = agent.label,
+                            avatarFill = raftAvatarFallbackFill(MemberKind.Agent),
                             statusColor = indicator?.color,
                             statusPulsing = indicator?.pulsing == true,
                             cacheServerId = agent.serverId,
@@ -341,7 +343,8 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopov
 @Composable
 private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {
     RaftAppAvatar(avatarWireValue = agent.avatarUrl, label = agent.label,
-        avatarSize = if (compact) 20.dp else 28.dp, cacheServerId = agent.serverId)
+        avatarSize = if (compact) 20.dp else 28.dp, cacheServerId = agent.serverId,
+        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent))
 }
 
 /** The follower endpoint carries display status, not external-agent execution mode. */

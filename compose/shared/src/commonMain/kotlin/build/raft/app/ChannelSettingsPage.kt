@@ -549,10 +549,11 @@ internal fun channelSettingsMemberCountLabel(
 private fun ChannelSettingsMemberAvatar(member: MemberProfile) {
     RaftAppAvatar(
         avatarWireValue = member.avatarWireValueForAvatarSlot(),
-        label = member.avatarLabel.ifBlank { member.displayName.take(1) },
+        label = member.raftAvatarName(),
         avatarSize = 44.dp,
         cacheSubject = member.raftAvatarCacheSubject(),
-        cacheServerId = member.serverId?.value
+        cacheServerId = member.serverId?.value,
+        fallbackFill = raftAvatarFallbackFill(member.kind)
     )
 }
 

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
@@ -128,7 +129,7 @@ private fun WireForwardMessageItem.toForwardMessageItem(): ForwardMessageItem? {
         authorKind = authorKind?.takeIf { it.isNotBlank() }
             ?: senderType?.takeIf { it.isNotBlank() }
             ?: "",
-        avatarLabel = avatarLabel?.takeIf { it.isNotBlank() } ?: resolvedAuthorName.take(1).uppercase(),
+        avatarLabel = avatarLabel?.takeIf { it.isNotBlank() } ?: resolvedAuthorName.toRaftAvatarLabel(),
         avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: avatarUrl?.takeIf { it.isNotBlank() },
         timestampLabel = timestampLabel?.takeIf { it.isNotBlank() } ?: createdAt.orEmpty(),
         body = body?.takeIf { it.isNotBlank() } ?: content.orEmpty(),
@@ -150,7 +151,7 @@ private fun WireForwardedBundleItem.toForwardMessageItem(fallbackIndex: Int): Fo
         authorId = resolvedAuthorId,
         authorName = resolvedAuthorName,
         authorKind = author?.type?.takeIf { it.isNotBlank() }.orEmpty(),
-        avatarLabel = resolvedAuthorName.removePrefix("@").take(1).uppercase(),
+        avatarLabel = resolvedAuthorName.removePrefix("@").toRaftAvatarLabel(),
         timestampLabel = sourceCreatedAt.orEmpty(),
         body = contentSnapshot,
         attachmentCount = attachmentSnapshots.size,

@@ -37,7 +37,7 @@ internal fun RaftThreadMessageItem.toThreadAuthorProfileCandidate(
         kind = kind,
         avatarUrl = avatarCandidate?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
         avatar = AvatarReference.fromWireValue(avatarCandidate),
-        avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase() },
+        avatarLabel = avatarLabel.ifBlank { displayName.toRaftAvatarLabel() },
         serverId = serverId,
         membershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         agentDeletedAt = authorDeletedAt?.takeIf { it.isNotBlank() }
@@ -102,7 +102,7 @@ private fun ReplyPreview.toThreadAuthorProfileCandidate(serverId: ServerId): Mem
         authorName = projectedDisplayName,
         authorHandle = senderName,
         authorKind = projectedKind,
-        avatarLabel = projectedDisplayName.take(1).uppercase(),
+        avatarLabel = projectedDisplayName.toRaftAvatarLabel(),
         avatarWireValue = senderAvatarUrl
     ).toThreadAuthorProfileCandidate(serverId)
 }

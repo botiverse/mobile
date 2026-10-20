@@ -55,19 +55,31 @@ internal enum class RaftAvatarStep(val designSize: RaftAvatarSize) {
 }
 
 /**
- * The 1–2 initials raft-ui writes for a person without a photo at [step]: one at
- * `sm` and below, two above. A label that already is initials (one short word, as
- * the `avatarLabel` fields carry: "AD") is kept as written; a name is reduced to the
- * first letters of its words.
+ * The 1–2 initials raft-ui writes for a person without a photo at [step]: the first
+ * character of the label's first words ([raftAvatarInitials]: one at `sm` and below, two
+ * above). Characters that cannot stand as an initial (emoji, punctuation such as `@` or
+ * `?`, unpaired surrogates) are skipped at the start of each word; a label with no letter
+ * or digit left yields "", so the fallback shows the placeholder icon.
  */
-internal fun raftAppAvatarInitials(label: String, step: RaftAvatarStep): String {
-    val clean = label.trim().removePrefix("@").removePrefix("#").trim()
-    if (clean.isEmpty()) return ""
-    val maxInitials = step.designSize.maxInitials
-    val words = clean.split(Regex("\\s+"))
-    return if (words.size == 1 && clean.length <= 2 && clean.all { it.isLetterOrDigit() }) {
-        clean.take(maxInitials).uppercase()
-    } else {
-        raftAvatarInitials(clean, step.designSize)
-    }
-}
+internal fun raftAppAvatarInitials(label: String, step: RaftAvatarStep): String =
+    raftAvatarInitials(raftAvatarInitialWords(label), step.designSize)
+
+/**
+ * The single-character `avatarLabel` the models carry (widgets and caches read it): the
+ * first initial of [this] by the same rule as [raftAppAvatarInitials], never half of a
+ * surrogate pair; "" when the name has no letter or digit.
+ */
+internal fun String.toRaftAvatarLabel(): String = raftAppAvatarInitials(this, RaftAvatarStep.Sm)
+
+/**
+ * The words of [label] with what precedes their first letter or digit removed, joined by
+ * single spaces. Supplementary-plane characters (emoji, and the rare letters outside the
+ * BMP) are surrogate pairs that [Char.isLetterOrDigit] rejects, so they are skipped too.
+ */
+private fun raftAvatarInitialWords(label: String): String =
+    label.split(RaftAvatarWordBreak)
+        .map { word -> word.dropWhile { char -> !char.isLetterOrDigit() } }
+        .filter(String::isNotEmpty)
+        .joinToString(" ")
+
+private val RaftAvatarWordBreak = Regex("\\s+")

@@ -8600,11 +8600,13 @@ private fun MembersAgentAvatarChoiceGrid(
             if (activeCustomAvatar) {
                 RaftAppAvatar(
                     avatarWireValue = member.avatarUrl,
-                    label = stringResource(MR.strings.member_label_custom_avatar),
+                    // An upload that fails to load shows the agent placeholder, not initials of "Custom avatar".
+                    label = "",
                     avatarSize = MembersAgentAvatarPickerAvatarSize,
                     borderWidth = 0.dp,
                     cacheSubject = member.raftAvatarCacheSubject(),
-                    cacheServerId = member.serverId?.value
+                    cacheServerId = member.serverId?.value,
+                    fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
                 )
             } else {
                 RaftLucideIcon(
@@ -12351,12 +12353,12 @@ private fun MembersAgentDmRow(
     currentServerId: String?,
     serverMembersState: SharedServerMembersState
 ) {
-    val avatarCacheIdentity =
+    val peerProfile =
         remember(row.peerId, currentServerId, serverMembersState) {
-            serverMembersState
-                .membersAgentDmPeerProfile(row, currentServerId)
-                ?.raftAvatarCacheIdentity(currentServerId)
+            serverMembersState.membersAgentDmPeerProfile(row, currentServerId)
         }
+    val avatarCacheIdentity =
+        remember(peerProfile, currentServerId) { peerProfile?.raftAvatarCacheIdentity(currentServerId) }
     // React parity: subtle bordered card (alpha 0.2 border, no brutal shadow)
     // with avatar + name + handle + relative time on the top row, body text
     // on the second row, and an ACTIVITY ONLY tag on the third row.
@@ -12380,10 +12382,11 @@ private fun MembersAgentDmRow(
             )
             RaftAppAvatar(
                 avatarWireValue = row.peerAvatarUrl,
-                label = row.peerName.take(1).uppercase(),
+                label = row.peerName,
                 avatarSize = 22.dp,
                 cacheSubject = avatarCacheIdentity?.subject,
-                cacheServerId = avatarCacheIdentity?.serverId
+                cacheServerId = avatarCacheIdentity?.serverId,
+                fallbackFill = raftAvatarFallbackFill(peerProfile?.kind)
             )
             Text(
                 text = row.peerName,
@@ -13978,10 +13981,11 @@ private fun MembersAvatar(
     ) {
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
-            label = member.avatarLabel,
+            label = member.raftAvatarName(),
             avatarSize = avatarSize,
             cacheSubject = member.raftAvatarCacheSubject(),
-            cacheServerId = member.serverId?.value
+            cacheServerId = member.serverId?.value,
+            fallbackFill = raftAvatarFallbackFill(member.kind)
         )
     }
 }
@@ -14223,7 +14227,7 @@ internal fun AgentCreatorSummary.toStrictMemberProfile(
         kind = kind,
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = display.take(1).uppercase()
+        avatarLabel = display.toRaftAvatarLabel()
     )
 }
 
@@ -14243,7 +14247,7 @@ private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
         kind = MemberKind.Agent,
         avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
-        avatarLabel = display.take(1).uppercase(),
+        avatarLabel = (displayName?.takeIf { it.isNotBlank() } ?: name).toRaftAvatarLabel(),
         roleDescription = runtime,
         isExternal = isExternal
     )
@@ -14379,7 +14383,7 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         serverRole = summary?.serverRole?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
         agentStatus = null,
         // Detail summaries carry the runtime sentinel only (no projected boolean).

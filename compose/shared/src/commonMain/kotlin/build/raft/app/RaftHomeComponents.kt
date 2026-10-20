@@ -142,6 +142,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -4167,7 +4168,7 @@ internal fun MemberProfile.toRaftHomePinnedMemberItem(): RaftHomePinnedMemberIte
         identity = MemberDetailIdentity(id, kind, serverId),
         name = displayName.ifBlank { handle.ifBlank { id.value } },
         description = handle.takeIf { it.isNotBlank() }?.let { "@$it" },
-        avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase().ifBlank { "?" } }
+        avatarLabel = avatarLabel.ifBlank { displayName.ifBlank { handle }.toRaftAvatarLabel() }
     )
 }
 
@@ -5167,7 +5168,7 @@ internal fun HomeServerDrawerHostedPanel(
                 ) {
                     RaftAppAvatar(
                         avatarWireValue = userHeader.avatarWireValue,
-                        label = userHeader.avatarLabel,
+                        label = userHeader.displayName.ifBlank { userHeader.avatarLabel },
                         avatarSize = 32.dp,
                         cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Human, userHeader.memberId),
                         cacheServerId = userHeader.serverId
@@ -6994,9 +6995,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
                 RaftAppAvatar(
                     avatarWireValue = avatarWireValue,
-                    label = avatarLabel,
+                    label = name.ifBlank { avatarLabel },
                     cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
-                    cacheServerId = cacheServerId
+                    cacheServerId = cacheServerId,
+                    fallbackFill = raftAvatarFallbackFill(if (isAgent) MemberKind.Agent else MemberKind.Human)
                 )
             }
             androidx.compose.foundation.layout.Row(
@@ -7131,13 +7133,15 @@ internal fun RaftAppAvatar(
     label: String,
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    // raft-ui `border-[1.5px] border-sticker-ink` at every size; 0 when the caller draws its own frame.
-    borderWidth: Dp = RaftAppStroke.Control,
+    // Unspecified: the theme's edge (raft-ui `border-[1.5px] border-sticker-ink` at every size;
+    // brutal's 1dp black line). 0 when the caller draws its own frame.
+    borderWidth: Dp = Dp.Unspecified,
     diagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: RaftAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     // The sticker fill under a photo or initials: `palette-lavender` (people) by default;
-    // raft-ui agents sit on `inactive` until their pixel avatar covers it.
+    // raft-ui agents sit on `inactive` until their pixel avatar covers it
+    // ([raftAvatarFallbackFill]). Brutal keeps lavender.
     fallbackFill: Color = RaftColor.AccentLavender
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
@@ -7160,6 +7164,7 @@ internal fun RaftAppAvatar(
         }
     }
     val step = RaftAvatarStep.nearest(avatarSize)
+    val fill = if (raftActive()) fallbackFill else RaftColor.AccentLavender
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             RaftPixelAvatarDrawCache.onCompose()
@@ -7167,25 +7172,25 @@ internal fun RaftAppAvatar(
                 RaftNativePixelAvatar(pixelSpec)
             }
         }
-        httpAvatarSource != null -> RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fallbackFill) {
+        httpAvatarSource != null -> RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fill) {
             // task #343: an uploaded avatar must not flash the fallback while its cached
             // bytes are still being resolved (cold start reads them from SQLite + native). Keep
             // the neutral background until the load settles; draw the fallback only on a
             // definitive failure. Gravatar keeps the immediate fallback: it is often unreachable
             // (CN) and the fallback is its expected face.
-            if (gravatarHttpSource != null) RaftAppAvatarFallback(label, step)
+            if (gravatarHttpSource != null) RaftAppAvatarFallback(label, step, avatarSize)
             RaftAvatarHttpImage(
                 source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize(),
                 diagnostics = diagnostics,
                 cacheSubject = cacheSubject,
                 cacheServerId = cacheServerId,
-                fallback = { if (gravatarHttpSource == null) RaftAppAvatarFallback(label, step) }
+                fallback = { if (gravatarHttpSource == null) RaftAppAvatarFallback(label, step, avatarSize) }
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fallbackFill) {
-                RaftAppAvatarFallback(label, step)
+            RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fill) {
+                RaftAppAvatarFallback(label, step, avatarSize)
             }
         }
     }
@@ -7196,10 +7201,13 @@ internal fun RaftAppAvatar(
  * on [fill], with a [borderWidth] `sticker-ink` edge and, outside it, the 1.5dp
  * `sticker-edge` ring (transparent in light, the die-cut edge in dark; it takes no layout
  * space). The [face] fills the inside of the edge with 2dp corners (`rounded-[2px]`), so a
- * photo or pixel face is never painted under the ink. Brutal keeps square corners.
+ * photo or pixel face is never painted under the ink. An unspecified [borderWidth] takes the
+ * theme's edge: 1.5dp on raft.
+ *
+ * Brutal keeps its own avatar: a square with a 1dp black line drawn over the face, no ring.
  */
 @Composable
-private fun RaftAppAvatarFrame(
+internal fun RaftAppAvatarFrame(
     modifier: Modifier,
     avatarSize: Dp,
     borderWidth: Dp,
@@ -7207,9 +7215,10 @@ private fun RaftAppAvatarFrame(
     face: @Composable BoxScope.() -> Unit
 ) {
     val raft = raftActive()
-    val shape = if (raft) RoundedCornerShape(RaftAppRadius.Sticker) else RectangleShape
+    val edge = if (borderWidth != Dp.Unspecified) borderWidth else if (raft) RaftAppStroke.Control else RaftAppStroke.Thin
+    val shape = if (raft) RaftAvatarStickerShape else RectangleShape
     val edgeColor = if (raft) RaftColor.StickerInk else RaftColor.BorderBlack
-    val ringColor = if (raft && borderWidth > 0.dp) RaftColor.StickerEdge else Color.Transparent
+    val ringColor = if (raft && edge > 0.dp) RaftColor.StickerEdge else Color.Transparent
     Box(
         modifier =
             modifier
@@ -7235,31 +7244,48 @@ private fun RaftAppAvatarFrame(
                 .size(width = avatarSize, height = avatarSize)
                 .clip(shape)
                 .background(fill)
-                .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, edgeColor, shape) else Modifier),
+                .then(if (edge > 0.dp) Modifier.border(edge, edgeColor, shape) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(borderWidth)
-                    .clip(if (raft) RoundedCornerShape(RaftAvatarFaceRadius) else RectangleShape),
+                if (raft) {
+                    Modifier.fillMaxSize().padding(edge).clip(RaftAvatarFaceShape)
+                } else {
+                    // Brutal: the face fills the square and the line is drawn over it.
+                    Modifier.fillMaxSize()
+                },
             contentAlignment = Alignment.Center,
             content = face
         )
     }
 }
 
+// raft-ui Avatar root: `rounded-sticker` (4dp).
+private val RaftAvatarStickerShape = RoundedCornerShape(RaftAppRadius.Sticker)
+
 // raft-ui `image` / `fallback` slots: `rounded-[2px]` inside the 1.5dp ink edge.
-private val RaftAvatarFaceRadius = 2.dp
+private val RaftAvatarFaceShape = RoundedCornerShape(2.dp)
 
 /**
  * raft-ui AvatarFallback: a person without a photo shows their initials (Space Grotesk
  * bold, `leading-none`, -0.01em, `sticker-ink`, sized per avatar step: 40 / 22 / 15 / 13 /
  * 11 / 8); with no name to take them from, the placeholder person icon at the step's size.
+ * The initials are decoration: the row or header around the avatar names the person, so
+ * they are hidden from accessibility services.
+ *
+ * Brutal keeps its placeholder person icon (56% of the avatar) for everyone.
  */
 @Composable
-private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep) {
+private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep, avatarSize: Dp) {
+    if (!raftActive()) {
+        RaftLucideIcon(
+            RaftLucideIconName.User,
+            modifier = Modifier.size((avatarSize.value * 0.56f).dp),
+            color = RaftColor.TextBlackArgb
+        )
+        return
+    }
     val initials = remember(label, step) { raftAppAvatarInitials(label, step) }
     if (initials.isEmpty()) {
         RaftLucideIcon(
@@ -7271,6 +7297,7 @@ private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep) {
     }
     Text(
         text = initials,
+        modifier = Modifier.clearAndSetSemantics {},
         style =
             RaftType.Body
                 .withRaftFontWeight(FontWeight.Bold)
@@ -7285,6 +7312,18 @@ private fun RaftAppAvatarFallback(label: String, step: RaftAvatarStep) {
         softWrap = false
     )
 }
+
+/**
+ * The name a member's avatar takes its initials from: the display name, else the handle,
+ * never the member id the profiles fall back to; then the stored [MemberProfile.avatarLabel].
+ */
+internal fun MemberProfile.raftAvatarName(): String =
+    listOf(displayName, handle).map(String::trim).firstOrNull { it.isNotEmpty() && it != id.value }
+        ?: avatarLabel
+
+/** raft-ui Avatar `type`: an agent without a face sits on `inactive`, a person on `palette-lavender`. */
+internal fun raftAvatarFallbackFill(kind: MemberKind?): Color =
+    if (kind == MemberKind.Agent) RaftColor.Inactive else RaftColor.AccentLavender
 
 @Composable
 internal fun RaftAvatarHttpImage(

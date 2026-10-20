@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
@@ -30,7 +31,7 @@ data class SharedMembersMemberSuggestion(
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,
     val avatarWireValue: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase(),
+    val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val memberId: String? = null
 )
 
