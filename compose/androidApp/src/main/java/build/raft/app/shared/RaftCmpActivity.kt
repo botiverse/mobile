@@ -3022,12 +3022,17 @@ internal open class RaftCmpActivity :
             start(context, PAGE_AUTH_LEGAL_ACCEPTANCE, pageData, clearTask)
         }
 
-        internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject =
-                if (resolvedPageName(intent) == PAGE_APP_SHELL) {
+        internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject {
+                val pageName = resolvedPageName(intent)
+                return if (pageName == PAGE_APP_SHELL) {
                     JSONObject(resolvedPageData(intent).text)
                 } else {
-                    JSONObject()
+                    // An old page name that is an app-shell tab now (the Home 动态 page) opens
+                    // the shell on that tab.
+                    raftLegacyAppShellTabRedirect(pageName, JSONObject(resolvedPageData(intent).text))
+                        ?: JSONObject()
                 }
+        }
 
         private fun resolvedPageName(intent: Intent?): String =
                 if (intent.isDiagnosticsDeepLinkIntent()) {
