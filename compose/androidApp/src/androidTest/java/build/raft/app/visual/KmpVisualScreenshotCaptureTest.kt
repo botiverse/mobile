@@ -3818,6 +3818,11 @@ class KmpVisualScreenshotCaptureTest {
         captureSettingsComputersCase("screens.settings.computer-detail", "detail")
     }
 
+    @Test
+    fun captureSettingsComputerDetailRotatedKey() {
+        captureSettingsComputersCase("screens.settings.computer-detail.rotated-key", "rotated-key")
+    }
+
     private fun captureSettingsComputersCase(caseId: String, fixtureKey: String) {
         captureKmpComponentCase(
             caseId = caseId,

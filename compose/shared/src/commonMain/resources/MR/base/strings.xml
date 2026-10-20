@@ -1880,7 +1880,12 @@
     <string name="settings_computers_cannot_delete_message_one">This computer has %1$d agent assigned. Remove all agents before deleting the computer.</string>
     <string name="settings_computers_cannot_delete_message_many">This computer has %1$d agents assigned. Remove all agents before deleting the computer.</string>
     <string name="settings_computers_error_refresh_title">Couldn\'t refresh</string>
-    <string name="settings_computers_rotate_key_web_hint">Rotate this computer\'s API key on the web.</string>
+    <string name="settings_computers_rotate_key_confirm_title">Rotate API key for %1$s?</string>
+    <string name="settings_computers_rotate_key_confirm_message">The existing API key for this computer will stop working immediately. The daemon on the computer reconnects only after you give it the new key, which is shown once after rotating.</string>
+    <string name="settings_computers_rotated_key_title">New API key</string>
+    <string name="settings_computers_rotated_key_detail">Give this key to the daemon on the computer so it can reconnect.</string>
+    <string name="settings_computers_rotated_key_once">This key is only shown once. Copy it now — you won\'t be able to see it again after you close this.</string>
+    <string name="settings_computers_rotated_key_copy">Copy key</string>
     <string name="settings_connected_apps_loading">Loading integrations, marketplace apps, and OAuth clients.</string>
     <string name="settings_connected_apps_empty">No Connected Apps</string>
     <string name="settings_connected_apps_error">Connected Apps Error</string>

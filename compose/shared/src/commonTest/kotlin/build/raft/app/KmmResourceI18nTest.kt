@@ -957,6 +957,11 @@ class KmmResourceI18nTest {
             MR.strings.settings_computers_rotate_key_detail,
             MR.strings.settings_computers_rotate_key_action,
             MR.strings.settings_computers_rotate_key_busy,
+            MR.strings.settings_computers_rotate_key_confirm_message,
+            MR.strings.settings_computers_rotated_key_title,
+            MR.strings.settings_computers_rotated_key_detail,
+            MR.strings.settings_computers_rotated_key_once,
+            MR.strings.settings_computers_rotated_key_copy,
             MR.strings.settings_computers_delete_title,
             MR.strings.settings_computers_delete_detail,
             MR.strings.settings_computers_delete_action,
@@ -995,6 +1000,7 @@ class KmmResourceI18nTest {
 
         listOf(
             MR.strings.settings_computers_workspace_modified.format(listOf("today")),
+            MR.strings.settings_computers_rotate_key_confirm_title.format(listOf("Studio Mac")),
             MR.strings.settings_computers_file_count_one.format(listOf(1)),
             MR.strings.settings_computers_file_count_many.format(listOf(2)),
             MR.strings.settings_computers_run_offline.format(listOf("computer")),

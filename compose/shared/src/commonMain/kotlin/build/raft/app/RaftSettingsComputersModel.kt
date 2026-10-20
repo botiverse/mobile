@@ -132,6 +132,8 @@ internal sealed interface RaftComputerDetailModel {
         val canEdit: Boolean = snapshot.canEditMachine,
         /** The Delete action (server `removeMachines` or machine creator). */
         val canRemove: Boolean = snapshot.canRemoveMachine,
+        /** Rotate API key (server `rotateMachineKeys` or machine creator). */
+        val canRotateKey: Boolean = snapshot.canRotateMachineKey,
         /**
          * Agents still assigned to the machine. While non-zero, Delete opens web's "Cannot delete"
          * notice instead of the destructive confirm (the server would answer 409 anyway).

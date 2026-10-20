@@ -1880,7 +1880,12 @@
     <string name="settings_computers_cannot_delete_message_one">这台 Computer 还有 %1$d 个 Agent。请先移除所有 Agent，再删除 Computer。</string>
     <string name="settings_computers_cannot_delete_message_many">这台 Computer 还有 %1$d 个 Agent。请先移除所有 Agent，再删除 Computer。</string>
     <string name="settings_computers_error_refresh_title">刷新失败</string>
-    <string name="settings_computers_rotate_key_web_hint">请在网页端轮换这台计算机的 API 密钥。</string>
+    <string name="settings_computers_rotate_key_confirm_title">确定要为 %1$s 轮换 API 密钥吗？</string>
+    <string name="settings_computers_rotate_key_confirm_message">这台计算机现有的 API 密钥将立即失效。计算机上的守护进程需要换用新密钥才能重新连接，新密钥只会在轮换后显示一次。</string>
+    <string name="settings_computers_rotated_key_title">新的 API 密钥</string>
+    <string name="settings_computers_rotated_key_detail">将此密钥提供给计算机上的守护进程，以便其重新连接。</string>
+    <string name="settings_computers_rotated_key_once">此密钥只显示一次，请立即复制。关闭后将无法再次查看。</string>
+    <string name="settings_computers_rotated_key_copy">复制密钥</string>
     <string name="settings_connected_apps_loading">正在加载集成、应用市场项目和 OAuth 客户端。</string>
     <string name="settings_connected_apps_empty">暂无已连接应用</string>
     <string name="settings_connected_apps_error">已连接应用出错</string>

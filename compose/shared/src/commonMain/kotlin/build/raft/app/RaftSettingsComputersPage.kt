@@ -40,6 +40,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.COMPUTER_ACTION_DESCRIPTION
 import build.raft.app.data.COMPUTER_ACTION_RENAME
+import build.raft.app.data.COMPUTER_ACTION_ROTATE_KEY
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
@@ -48,6 +49,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
+import build.raft.app.data.SettingsComputerApiKey
 import build.raft.app.data.SettingsComputerDescriptionUpdateRequest
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerRenameRequest
@@ -74,6 +76,7 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCodeBlock
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftDialog
@@ -389,6 +392,10 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         )
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    // A rotated key is shown once: leaving the page drops it even if the store outlives the page.
+    DisposableEffect(settingsViewModel) {
+        onDispose { settingsViewModel.dispatch(SharedSettingsIntent.DismissRotatedComputerKey) }
+    }
     fun closePage() = pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     val deleted = raftComputerDeleteCompleted(settingsState, target.machineId)
     LaunchedEffect(deleted) {
@@ -440,6 +447,8 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 actionState = settingsState.actionState,
                 refreshErrorCode = refreshErrorCode,
                 bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
+                rotatedKey = settingsState.rotatedComputerKey?.takeIf { it.machineId == target.machineId }?.apiKey,
+                onCopyKey = { environment.settingsCapabilities.bridgeCopyToClipboard(it) },
                 onRetry = ::refresh,
                 onIntent = settingsViewModel::dispatch,
                 onOpenAgent = { agent ->
@@ -470,10 +479,20 @@ internal fun RaftSettingsComputerDetailContent(
     actionState: SharedSettingsActionState?,
     refreshErrorCode: String? = null,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
+    /** The key a rotation just returned: shown once in [RaftComputerRotatedKeyDialog]. */
+    rotatedKey: SettingsComputerApiKey? = null,
+    onCopyKey: (String) -> Unit = {},
     onRetry: () -> Unit,
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
 ) {
+    rotatedKey?.let { key ->
+        RaftComputerRotatedKeyDialog(
+            apiKey = key,
+            onCopy = onCopyKey,
+            onDismiss = { onIntent(SharedSettingsIntent.DismissRotatedComputerKey) },
+        )
+    }
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
             RaftComputerDetailModel.Loading ->
@@ -519,8 +538,10 @@ private fun RaftComputerDetailBody(
     val machineId = computer.id
     val canEdit = model.canEdit
     val canRemove = model.canRemove
+    val canRotateKey = model.canRotateKey
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
+    var confirmRotate by remember(machineId) { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "header") { RaftComputerDetailHeader(computer) }
         refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
@@ -608,19 +629,38 @@ private fun RaftComputerDetailBody(
                 onScan = { onIntent(SharedSettingsIntent.ScanComputerWorkspaces(machineId)) },
             )
         }
-        if (canEdit || canRemove) {
+        if (canRotateKey || canRemove) {
             item(key = "actions") {
                 RaftSection(title = stringResource(MR.strings.settings_computers_section_actions)) {
                     val deleting = actionState?.let { it.action == COMPUTER_ACTION_DELETE && it.itemId == machineId && it.inProgress } == true
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Key rotation stays on the web: a hint row, never a call to the rotate endpoint.
-                        RaftComputersInlineNotice(
-                            title = stringResource(MR.strings.settings_computers_rotate_key_title),
-                            detail = stringResource(MR.strings.settings_computers_rotate_key_web_hint),
-                        )
+                    val rotating =
+                        actionState?.let { it.action == COMPUTER_ACTION_ROTATE_KEY && it.itemId == machineId && it.inProgress } == true
+                    if (canRotateKey) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RaftText(
+                                stringResource(MR.strings.settings_computers_rotate_key_title),
+                                style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                                color = RaftTheme.colors.foreground,
+                            )
+                            RaftText(
+                                stringResource(MR.strings.settings_computers_rotate_key_detail),
+                                style = RaftTheme.typography.footnote,
+                                color = RaftTheme.colors.foregroundMuted,
+                            )
+                            RaftButton(
+                                text = stringResource(MR.strings.settings_computers_rotate_key_action),
+                                onClick = { confirmRotate = true },
+                                loading = rotating,
+                                loadingLabel = stringResource(MR.strings.settings_computers_rotate_key_busy),
+                                leadingIcon = { RaftComputersIcon(RaftLucideIconName.KeyRound) },
+                            )
+                        }
                     }
                     if (canRemove) {
-                        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            Modifier.padding(top = if (canRotateKey) 16.dp else 0.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             RaftText(
                                 stringResource(MR.strings.settings_computers_delete_title),
                                 style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
@@ -645,6 +685,31 @@ private fun RaftComputerDetailBody(
             }
         }
         item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+    if (confirmRotate) {
+        RaftDialog(
+            onDismissRequest = { confirmRotate = false },
+            title = stringResource(MR.strings.settings_computers_rotate_key_confirm_title, computer.name),
+            description = stringResource(MR.strings.settings_computers_rotate_key_confirm_message),
+            closeLabel = stringResource(MR.strings.common_close),
+            footer = {
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
+                    onClick = { confirmRotate = false },
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                )
+                RaftButton(
+                    text = stringResource(MR.strings.settings_computers_rotate_key_action),
+                    onClick = {
+                        confirmRotate = false
+                        onIntent(SharedSettingsIntent.RotateComputerKey(machineId))
+                    },
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg,
+                )
+            },
+        )
     }
     if (confirmDelete && model.assignedAgentCount > 0) {
         // Web MachineDetailPanel: a machine with agents gets a notice, not a destructive confirm.
@@ -691,6 +756,47 @@ private fun RaftComputerDetailBody(
                     size = RaftButtonSize.Lg,
                 )
             },
+        )
+    }
+}
+
+/**
+ * The new key, once (web's one-time secret card): monospace, a Copy button, and the warning that it
+ * cannot be shown again. Closing it in any way (Done, ×, Back) drops the key from the store; a stray
+ * tap on the scrim does not close it.
+ */
+@Composable
+private fun RaftComputerRotatedKeyDialog(
+    apiKey: SettingsComputerApiKey,
+    onCopy: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = stringResource(MR.strings.settings_computers_rotated_key_title),
+        description = stringResource(MR.strings.settings_computers_rotated_key_detail),
+        dismissOnClickOutside = false,
+        closeLabel = stringResource(MR.strings.common_close),
+        footer = {
+            RaftButton(
+                text = stringResource(MR.strings.common_done),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
+            )
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RaftCodeBlock(text = apiKey.value)
+            RaftButton(
+                text = stringResource(MR.strings.settings_computers_rotated_key_copy),
+                onClick = { onCopy(apiKey.value) },
+                leadingIcon = { RaftComputersIcon(RaftLucideIconName.Copy) },
+            )
+        }
+        RaftBanner(
+            description = stringResource(MR.strings.settings_computers_rotated_key_once),
+            status = RaftBannerStatus.Warning,
         )
     }
 }
