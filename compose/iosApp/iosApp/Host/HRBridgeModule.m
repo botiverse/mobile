@@ -4892,6 +4892,19 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         callback(@{ @"status" : @"failed", @"reason" : @"missing_url" });
         return;
     }
+    // The download sink creates `<cachedPath>.part-<token>` with posix creat, which does not
+    // create parents. A never-cached attachment (e.g. a Markdown preview rendered from memory)
+    // has no cache directory yet, so create it first or every first open fails immediately.
+    NSError *directoryError = nil;
+    if (![NSFileManager.defaultManager createDirectoryAtPath:cachedDir
+                                 withIntermediateDirectories:YES
+                                                  attributes:nil
+                                                       error:&directoryError]) {
+        callback(@{ @"status" : @"storage_failed", @"reason" : @"cache_dir_create_failed",
+                    @"errorKind" : @"storage_prepare",
+                    @"message" : @"Unable to prepare attachment for opening" });
+        return;
+    }
     self.raft_attachmentExportDownloadId = downloadId;
     self.raft_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
     self.raft_attachmentExportDestination = RaftAttachmentExportDestinationOpen;
