@@ -1,6 +1,9 @@
 package build.raft.app.compat.pager
 
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
@@ -86,7 +89,10 @@ fun RaftPagerHost(
     val density = LocalDensity.current
     val statusBars = WindowInsets.statusBars
     val navigationBars = WindowInsets.navigationBars
-    val safeDrawing = WindowInsets.safeDrawing
+    // System bars + cutout, deliberately without the IME: Kuikly's pageData safe area never
+    // carried the keyboard (composers add it via keyboardHeightChange), and reading the IME here
+    // would recompose the host on every keyboard animation frame.
+    val safeDrawing = WindowInsets.systemBars.union(WindowInsets.displayCutout)
     val windowSize = LocalWindowInfo.current.containerSize
     val metrics =
         with(density) {
