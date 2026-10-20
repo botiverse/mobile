@@ -608,38 +608,30 @@ private fun RaftComputerDetailBody(
                 onScan = { onIntent(SharedSettingsIntent.ScanComputerWorkspaces(machineId)) },
             )
         }
-        if (canEdit || canRemove) {
+        // Like the web, key rotation is not offered here.
+        if (canRemove) {
             item(key = "actions") {
                 RaftSection(title = stringResource(MR.strings.settings_computers_section_actions)) {
                     val deleting = actionState?.let { it.action == COMPUTER_ACTION_DELETE && it.itemId == machineId && it.inProgress } == true
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Key rotation stays on the web: a hint row, never a call to the rotate endpoint.
-                        RaftComputersInlineNotice(
-                            title = stringResource(MR.strings.settings_computers_rotate_key_title),
-                            detail = stringResource(MR.strings.settings_computers_rotate_key_web_hint),
+                        RaftText(
+                            stringResource(MR.strings.settings_computers_delete_title),
+                            style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                            color = RaftTheme.colors.foreground,
                         )
-                    }
-                    if (canRemove) {
-                        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            RaftText(
-                                stringResource(MR.strings.settings_computers_delete_title),
-                                style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
-                                color = RaftTheme.colors.foreground,
-                            )
-                            RaftText(
-                                stringResource(MR.strings.settings_computers_delete_detail),
-                                style = RaftTheme.typography.footnote,
-                                color = RaftTheme.colors.foregroundMuted,
-                            )
-                            RaftButton(
-                                text = stringResource(MR.strings.settings_computers_delete_action),
-                                onClick = { confirmDelete = true },
-                                variant = RaftButtonVariant.Danger,
-                                loading = deleting,
-                                loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
-                                leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
-                            )
-                        }
+                        RaftText(
+                            stringResource(MR.strings.settings_computers_delete_detail),
+                            style = RaftTheme.typography.footnote,
+                            color = RaftTheme.colors.foregroundMuted,
+                        )
+                        RaftButton(
+                            text = stringResource(MR.strings.settings_computers_delete_action),
+                            onClick = { confirmDelete = true },
+                            variant = RaftButtonVariant.Danger,
+                            loading = deleting,
+                            loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
+                            leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
+                        )
                     }
                 }
             }
