@@ -687,6 +687,11 @@
     <string name="thread_forward_placeholder_many">FORWARDED %1$d MESSAGES</string>
     <string name="thread_forward_sending">Sending</string>
     <string name="thread_forward_destinations">Destinations</string>
+    <string name="thread_forward_select_destinations">Select destinations</string>
+    <string name="thread_forward_selected_from">%1$d selected from %2$s</string>
+    <string name="thread_forward_search_targets">Search targets</string>
+    <string name="thread_forward_recent">Recent</string>
+    <string name="thread_forward_select_multiple">Select Multiple</string>
     <string name="thread_forward_destination">Destination</string>
     <string name="thread_forward_messages_selected">%1$d messages selected</string>
     <string name="thread_forward_destinations_selected">%1$d destinations selected</string>

@@ -493,7 +493,12 @@ internal fun ThreadMessageVisualScreenContent() {
                     .height(844.dp)
                     .background(RaftColor.SurfaceWhite)
         ) {
-            Column(modifier = Modifier.padding(RaftAppSpacing.Md)) {
+            // web: `padding: 16px 16px 0`, and each new-group MessageItem opens 8dp below
+            // the one before (its own wash, white between rows).
+            Column(
+                modifier = Modifier.padding(start = RaftAppSpacing.Md, top = RaftAppSpacing.Md + 8.dp, end = RaftAppSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 messages.forEach { selectedMessage ->
                     ThreadMessageCard(
                         memberAvatarResolver = ThreadVisualMemberAvatarResolver,
@@ -502,6 +507,7 @@ internal fun ThreadMessageVisualScreenContent() {
                         agentStatusResolver = agentStatusResolver,
                         replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(selectedMessage),
                         highlightedMentions = highlightedMentions,
+                        memberModelLabelResolver = ThreadShareSelectionVisualModelLabels,
                         shareSelectionActive = true,
                         selectedForShare = true,
                         onToggleShareSelection = {},
@@ -1283,3 +1289,13 @@ internal data class ThreadInlineReplyTimestampBounds(
 )
 internal const val ThreadInlineReplyTimestampHitTargetDescription =
     "Inline reply timestamp hit target"
+
+// web visualAgents: Cindy runs gpt-5-codex on codex, which the message header names.
+private val ThreadShareSelectionVisualModelLabels =
+    RaftMemberModelLabelResolver(
+        currentLabel = { memberId -> threadShareSelectionVisualModelLabel(memberId) },
+        labelFlow = { memberId -> kotlinx.coroutines.flow.flowOf(threadShareSelectionVisualModelLabel(memberId)) }
+    )
+
+private fun threadShareSelectionVisualModelLabel(memberId: String?): String? =
+    if (memberId == "agent-cindy") build.raft.app.model.getModelLabel(runtimeId = "codex", modelId = "gpt-5-codex") else null

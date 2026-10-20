@@ -2339,6 +2339,12 @@ internal fun RaftThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? 
         ?: parentChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
+/** web `targetLabel(sourceChannel)`: "#design" for a channel or thread, "@peer" for a DM. */
+internal fun RaftThreadScreenPayload.threadForwardSourceLabel(): String? {
+    val name = title.trim().removePrefix("#").removePrefix("@").takeIf { it.isNotBlank() } ?: return null
+    return if (surfaceKind == RaftThreadSurfaceKind.DirectMessage) "@$name" else "#$name"
+}
+
 internal fun RaftThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
     listOfNotNull(
         parentChannelId,
@@ -15826,6 +15832,8 @@ private fun ThreadPageContentContent(
                     // closes the IME on every keystroke (verify feedback #255).
                     searchInputInteractive = forwardPickerFlow.step == RaftForwardPickerStep.Targets,
                     bottomSafeArea = forwardPickerBottomSafeArea,
+                    sourceLabel = payload.threadForwardSourceLabel(),
+                    singleTapContinues = true,
                     state =
                         RaftForwardTargetPickerUiState(
                             sessionKey = visibleForwardPickerSession,
@@ -24837,7 +24845,7 @@ private fun ThreadMessageCardContent(
                     ThreadMessageSelectionToggle(
                         checked = selectedForShare,
                         onClick = onToggleShareSelection,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
                 if (!alignOwnMessageRight) {
@@ -25243,7 +25251,7 @@ private fun ThreadMessageCardContent(
                     ThreadMessageSelectionToggle(
                         checked = selectedForShare,
                         onClick = onToggleShareSelection,
-                        modifier = Modifier.padding(top = 2.dp)
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
@@ -25589,18 +25597,19 @@ private fun ThreadMessageSelectionToggle(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // web MessageMultiSelectCheckbox: a 20dp raft-ui Checkbox, `self-start mt-1.5`.
     Button(
         onClick = onClick,
         pressFeedback = false,
         modifier =
             modifier
-                .size(28.dp)
+                .size(20.dp)
                 .background(Color.Transparent)
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(22.dp)
+                    .size(20.dp)
                     // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
                     // foreground and an inverse check.
                     .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
@@ -31858,8 +31867,15 @@ internal fun <T> RaftForwardTargetPicker(
     onIntent: (RaftForwardTargetPickerIntent<T>) -> Unit,
     topContent: (@Composable () -> Unit)? = null,
     searchInputInteractive: Boolean = state.interactive,
-    bottomSafeArea: Dp = 0.dp
+    bottomSafeArea: Dp = 0.dp,
+    // web ForwardComposerMobile: the source the messages come from ("#design"); the header
+    // reads "2 selected from #design". Null keeps the plain message count.
+    sourceLabel: String? = null,
+    // web mobile picker: a tap forwards to that one place; "Select Multiple" switches to
+    // checkboxes and the Continue footer. False keeps the checkbox mode only.
+    singleTapContinues: Boolean = false
 ) {
+    var multiSelect by remember(state.sessionKey) { mutableStateOf(!singleTapContinues) }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val loading = state.loadState == RaftForwardPickerLoadState.Loading
     val listState = key(state.sessionKey) { rememberLazyListState() }
@@ -31891,20 +31907,29 @@ internal fun <T> RaftForwardTargetPicker(
                     .raftNativeDispatchCapture()
         )
         Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-            RaftTopPageHeader(
-                title = stringResource(MR.strings.thread_action_forward),
-                subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),
-                iconName = RaftLucideIconName.Send,
-                backgroundColor = RaftColor.Canvas,
-                leadingContent = {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.ArrowLeft,
-                        onClick = {
-                            if (state.dismissEnabled) onIntent(RaftForwardTargetPickerIntent.Dismiss)
-                        },
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
+            RaftForwardPickerHeader(
+                subtitle =
+                    sourceLabel?.takeIf { it.isNotBlank() }?.let { source ->
+                        stringResource(MR.strings.thread_forward_selected_from, messageCount, source)
+                    } ?: stringResource(MR.strings.thread_forward_messages_selected, messageCount),
+                multiSelect = multiSelect,
+                multiSelectAvailable = singleTapContinues,
+                dismissEnabled = state.dismissEnabled,
+                onBack = {
+                    if (singleTapContinues && multiSelect) {
+                        state.selectedKeys.forEach { key ->
+                            onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key))
+                        }
+                        multiSelect = false
+                    } else if (state.dismissEnabled) {
+                        onIntent(RaftForwardTargetPickerIntent.Dismiss)
+                    }
+                },
+                onStartMultiSelect = {
+                    state.selectedKeys.forEach { key ->
+                        onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key))
+                    }
+                    multiSelect = true
                 }
             )
             topContent?.invoke()
@@ -31926,26 +31951,28 @@ internal fun <T> RaftForwardTargetPicker(
                     )
                 }
             }
-            SharedHomeSearchInput(
-                query = state.query,
-                loading = loading,
-                interactive = searchInputInteractive,
-                onQueryChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) },
-                onSubmit = {},
+            // web `InputGroup` with the inline-start Search addon, inside `main p-3`, `mb-3`.
+            RaftBrutalSearchField(
+                value = state.query,
+                placeholder = stringResource(MR.strings.thread_forward_search_targets),
+                onValueChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) },
+                enabled = searchInputInteractive,
+                showClearWhenNotEmpty = true,
                 onClear = { onIntent(RaftForwardTargetPickerIntent.QueryChanged("")) },
-                placeholder = stringResource(MR.strings.thread_action_search),
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp)
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = ForwardPickerBodyPadding, top = ForwardPickerBodyPadding, end = ForwardPickerBodyPadding)
             )
-            Text(
+            RaftForwardPickerEyebrow(
                 text =
-                    if (state.query.isBlank()) {
-                        stringResource(MR.strings.thread_forward_destinations)
-                    } else {
-                        stringResource(MR.strings.thread_forward_search_results)
+                    when {
+                        multiSelect && singleTapContinues && state.selectedKeys.isNotEmpty() ->
+                            stringResource(MR.strings.thread_forward_selected, state.selectedKeys.size)
+                        state.query.isBlank() -> stringResource(MR.strings.thread_forward_recent)
+                        else -> stringResource(MR.strings.thread_forward_search_results)
                     },
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = RaftColor.TextMutedGray,
-                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp)
+                modifier = Modifier.padding(top = ForwardPickerBodyPadding)
             )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 if (state.items.isEmpty() && loading) {
@@ -31981,8 +32008,9 @@ internal fun <T> RaftForwardTargetPicker(
                 } else {
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceWhite),
-                        contentPadding = PaddingValues(bottom = 12.dp)
+                        modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas),
+                        contentPadding = PaddingValues(bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(ForwardPickerListRowGap)
                     ) {
                         items(state.items.size, key = { state.items[it].rowKey }) { index ->
                             // task #803: freeze the row identity at RENDER time.
@@ -31990,18 +32018,38 @@ internal fun <T> RaftForwardTargetPicker(
                             // refreshes — displayed A could select B (feedback #152).
                             val rowTarget = state.items[index]
                             val rowGeneration = state.requestGeneration
-                            ThreadForwardTargetRow(
+                            RaftForwardPickerTargetRow(
                                 target = rowTarget,
                                 selected = rowTarget.stableKey in state.selectedKeys,
+                                showCheckbox = multiSelect,
                                 interactive = state.interactive,
                                 onClick = {
                                     if (state.interactive) {
-                                        onIntent(
-                                            RaftForwardTargetPickerIntent.TargetSelected(
-                                                item = rowTarget,
-                                                renderGeneration = rowGeneration
+                                        if (multiSelect) {
+                                            onIntent(
+                                                RaftForwardTargetPickerIntent.TargetSelected(
+                                                    item = rowTarget,
+                                                    renderGeneration = rowGeneration
+                                                )
                                             )
-                                        )
+                                        } else {
+                                            // One tap is one destination: drop any earlier pick
+                                            // (back from the note step), pick this, go on.
+                                            state.selectedKeys
+                                                .filter { it != rowTarget.stableKey }
+                                                .forEach { key ->
+                                                    onIntent(RaftForwardTargetPickerIntent.RemoveSelection(key))
+                                                }
+                                            if (rowTarget.stableKey !in state.selectedKeys) {
+                                                onIntent(
+                                                    RaftForwardTargetPickerIntent.TargetSelected(
+                                                        item = rowTarget,
+                                                        renderGeneration = rowGeneration
+                                                    )
+                                                )
+                                            }
+                                            onIntent(RaftForwardTargetPickerIntent.Continue)
+                                        }
                                     }
                                 }
                             )
@@ -32042,7 +32090,7 @@ internal fun <T> RaftForwardTargetPicker(
                     }
                 }
             }
-            if (state.selectedItems.isNotEmpty()) {
+            if (multiSelect && state.selectedItems.isNotEmpty()) {
                 Column(
                     modifier =
                         Modifier
@@ -32320,20 +32368,18 @@ internal fun ThreadShareSelectionToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
+            // web SelectModeToolbar: `font-mono text-mono-meta text-foreground-muted` count,
+            // then `gap-1` sm buttons — ghost Cancel, accent Forward, outline icon-sm Copy
+            // and More (14dp glyphs).
+            build.raft.designsystem.text.RaftText(
                 text = stringResource(MR.strings.thread_forward_selected, selectedCount),
-                style = RaftType.Caption.copy(
-                    fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    fontWeight = FontWeight.Normal
-                ),
-                color = RaftColor.TextMuted,
+                style = build.raft.designsystem.theme.RaftTheme.typography.monoMeta,
+                color = build.raft.designsystem.theme.RaftTheme.colors.foregroundMuted,
                 maxLines = 1
             )
             Row(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (onSelectAll != null) {
@@ -32341,42 +32387,38 @@ internal fun ThreadShareSelectionToolbar(
                         label = stringResource(MR.strings.thread_comments_filter_all),
                         icon = RaftLucideIconName.Check,
                         onClick = onSelectAll,
-                        enabled = hasSelection && selectedCount < selectableCount
+                        enabled = hasSelection && selectedCount < selectableCount,
+                        variant = build.raft.designsystem.components.RaftButtonVariant.Default
                     )
                 }
                 ThreadShareSelectionActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     icon = RaftLucideIconName.X,
                     onClick = onCancel,
-                    enabled = true
+                    enabled = true,
+                    variant = build.raft.designsystem.components.RaftButtonVariant.Ghost
                 )
                 ThreadShareSelectionActionButton(
                     label = stringResource(MR.strings.thread_action_forward),
                     icon = RaftLucideIconName.Send,
                     onClick = onForward,
                     enabled = hasSelection && forwardEnabled,
-                    backgroundColor = RaftColor.AccentPink,
-                    disabledBackgroundColor = RaftColor.AccentPink
+                    variant = build.raft.designsystem.components.RaftButtonVariant.Primary
                 )
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.Copy,
+                ThreadShareSelectionIconButton(
+                    icon = RaftLucideIconName.Copy,
+                    tooltip = stringResource(MR.strings.thread_action_copy_link),
                     onClick = onCopyLinks,
-                    enabled = hasSelection,
-                    size = 28.dp,
-                    shadowOffset = RaftShadow.BrutalSmall,
-                    iconSize = 14.dp
+                    enabled = hasSelection
                 )
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.Ellipsis,
+                ThreadShareSelectionIconButton(
+                    icon = RaftLucideIconName.Ellipsis,
+                    tooltip = stringResource(MR.strings.thread_new_message_menu_more),
                     onClick = {
                         moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
                     },
                     enabled = hasSelection,
-                    size = 28.dp,
-                    shadowOffset = RaftShadow.BrutalSmall,
-                    iconSize = 14.dp,
-                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor),
-                    contentDescription = stringResource(MR.strings.thread_new_message_menu_more)
+                    modifier = Modifier.raftCaptureLiveRootAnchor(moreAnchor)
                 )
             }
         }
@@ -32404,23 +32446,42 @@ private fun ThreadShareSelectionActionButton(
     icon: RaftLucideIconName,
     onClick: () -> Unit,
     enabled: Boolean,
-    backgroundColor: Color = RaftColor.SurfaceWhite,
-    disabledBackgroundColor: Color = RaftColor.SurfaceCream
+    variant: build.raft.designsystem.components.RaftButtonVariant
 ) {
-    RaftBrutalActionButton(
-        label = label,
+    build.raft.designsystem.components.RaftButton(
+        text = label,
         onClick = onClick,
         enabled = enabled,
-        backgroundColor = backgroundColor,
-        disabledBackgroundColor = disabledBackgroundColor,
-        minWidth = 0.dp,
-        minHeight = 28.dp,
-        leadingIcon = icon,
-        leadingIconSize = 14.dp,
-        contentSpacing = 4.dp,
-        shadowOffset = RaftShadow.BrutalSmall,
-        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp)
+        variant = variant,
+        leadingIcon = { ThreadShareSelectionGlyph(icon) }
     )
+}
+
+@Composable
+private fun ThreadShareSelectionIconButton(
+    icon: RaftLucideIconName,
+    tooltip: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    build.raft.designsystem.components.RaftIconButton(
+        onClick = onClick,
+        tooltip = tooltip,
+        enabled = enabled,
+        modifier = modifier,
+        variant = build.raft.designsystem.components.RaftButtonVariant.Default
+    ) {
+        ThreadShareSelectionGlyph(icon)
+    }
+}
+
+@Composable
+private fun ThreadShareSelectionGlyph(icon: RaftLucideIconName) {
+    val ink =
+        build.raft.designsystem.theme.LocalRaftContentColor.current.takeIf { it != Color.Unspecified }
+            ?: build.raft.designsystem.theme.RaftTheme.colors.foreground
+    RaftLucideIcon(icon, modifier = Modifier.size(14.dp), color = raftArgbHex(ink))
 }
 
 @Composable

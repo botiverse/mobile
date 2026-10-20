@@ -687,6 +687,11 @@
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>
     <string name="thread_forward_sending">发送中</string>
     <string name="thread_forward_destinations">目标位置</string>
+    <string name="thread_forward_select_destinations">选择目标</string>
+    <string name="thread_forward_selected_from">已从 %2$s 选择 %1$d 条</string>
+    <string name="thread_forward_search_targets">搜索目标</string>
+    <string name="thread_forward_recent">最近</string>
+    <string name="thread_forward_select_multiple">多选</string>
     <string name="thread_forward_destination">目标位置</string>
     <string name="thread_forward_messages_selected">已选择 %1$d 条消息</string>
     <string name="thread_forward_destinations_selected">已选择 %1$d 个目标</string>
