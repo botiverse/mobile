@@ -1588,7 +1588,6 @@ private fun SharedActivityList(
                         // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
                         .padding(top = 4.dp)
             ) {
-                raftPullToRefreshItem()
                 if (conversationListEntries != null) {
                     // activity_conversation_list_v0: one compact row per conversation, pinned first.
                     // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
@@ -2503,7 +2502,6 @@ private fun SharedActivityRefreshableStateBody(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            raftPullToRefreshItem()
             item(key = "activity_state") {
                 SharedActivityStateBody(
                     title = title,

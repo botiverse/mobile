@@ -140,8 +140,6 @@
     <string name="settings_mobile_subtitle">自分のメッセージの配置</string>
     <string name="settings_mobile_thread_reverse_layout">チャットを最新メッセージから開く</string>
     <string name="settings_mobile_thread_reverse_layout_detail">チャットを最新メッセージから開き、下から上へ並べて表示します（先にスクロールする必要はありません）。次にチャットを開いたときから適用されます。変更するまではサーバーのデフォルトに従います。</string>
-    <string name="settings_mobile_native_pull_to_refresh">システム標準のプルして更新</string>
-    <string name="settings_mobile_native_pull_to_refresh_detail">各プラットフォームのシステム標準のプルして更新スタイルに従います（Android は Material、iOS はシステムの更新コントロール）。オフのときは Raft 独自のプルして更新を使います。</string>
     <string name="settings_mobile_http3">HTTP/3 を有効にする</string>
     <string name="settings_mobile_http3_detail">新しいリクエストは HTTP/3 を試し、ネットワークが対応していない場合は HTTP/2 にフォールバックします。変更するまではサーバーのデフォルトに従います。</string>
     <string name="settings_computers_title">コンピューター</string>

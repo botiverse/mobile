@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.components.raftPullToRefreshIndicatorStep
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeChannelRow
@@ -1677,42 +1676,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun lazyItemCountsIncludeTheCustomPullToRefreshItem() {
-        val home =
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 0,
-                directMessagesCount = 2,
-                channelsExpanded = false,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = false
-            )
-        assertEquals(
-            home + 1,
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 0,
-                directMessagesCount = 2,
-                channelsExpanded = false,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = false,
-                hasPullToRefreshItem = true
-            )
-        )
-        val members = membersLazyItemCount(agents = emptyList(), humansCount = 2, agentsExpanded = false, humansExpanded = false)
-        assertEquals(
-            members + 1,
-            membersLazyItemCount(
-                agents = emptyList(),
-                humansCount = 2,
-                agentsExpanded = false,
-                humansExpanded = false,
-                hasPullToRefreshItem = true
-            )
-        )
-    }
-
-    @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
             14,
@@ -1892,19 +1855,6 @@ class RaftHomeComponentsTest {
         assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
         assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = true))
         assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = false))
-    }
-
-    @Test
-    fun pullToRefreshIndicatorStepWalksWithThePullUpToTheThreshold() {
-        assertEquals(0, raftPullToRefreshIndicatorStep(distanceFraction = 0f))
-        assertEquals(0, raftPullToRefreshIndicatorStep(distanceFraction = 0.2f))
-        assertEquals(1, raftPullToRefreshIndicatorStep(distanceFraction = 0.25f))
-        assertEquals(2, raftPullToRefreshIndicatorStep(distanceFraction = 0.6f))
-        assertEquals(3, raftPullToRefreshIndicatorStep(distanceFraction = 0.9f))
-        // At and past the threshold the last step stays lit.
-        assertEquals(3, raftPullToRefreshIndicatorStep(distanceFraction = 1f))
-        assertEquals(3, raftPullToRefreshIndicatorStep(distanceFraction = 1.8f))
-        assertEquals(0, raftPullToRefreshIndicatorStep(distanceFraction = -0.5f))
     }
 
     @Test

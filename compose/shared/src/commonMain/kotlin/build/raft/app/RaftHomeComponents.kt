@@ -115,8 +115,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import build.raft.app.components.RaftPullToRefreshBox
-import build.raft.app.components.addsListItem
-import build.raft.app.components.rememberRaftPullToRefreshStyle
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
@@ -2149,7 +2147,6 @@ private fun RaftStructuralHomeShellContent(
     val directMessageSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.DirectMessage)
     val pinnedSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.Pinned)
     val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
-    val pullToRefreshStyle = rememberRaftPullToRefreshStyle()
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
@@ -2160,7 +2157,6 @@ private fun RaftStructuralHomeShellContent(
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
             pinnedExpanded = pinnedExpanded,
-            hasPullToRefreshItem = pullToRefreshEnabled && pullToRefreshStyle.addsListItem,
             hasInlineError = inlineError != null,
             channelSkeletonCount =
                 if (channelsExpanded && showLoadingSkeletons) HomeLoadingChannelSkeletonRows else 0,
@@ -2414,7 +2410,6 @@ private fun RaftStructuralHomeShellContent(
                             },
                             modifier = Modifier.fillMaxSize(),
                             enabled = pullToRefreshEnabled,
-                            style = pullToRefreshStyle,
                         ) {
                             LazyColumn(
                                 state = listState,
@@ -2433,7 +2428,6 @@ private fun RaftStructuralHomeShellContent(
                                         },
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
-                                raftPullToRefreshItem()
                                 item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
                                 item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
                                 // artin 2026-10-20: the Home 动态 row stays alongside the Activity bottom tab (muscle
@@ -3578,14 +3572,11 @@ internal fun homeLazyItemCount(
     jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
     pinnedExpanded: Boolean = false,
-    /** The custom pull-to-refresh header item (see RaftPullToRefreshStyle.addsListItem). */
-    hasPullToRefreshItem: Boolean = false,
     hasInlineError: Boolean = false,
     channelSkeletonCount: Int = 0,
     directMessageSkeletonCount: Int = 0
 ): Int {
     val fixedItems =
-        (if (hasPullToRefreshItem) 1 else 0) +
         1 + // top spacer
             1 + // search
             1 + // activity
