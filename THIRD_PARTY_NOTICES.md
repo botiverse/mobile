@@ -22,7 +22,7 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | com.tencent.kuiklybase:network | 0.1.0-raft.47 | Apache-2.0 |
 | com.tencent.kuiklybase:resource-core | 0.1.0-raft.5 | Apache-2.0 |
 | build.raft.kuiklybase:datetime | 0.1.0-raft.0 | Apache-2.0 |
-| build.raft.mermaid:mermaid-core / mermaid-kuikly / mermaid-layout-api / mermaid-layout-simple | 0.1.11 | Apache-2.0 |
+| build.raft.mermaid:mermaid-core / mermaid-layout-api / mermaid-layout-simple | 0.1.12 | Apache-2.0 |
 | org.jetbrains.kotlinx:kotlinx-coroutines-core / -test | 1.7.3 | Apache-2.0 |
 | org.jetbrains.kotlinx:kotlinx-serialization-json | 1.6.2 | Apache-2.0 |
 | org.jetbrains.kotlinx:atomicfu | 0.25.0 | Apache-2.0 |
