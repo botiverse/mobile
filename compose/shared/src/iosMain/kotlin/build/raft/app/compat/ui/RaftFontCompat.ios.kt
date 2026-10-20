@@ -39,7 +39,13 @@ actual fun KuiklyFont(name: String, weight: FontWeight, style: FontStyle): Font 
     }
 }
 
-private const val RaftFallbackFontResource = "space_grotesk_regular"
+/**
+ * Face used for a KuiklyFont name the bundle does not ship (Android falls back to the same face).
+ * Native text views (RaftNativeSelectableText) use it too so both renderers agree.
+ */
+internal const val RaftIosFallbackFontName = "SpaceGrotesk-Regular"
+
+private val RaftFallbackFontResource = raftFontResourceName(RaftIosFallbackFontName)
 
 private fun raftBundledFontPath(resourceName: String): String? =
     NSBundle.mainBundle.pathForResource(resourceName, ofType = "ttf")

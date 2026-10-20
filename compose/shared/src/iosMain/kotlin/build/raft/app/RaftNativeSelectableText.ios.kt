@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.viewinterop.UIKitView
+import build.raft.app.compat.ui.RaftIosFallbackFontName
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
@@ -86,7 +87,11 @@ private fun raftAttributedText(
     lineHeightPt: Double?,
     color: Color,
 ): NSAttributedString {
-    val font = fontName?.let { UIFont.fontWithName(it, fontSizePt) } ?: UIFont.systemFontOfSize(fontSizePt)
+    // An unknown bundled name falls back to Space Grotesk Regular, as KuiklyFont does on the Compose
+    // side; only text with no Raft family at all (System font preference) uses the system face.
+    val font =
+        fontName?.let { UIFont.fontWithName(it, fontSizePt) ?: UIFont.fontWithName(RaftIosFallbackFontName, fontSizePt) }
+            ?: UIFont.systemFontOfSize(fontSizePt)
     val attributes = mutableMapOf<Any?, Any?>(
         NSFontAttributeName to font,
         NSForegroundColorAttributeName to
