@@ -3,9 +3,9 @@ package build.raft.app
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.raftAvatarInitials
+import kotlin.math.abs
 
 /**
  * raft-ui 0.8.0 Avatar size steps (`avatar.tsx`), for app avatars whose footprint is a
@@ -13,39 +13,44 @@ import build.raft.designsystem.components.raftAvatarInitials
  * supplies the chrome that raft-ui scales per `data-size`: the presence light, its ink
  * edge, cut-out and overhang, and the fallback's initials and icon size.
  *
+ * The values are the design system's [RaftAvatarSize] table ([designSize]); this enum only
+ * folds raft `xs` / `2xs` (both 19px) into one step, so the app can pick a step by size.
+ *
  * [badgeOverhang] is how far the light's box passes the avatar's outer edge. raft-ui
  * places the badge with `right` / `bottom` offsets (-8 / -5 / -4 / -3 / -2 px), which CSS
  * measures from the avatar's padding edge, inside its 1.5px ink border, so the light
  * overhangs the outer edge by the offset minus that border.
  */
-internal enum class RaftAvatarStep(
-    val edge: Dp,
-    val badgeSize: Dp,
-    val badgeOverhang: Dp,
-    val badgeBorder: Dp,
-    val badgeCutout: Dp,
-    val initialsSize: TextUnit,
-    val iconSize: Dp,
-    val designSize: RaftAvatarSize
-) {
-    Xl(99.dp, 20.dp, 6.5.dp, 2.dp, 2.dp, 40.sp, 48.dp, RaftAvatarSize.Xl),
-    Lg(51.dp, 14.dp, 3.5.dp, 1.5.dp, 2.dp, 22.sp, 24.dp, RaftAvatarSize.Lg),
-    Md(35.dp, 11.dp, 2.5.dp, 1.5.dp, 2.dp, 15.sp, 18.dp, RaftAvatarSize.Md),
-    Sm(27.dp, 9.dp, 1.5.dp, 1.5.dp, 2.dp, 13.sp, 14.dp, RaftAvatarSize.Sm),
+internal enum class RaftAvatarStep(val designSize: RaftAvatarSize) {
+    Xl(RaftAvatarSize.Xl),
+    Lg(RaftAvatarSize.Lg),
+    Md(RaftAvatarSize.Md),
+    Sm(RaftAvatarSize.Sm),
 
     /** raft `xs` / `2xs` (both 19px). */
-    Xs(19.dp, 7.dp, 0.5.dp, 1.dp, 1.dp, 11.sp, 12.dp, RaftAvatarSize.Xxs),
+    Xs(RaftAvatarSize.Xxs),
 
     /** raft `3xs` (14px, outside the scale). */
-    Xxxs(14.dp, 6.dp, 0.5.dp, 1.dp, 1.dp, 8.sp, 8.dp, RaftAvatarSize.Xxxs);
+    Xxxs(RaftAvatarSize.Xxxs);
+
+    val edge: Dp get() = designSize.edge
+    val badgeSize: Dp get() = designSize.badgeEdge
+    val badgeOverhang: Dp get() = designSize.badgeOverhang
+    val badgeBorder: Dp get() = designSize.badgeBorder
+    val badgeCutout: Dp get() = designSize.badgeCutout
+    val initialsSize: TextUnit get() = designSize.initialsSize
+    val iconSize: Dp get() = designSize.iconSize
 
     /** The light's corner radius: `rounded-[2px]`, the outline following it. */
     val badgeRadius: Dp get() = 2.dp
 
     companion object {
-        /** The web step whose edge is closest to [avatarSize] (ties go to the larger step). */
+        /** The web step whose edge is closest to [avatarSize]; a size halfway between two steps takes the larger. */
         fun nearest(avatarSize: Dp): RaftAvatarStep =
-            entries.minBy { step -> kotlin.math.abs(step.edge.value - avatarSize.value) - step.edge.value * 1e-4f }
+            entries.minWith(
+                compareBy<RaftAvatarStep> { step -> abs(step.edge.value - avatarSize.value) }
+                    .thenByDescending { step -> step.edge.value }
+            )
     }
 }
 
