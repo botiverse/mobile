@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetKind
-import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.compat.pager.LocalActivity
@@ -43,42 +42,36 @@ internal fun ThreadForwardModalVisualScreen() {
                     )
                 }
             } else {
+                // web ThreadForwardModalVisualCaseView seeds two channels and two DMs with no
+                // activity, so getForwardTargets orders them by label: @artin, @Cindy,
+                // android-artifacts, design. DM peers have no avatar (human placeholder).
                 listOf(
-                    RaftForwardTargetPickerItem(
-                        stableKey = "channel-design",
-                        title = "design",
-                        subtitle = "Product and UI decisions",
-                        visualKind = RaftForwardTargetVisualKind.PublicChannel,
-                        payload = null
-                    ),
                     RaftForwardTargetPickerItem(
                         stableKey = "dm-artin",
                         title = "artin",
                         subtitle = "Direct message",
                         visualKind = RaftForwardTargetVisualKind.DirectMessage,
-                        avatarWireValue = AvatarReference.Random("artin").wireValue,
-                        avatarLabel = "A",
+                        payload = null
+                    ),
+                    RaftForwardTargetPickerItem(
+                        stableKey = "dm-cindy",
+                        title = "Cindy",
+                        subtitle = "Direct message",
+                        visualKind = RaftForwardTargetVisualKind.DirectMessage,
                         payload = null
                     ),
                     RaftForwardTargetPickerItem(
                         stableKey = "channel-android",
                         title = "android-artifacts",
-                        subtitle = "Public channel",
-                        visualKind = RaftForwardTargetVisualKind.PrivateChannel,
+                        subtitle = "Builds and screenshots",
+                        visualKind = RaftForwardTargetVisualKind.PublicChannel,
                         payload = null
                     ),
                     RaftForwardTargetPickerItem(
-                        stableKey = "joint-release",
-                        title = "release-joint",
-                        subtitle = "Joint channel",
-                        visualKind = RaftForwardTargetVisualKind.JointChannel,
-                        payload = null
-                    ),
-                    RaftForwardTargetPickerItem(
-                        stableKey = "member-cindy",
-                        title = "Cindy",
-                        subtitle = "Keeps visual testing release notes aligned",
-                        visualKind = RaftForwardTargetVisualKind.DirectMessage,
+                        stableKey = "channel-design",
+                        title = "design",
+                        subtitle = "Product and UI decisions",
+                        visualKind = RaftForwardTargetVisualKind.PublicChannel,
                         payload = null
                     )
                 )
@@ -88,6 +81,8 @@ internal fun ThreadForwardModalVisualScreen() {
         messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
+        sourceLabel = "#design",
+        singleTapContinues = !scrollProbe,
         state =
             RaftForwardTargetPickerUiState(
                 sessionKey = RaftForwardPickerSessionKey("visual", "server-visual", 1),

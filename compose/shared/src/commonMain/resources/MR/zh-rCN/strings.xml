@@ -687,6 +687,11 @@
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>
     <string name="thread_forward_sending">发送中</string>
     <string name="thread_forward_destinations">目标位置</string>
+    <string name="thread_forward_select_destinations">选择目标</string>
+    <string name="thread_forward_selected_from">已从 %2$s 选择 %1$d 条</string>
+    <string name="thread_forward_search_targets">搜索目标</string>
+    <string name="thread_forward_recent">最近</string>
+    <string name="thread_forward_select_multiple">多选</string>
     <string name="thread_forward_destination">目标位置</string>
     <string name="thread_forward_messages_selected">已选择 %1$d 条消息</string>
     <string name="thread_forward_destinations_selected">已选择 %1$d 个目标</string>
@@ -1702,7 +1707,8 @@
     <string name="saved_empty_title">暂无收藏的消息</string>
     <string name="saved_empty_detail">点击任意消息上的书签图标即可收藏。</string>
     <string name="saved_title">收藏</string>
-    <string name="saved_count">已收藏 %1$d 条</string>
+    <string name="saved_count">%1$d 项</string>
+    <string name="saved_count_one">%1$d 项</string>
     <string name="saved_action_load_more">加载更多</string>
     <string name="saved_action_copy_link">复制链接</string>
     <string name="saved_action_copy_markdown">复制 Markdown</string>

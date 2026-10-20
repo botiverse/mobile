@@ -34,6 +34,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Camera("camera"),
     ChartBar("chart-bar"),
     Check("check"),
+    CheckCheck("check-check"),
     ChevronDown("chevron-down"),
     ChevronLeft("chevron-left"),
     ChevronRight("chevron-right"),

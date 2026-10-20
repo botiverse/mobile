@@ -693,6 +693,11 @@
     <string name="thread_forward_placeholder_many">%1$d 件のメッセージを転送しました</string>
     <string name="thread_forward_sending">送信中</string>
     <string name="thread_forward_destinations">転送先</string>
+    <string name="thread_forward_select_destinations">転送先を選択</string>
+    <string name="thread_forward_selected_from">%2$s から %1$d 件を選択</string>
+    <string name="thread_forward_search_targets">転送先を検索</string>
+    <string name="thread_forward_recent">最近</string>
+    <string name="thread_forward_select_multiple">複数選択</string>
     <string name="thread_forward_destination">転送先</string>
     <string name="thread_forward_messages_selected">%1$d 件のメッセージを選択中</string>
     <string name="thread_forward_destinations_selected">%1$d 件の転送先を選択中</string>
@@ -1708,7 +1713,8 @@
     <string name="saved_empty_title">まだ保存済みメッセージはありません</string>
     <string name="saved_empty_detail">メッセージのブックマークアイコンをクリックすると保存できます。</string>
     <string name="saved_title">保存済み</string>
-    <string name="saved_count">%1$d 件保存済み</string>
+    <string name="saved_count">%1$d 件</string>
+    <string name="saved_count_one">%1$d 件</string>
     <string name="saved_action_load_more">さらに読み込む</string>
     <string name="saved_action_copy_link">リンクをコピー</string>
     <string name="saved_action_copy_markdown">Markdown をコピー</string>

@@ -1408,7 +1408,8 @@ internal fun RaftSegmentedItem(
                 .height(RaftMetrics.ControlHeightMd)
                 .background(fill, shape)
                 .border(RaftAppStroke.Control, if (selected) RaftColor.StickerInk else Color.Transparent, shape)
-                .padding(horizontal = 12.dp)
+                // CSS `px-3` sits inside the 1.5dp (transparent at rest) border box.
+                .padding(horizontal = 12.dp + RaftAppStroke.Control)
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
