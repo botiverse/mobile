@@ -65,32 +65,37 @@ enum class RaftAvatarSize(
     internal val initialsSize: TextUnit,
     internal val iconSize: Dp,
     internal val badgeEdge: Dp,
-    /** How far the presence light overhangs the right and bottom edges. */
+    /**
+     * How far the presence light overhangs the right and bottom outer edges. raft-ui's
+     * `-right-2` / `right-[-5px]` / `-right-1` / `right-[-3px]` / `-right-0.5` are measured
+     * from the avatar's padding edge, inside its 1.5px ink border, so the overhang past the
+     * outer edge is the offset minus that border.
+     */
     internal val badgeOverhang: Dp,
     internal val badgeBorder: Dp,
     /** The outline cut out of the surface around the light. */
     internal val badgeCutout: Dp,
 ) {
     /** 99dp: the profile of an agent or a person; carries the hard sticker shadow. */
-    Xl(99.dp, 40.sp, 48.dp, 20.dp, 8.dp, RaftStroke.Strong, 2.dp),
+    Xl(99.dp, 40.sp, 48.dp, 20.dp, 6.5.dp, RaftStroke.Strong, 2.dp),
 
     /** 51dp: your own row in settings, profile cards. */
-    Lg(51.dp, 22.sp, 24.dp, 14.dp, 5.dp, RaftStroke.Control, 2.dp),
+    Lg(51.dp, 22.sp, 24.dp, 14.dp, 3.5.dp, RaftStroke.Control, 2.dp),
 
     /** 35dp: messages and lists. */
-    Md(35.dp, 15.sp, 18.dp, 11.dp, 4.dp, RaftStroke.Control, 2.dp),
+    Md(35.dp, 15.sp, 18.dp, 11.dp, 2.5.dp, RaftStroke.Control, 2.dp),
 
     /** 27dp: search results, top bars. */
-    Sm(27.dp, 13.sp, 14.dp, 9.dp, 3.dp, RaftStroke.Control, 2.dp),
+    Sm(27.dp, 13.sp, 14.dp, 9.dp, 1.5.dp, RaftStroke.Control, 2.dp),
 
     /** 19dp: the sidebar, chips, avatar stacks. */
-    Xs(19.dp, 11.sp, 12.dp, 7.dp, 2.dp, RaftStroke.Hairline, 1.dp),
+    Xs(19.dp, 11.sp, 12.dp, 7.dp, 0.5.dp, RaftStroke.Hairline, 1.dp),
 
     /** 19dp (raft `2xs`): sidebar and DM rows. */
-    Xxs(19.dp, 11.sp, 12.dp, 7.dp, 2.dp, RaftStroke.Hairline, 1.dp),
+    Xxs(19.dp, 11.sp, 12.dp, 7.dp, 0.5.dp, RaftStroke.Hairline, 1.dp),
 
     /** 14dp (raft `3xs`): inline preview chips; outside the scale. */
-    Xxxs(14.dp, 8.sp, 8.dp, 6.dp, 2.dp, RaftStroke.Hairline, 1.dp),
+    Xxxs(14.dp, 8.sp, 8.dp, 6.dp, 0.5.dp, RaftStroke.Hairline, 1.dp),
     ;
 
     /** raft-ui writes only one initial at `xs`, `2xs` and `sm`, where two don't fit. */
