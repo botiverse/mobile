@@ -278,12 +278,10 @@
     <string name="thread_action_copy_link">リンクをコピー</string>
     <string name="thread_action_copy_markdown">Markdown をコピー</string>
     <string name="thread_action_select_text">テキストを選択</string>
-    <string name="thread_new_message_menu_copy">コピー</string>
     <string name="thread_new_message_menu_reply">返信</string>
-    <string name="thread_new_message_menu_save">保存</string>
-    <string name="thread_new_message_menu_select">選択</string>
     <string name="thread_new_message_menu_more">その他</string>
-    <string name="thread_action_open_thread">スレッドを開く</string>
+    <string name="thread_action_reply_in_thread">スレッドで返信</string>
+    <string name="thread_action_add_reaction">リアクションを追加</string>
     <string name="thread_action_remove_from_saved">保存済みから削除</string>
     <string name="thread_action_save_message">メッセージを保存</string>
     <string name="thread_action_unfollow_thread">スレッドのフォローを解除</string>

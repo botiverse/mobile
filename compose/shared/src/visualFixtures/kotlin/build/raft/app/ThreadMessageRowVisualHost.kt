@@ -670,6 +670,8 @@ internal fun ThreadMessageVisualScreenContent() {
                     showShareMessagesAction = true,
                     showCancelAction = false,
                     showDeleteAction = false,
+                    showForwardAction = true,
+                    showAddReactionAction = payload.showReactionActions,
                     onReply = {},
                     onCopyLink = {},
                     onCopy = {},
