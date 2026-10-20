@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.em
@@ -101,11 +102,17 @@ data class RaftTypography(
                 trim = LineHeightStyle.Trim.None,
             )
 
-        fun from(fonts: RaftFonts): RaftTypography {
+        /**
+         * The scale in [fonts]. [localeList] goes on every style (null: none, the platform
+         * uses the device locale): it picks the CJK fallback glyphs, so a Japanese,
+         * Korean or Traditional Chinese UI passes its language and Han characters take
+         * that language's forms.
+         */
+        fun from(fonts: RaftFonts, localeList: LocaleList? = null): RaftTypography {
             fun sans(size: Int, lineHeight: Int, weight: FontWeight, tracking: TextUnit = 0.sp) =
-                style(fonts.sans, size, lineHeight, weight, tracking)
+                style(fonts.sans, size, lineHeight, weight, tracking, localeList)
 
-            fun mono(size: Int, lineHeight: Int) = style(fonts.mono, size, lineHeight, FontWeight.Normal, 0.sp)
+            fun mono(size: Int, lineHeight: Int) = style(fonts.mono, size, lineHeight, FontWeight.Normal, 0.sp, localeList)
 
             return RaftTypography(
                 hero = sans(40, 44, FontWeight.Bold, (-0.03).em),
@@ -131,12 +138,14 @@ data class RaftTypography(
             lineHeight: Int,
             weight: FontWeight,
             tracking: TextUnit,
+            localeList: LocaleList?,
         ) = TextStyle(
             fontFamily = family,
             fontWeight = weight,
             fontSize = size.sp,
             lineHeight = lineHeight.sp,
             letterSpacing = tracking,
+            localeList = localeList,
             lineHeightStyle = CssLineHeightStyle,
         )
     }

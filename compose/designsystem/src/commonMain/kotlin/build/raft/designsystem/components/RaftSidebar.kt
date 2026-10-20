@@ -1,6 +1,8 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -25,6 +28,8 @@ import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -64,12 +69,47 @@ internal object RaftSidebarItemMetrics {
     /** `gap-2` between icon, text and aside. */
     val Gap = 8.dp
 
+    /** `SidebarItemAside` `gap-1` between its parts. */
+    val AsideGap = 4.dp
+
     /** `my-px`: rows stand 2dp apart. */
     val MarginVertical = 1.dp
 
     /** `SidebarItemIcon` / `SidebarItemChannelIcon`: a 19dp box with a 16dp icon. */
     val IconBox = 19.dp
     val Icon = 16.dp
+}
+
+/** The icon size [RaftSidebarItemIcon] draws at: the enclosing row's [RaftSidebarItemVariant]. */
+private val LocalRaftSidebarItemIconSize = staticCompositionLocalOf { RaftSidebarItemMetrics.Icon }
+
+/** Which kind of sidebar row: it sets the leading slot, the gap after it and the aside's gap. */
+enum class RaftSidebarItemVariant(
+    internal val leadingBox: Dp,
+    internal val icon: Dp,
+    internal val leadingGap: Dp,
+    internal val asideGap: Dp,
+) {
+    /**
+     * A place in a group (a channel, a pinned row, a custom group's row):
+     * `SidebarItemIcon` / `SidebarItemChannelIcon`, a 19dp slot with a 16dp icon or a 19dp
+     * avatar, `gap-2` (8dp) to the name; the aside's parts `gap-1` (4dp) apart.
+     */
+    Default(RaftSidebarItemMetrics.IconBox, RaftSidebarItemMetrics.Icon, RaftSidebarItemMetrics.Gap, RaftSidebarItemMetrics.AsideGap),
+
+    /**
+     * An entry row at the top of the phone Home (Search, Activity, Saved; web
+     * `SIDEBAR_ENTRY_ROW_CLASS` / `SIDEBAR_ENTRY_ICON_CLASS`, raft-ui ListRow `entry` +
+     * `ListRowIcon`): a 20dp icon, `gap-3` (12dp) to the name. Never selected (Home rules).
+     */
+    Entry(20.dp, 20.dp, 12.dp, RaftSidebarItemMetrics.AsideGap),
+
+    /**
+     * A direct message (web `SidebarPeerRowBody`): the 19dp avatar 8dp from the name, and
+     * the aside's parts (the draft mark, the agent's activity or runtime, the count)
+     * `gap-1.5` (6dp) apart (web `SIDEBAR_ROW_TRAILING_CLASS`).
+     */
+    Peer(RaftSidebarItemMetrics.IconBox, RaftSidebarItemMetrics.Icon, RaftSidebarItemMetrics.Gap, 6.dp),
 }
 
 /**
@@ -80,20 +120,32 @@ internal object RaftSidebarItemMetrics {
  *   inside a 1.5dp edge that is always there (transparent at rest), control radius, gap 8,
  *   1dp above and below. The row fills the width it is given.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
- *   in `foreground-hint` ([LocalRaftContentColor]).
+ *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
+ *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
+ *   12dp from the name.
  * - [title]: `text-body` (16/24) at 600, one line with an ellipsis; 700 when
  *   [RaftRowTone.Unread] or [selected]. [RaftRowTone.Muted] writes it in
  *   `foreground-muted`, [RaftRowTone.Away] in `foreground-hint`.
+ * - [titleTrailing]: what goes right after the name, 4dp from it (`SidebarItemMetaIcon` in
+ *   `SidebarItemContent`: an activity-muted bell, a bridge badge), centred on it in the
+ *   icon ink. The name truncates before it; the slot never does.
  * - [subtitle]: `text-footnote` `foreground-muted` on the title's baseline, 4dp after it.
  *   It gives up its room before the title does.
- * - [trailing]: the aside (`gap-1`): [RaftSidebarItemMarks], [RaftSidebarItemMeta], a
- *   status pixel.
+ * - [trailing]: the aside (`gap-1`; `gap-1.5` in a [RaftSidebarItemVariant.Peer] row):
+ *   [RaftSidebarItemMarks], [RaftSidebarItemMeta], a status pixel.
  *
  * States (States: navigation selection): [selected] is "you are here", the yellow sticker:
  * `brand` fill, 1.5dp `sticker-ink` edge, die-cut edge in dark, `sticker-ink` for every
  * part, and `selected` in semantics. Press (and a mouse hover) lays the press overlay over
  * the fill; keyboard focus draws the focus ring outside the box. [onClick] = null is a
  * display-only row (`interactive={false}`): no press, no focus, not a button.
+ *
+ * Touch (raft-design ContextMenu): [onLongClick] is the press and hold that opens the row's
+ * menu, the same menu as its ⋯ button and a right-click, named [onLongClickLabel] for
+ * screen readers ("Channel Options"); a long press does not also click. While that menu is
+ * open pass [menuOpen] = true: the row keeps the press overlay (raft-ui
+ * `not-data-active:data-popup-open:bg-fill-pressed`, so not on the selected row). Both need
+ * [onClick].
  */
 @Composable
 fun RaftSidebarItem(
@@ -106,12 +158,98 @@ fun RaftSidebarItem(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
+    variant: RaftSidebarItemVariant = RaftSidebarItemVariant.Default,
+) {
+    RaftSidebarItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(title, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        subtitle = subtitle,
+        leading = leading,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+        variant = variant,
+    )
+}
+
+/**
+ * [RaftSidebarItem] with a styled [title]: its spans and their `localeList`
+ * (`SpanStyle(localeList = LocaleList("ja"))`) are kept, so a CJK name keeps the glyph forms
+ * of its language. The row's type, weight and ink sit under the spans.
+ */
+@Composable
+fun RaftSidebarItem(
+    title: AnnotatedString,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    tone: RaftRowTone = RaftRowTone.Default,
+    subtitle: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
+    variant: RaftSidebarItemVariant = RaftSidebarItemVariant.Default,
+) {
+    RaftSidebarItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(title, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        subtitle = subtitle,
+        leading = leading,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+        variant = variant,
+    )
+}
+
+/** [RaftSidebarItem]'s layout; [titleText] draws the one-line name in the given style and ink. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RaftSidebarItemLayout(
+    titleText: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    modifier: Modifier,
+    onClick: (() -> Unit)?,
+    selected: Boolean,
+    tone: RaftRowTone,
+    subtitle: String?,
+    leading: (@Composable () -> Unit)?,
+    trailing: (@Composable RowScope.() -> Unit)?,
+    interactionSource: MutableInteractionSource?,
+    onLongClick: (() -> Unit)?,
+    onLongClickLabel: String?,
+    menuOpen: Boolean,
+    titleTrailing: (@Composable () -> Unit)?,
+    variant: RaftSidebarItemVariant,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
-    val pressed = interactive && (raftIsPressed(source) || raftIsHovered(source))
+    val pressed = interactive && (raftIsPressed(source) || raftIsHovered(source) || (menuOpen && !selected))
     val focused = interactive && raftIsFocused(source)
     val titleInk =
         when (tone) {
@@ -129,6 +267,7 @@ fun RaftSidebarItem(
         LocalRaftContentColor provides hintInk,
         LocalRaftSidebarItemHint provides hintInk,
         LocalRaftSurfaceColor provides surface,
+        LocalRaftSidebarItemIconSize provides variant.icon,
     ) {
         Row(
             modifier
@@ -137,15 +276,24 @@ fun RaftSidebarItem(
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
                 .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
                 .then(
-                    if (onClick != null) {
-                        Modifier.clickable(
-                            interactionSource = source,
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onClick,
-                        )
-                    } else {
-                        Modifier
+                    when {
+                        onClick == null -> Modifier
+                        onLongClick != null ->
+                            Modifier.combinedClickable(
+                                interactionSource = source,
+                                indication = null,
+                                role = Role.Button,
+                                onLongClickLabel = onLongClickLabel,
+                                onLongClick = onLongClick,
+                                onClick = onClick,
+                            )
+                        else ->
+                            Modifier.clickable(
+                                interactionSource = source,
+                                indication = null,
+                                role = Role.Button,
+                                onClick = onClick,
+                            )
                     },
                 )
                 .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
@@ -159,7 +307,12 @@ fun RaftSidebarItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (leading != null) {
-                Box(Modifier.size(RaftSidebarItemMetrics.IconBox), contentAlignment = Alignment.Center) { leading() }
+                Box(
+                    Modifier
+                        .padding(end = variant.leadingGap - RaftSidebarItemMetrics.Gap)
+                        .size(variant.leadingBox),
+                    contentAlignment = Alignment.Center,
+                ) { leading() }
             }
             Row(
                 Modifier.weight(1f),
@@ -168,14 +321,22 @@ fun RaftSidebarItem(
             ) {
                 // The title is measured first, so it keeps its width while the subtitle
                 // (weighted) takes what is left: the subtitle gives way first.
-                RaftText(
-                    title,
-                    modifier = if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline(),
-                    style = typography.body.copy(fontWeight = titleWeight),
-                    color = look.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val titleModifier = if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline()
+                val titleStyle = typography.body.copy(fontWeight = titleWeight)
+                if (titleTrailing == null) {
+                    titleText(titleModifier, titleStyle, look.ink)
+                } else {
+                    // The name and its slot as one piece (it keeps the name's baseline for the
+                    // subtitle): the slot is measured first, so only the name truncates.
+                    Row(
+                        titleModifier,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        titleText(Modifier.weight(1f, fill = false), titleStyle, look.ink)
+                        Box(contentAlignment = Alignment.Center) { titleTrailing() }
+                    }
+                }
                 if (subtitle != null) {
                     RaftText(
                         subtitle,
@@ -189,7 +350,7 @@ fun RaftSidebarItem(
             }
             if (trailing != null) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(variant.asideGap),
                     verticalAlignment = Alignment.CenterVertically,
                     content = trailing,
                 )
@@ -199,20 +360,29 @@ fun RaftSidebarItem(
 }
 
 /**
- * A 16dp [glyph] for a sidebar row's leading slot (`SidebarItemIcon`), in the row's icon
- * ink (`foreground-hint`, `sticker-ink` when selected). Decorative.
+ * A [glyph] for a sidebar row's leading slot (`SidebarItemIcon`), in the row's icon ink
+ * (`foreground-hint`, `sticker-ink` when selected), at the row's icon size: 16dp, 20dp in
+ * a [RaftSidebarItemVariant.Entry] row. Decorative. An app icon in that slot reads the
+ * size the same way: [raftSidebarItemIconSize].
  */
 @Composable
 fun RaftSidebarItemIcon(glyph: RaftGlyph, modifier: Modifier = Modifier) {
-    RaftGlyphIcon(glyph, modifier = modifier, size = RaftSidebarItemMetrics.Icon)
+    RaftGlyphIcon(glyph, modifier = modifier, size = raftSidebarItemIconSize())
 }
+
+/** The icon size of the enclosing sidebar row's leading slot (16dp; 20dp in an entry row). */
+@Composable
+@ReadOnlyComposable
+fun raftSidebarItemIconSize(): Dp = LocalRaftSidebarItemIconSize.current
 
 /**
  * A channel row: [RaftSidebarItem] led by the bare `hash` (`lock` when [isPrivate]) in
  * `foreground-hint` (`SidebarItemChannelIcon`), then the name and its marks
  * ([RaftSidebarItemMarks]). Something unread or a mention turns a [RaftRowTone.Default]
  * row [RaftRowTone.Unread] (a 700 name); a muted or away tone stays. [trailing] goes
- * before the marks (a draft pencil, a status pixel).
+ * before the marks (a draft pencil, a status pixel); [titleTrailing] right after the name
+ * (the activity-muted bell, a bridge badge). [onLongClick], [onLongClickLabel] and
+ * [menuOpen] are [RaftSidebarItem]'s: press and hold opens the channel's menu.
  */
 @Composable
 fun RaftSidebarChannelItem(
@@ -228,6 +398,93 @@ fun RaftSidebarChannelItem(
     subtitle: String? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
+) {
+    RaftSidebarChannelItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(name, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        isPrivate = isPrivate,
+        unreadCount = unreadCount,
+        threadCount = threadCount,
+        mentioned = mentioned,
+        subtitle = subtitle,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+    )
+}
+
+/** [RaftSidebarChannelItem] with a styled [name] (spans and their `localeList` kept). */
+@Composable
+fun RaftSidebarChannelItem(
+    name: AnnotatedString,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    tone: RaftRowTone = RaftRowTone.Default,
+    isPrivate: Boolean = false,
+    unreadCount: Int = 0,
+    threadCount: Int = 0,
+    mentioned: Boolean = false,
+    subtitle: String? = null,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
+) {
+    RaftSidebarChannelItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(name, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        isPrivate = isPrivate,
+        unreadCount = unreadCount,
+        threadCount = threadCount,
+        mentioned = mentioned,
+        subtitle = subtitle,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+    )
+}
+
+@Composable
+private fun RaftSidebarChannelItemLayout(
+    titleText: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    modifier: Modifier,
+    onClick: (() -> Unit)?,
+    selected: Boolean,
+    tone: RaftRowTone,
+    isPrivate: Boolean,
+    unreadCount: Int,
+    threadCount: Int,
+    mentioned: Boolean,
+    subtitle: String?,
+    trailing: (@Composable RowScope.() -> Unit)?,
+    interactionSource: MutableInteractionSource?,
+    onLongClick: (() -> Unit)?,
+    onLongClickLabel: String?,
+    menuOpen: Boolean,
+    titleTrailing: (@Composable () -> Unit)?,
 ) {
     val waiting = unreadCount > 0 || threadCount > 0 || mentioned
     val resolvedTone = if (tone == RaftRowTone.Default && waiting) RaftRowTone.Unread else tone
@@ -240,8 +497,8 @@ fun RaftSidebarChannelItem(
             muted = tone == RaftRowTone.Muted,
         )
     }
-    RaftSidebarItem(
-        title = name,
+    RaftSidebarItemLayout(
+        titleText = titleText,
         modifier = modifier,
         onClick = onClick,
         selected = selected,
@@ -250,6 +507,11 @@ fun RaftSidebarChannelItem(
         leading = { RaftSidebarItemIcon(if (isPrivate) RaftGlyph.Lock else RaftGlyph.Hash) },
         trailing = if (trailing != null || waiting) aside else null,
         interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+        variant = RaftSidebarItemVariant.Default,
     )
 }
 
@@ -332,7 +594,15 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
  * - [actions]: the group's controls (`SidebarSectionControls`), always shown on a phone:
  *   [RaftSidebarSectionAction]s, 4dp apart. They overhang the 18dp line instead of
  *   growing the header (`-my-1.5`).
+ * - Press: the disclosure lights up its hit area with `fill-pressed` (States: a text
+ *   button lights up its hit area when pressed).
+ * - Touch: [onLongClick] is the press and hold that opens the group's menu (the web's
+ *   right-click menu on the header), named [onLongClickLabel]; it does not also toggle.
+ *   While that menu is open pass [menuOpen] = true: the disclosure stays pressed and the
+ *   attention pixel hides (raft-ui `group-data-popup-open/section-header:hidden`). Both
+ *   need [onExpandedChange].
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RaftSidebarSectionHeader(
     title: String,
@@ -344,11 +614,17 @@ fun RaftSidebarSectionHeader(
     icon: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val focused = onExpandedChange != null && raftIsFocused(source)
+    val interactive = onExpandedChange != null
+    val focused = interactive && raftIsFocused(source)
+    val pressed = interactive && (raftIsPressed(source) || menuOpen)
+    val showAttention = attention && !expanded && !menuOpen
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
     Row(
@@ -359,14 +635,29 @@ fun RaftSidebarSectionHeader(
         Box(
             Modifier
                 .weight(1f)
+                .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Control)
                 .then(
                     if (onExpandedChange != null) {
+                        val toggle = { onExpandedChange(!expanded) }
                         Modifier
-                            .clickable(
-                                interactionSource = source,
-                                indication = null,
-                                role = Role.Button,
-                                onClick = { onExpandedChange(!expanded) },
+                            .then(
+                                if (onLongClick != null) {
+                                    Modifier.combinedClickable(
+                                        interactionSource = source,
+                                        indication = null,
+                                        role = Role.Button,
+                                        onLongClickLabel = onLongClickLabel,
+                                        onLongClick = onLongClick,
+                                        onClick = toggle,
+                                    )
+                                } else {
+                                    Modifier.clickable(
+                                        interactionSource = source,
+                                        indication = null,
+                                        role = Role.Button,
+                                        onClick = toggle,
+                                    )
+                                },
                             )
                             .semantics {
                                 if (expanded) {
@@ -414,13 +705,14 @@ fun RaftSidebarSectionHeader(
                 }
             }
         }
+        // The trailing box stays while a menu hides the pixel (`min-w-4.5`), so nothing moves.
         if ((attention && !expanded) || actions != null) {
             Row(
                 Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (attention && !expanded) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
+                if (showAttention) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
                 actions?.invoke(this)
             }
         }
@@ -430,7 +722,8 @@ fun RaftSidebarSectionHeader(
 /**
  * A group header's control (`SidebarSectionControl`: ghost, icon size): a
  * [RaftIconButton] [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
- * by [tooltip] (Title Case: "Sort Channels", "Create Channel").
+ * by [tooltip] (Title Case: "Sort Channels", "Create Channel"). Sort is
+ * [RaftGlyph.ArrowUpDown] (or [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
  */
 @Composable
 fun RaftSidebarSectionAction(
@@ -440,6 +733,24 @@ fun RaftSidebarSectionAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    RaftSidebarSectionAction(tooltip = tooltip, onClick = onClick, modifier = modifier, enabled = enabled) {
+        RaftGlyphIcon(glyph, size = RaftSidebarSectionActionIconSize)
+    }
+}
+
+/**
+ * [RaftSidebarSectionAction] with any [icon] (an app icon the module has no [RaftGlyph]
+ * for), drawn in a 16dp box in the button's ink ([LocalRaftContentColor]: `foreground`,
+ * `foreground-disabled` when not [enabled]). Size the icon 16dp or let it fill the box.
+ */
+@Composable
+fun RaftSidebarSectionAction(
+    tooltip: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: @Composable () -> Unit,
+) {
     RaftIconButton(
         onClick = onClick,
         tooltip = tooltip,
@@ -447,9 +758,12 @@ fun RaftSidebarSectionAction(
         variant = RaftButtonVariant.Ghost,
         enabled = enabled,
     ) {
-        RaftGlyphIcon(glyph, size = 16.dp)
+        Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
     }
 }
+
+/** `SidebarSectionControl` `[&>svg]:size-4`. */
+private val RaftSidebarSectionActionIconSize = 16.dp
 
 /**
  * Lays the content out at its own height but reports [height] (padding included in the

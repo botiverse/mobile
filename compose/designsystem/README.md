@@ -108,6 +108,11 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
   parameters default to it and still take a per-call value.
 - `RaftTheme` also provides `LocalTextSelectionColors`: a selection is `brand-soft`
   (raft-web `::selection`), the handles `foreground`.
+- `RaftTheme(localeList = ...)` puts the app's UI language on every `RaftTypography` style
+  (`RaftTypography.from(fonts, localeList)`), so Android and iOS pick the CJK fallback
+  glyphs of that language (`ja`, `ko`, `zh-Hant`) for Han characters. The default, null,
+  sets none (the device locale decides). A span's own `localeList` still wins: pass a
+  user's name as an `AnnotatedString` to keep its own.
 - `LocalRaftSurfaceColor` (`RaftTheme.surfaceColor`) is the opaque surface under the
   content: `layer-canvas` at the root, `layer-card` inside `RaftCard` and
   `RaftListRowGroup`, a selected row's `info-soft` over the card, a banner's fill for its
@@ -171,7 +176,7 @@ Other checks:
 | `RaftStatusDot` | Status | Done | 8 variants, 5 presence lights, xs–lg |
 | `RaftSkeleton` | Skeleton | Done | Line, block, square; pulse (all in phase, one shared frame loop per theme), or still for screenshots / reduced motion |
 | `RaftBanner`, `RaftPanelNotice` | Banner, PanelNotice | Done | 4 intents + default, sm / md / lg, title, action; a text action goes inside the description as a strong `appendRaftTextLink` |
-| `RaftSidebarItem`, `RaftSidebarChannelItem`, `RaftSidebarItemIcon`, `RaftSidebarItemMarks`, `RaftSidebarItemMeta`, `RaftSidebarSectionHeader`, `RaftSidebarSectionAction` | Sidebar (SidebarItem, SidebarSection*) | Done | Phone size (raft-ui 0.10, below `md`): rows at least 44dp, `text-body` 600 (700 unread / selected), 19dp icon slot with a 16dp `foreground-hint` icon, `#` / lock for channels; tones; selected is the yellow sticker with the ink edge (`selected` in semantics); pressed / hovered, focus ring; display-only row. Marks: pink count with thread segment, yellow @ (replaces the count; threads still show), muted gray pixel. Group header: chevron, `text-footnote` 700 title, mono count, attention pixel when collapsed, ghost icon controls overhanging the 18dp line; one button with expand / collapse in semantics. The page keeps the rows 8dp from its edge |
+| `RaftSidebarItem`, `RaftSidebarChannelItem`, `RaftSidebarItemIcon`, `RaftSidebarItemMarks`, `RaftSidebarItemMeta`, `RaftSidebarSectionHeader`, `RaftSidebarSectionAction` | Sidebar (SidebarItem, SidebarSection*) | Done | Phone size (raft-ui 0.10, below `md`): rows at least 44dp, `text-body` 600 (700 unread / selected), 19dp icon slot with a 16dp `foreground-hint` icon, `#` / lock for channels; `RaftSidebarItemVariant.Entry` for Home's Search / Activity / Saved (web `SIDEBAR_ENTRY_ROW_CLASS`: a 20dp icon, 12dp to the name; `raftSidebarItemIconSize()` for app icons) and `RaftSidebarItemVariant.Peer` for DMs (the aside's parts 6dp apart, web `SIDEBAR_ROW_TRAILING_CLASS` `gap-1.5`; other rows `gap-1`); the title as a `String` or an `AnnotatedString` (spans and their `localeList` kept, for CJK names); a `titleTrailing` slot right after the name (activity-muted bell, bridge badge; the name truncates, the slot doesn't); tones; selected is the yellow sticker with the ink edge (`selected` in semantics); pressed / hovered, focus ring; display-only row. Press and hold (`onLongClick`, named by `onLongClickLabel` in semantics) opens the row's or header's menu without clicking; `menuOpen` keeps the press overlay while that menu is open (not on the selected row, raft-ui `not-data-active:data-popup-open`) and hides a header's attention pixel. Marks: pink count with thread segment, yellow @ (replaces the count; threads still show), muted gray pixel. Group header: chevron, `text-footnote` 700 title, mono count, attention pixel when collapsed, ghost icon controls overhanging the 18dp line (a `RaftGlyph`, e.g. the sort arrows `ArrowUpDown` / `ArrowDownUp`, or any icon through the `icon` slot); one button with expand / collapse in semantics. The page keeps the rows 8dp from its edge |
 | `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`, `selected` semantics), pressed, inset focus, disabled, subtitle (AvatarListRow) |
 | `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below, two columns at content width when unbounded; values wrap; each fact is one screen-reader item |
 | `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
@@ -194,7 +199,7 @@ Other checks:
 | `RaftDialog`, `RaftDialogSurface`, `RaftDialogHeader` | Dialog | Done | sm / md / lg, title, ×, description, body, footer; dialog radius 16. `RaftDialogHeader` is the title row (title, description 6dp under it, × named by `LocalRaftStrings`) on its own, for a surface whose body the caller lays out. Cancel or a minor action in the footer (an announcement's "Not Now" too) is a `Ghost` button, never an underlined link |
 | `RaftSheet`, `RaftSheetSurface` | Drawer (bottom sheet) | Done | Top radius 16, stacked actions, slides up |
 | `RaftToast` | Toast | Done | HUD surface (title only, icon, action with a 44dp touch target, description) and the pages' foreground banner on the popover surface |
-| `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw |
+| `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw (sort: `arrow-up-down`, `arrow-down-up`) |
 | `RaftText` | — | Done | Text primitive |
 | Tabs drag-reorder, file list row, avatar picker, task card / board lane, toast host | | Not done | Later PRs |
 
@@ -361,6 +366,9 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   icon buttons (raft-ui `h-7`, 28px). A muted place with something unread shows the gray
   status pixel the web Home draws; raft-ui's quiet number is `RaftSidebarItemMeta`. The
   chevron leads the group title, as on the web Home (the docs composition puts it after).
+  The disclosure lights up its hit area with `fill-pressed` while pressed or while its
+  press-and-hold menu is open (States: a text button lights up its hit area); raft-ui's
+  disclosure has no press look, as a mouse right-clicks it.
 - **ListRow** follows the pages' AvatarListRow too: an optional mono `subtitle` line and a
   trailing slot 6dp apart. Rows don't know their siblings: pass `divider = true` from the
   second row on. A selected or disabled row hides its badge.

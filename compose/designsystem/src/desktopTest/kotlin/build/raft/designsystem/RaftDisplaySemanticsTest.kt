@@ -25,6 +25,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.intl.LocaleList
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -61,6 +65,9 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftPulseClock
 import build.raft.designsystem.components.RaftSidebarChannelItem
+import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftSidebarItemVariant
+import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
@@ -68,6 +75,7 @@ import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -125,6 +133,182 @@ class RaftDisplaySemanticsTest {
             onNodeWithText("Channels").performClick()
             assertFalse(expanded)
             onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
+        }
+
+    /** Press and hold opens the row's menu (raft-design ContextMenu) and does not also open the row. */
+    @Test
+    fun aLongPressOnASidebarRowOpensItsMenuWithoutClicking() =
+        runComposeUiTest {
+            var clicks = 0
+            var longClicks = 0
+            setContent(
+                themed {
+                    RaftSidebarChannelItem(
+                        "general",
+                        onClick = { clicks++ },
+                        onLongClick = { longClicks++ },
+                        onLongClickLabel = "Channel Options",
+                    )
+                },
+            )
+            onNodeWithText("general").performTouchInput { longClick() }
+            assertEquals(1, longClicks)
+            assertEquals(0, clicks)
+            onNodeWithText("general").performClick()
+            assertEquals(1, clicks)
+            assertEquals(1, longClicks)
+            val action = onNodeWithText("general").fetchSemanticsNode().config.getOrNull(SemanticsActions.OnLongClick)
+            assertNotNull(action)
+            assertEquals("Channel Options", action.label)
+        }
+
+    /** The mark after a long name stays whole and inside the row; the name truncates. */
+    @Test
+    fun aSidebarRowKeepsItsTitleTrailingWhenTheNameTruncates() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Box(Modifier.width(240.dp)) {
+                        RaftSidebarChannelItem(
+                            "a-channel-name-long-enough-to-run-past-the-end-of-the-row",
+                            onClick = {},
+                            unreadCount = 3,
+                            titleTrailing = { Box(Modifier.size(16.dp).testTag("mark")) },
+                        )
+                    }
+                },
+            )
+            val mark = onNodeWithTag("mark", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(16f, mark.width / density.density, 0.5f)
+            assertTrue(mark.right / density.density < 240f, "mark ends at ${mark.right / density.density}dp")
+        }
+
+    /** A styled name keeps its spans: a Japanese name keeps `ja` for its glyph forms. */
+    @Test
+    fun aSidebarRowKeepsTheLocaleOfAStyledTitle() =
+        runComposeUiTest {
+            val ja = LocaleList("ja")
+            val name = buildAnnotatedString { withStyle(SpanStyle(localeList = ja)) { append("直子") } }
+            setContent(themed { RaftSidebarItem(name, onClick = {}) })
+            val text = onNodeWithText("直子").fetchSemanticsNode().config[SemanticsProperties.Text].single()
+            assertTrue(text.spanStyles.any { it.item.localeList == ja }, "spans: ${text.spanStyles}")
+        }
+
+    /** Home's entry rows: a 20dp icon 12dp from the name; a place row: 16dp in a 19dp slot, 8dp. */
+    @Test
+    fun aSidebarEntryRowHasA20dpIcon12dpFromItsName() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarItem(
+                            "Search",
+                            onClick = {},
+                            variant = RaftSidebarItemVariant.Entry,
+                            leading = { Box(Modifier.size(raftSidebarItemIconSize()).testTag("entry-icon")) },
+                        )
+                        RaftSidebarItem(
+                            "general",
+                            onClick = {},
+                            leading = { Box(Modifier.size(raftSidebarItemIconSize()).testTag("place-icon")) },
+                        )
+                    }
+                },
+            )
+            val d = density.density
+            val entryIcon = onNodeWithTag("entry-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val entryTitle = onNodeWithText("Search", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(20f, entryIcon.width / d, 0.5f)
+            assertEquals(12f, (entryTitle.left - entryIcon.right) / d, 0.5f)
+            val placeIcon = onNodeWithTag("place-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val placeTitle = onNodeWithText("general", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(16f, placeIcon.width / d, 0.5f)
+            // 1.5dp of the 19dp slot on each side of the 16dp icon, then gap-2.
+            assertEquals(9.5f, (placeTitle.left - placeIcon.right) / d, 0.5f)
+        }
+
+    /** A DM's aside parts stand 6dp apart (web `SIDEBAR_ROW_TRAILING_CLASS`), a place row's 4dp. */
+    @Test
+    fun aSidebarPeerRowSpacesItsAsideBy6dp() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarItem("Bugen", onClick = {}, variant = RaftSidebarItemVariant.Peer, trailing = {
+                            Box(Modifier.size(10.dp).testTag("peer-a"))
+                            Box(Modifier.size(10.dp).testTag("peer-b"))
+                        })
+                        RaftSidebarItem("general", onClick = {}, trailing = {
+                            Box(Modifier.size(10.dp).testTag("place-a"))
+                            Box(Modifier.size(10.dp).testTag("place-b"))
+                        })
+                    }
+                },
+            )
+            fun gap(a: String, b: String): Float {
+                val left = onNodeWithTag(a, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                val right = onNodeWithTag(b, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                return (right.left - left.right) / density.density
+            }
+            assertEquals(6f, gap("peer-a", "peer-b"), 0.5f)
+            assertEquals(4f, gap("place-a", "place-b"), 0.5f)
+        }
+
+    /** The app's UI language reaches every type style; by default there is none. */
+    @Test
+    fun theThemePutsTheUiLanguageOnEveryTypeStyle() =
+        runComposeUiTest {
+            val ko = LocaleList("ko")
+            var themed: RaftTypography? = null
+            var plain: RaftTypography? = null
+            setContent {
+                Column {
+                    RaftTheme(appearance = RaftAppearance.Light, systemDark = false, localeList = ko) { themed = RaftTheme.typography }
+                    RaftTheme(appearance = RaftAppearance.Light, systemDark = false) { plain = RaftTheme.typography }
+                }
+            }
+            waitForIdle()
+            val withLocale = assertNotNull(themed)
+            val without = assertNotNull(plain)
+            listOf(withLocale.body, withLocale.footnote, withLocale.headline, withLocale.monoMeta, withLocale.field).forEach {
+                assertEquals(ko, it.localeList)
+            }
+            assertEquals(null, without.body.localeList)
+            assertEquals(null, without.monoMeta.localeList)
+        }
+
+    @Test
+    fun aSidebarRowWithoutALongClickHasNoLongClickAction() =
+        runComposeUiTest {
+            setContent(themed { RaftSidebarChannelItem("general", onClick = {}) })
+            onNodeWithText("general").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnLongClick))
+        }
+
+    @Test
+    fun aLongPressOnASidebarSectionHeaderOpensItsMenuWithoutToggling() =
+        runComposeUiTest {
+            var expanded by mutableStateOf(true)
+            var longClicks = 0
+            setContent(
+                themed {
+                    RaftSidebarSectionHeader(
+                        "Channels",
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it },
+                        onLongClick = { longClicks++ },
+                        onLongClickLabel = "Channels Options",
+                    )
+                },
+            )
+            onNodeWithText("Channels").performTouchInput { longClick() }
+            assertEquals(1, longClicks)
+            assertTrue(expanded)
+            val action = onNodeWithText("Channels").fetchSemanticsNode().config.getOrNull(SemanticsActions.OnLongClick)
+            assertNotNull(action)
+            assertEquals("Channels Options", action.label)
+            onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
+            onNodeWithText("Channels").performClick()
+            assertFalse(expanded)
         }
 
     @Test
