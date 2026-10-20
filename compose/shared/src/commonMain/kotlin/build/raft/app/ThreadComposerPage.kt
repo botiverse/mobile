@@ -2758,7 +2758,14 @@ internal fun ThreadComposerContentLeaf(
                             border = RaftColor.BorderBlack,
                             radius = RaftAppRadius.Container
                         )
-                        .clickable(enabled = composerEnabled) { composerFocusRequester.requestFocus() }
+                        // Blank-area tap only forwards focus to the editor. No indication: the
+                        // default one paints the whole card gray (pressed/focused overlay); raft-ui
+                        // shows composer focus through the editor caret, not a fill.
+                        .clickable(
+                            enabled = composerEnabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { composerFocusRequester.requestFocus() }
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
