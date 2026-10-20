@@ -175,7 +175,11 @@ internal fun RaftAnchoredMetaChip(
     pressFeedback: Boolean = onClick != null || onClickWithoutAnchor != null,
     anchorPlacement: RaftAnchorPlacement = RaftAnchorPlacement.Tap,
     clickIdentity: Any? = null,
-    anchorOwnerIdentity: Any? = null
+    anchorOwnerIdentity: Any? = null,
+    labelFontWeight: FontWeight = FontWeight.Bold,
+    trailingIconColorArgb: String = RaftColor.TextMutedGrayArgb,
+    leadingContent: (@Composable () -> Unit)? = null,
+    contentSpacing: Dp = RaftAppSpacing.Xs
 ) {
     val clickDispatch =
         resolveRaftMetaChipClickDispatch(
@@ -190,7 +194,8 @@ internal fun RaftAnchoredMetaChip(
     val chipModifier =
         modifier
             .heightIn(min = minHeight)
-            .border(borderWidth, RaftColor.BorderBlack, chipShape)
+            // A zero width means no edge (a soft chip); Compose would draw 0.dp as a hairline.
+            .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, RaftColor.BorderBlack, chipShape) else Modifier)
             .background(color, chipShape)
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .let { base ->
@@ -233,8 +238,9 @@ internal fun RaftAnchoredMetaChip(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+            horizontalArrangement = Arrangement.spacedBy(contentSpacing)
         ) {
+            leadingContent?.invoke()
             iconName?.let {
                 RaftLucideIcon(
                     it,
@@ -245,13 +251,13 @@ internal fun RaftAnchoredMetaChip(
             }
             Text(
                 text = label,
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
+                style = RaftType.Caption.withRaftFontWeight(labelFontWeight).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
                 color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             trailingIconName?.let {
-                RaftLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = RaftColor.TextMutedGrayArgb)
+                RaftLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = trailingIconColorArgb)
             }
         }
     }

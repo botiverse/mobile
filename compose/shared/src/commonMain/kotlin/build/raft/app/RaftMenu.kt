@@ -179,7 +179,7 @@ internal fun RaftTaskStatusMenuOverlay(
         // label "In Progress" is narrower); the char estimate overshoots to 172dp.
         // Raft sets the selected label bold, so there 140dp is only the minimum
         // (see raftLookBaseMenuWidth).
-        width = 140.dp,
+        width = RaftTaskStatusMenuMinWidth,
         rowHeight = 36.dp,
         labelFontSize = 14.sp,
         labelLineHeight = 20.sp,
@@ -191,6 +191,29 @@ internal fun RaftTaskStatusMenuOverlay(
         verticalPlacement = RaftTaskStatusMenuVerticalPlacement,
         onDismiss = onDismiss,
         onSelect = onSelect
+    )
+}
+
+/** react's status menu min width (`min-w-[140px]`); the bold selected row may grow it. */
+internal val RaftTaskStatusMenuMinWidth = 140.dp
+
+/**
+ * The open task-status menu body without the anchored overlay host: the same panel
+ * [RaftTaskStatusMenuOverlay] floats, for surfaces that pin it in place.
+ */
+@Composable
+internal fun RaftTaskStatusMenuPanel(
+    items: List<RaftBaseMenuItem>,
+    selectedId: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    RaftLookBaseMenuPanel(
+        items = items,
+        selectedId = selectedId,
+        width = raftLookBaseMenuWidth(items, fixedWidth = RaftTaskStatusMenuMinWidth, minWidth = RaftBaseMenuMinWidth),
+        onSelect = onSelect,
+        modifier = modifier
     )
 }
 
@@ -235,41 +258,62 @@ private fun RaftLookBaseMenuOverlay(
         onDismiss = onDismiss,
         modifier = modifier
     ) {
-        Column(
-            modifier = Modifier
-                .width(width)
-                .raftLookOverlaySurface()
-                // Keeps blank menu space out of the sibling dismiss barrier (see the
-                // brutal surface).
-                .clickable(onClick = {})
-                .padding(vertical = RaftMetrics.PopupPadding)
-        ) {
-            items.forEach { item ->
-                if (item.dividerBefore) {
-                    RaftLookSeparator(verticalSpacing = RaftMetrics.MenuSeparatorInset)
-                }
-                item.groupLabel?.let { label ->
-                    Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
-                        RaftBaseMenuGroupLabel(label, horizontalPadding = RaftMetrics.MenuItemPaddingHorizontal)
-                    }
-                }
-                val selected = item.id == selectedId || item.checked
-                // Rows sit in the popup's 6dp side inset; separators bleed through it.
+        RaftLookBaseMenuPanel(
+            items = items,
+            selectedId = selectedId,
+            width = width,
+            onSelect = onSelect
+        )
+    }
+}
+
+/**
+ * The raft-ui menu popup body of [RaftLookBaseMenuOverlay] (surface, inset, rows), without
+ * the anchored overlay host. Shared with the visual fixture that pins the open status menu
+ * in place (components.tasks.status-menu), so both draw the same panel.
+ */
+@Composable
+internal fun RaftLookBaseMenuPanel(
+    items: List<RaftBaseMenuItem>,
+    selectedId: String,
+    width: Dp,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .width(width)
+            .raftLookOverlaySurface()
+            // Keeps blank menu space out of the sibling dismiss barrier (see the
+            // brutal surface).
+            .clickable(onClick = {})
+            .padding(vertical = RaftMetrics.PopupPadding)
+    ) {
+        items.forEach { item ->
+            if (item.dividerBefore) {
+                RaftLookSeparator(verticalSpacing = RaftMetrics.MenuSeparatorInset)
+            }
+            item.groupLabel?.let { label ->
                 Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
-                    RaftBrutalDropdownMenuRow(
-                        item =
-                            RaftBrutalDropdownMenuItem(
-                                id = item.id,
-                                label = item.label,
-                                icon = item.icon,
-                                trailingIcon = if (selected) RaftLucideIconName.Check else null,
-                                enabled = item.enabled
-                            ),
-                        rowHeight = RaftMetrics.MenuRowHeight,
-                        emphasized = selected,
-                        onClick = { if (item.enabled) onSelect(item.id) }
-                    )
+                    RaftBaseMenuGroupLabel(label, horizontalPadding = RaftMetrics.MenuItemPaddingHorizontal)
                 }
+            }
+            val selected = item.id == selectedId || item.checked
+            // Rows sit in the popup's 6dp side inset; separators bleed through it.
+            Box(modifier = Modifier.padding(horizontal = RaftMetrics.PopupPadding).fillMaxWidth()) {
+                RaftBrutalDropdownMenuRow(
+                    item =
+                        RaftBrutalDropdownMenuItem(
+                            id = item.id,
+                            label = item.label,
+                            icon = item.icon,
+                            trailingIcon = if (selected) RaftLucideIconName.Check else null,
+                            enabled = item.enabled
+                        ),
+                    rowHeight = RaftMetrics.MenuRowHeight,
+                    emphasized = selected,
+                    onClick = { if (item.enabled) onSelect(item.id) }
+                )
             }
         }
     }
@@ -283,10 +327,11 @@ private fun RaftLookBaseMenuOverlay(
  */
 internal fun raftLookBaseMenuWidth(items: List<RaftBaseMenuItem>, fixedWidth: Dp?, minWidth: Dp): Dp {
     if (fixedWidth == null) return raftMenuWidth(raftBaseMenuWidth(items, minWidth = minWidth))
-    // Bold 14sp: ~8.5dp per Latin glyph, a full em for CJK and other wide glyphs.
+    // Bold 14sp Space Grotesk: ~7.5dp per Latin glyph (web's bold "In Progress" status menu
+    // measures 141dp), a full em for CJK and other wide glyphs.
     val widestLabelWidth =
         items.maxOfOrNull { item ->
-            item.label.fold(0f) { total, char -> total + if (char.code > 127) 14f else 8.5f }
+            item.label.fold(0f) { total, char -> total + if (char.code > 127) 14f else 7.5f }
         } ?: 0f
     val iconWidth =
         if (items.any { it.icon != null }) (RaftMetrics.MenuIconSize + RaftMetrics.MenuItemGap).value else 0f

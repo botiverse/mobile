@@ -12,7 +12,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
@@ -63,8 +65,10 @@ internal object RaftMetrics {
     val MenuLabelPaddingBottom = 4.dp
     /** Status / attention pixel (`size-[9px]`). */
     val StatusSize = 9.dp
-    /** Approximates `--elevation-float` (0 12px 32px -12px ink/32) on Kuikly's elevation shadow. */
-    val OverlayElevation = 6.dp
+    /** `--elevation-float`: 0 12px 32px -12px (offset, blur, spread). */
+    val OverlayShadowOffsetY = 12.dp
+    val OverlayShadowBlur = 32.dp
+    val OverlayShadowSpread = (-12).dp
 }
 
 /** True when the composition renders the raft-ui register (every non-brutal theme). */
@@ -164,13 +168,20 @@ internal fun Modifier.raftLookOverlaySurface(radius: Dp = RaftAppRadius.Containe
     val shape = RoundedCornerShape(radius)
     val shadowColor = RaftColor.OverlayShadow
     return this
-        .shadow(
-            elevation = RaftMetrics.OverlayElevation,
+        // `--elevation-float` is a CSS box-shadow (0 12px 32px -12px ink/32): a blurred
+        // drop shadow, drawn as one. An elevation shadow only approximates it, and is not
+        // drawn at all where a window is rendered in software.
+        .dropShadow(
             shape = shape,
-            clip = true,
-            ambientColor = shadowColor,
-            spotColor = shadowColor
+            shadow =
+                Shadow(
+                    radius = RaftMetrics.OverlayShadowBlur,
+                    color = shadowColor,
+                    spread = RaftMetrics.OverlayShadowSpread,
+                    offset = DpOffset(0.dp, RaftMetrics.OverlayShadowOffsetY)
+                )
         )
+        .clip(shape)
         .background(RaftColor.Popover, shape)
         .border(RaftAppStroke.Thin, RaftColor.BorderSeam, shape)
 }
