@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.layout.layout
 import build.raft.app.components.raftWebFileSizeLabel
 import build.raft.app.components.raftAttachmentBadgeLabel
 import androidx.compose.ui.graphics.compositeOver
@@ -24916,6 +24917,15 @@ private fun ThreadMessageCardContent(
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
                                         .background(Color.Transparent)
+                                        // raft-ui MessageItemHeader is `mb-px`: the body starts 1dp
+                                        // under the header, not this column's 4dp gap.
+                                        .layout { measurable, constraints ->
+                                            val placeable = measurable.measure(constraints)
+                                            val pullUp = (RaftAppSpacing.Xs - 1.dp).roundToPx()
+                                            layout(placeable.width, (placeable.height - pullUp).coerceAtLeast(0)) {
+                                                placeable.place(0, 0)
+                                            }
+                                        }
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -25196,7 +25206,8 @@ private fun ThreadMessageCardContent(
                         ).forEach { section ->
                             when (section) {
                                 ThreadMessageTrailingSection.MetaChips -> {
-                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                    // raft-ui MessageItemFooter: `mt-1.5` (6dp) under the body.
+                                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction).padding(top = 2.dp)) {
                                         ThreadMessageFooterMeta(
                                             message = message,
                                             taskOpenEnabled = taskOpenEnabled,

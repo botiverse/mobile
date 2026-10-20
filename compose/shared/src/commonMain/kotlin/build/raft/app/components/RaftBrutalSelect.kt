@@ -111,7 +111,8 @@ internal fun RaftBrutalSelectField(
     enabled: Boolean = true,
     rowHeight: Dp = 36.dp,
     triggerHeight: Dp = 40.dp,
-    maxMenuHeight: Dp = 220.dp
+    maxMenuHeight: Dp = 220.dp,
+    fieldChrome: Boolean = false
 ) {
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
@@ -124,7 +125,8 @@ internal fun RaftBrutalSelectField(
         placeholder = selectedLabel.isBlank() && selectedOption == null,
         enabled = enabled,
         triggerHeight = raftFieldHeight(triggerHeight),
-        maxMenuHeight = maxMenuHeight
+        maxMenuHeight = maxMenuHeight,
+        fieldChrome = fieldChrome
     )
 }
 
@@ -145,7 +147,8 @@ private fun RaftSelectField(
     placeholder: Boolean,
     enabled: Boolean,
     triggerHeight: Dp,
-    maxMenuHeight: Dp
+    maxMenuHeight: Dp,
+    fieldChrome: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerAnchorValue by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
@@ -168,6 +171,7 @@ private fun RaftSelectField(
             enabled = enabled,
             expanded = expanded,
             height = triggerHeight,
+            fieldChrome = fieldChrome,
             onClick = {
                 if (expanded) {
                     expanded = false

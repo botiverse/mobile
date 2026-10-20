@@ -76,6 +76,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1351,10 +1352,10 @@ internal fun SharedCreateAgentDialog(
         // cap); the dialog itself no longer reads it.
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            // React's normal dialog form uses space-y-4. Keep each field
-            // group at the same 16dp rhythm; field-internal helper/count
-            // spacing stays inside the group below.
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Web form: `stack-y-1` (4dp) between children, and every StableField reserves
+            // its 16dp message row (6dp below the control) whether or not it has a message,
+            // so a field without a hint/error/counter pads itself by [CreateAgentFieldMessageReserve].
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
@@ -1433,6 +1434,7 @@ internal fun SharedCreateAgentDialog(
                                 }
                             }
                         )
+                        Spacer(Modifier.height(CreateAgentFieldMessageReserve))
                     }
                 }
                 item(key = "name") {
@@ -1452,18 +1454,21 @@ internal fun SharedCreateAgentDialog(
                             )
                         }
                     )
+                    // The error, when there is one, fills the reserved message row.
+                    if (inlineNameError == null) Spacer(Modifier.height(CreateAgentFieldMessageReserve))
                 }
                 item(key = "description") {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // The counter sits in the field's reserved message row (web FormField counter).
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         RaftBrutalTextField(
                             label = stringResource(MR.strings.agent_create_label_description),
-                            optional = true,
                             value = description,
                             onValueChange = { description = it.coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH) },
                             placeholder = stringResource(MR.strings.agent_create_placeholder_description),
                             enabled = !submitting,
                             maxLines = 3,
-                            fieldMinHeight = 82.dp
+                            // Web `<Textarea rows={3}>`: three 24dp lines plus its padding and edge.
+                            fieldMinHeight = 95.dp
                         )
                         if (descriptionTooLong) {
                             Text(
@@ -1477,10 +1482,17 @@ internal fun SharedCreateAgentDialog(
                         } else {
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Spacer(Modifier.weight(1f))
+                                // Web FormField counter: `font-mono text-mono-meta text-foreground-hint`.
                                 Text(
                                     text = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                                    style = RaftType.Caption,
-                                    color = RaftColor.TextMutedGray
+                                    style =
+                                        RaftType.Caption.copy(
+                                            fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
+                                            fontWeight = FontWeight.Normal,
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        ),
+                                    color = RaftColor.ForegroundHint
                                 )
                             }
                         }
@@ -1863,6 +1875,9 @@ private fun CreateAgentNeedsComputerBody(onDismiss: () -> Unit, onConnectCompute
     }
 }
 
+/** Web StableField's reserved message row: 6dp gap + one 16dp caption line. */
+private val CreateAgentFieldMessageReserve = 22.dp
+
 @Composable
 private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
     if (planLabel.isNullOrBlank()) {
@@ -1882,25 +1897,20 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
             .format(listOf(currentAgentCount, maxAgents, planLabel))
             .localized()
     val action = stringResource(MR.strings.agent_create_action_upgrade_for_more)
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftUiBannerStatus.Warning.background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(RaftUiBannerSize.Medium.padding)
-    ) {
-        Text(
-            text =
+    // Web: raft-ui `<Banner status="warning">` (soft wash, hairline ring, container radius,
+    // callout text, no icon) with the upgrade words as a strong TextLink in the sentence.
+    build.raft.app.components.RaftDesignSystemTheme {
+        RaftBanner(
+            description =
                 buildAnnotatedString {
                     append(summary)
                     append(" ")
-                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
+                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
                     append(action)
                     pop()
                 },
-            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-            color = RaftColor.TextBlack
+            status = RaftBannerStatus.Warning,
+            showIcon = false
         )
     }
 }
@@ -1972,6 +1982,7 @@ private fun MachinePicker(
                         offlineSuffix = stringResource(MR.strings.agent_create_suffix_offline)
                     )
                 RaftBrutalSelectField(
+                    fieldChrome = true,
                     options = machineItems.toBrutalSelectOptions(),
                     selectedId = selectedMachineId.orEmpty(),
                     selectedLabel =
@@ -2047,6 +2058,7 @@ internal fun BuiltInRuntimeSection(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
         RaftBrutalSelectField(
+                    fieldChrome = true,
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
             selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: "Built-in (Pi)",
@@ -2072,6 +2084,7 @@ internal fun BuiltInRuntimeSection(
                     "providerId" -> {
                         RaftBrutalSectionLabel(label = copy?.label ?: "Provider", required = true)
                         RaftBrutalSelectField(
+                    fieldChrome = true,
                             options = providerOptions.map { RaftBrutalSelectOption(it.value, it.label) },
                             selectedId = providerId,
                             selectedLabel = providerOptions.firstOrNull { it.value == providerId }?.label.orEmpty(),
@@ -2146,6 +2159,7 @@ internal fun BuiltInRuntimeSection(
                         } else {
                             RaftBrutalSectionLabel(label = copy?.label ?: "Model", required = true)
                             RaftBrutalSelectField(
+                    fieldChrome = true,
                                 options = modelOptions.map { RaftBrutalSelectOption(it.value, it.label) },
                                 selectedId = model,
                                 selectedLabel = modelOptions.firstOrNull { it.value == model }?.label.orEmpty(),
@@ -2272,6 +2286,7 @@ internal fun AdvancedRuntimeSection(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
         RaftBrutalSelectField(
+                    fieldChrome = true,
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
             selectedLabel =
@@ -2307,6 +2322,7 @@ internal fun AdvancedRuntimeSection(
                     customLabel = stringResource(MR.strings.agent_create_label_custom)
                 )
             RaftBrutalSelectField(
+                    fieldChrome = true,
                 options = providerOptions.toBrutalSelectOptions(),
                 selectedId = providerMode,
                 selectedLabel =
@@ -2368,6 +2384,7 @@ internal fun AdvancedRuntimeSection(
         if (runtime == "pi") {
             RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider))
             RaftBrutalSelectField(
+                    fieldChrome = true,
                 options =
                     listOf(
                         RaftBrutalSelectOption(
@@ -2411,6 +2428,7 @@ internal fun AdvancedRuntimeSection(
         )
         val modelSelectItems = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) }
         RaftBrutalSelectField(
+                    fieldChrome = true,
             options = modelSelectItems.toBrutalSelectOptions(),
             selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
             selectedLabel =
@@ -2476,6 +2494,7 @@ internal fun AdvancedRuntimeSection(
                 )
             val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
             RaftBrutalSelectField(
+                    fieldChrome = true,
                 options = reasoningOptions.toBrutalSelectOptions(),
                 selectedId = reasoningSelectedId,
                 selectedLabel =
@@ -2503,6 +2522,7 @@ internal fun AdvancedRuntimeSection(
                 )
             val kimiReasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
             RaftBrutalSelectField(
+                    fieldChrome = true,
                 options = kimiReasoningOptions.toBrutalSelectOptions(),
                 selectedId = kimiReasoningSelectedId,
                 selectedLabel =
@@ -2661,7 +2681,8 @@ private fun CreateAgentRandomNameButton(
         disabledIconColor = RaftColor.TextMutedGrayArgb,
         size = 22.dp,
         shadowOffset = 0.dp,
-        iconSize = 13.dp
+        // Web: lucide Dices in a ghost icon-sm button, drawn at the button's 16dp glyph size.
+        iconSize = 16.dp
     )
 }
 

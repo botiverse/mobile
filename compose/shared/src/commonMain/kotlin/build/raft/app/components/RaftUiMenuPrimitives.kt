@@ -397,6 +397,9 @@ internal fun RaftLookSelectTrigger(
     enabled: Boolean,
     expanded: Boolean,
     height: Dp,
+    // raft-ui `Select chrome="field"` (FieldSelectTrigger): the value reads like an Input's
+    // text -- `--field` 16/24 regular -- instead of the subhead-semibold button chrome.
+    fieldChrome: Boolean = false,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(RaftAppRadius.Control)
@@ -421,9 +424,13 @@ internal fun RaftLookSelectTrigger(
         Text(
             text = label.ifBlank { "Select..." },
             style =
-                RaftType.Body
-                    .copy(fontSize = 15.sp, lineHeight = 20.sp, color = ink)
-                    .withRaftFontWeight(if (placeholder) FontWeight.Medium else FontWeight.SemiBold),
+                if (fieldChrome) {
+                    RaftType.Body.copy(color = ink)
+                } else {
+                    RaftType.Body
+                        .copy(fontSize = 15.sp, lineHeight = 20.sp, color = ink)
+                        .withRaftFontWeight(if (placeholder) FontWeight.Medium else FontWeight.SemiBold)
+                },
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
