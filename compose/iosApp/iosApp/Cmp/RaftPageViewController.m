@@ -110,14 +110,15 @@ static NSString *RaftPageWindowId(UIWindow *window) {
         _pageName = [pageName copy] ?: @"";
         _pageData = [[self p_mergeHostContextIntoPageData:pageData] copy];
         _raftAdaptivePanePublisher = [[RaftIosAdaptivePanePublisher alloc] init];
-        // Pages draw their own top bar; every pushed page can be swiped back from the leading
-        // edge strip (the FD push swizzle reads both).
-        // TODO(cmp-switch): full-screen back swipe (fd_interactivePopAllowsFullScreen = YES)
-        // can return once shared code reports horizontal-scroll consumption to the host. The FD
-        // delegate only yields to UIScrollView, and a CMP page has none, so a right drag on a
-        // Compose horizontal scroller (pager, chip row) at its start would pop the page.
+        // Pages draw their own top bar; every pushed page can be swiped back from anywhere (the
+        // FD push swizzle reads both). Compose horizontal scrollers that can still scroll in the
+        // back direction keep the drag through -raftContentConsumesBackSwipe (the probe below).
         self.fd_prefersNavigationBarHidden = YES;
-        self.fd_interactivePopAllowsFullScreen = NO;
+        self.fd_interactivePopAllowsFullScreen = YES;
+        __weak RaftPageViewController *weakSelf = self;
+        self.fd_interactivePopContentConsumesBackSwipe = ^BOOL(CGPoint locationInView) {
+            return [weakSelf raftContentConsumesBackSwipeAtPoint:locationInView];
+        };
     }
     return self;
 }
@@ -179,6 +180,15 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     content.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:content.view];
     [content didMoveToParentViewController:self];
+}
+
+- (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView {
+    BOOL (^probe)(CGPoint) = self.raftBackSwipeContentProbe;
+    UIView *contentView = _contentController.isViewLoaded ? _contentController.view : nil;
+    if (probe == nil || contentView == nil || !self.isViewLoaded) {
+        return NO;
+    }
+    return probe([self.view convertPoint:locationInView toView:contentView]);
 }
 
 - (void)raftSendEvent:(NSString *)event data:(NSDictionary *)data {

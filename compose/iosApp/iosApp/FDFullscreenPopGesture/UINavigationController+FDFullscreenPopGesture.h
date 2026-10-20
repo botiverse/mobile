@@ -66,6 +66,13 @@
 /// released a rightward drag at its first page.
 @property (nonatomic, assign) BOOL fd_interactivePopAllowsFullScreen;
 
+/// Asked when an admitted back swipe is about to begin, with the touch's start
+/// point in this controller's view. Returning YES keeps the drag in the content
+/// (a Compose pager past its first page, a scroller away from its start): the
+/// pop does not begin. Compose content has no UIScrollView, so this is how it
+/// reports horizontal-scroll consumption. Nil means nothing consumes.
+@property (nonatomic, copy) BOOL (^fd_interactivePopContentConsumesBackSwipe)(CGPoint locationInView);
+
 /// Max allowed initial distance to the leading edge when you begin the interactive
 /// pop gesture. 0 by default, which means the 40pt default edge strip; swipes that
 /// start in the content area never pop.

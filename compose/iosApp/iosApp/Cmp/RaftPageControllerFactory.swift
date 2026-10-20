@@ -40,6 +40,10 @@ import shared
         container.attachContent(page.viewController) { event, data in
             page.sendEvent(event: event, dataJson: RaftPageControllerFactory.jsonText(data))
         }
+        // Full-page back swipe: Compose horizontal content reports back-direction consumption.
+        container.raftBackSwipeContentProbe = { point in
+            page.contentConsumesBackSwipe(x: Double(point.x), y: Double(point.y))
+        }
         return container
     }
 

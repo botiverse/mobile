@@ -22,6 +22,8 @@ typedef struct {
 typedef struct {
     bool touchBeganInEdgeZone;
     bool transitioning;
+    /** Page content (e.g. a Compose pager past its first page) consumes the back-direction drag. */
+    bool contentConsumesBackSwipe;
     double translationX;
     double translationY;
     double velocityX;
@@ -58,7 +60,9 @@ static inline bool RaftInteractivePopGestureShouldBegin(RaftInteractivePopGestur
     bool hasVelocity = fabs(input.velocityX) > 1.0 || fabs(input.velocityY) > 1.0;
     double horizontal = hasVelocity ? input.velocityX : input.translationX;
     double vertical = hasVelocity ? input.velocityY : input.translationY;
-    return (horizontal * multiplier) > 0.0 && fabs(horizontal) > fabs(vertical);
+    bool backDirection = (horizontal * multiplier) > 0.0 && fabs(horizontal) > fabs(vertical);
+    // Content that can still scroll in the back direction keeps the drag, edge strip included.
+    return backDirection && !input.contentConsumesBackSwipe;
 }
 
 /**

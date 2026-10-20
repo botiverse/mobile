@@ -142,6 +142,42 @@
     }
 }
 
+- (void)testComposeContentThatConsumesTheBackDirectionKeepsTheDrag {
+    // CMP pages have no UIScrollView: the page probe reports a Compose pager past its first
+    // page (or a row away from its start) at the touch's start point.
+    __block CGPoint probedPoint = CGPointZero;
+    __block BOOL consumes = YES;
+    self.page.fd_interactivePopContentConsumesBackSwipe = ^BOOL(CGPoint locationInView) {
+        probedPoint = locationInView;
+        return consumes;
+    };
+    const CGFloat starts[] = {100, 10};
+    for (NSUInteger i = 0; i < 2; i++) {
+        consumes = YES;
+        XCTAssertTrue([self receiveTouchInView:self.page.view x:starts[i]]);
+        XCTAssertFalse([self.popDelegate gestureRecognizerShouldBegin:self.pan],
+                       @"Consuming content keeps the drag, edge strip included");
+        XCTAssertEqual(probedPoint.x, starts[i]);
+        XCTAssertEqual(probedPoint.y, 400);
+        consumes = NO;
+        XCTAssertTrue([self receiveTouchInView:self.page.view x:starts[i]]);
+        XCTAssertTrue([self.popDelegate gestureRecognizerShouldBegin:self.pan],
+                      @"A pager on its first page leaves the whole page to the back swipe");
+    }
+}
+
+- (void)testContentProbeIsNotAskedForRejectedTouches {
+    __block NSUInteger probes = 0;
+    self.page.fd_interactivePopContentConsumesBackSwipe = ^BOOL(CGPoint locationInView) {
+        probes += 1;
+        return NO;
+    };
+    self.page.fd_interactivePopDisabled = YES;
+    XCTAssertTrue([self receiveTouchInView:self.page.view x:100]);
+    XCTAssertFalse([self.popDelegate gestureRecognizerShouldBegin:self.pan]);
+    XCTAssertEqual(probes, 0u);
+}
+
 - (void)testNonBackMotionReleasesContentGestures {
     UIScrollView *list = [self addScrollViewWithContentSize:CGSizeMake(402, 1000) toView:self.page.view];
     const struct {
