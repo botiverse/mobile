@@ -3202,7 +3202,10 @@ class SharedActivityStoreTest {
             activityStore(
                 scope = scope,
                 inboxRepository = inbox,
-                realtimeBackgroundRefreshIntervalMillis = 75L
+                realtimeBackgroundRefreshIntervalMillis = 75L,
+                // Legacy real-dispatcher case: the 75ms throttle window is waited
+                // out with a real delay below, so it needs the real clock.
+                nowMillis = activityMonotonicClock()
             )
 
         store.dispatch(SharedActivityIntent.LoadInitial)
@@ -4627,31 +4630,6 @@ class SharedActivityStoreTest {
         assertEquals(emptyMap(), store.state.value.dmPeerNames)
         scope.cancel()
     }
-
-    private fun mentionActionItem(resolutionId: String): InboxItem =
-        InboxItem(
-            key = "mention_action:$resolutionId",
-            kind = InboxItemKind.MentionAction,
-            channelId = ChannelId("channel-1"),
-            channelName = "android-dev",
-            channelKind = ConversationKind.Channel,
-            lastMessageId = MessageId("message-1"),
-            lastMessagePreview = "Can someone ping @missing-human?",
-            lastMessageAt = "2026-06-26T02:40:00Z",
-            mentionActionId = resolutionId,
-            pendingMentionActions =
-                listOf(
-                    PendingMentionAction(
-                        resolutionId = resolutionId,
-                        messageId = MessageId("message-1"),
-                        channelId = ChannelId("channel-1"),
-                        channelName = "android-dev",
-                        targetType = "user",
-                        targetHandle = "missing-human",
-                        availableActions = listOf("notify", "invite")
-                    )
-                )
-        )
 
     private suspend fun awaitPendingCount(
         inbox: DeferredInboxRepository,

@@ -4,6 +4,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadUpdated
+import build.raft.app.network.sync.ReplyPreview
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -12,8 +14,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * Local Done/read overlay over the lagging Activity view (task #10; mirrors
@@ -331,50 +331,284 @@ class SharedActivityStoreDoneOverlayTest {
     }
 
     @Test
-    fun inboxParserReadsTheAuthorityFrontierOnlyFromAPresentReadState() {
-        // Field shapes: InboxPolicyApiItem + InboxScopeReadFrontier
-        // (botiverse/slock packages/server/src/services/inboxPolicyModel.ts,
-        // packages/shared/src/inboxScopeReadFrontier.ts @ 1bb70cbeb).
-        val body =
-            """
-            {"items":[
-              {"kind":"channel","channelId":"c-1","channelName":"general","channelType":"channel",
-               "lastMessageId":"m-1","latestActivitySeq":"41","doneFrontierSeq":"41","firstUnreadMessageId":null,
-               "firstMentionMessageId":null,"lastMessageAt":"2026-10-20T00:00:00Z","lastMessagePreview":"hi",
-               "lastMessageSenderType":"user","lastMessageSenderId":"u-2","lastMessageSenderName":"U",
-               "unreadCount":0,"hasMention":false,
-               "readState":{"kind":"present","readStateVersion":3,"maxReadSeq":"41",
-                            "latestActivity":{"messageId":"m-1","seq":"9007199254740993"}}},
-              {"kind":"channel","channelId":"c-2","channelName":"random","channelType":"channel",
-               "lastMessageId":"m-2","latestActivitySeq":"5","doneFrontierSeq":"5","lastMessageAt":"2026-10-20T00:00:00Z",
-               "lastMessagePreview":"x","lastMessageSenderType":"user","lastMessageSenderId":"u-2",
-               "unreadCount":0,"hasMention":false,"readState":{"kind":"absent"}},
-              {"kind":"thread","threadChannelId":"t-1","parentMessageId":"p-1","parentChannelId":"c-1",
-               "parentChannelName":"general","parentChannelType":"channel","parentMessagePreview":"p",
-               "parentMessageSenderType":"user","parentMessageSenderId":"u-2","latestActivityPreview":"r",
-               "latestActivitySenderType":"user","latestActivitySenderId":"u-2","latestActivitySenderName":null,
-               "latestActivityMessageId":"r-1","latestActivitySeq":"7","doneFrontierSeq":"7",
-               "firstUnreadMessageId":null,"firstMentionMessageId":null,"lastActivityAt":"2026-10-20T00:00:00Z",
-               "lastReplyAt":null,"replyCount":1,"unreadCount":0,"hasMention":false,"taskNumber":null,
-               "taskStatus":null,"taskClaimedByName":null,
-               "readState":{"kind":"present","readStateVersion":1,"maxReadSeq":"7","latestActivity":null}}
-            ],"hasMore":false,"totalCount":3,"totalUnreadCount":0}
-            """.trimIndent()
-
-        val parsed = parseSharedInboxSnapshot(body) ?: error("inbox payload did not parse")
-
-        assertEquals(listOf("9007199254740993", null, null), parsed.items.map { it.readStateLatestActivitySeq })
-        assertTrue(compareActivitySeq("9007199254740993", "9007199254740992") > 0, "exact beyond 2^53")
-        assertTrue(compareActivitySeq("10", "9") > 0)
-        assertTrue(compareActivitySeq(null, "1") < 0)
-        assertFalse(isCanonicalActivitySeq("007"))
+    fun activitySeqComparisonIsExactDecimal() {
+        // (a, b, expected sign of compareActivitySeq(a, b))
+        val cases =
+            listOf(
+                Triple("9007199254740993", "9007199254740992", 1), // exact beyond 2^53
+                Triple("10", "9", 1),
+                Triple("9", "10", -1),
+                Triple("10", "10", 0),
+                Triple(null, "1", -1),
+                Triple("1", null, 1),
+                Triple(null, null, 0),
+                Triple("007", "1", -1) // non-canonical loses to any canonical value
+            )
+        cases.forEach { (a, b, expected) ->
+            assertEquals(expected, compareActivitySeq(a, b).coerceIn(-1, 1), "compare($a, $b)")
+        }
     }
+
+    @Test
+    fun canonicalActivitySeqRejectsNonDecimalShapes() {
+        val cases = listOf("0" to true, "41" to true, "007" to false, "" to false, "-1" to false, "1.5" to false, "1e3" to false)
+        cases.forEach { (value, expected) ->
+            assertEquals(expected, isCanonicalActivitySeq(value), "isCanonical($value)")
+        }
+    }
+
+    @Test
+    fun servedMarkerIsNewerOnlyForStrictlyNewerActivity() {
+        val channel = ActivityOverlayMarker(seq = "10", anchor = MessageId("a-1"))
+        val thread = ActivityOverlayMarker(seq = "10", anchor = MessageId("a-1"), replyCount = 3, isThread = true)
+        val cases =
+            listOf(
+                MarkerCase("channel newer seq", channel, channel.copy(seq = "11"), true),
+                MarkerCase("channel same seq", channel, channel.copy(anchor = MessageId("a-2")), false),
+                MarkerCase("channel older seq", channel, channel.copy(seq = "9", anchor = MessageId("a-0")), false),
+                MarkerCase("held seq, served none, same anchor", channel, channel.copy(seq = null), false),
+                MarkerCase("held seq, served none, new anchor", channel, channel.copy(seq = null, anchor = MessageId("a-2")), true),
+                MarkerCase("thread newer seq and reply", thread, thread.copy(seq = "11", replyCount = 4), true),
+                MarkerCase("thread newer seq, same reply count", thread, thread.copy(seq = "11"), false),
+                MarkerCase("thread fallback, same reply count", thread.copy(seq = null), thread.copy(seq = null, anchor = MessageId("a-2")), false),
+                MarkerCase("thread fallback, more replies", thread.copy(seq = null), thread.copy(seq = null, anchor = MessageId("a-2"), replyCount = 4), true)
+            )
+        cases.forEach { (name, held, served, expected) ->
+            assertEquals(expected, served.isNewerThan(held), name)
+        }
+    }
+
+    @Test
+    fun heldFrontierFallsBackToAnchorWhenTheServedRowHasNoSeq() = runTest {
+        // (served anchor, expect the row shown again)
+        listOf("latest-channel-1" to false, "latest-new" to true).forEach { (servedAnchor, shown) ->
+            val inbox = ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10"))))
+            val store = overlayStore(inbox)
+            store.dispatch(SharedActivityIntent.LoadInitial)
+            runCurrent()
+            store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+            runCurrent()
+
+            inbox.serving = snapshot(listOf(row("channel-1", seq = null, latest = servedAnchor)))
+            store.dispatch(SharedActivityIntent.PullRefresh)
+            runCurrent()
+            assertEquals(if (shown) 1 else 0, store.state.value.items.size, "servedAnchor=$servedAnchor")
+        }
+    }
+
+    @Test
+    fun rowWithoutFrontierOrAnchorRegistersNoHold() = runTest {
+        val bare =
+            activityItem("channel-1", unreadCount = 1)
+                .copy(latestActivityMessageId = null, lastMessageId = null, parentMessageId = null)
+        val inbox = ScriptedActivityInbox(snapshot(listOf(bare)))
+        val store = overlayStore(inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+        assertEquals(listOf(ChannelId("channel-1")), inbox.doneChannelIds)
+
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key }, "nothing to hold against")
+    }
+
+    @Test
+    fun locallyResolvedMentionActionStaysHiddenPastTheHold() = runTest {
+        val inbox = ScriptedActivityInbox(snapshot(listOf(mentionActionItem("resolution-1"), row("channel-2", seq = "7"))))
+        val store = overlayStore(inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.first()))
+        runCurrent()
+        assertEquals(emptyList(), inbox.doneChannelIds, "mention actions resolve locally")
+
+        advanceTimeBy(ActivityLocalMutationHoldMillis + ActivityLocalMutationRequestTimeoutMillis + 1L)
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(listOf("channel:channel-2"), store.state.value.items.map { it.key })
+        assertEquals(1, store.state.value.totalCount)
+    }
+
+    @Test
+    fun realtimeSeqOnAnOldServerRowKeepsTheAnchorFallback() = runTest {
+        // Old server: no readState frontier. A socket seq must not turn the row
+        // into a seq marker that later seq-less copies can never beat.
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+        val inbox = ScriptedActivityInbox(snapshot(listOf(stale)))
+        val store = overlayStore(inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("reply-3", channelId = "thread-channel-1", seq = 11L)))
+        )
+        assertEquals(null, store.state.value.items.single().readStateLatestActivitySeq)
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(emptyList(), store.state.value.items, "pre-patch copy is the handled row")
+
+        inbox.serving = snapshot(listOf(stale.copy(replyCount = 4, latestActivityMessageId = MessageId("reply-4"))))
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(MessageId("reply-4"), store.state.value.items.single().latestActivityMessageId)
+    }
+
+    @Test
+    fun threadUpdatedPatchedDoneSurvivesTheServedCatchUpOfThatReply() = runTest {
+        // With and without the reply seq on the event: the view catching up to the
+        // patched reply (newer seq, same reply count) is still the handled row.
+        listOf(11L, null).forEach { replySeq ->
+            val stale = threadItem("thread-channel-1").copy(readStateLatestActivitySeq = "10", replyCount = 2)
+            val inbox = ScriptedActivityInbox(snapshot(listOf(stale)))
+            val store = overlayStore(inbox)
+            store.dispatch(SharedActivityIntent.LoadInitial)
+            runCurrent()
+            store.dispatch(
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    ThreadUpdated(
+                        parentMessageId = MessageId("parent-message"),
+                        threadChannelId = ChannelId("thread-channel-1"),
+                        replyCount = 3,
+                        lastReplyAt = "2026-10-20T00:00:03Z",
+                        participantIds = emptyList(),
+                        latestReply = replySeq?.let(::replyPreview)
+                    )
+                )
+            )
+            assertEquals(3, store.state.value.items.single().replyCount)
+            store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+            runCurrent()
+
+            inbox.serving =
+                snapshot(
+                    listOf(
+                        stale.copy(
+                            readStateLatestActivitySeq = "11",
+                            replyCount = 3,
+                            latestActivityMessageId = MessageId("reply-3")
+                        )
+                    )
+                )
+            store.dispatch(SharedActivityIntent.PullRefresh)
+            runCurrent()
+            assertEquals(emptyList(), store.state.value.items, "replySeq=$replySeq catch-up copy")
+
+            inbox.serving =
+                snapshot(
+                    listOf(
+                        stale.copy(
+                            readStateLatestActivitySeq = "12",
+                            replyCount = 4,
+                            latestActivityMessageId = MessageId("reply-4")
+                        )
+                    )
+                )
+            store.dispatch(SharedActivityIntent.PullRefresh)
+            runCurrent()
+            assertEquals(MessageId("reply-4"), store.state.value.items.single().latestActivityMessageId, "replySeq=$replySeq")
+        }
+    }
+
+    @Test
+    fun pendingDoneThatNeverConfirmsLapsesAtTheBackstop() = runTest {
+        val inbox = ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10"))))
+        inbox.gateDone(ChannelId("channel-1")) // never completed
+        val store = overlayStore(inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 1L)
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(emptyList(), store.state.value.items, "pending: request may still land")
+
+        advanceTimeBy(ActivityLocalMutationRequestTimeoutMillis)
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key }, "backstop lapsed")
+    }
+
+    @Test
+    fun cancelledDoneWriteDropsThePendingHold() = runTest {
+        val inbox = ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10"))))
+        val gate = inbox.gateDone(ChannelId("channel-1"))
+        val store = overlayStore(inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+
+        gate.cancel()
+        runCurrent()
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
+    }
+
+    @Test
+    fun summaryFactMatchesTheSnapshotCountsUnderAReadHold() = runTest {
+        val inbox =
+            ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10", unread = 2), row("channel-2", seq = "7", unread = 1))))
+        val facts = mutableListOf<ActivityUnreadSummaryFact>()
+        val store = overlayStore(inbox, onSummaryFact = { facts += it })
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.first()))
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        val fact = facts.last()
+        assertEquals(1 to 2, store.state.value.totalUnreadCount to store.state.value.totalCount)
+        assertEquals(1 to 2, fact.totalUnreadCount to fact.totalCount)
+    }
+
+    @Test
+    fun readPredictionHoldStartsAtServerConfirmation() = runTest {
+        val inbox = ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10", unread = 2))))
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        val store = overlayStore(inbox, readReceiptOwnerFactory = { serverId, accountId -> owner.copy(accountId = accountId, serverId = serverId) })
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.applyReadReceiptPrediction(
+            ReadReceiptPrediction(owner, ChannelId("channel-1"), revision = 1L, target = ReadReceiptTarget.All)
+        )
+        assertEquals(0, store.state.value.items.single().unreadCount)
+
+        advanceTimeBy(20_000L) // write confirmed at t=20s -> held until t=110s
+        store.dispatch(
+            SharedActivityIntent.ApplyReadReceiptResult(ReadReceiptRequest.All(ChannelId("channel-1"), owner, revision = 1L), succeeded = true)
+        )
+        advanceTimeBy(80_000L) // t=100s: past a prediction-time hold, inside the confirmed one
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(0, store.state.value.items.single().unreadCount)
+
+        advanceTimeBy(10_001L) // t=110_001
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertEquals(2, store.state.value.items.single().unreadCount)
+    }
+
+    private data class MarkerCase(
+        val name: String,
+        val held: ActivityOverlayMarker,
+        val served: ActivityOverlayMarker,
+        val newer: Boolean
+    )
 
     private fun TestScope.overlayStore(
         inbox: ScriptedActivityInbox,
         readReceiptRepository: FakeReadReceiptRepository = FakeReadReceiptRepository(),
         authStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         refreshIntervalMillis: Long = 60_000L,
+        readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
         onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {}
     ): SharedActivityStore {
         inbox.clock = { testScheduler.currentTime }
@@ -385,7 +619,7 @@ class SharedActivityStoreDoneOverlayTest {
             authStore = authStore,
             onSummaryFact = onSummaryFact,
             realtimeBackgroundRefreshIntervalMillis = refreshIntervalMillis,
-            nowMillis = { testScheduler.currentTime }
+            readReceiptOwnerFactory = readReceiptOwnerFactory
         )
     }
 
@@ -403,6 +637,17 @@ class SharedActivityStoreDoneOverlayTest {
     ): InboxItem =
         activityItem(channelId, unreadCount = unread)
             .copy(readStateLatestActivitySeq = seq, latestActivityMessageId = MessageId(latest))
+
+    private fun replyPreview(seq: Long): ReplyPreview =
+        ReplyPreview(
+            messageId = "reply-3",
+            seq = seq,
+            content = "reply",
+            senderId = "user-2",
+            senderType = "user",
+            senderName = "User 2",
+            createdAt = "2026-10-20T00:00:03Z"
+        )
 
     private fun twoServerSession(selected: String): StoredAuthSession =
         sampleSession(serverId = selected).copy(

@@ -40,6 +40,8 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +61,19 @@ import kotlin.test.assertTrue
 
 // Shared SharedActivityStore test fixtures (moved out of SharedActivityStoreTest so
 // facet suites such as SharedActivityStoreDoneOverlayTest reuse them).
+
+/**
+ * The store clock for a test scope: the virtual time of the TestCoroutineScheduler
+ * in [scope]'s context (`runTest`'s `this` or `backgroundScope`). Never real
+ * monotonic time. Legacy real-dispatcher (`runBlocking`) suites carry no scheduler
+ * and get a clock frozen at 0, so holds never lapse and throttle windows never
+ * elapse there; any case that asserts on time must run under `runTest`.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun activityTestClock(scope: CoroutineScope): () -> Long {
+    val scheduler = scope.coroutineContext[TestCoroutineScheduler] ?: return { 0L }
+    return { scheduler.currentTime }
+}
 
 internal fun activityStore(
     scope: CoroutineScope,
@@ -84,7 +99,7 @@ internal fun activityStore(
     onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     realtimeBackgroundRefreshIntervalMillis: Long = 60_000L,
-    nowMillis: (() -> Long)? = null,
+    nowMillis: () -> Long = activityTestClock(scope),
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
     beforeRealtimeHighWaterFold: () -> Unit = {},
     onRealtimePatchOwnerEntered: () -> Unit = {},
@@ -112,7 +127,7 @@ internal fun activityStore(
         onSummaryInvalidated = onSummaryInvalidated,
         scope = scope,
         realtimeBackgroundRefreshIntervalMillis = realtimeBackgroundRefreshIntervalMillis,
-        nowMillis = nowMillis ?: activityMonotonicClock(),
+        nowMillis = nowMillis,
         localMutationHoldMillis = localMutationHoldMillis,
         beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
         onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
@@ -325,6 +340,31 @@ internal fun threadItem(
         unreadCount = unreadCount,
         firstUnreadMessageId = if (unreadCount > 0) MessageId("first-$channelId") else null,
         latestActivityMessageId = MessageId("latest-thread")
+    )
+
+internal fun mentionActionItem(resolutionId: String): InboxItem =
+    InboxItem(
+        key = "mention_action:$resolutionId",
+        kind = InboxItemKind.MentionAction,
+        channelId = ChannelId("channel-1"),
+        channelName = "android-dev",
+        channelKind = ConversationKind.Channel,
+        lastMessageId = MessageId("message-1"),
+        lastMessagePreview = "Can someone ping @missing-human?",
+        lastMessageAt = "2026-06-26T02:40:00Z",
+        mentionActionId = resolutionId,
+        pendingMentionActions =
+            listOf(
+                PendingMentionAction(
+                    resolutionId = resolutionId,
+                    messageId = MessageId("message-1"),
+                    channelId = ChannelId("channel-1"),
+                    channelName = "android-dev",
+                    targetType = "user",
+                    targetHandle = "missing-human",
+                    availableActions = listOf("notify", "invite")
+                )
+            )
     )
 
 internal fun snapshot(

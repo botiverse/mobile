@@ -1520,6 +1520,14 @@ internal class RaftSharedStoreProvider private constructor(
                     request.owner.toProcessActivityUnreadOwner(),
                     reason = "read_result:${request.revision}"
                 )
+                // The Activity local read hold starts at server confirmation.
+                homeActivityStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
+                        store.dispatch(
+                            SharedActivityIntent.ApplyReadReceiptResult(request, result.isReadReceiptSuccess())
+                        )
+                    }
+                }
                 sharedInfoLogger("SlockReadReceipt", "process_read_receipt")(
                     "result owner=${request.owner.serverId}:${request.owner.accountId} " +
                         "channelId=${request.channelId.value} revision=${request.revision} " +
