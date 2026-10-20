@@ -164,6 +164,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
@@ -289,7 +291,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import build.raft.app.model.isExternalAgentRuntime
 import build.raft.app.data.defaultNowMillis
@@ -874,15 +875,39 @@ internal fun List<MembersAgentDetailTab>.membersMoveTab(
     return mutable
 }
 
-internal fun membersAgentTabVisibleAnchorIndex(
-    tabs: List<MembersAgentDetailTab>,
-    selectedTab: MembersAgentDetailTab
+/**
+ * Drop index for a long-press tab drag (raft-ui SortableTabsList): the dragged tab's centre,
+ * shifted by [dragOffsetPx], moves past every neighbour whose midpoint it crosses. Uses the
+ * measured widths of all tabs (in order, [gapPx] apart), so tabs of different widths reorder
+ * by the neighbour actually crossed rather than by the dragged tab's own width. A missing
+ * (unmeasured) width counts as 0.
+ */
+internal fun membersAgentTabDropIndex(
+    widthsPx: List<Int>,
+    gapPx: Float,
+    fromIndex: Int,
+    dragOffsetPx: Float
 ): Int {
-    val selectedIndex = tabs.indexOf(selectedTab)
-    return when {
-        selectedIndex <= 0 -> 0
-        else -> selectedIndex - 1
+    if (fromIndex !in widthsPx.indices) return fromIndex
+    val starts = FloatArray(widthsPx.size)
+    var x = 0f
+    widthsPx.forEachIndexed { i, w ->
+        starts[i] = x
+        x += w.coerceAtLeast(0) + gapPx
     }
+    fun mid(i: Int): Float = starts[i] + widthsPx[i].coerceAtLeast(0) / 2f
+    val draggedCentre = mid(fromIndex) + dragOffsetPx
+    var target = fromIndex
+    if (dragOffsetPx > 0f) {
+        for (i in fromIndex + 1..widthsPx.lastIndex) {
+            if (draggedCentre > mid(i)) target = i else break
+        }
+    } else if (dragOffsetPx < 0f) {
+        for (i in fromIndex - 1 downTo 0) {
+            if (draggedCentre < mid(i)) target = i else break
+        }
+    }
+    return target
 }
 
 /**
@@ -7726,8 +7751,10 @@ private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
  * raft-ui ConversationPanelTabs + TabsList (default variant), as the web agent page: sticker
  * tabs (16dp icon, callout label) 2dp apart on `layer-canvas`, 16 / 8dp padding and a
  * `line-seam` under them ([RaftTabStrip]); the selected tab scrolls itself into view.
- * Long-press drag reorders (raft-ui SortableTabsList): the step is the dragged tab's measured
- * width, and the dragged tab takes `info-soft`.
+ * Long-press drag reorders (raft-ui SortableTabsList): the dragged tab follows the finger,
+ * lifted (translucent, `info-soft` fill, drawn above its neighbours) so the drag is visible even
+ * on the selected tab, and drops past every neighbour whose midpoint it crosses
+ * ([membersAgentTabDropIndex]).
  */
 @Composable
 private fun MembersAgentTabBar(
@@ -7737,16 +7764,19 @@ private fun MembersAgentTabBar(
     onReorderTabs: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
-    var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
-    var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
-    val tabWidthsPx = remember(tabs) { mutableStateMapOf<MembersAgentDetailTab, Int>() }
+    var draggedTab by remember { mutableStateOf<MembersAgentDetailTab?>(null) }
+    var dragOffsetX by remember { mutableStateOf(0f) }
+    // Keyed by the stable enum, not by `tabs`: a reorder must not drop measured widths, since
+    // onSizeChanged does not refire for tabs whose size did not change.
+    val tabWidthsPx = remember { mutableStateMapOf<MembersAgentDetailTab, Int>() }
+    val currentTabs by rememberUpdatedState(tabs)
     val tabGapPx = with(LocalDensity.current) { 2.dp.toPx() }
     val dragFill = RaftTheme.colors.infoSoft
     RaftTabStrip(modifier = modifier) {
-        tabs.forEachIndexed { index, tab ->
+        tabs.forEach { tab ->
             key(tab) {
                 val spec = tab.toRaftTabSpec()
+                val dragging = tab == draggedTab
                 RaftTab(
                     text = spec.label,
                     selected = tab == selectedTab,
@@ -7755,38 +7785,46 @@ private fun MembersAgentTabBar(
                     modifier = Modifier
                         .onSizeChanged { tabWidthsPx[tab] = it.width }
                         .then(
-                            if (tab == draggedTab) {
-                                Modifier.background(dragFill, RoundedCornerShape(RaftRadius.Control))
+                            if (dragging) {
+                                Modifier
+                                    .zIndex(1f)
+                                    .graphicsLayer {
+                                        translationX = dragOffsetX
+                                        alpha = 0.85f
+                                    }
+                                    .background(dragFill, RoundedCornerShape(RaftRadius.Control))
                             } else {
                                 Modifier
                             }
                         )
-                        .pointerInput(tabs, tab, onReorderTabs) {
+                        .pointerInput(tab, onReorderTabs) {
                             if (onReorderTabs == null) return@pointerInput
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
                                     draggedTab = tab
-                                    dragStartIndex = index
                                     dragOffsetX = 0f
                                 },
                                 onDragEnd = {
-                                    val fromIndex = dragStartIndex
-                                    val stepWidthPx = ((tabWidthsPx[tab] ?: 0) + tabGapPx).coerceAtLeast(1f)
-                                    val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
-                                        .coerceIn(0, tabs.lastIndex)
-                                    if (fromIndex in tabs.indices && toIndex != fromIndex) {
-                                        onReorderTabs(tabs.membersMoveTab(fromIndex, toIndex))
+                                    val order = currentTabs
+                                    val fromIndex = order.indexOf(tab)
+                                    val toIndex = membersAgentTabDropIndex(
+                                        widthsPx = order.map { tabWidthsPx[it] ?: 0 },
+                                        gapPx = tabGapPx,
+                                        fromIndex = fromIndex,
+                                        dragOffsetPx = dragOffsetX
+                                    )
+                                    if (fromIndex in order.indices && toIndex != fromIndex) {
+                                        onReorderTabs(order.membersMoveTab(fromIndex, toIndex))
                                     }
                                     draggedTab = null
-                                    dragStartIndex = -1
                                     dragOffsetX = 0f
                                 },
                                 onDragCancel = {
                                     draggedTab = null
-                                    dragStartIndex = -1
                                     dragOffsetX = 0f
                                 }
-                            ) { _, dragAmount ->
+                            ) { change, dragAmount ->
+                                change.consume()
                                 dragOffsetX += dragAmount.x
                             }
                         }

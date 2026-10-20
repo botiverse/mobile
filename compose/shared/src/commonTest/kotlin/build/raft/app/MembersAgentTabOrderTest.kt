@@ -135,18 +135,34 @@ class MembersAgentTabOrderTest {
     }
 
     @Test
-    fun selectedAgentTabScrollAnchorKeepsPriorTabVisible() {
-        val tabs =
-            listOf(
-                MembersAgentDetailTab.Activity,
-                MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Chat,
-                MembersAgentDetailTab.Apps
+    fun tabDropIndexCrossesNeighbourMidpointsUsingTheirOwnWidths() {
+        // Tabs 100, 40, 200, 60 px wide, 2 px apart; midpoints 50, 122, 244, 376.
+        val widths = listOf(100, 40, 200, 60)
+        val gap = 2f
+        data class Case(val from: Int, val offset: Float, val expected: Int)
+        listOf(
+            // Index 0 (centre 50): crossing the narrow neighbour's midpoint (122) needs > 72 px,
+            // not the dragged tab's own width.
+            Case(from = 0, offset = 71f, expected = 0),
+            Case(from = 0, offset = 73f, expected = 1),
+            // Reaching the wide tab's midpoint (244) needs > 194 px; then the last tab (376).
+            Case(from = 0, offset = 193f, expected = 1),
+            Case(from = 0, offset = 195f, expected = 2),
+            Case(from = 0, offset = 10_000f, expected = 3),
+            // Leftward from the last tab (centre 376).
+            Case(from = 3, offset = -131f, expected = 3),
+            Case(from = 3, offset = -133f, expected = 2),
+            Case(from = 3, offset = -10_000f, expected = 0),
+            Case(from = 2, offset = 0f, expected = 2),
+            // Out-of-range start is returned unchanged.
+            Case(from = 7, offset = 50f, expected = 7)
+        ).forEach { case ->
+            assertEquals(
+                case.expected,
+                membersAgentTabDropIndex(widths, gap, case.from, case.offset),
+                "drop index for $case"
             )
-
-        assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Profile))
-        assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Chat))
-        assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Activity))
+        }
     }
 
     @Test
