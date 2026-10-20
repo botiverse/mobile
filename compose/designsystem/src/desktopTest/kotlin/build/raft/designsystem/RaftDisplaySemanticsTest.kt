@@ -65,6 +65,7 @@ import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -335,6 +336,26 @@ class RaftDisplaySemanticsTest {
             clicks = 0
             button.performClick()
             assertEquals(1, clicks)
+        }
+
+    /** A nameless icon button doesn't crash: it tells [LocalRaftMisuse], silent unless provided. */
+    @Test
+    fun aNamelessIconButtonReportsMisuseInsteadOfCrashing() =
+        runComposeUiTest {
+            val reports = mutableListOf<String>()
+            setContent(
+                themed {
+                    Column {
+                        RaftIconButton(onClick = {}, tooltip = null, modifier = Modifier.testTag("silent")) {}
+                        CompositionLocalProvider(LocalRaftMisuse provides { reports += it }) {
+                            RaftIconButton(onClick = {}, tooltip = null, modifier = Modifier.testTag("reported")) {}
+                        }
+                    }
+                },
+            )
+            onNodeWithTag("silent").assertExists()
+            onNodeWithTag("reported").assertExists()
+            assertEquals(listOf("RaftIconButton needs a name: pass tooltip or contentDescription"), reports.distinct())
         }
 
     /** A 24dp button takes a tap 8dp above its box (inside the 44dp target). */

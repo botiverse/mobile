@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
+import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftRadius
@@ -414,7 +415,7 @@ fun RaftIconButton(
     val box = if (onFrame) 36.dp else size.box
     val glyph = if (onFrame) 20.dp else size.glyph
     val description = contentDescription
-    require(description != null) { "RaftIconButton needs a name: pass tooltip or contentDescription" }
+    if (description == null) LocalRaftMisuse.current("RaftIconButton needs a name: pass tooltip or contentDescription")
     val button: @Composable (Modifier) -> Unit = { outer ->
         RaftButtonBox(
             look = look,

@@ -330,6 +330,8 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Tooltip on a long press.** The web opens an icon button's tooltip on hover; touch
   opens it on a long press for 1.5s (a mouse still on hover, open until it leaves). Every
   icon-only action has a name: the tooltip, or `contentDescription` when `tooltip = null`.
+  A nameless one doesn't crash: it tells `LocalRaftMisuse` (silent by default; debug builds
+  and tests provide one that fails).
   The dialog's close button shows a "Close" tooltip; the web dialog's close button has
   none. An icon button with `onLongClick` gives the long press to that action and opens its
   tooltip only on hover.
