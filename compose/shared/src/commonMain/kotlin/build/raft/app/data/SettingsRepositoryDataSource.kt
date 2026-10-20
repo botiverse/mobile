@@ -1447,26 +1447,12 @@ class RealSettingsRepository(
         setServerNotificationMode(if (enabled) ServerPushMode.None else ServerPushMode.All)
 
     override suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> {
-        val serverId = selectedServerId() ?: return serverRequired()
-        val current = fetchServerNotificationPreferences(serverId)
-        val preferences = (current as? DataResult.Content)?.data
-            ?: return when (current) {
-                is DataResult.Empty -> current
-                is DataResult.Error -> current
-                is DataResult.NoPermission -> current
-                is DataResult.Content -> error("unreachable")
-            }
-        if (!preferences.pushPreviewModeSupported) {
-            return DataResult.Error(
-                ScreenError(code = "settings_push_preview_mode_unsupported", retryable = false)
-            )
-        }
-        return when (val result = settingsUpdatePushPreviewMode(serverId, mode)) {
-            is DataResult.Content -> getMobileSettings()
-            is DataResult.Empty -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            is DataResult.Error -> DataResult.Error(result.error)
-            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
-        }
+        // The preview choice is per device: it is persisted locally and reported through the push
+        // registration's previewMode field, not through the server notification-settings route.
+        // TODO(preview-mode): persist locally and re-register push; returns current settings until
+        // the local store and registration upload land in the follow-up commit.
+        selectedServerId() ?: return serverRequired()
+        return getMobileSettings()
     }
 
     private suspend fun settingsComputers(
@@ -2238,27 +2224,6 @@ class RealSettingsRepository(
                     } else {
                         buildSharedSettingsLegacyServerMuteBody(mode == ServerPushMode.None)
                     }
-                )
-            },
-            errorTextDecoder = HomeNetworkResponse::settingsServerNotificationRouteErrorTextOrNull,
-            mapper = { bodyText ->
-                parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
-                    ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
-            }
-        )
-
-    private suspend fun settingsUpdatePushPreviewMode(
-        serverId: String,
-        mode: PushPreviewMode
-    ): DataResult<SettingsServerNotificationPreferences> =
-        executeTypedSettings(
-            source = "settings_push_preview_mode_update",
-            contractCode = "settings_server_notification_settings_contract_mismatch",
-            block = {
-                networkClient.updateSettingsNotificationSettings(
-                    DataRequestPriority.Foreground,
-                    serverId,
-                    buildSharedSettingsPushPreviewModeBody(mode)
                 )
             },
             errorTextDecoder = HomeNetworkResponse::settingsServerNotificationRouteErrorTextOrNull,
@@ -3368,14 +3333,6 @@ data class SettingsServerNotificationModeRequestBody(
 
 fun buildSharedSettingsServerNotificationModeBody(mode: ServerPushMode): String =
     settingsRepositoryJson.encodeToString(SettingsServerNotificationModeRequestBody(serverPushMode = mode.wireName))
-
-@Serializable
-data class SettingsPushPreviewModeRequestBody(
-    val pushPreviewMode: String
-)
-
-fun buildSharedSettingsPushPreviewModeBody(mode: PushPreviewMode): String =
-    settingsRepositoryJson.encodeToString(SettingsPushPreviewModeRequestBody(pushPreviewMode = mode.wireName))
 
 fun buildSharedSettingsServerMuteBody(enabled: Boolean): String =
     buildSharedSettingsServerNotificationModeBody(if (enabled) ServerPushMode.None else ServerPushMode.All)
