@@ -14,6 +14,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -276,6 +280,14 @@ class SharedServerFeatureFlags(
     @Volatile
     private var snapshots: Map<String, ServerFeatureFlagSnapshot> = emptyMap()
 
+    private val _revision = MutableStateFlow(0L)
+
+    /**
+     * Bumped whenever an accepted evaluation replaces a server snapshot. UI that gates on
+     * [isEnabled] keys its read on this so it follows an evaluation that lands after first frame.
+     */
+    val revision: StateFlow<Long> = _revision.asStateFlow()
+
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
 
@@ -469,6 +481,7 @@ class SharedServerFeatureFlags(
             } else {
                 acceptedGenerationByServer[serverId.value] = requestGeneration
                 snapshots = snapshots + (serverId.value to snapshot)
+                _revision.update { it + 1 }
                 true
             }
         }
