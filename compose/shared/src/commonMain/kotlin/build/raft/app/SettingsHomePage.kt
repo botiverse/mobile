@@ -7087,7 +7087,8 @@ private fun RaftAppShellReadyContent(
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             externalSelectedThreadId =
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
-                            mainTab = true
+                            mainTab = true,
+                            scrollToTopRequest = tabScrollToTopRequests.activity
                         )
                     }
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->

@@ -1149,11 +1149,34 @@ class RaftAppShellTest {
     }
 
     @Test
+    fun bottomTabDoubleTapOnActivityScrollsItsListToTop() {
+        val tracker = AppShellBottomTabTapTracker(doubleTapWindowMs = 400L)
+
+        assertEquals(
+            AppShellBottomTabTapAction.Select,
+            tracker.onTap(selectedTab = "home", tappedTab = "activity", nowMs = 100L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ScrollCurrentToTop,
+            tracker.onTap(selectedTab = "activity", tappedTab = "activity", nowMs = 300L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "activity", tappedTab = "activity", nowMs = 1_000L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ScrollCurrentToTop,
+            tracker.onTap(selectedTab = "activity", tappedTab = "activity", nowMs = 1_200L),
+        )
+    }
+
+    @Test
     fun tabScrollRequestsAreMonotonicPerSurfaceAndSettingsIsExcluded() {
         val initial = AppShellTabScrollToTopRequests()
         val requested =
             initial
                 .request("home")
+                .request("activity")
                 .request("dms")
                 .request("tasks")
                 .request("members")
@@ -1164,7 +1187,7 @@ class RaftAppShellTest {
         assertEquals(1, requested.forTab("tasks"))
         assertEquals(1, requested.forTab("members"))
         assertEquals(0, requested.forTab("settings"))
-        assertEquals(0, requested.forTab("activity"))
+        assertEquals(1, requested.forTab("activity"))
         assertEquals(0, requested.forTab("more"))
     }
 

@@ -161,6 +161,8 @@ internal fun SharedHomeActivityScreen(
     externalSelectedThreadId: String? = null,
     // Activity hosted as an app-shell bottom tab: main-tab header.
     mainTab: Boolean = false,
+    // App-shell bottom-tab double tap generation (AppShellTabScrollToTopRequests.activity).
+    scrollToTopRequest: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -533,6 +535,7 @@ internal fun SharedHomeActivityScreen(
         mainTab = mainTab,
         conversationList = conversationList,
         conversationListPending = conversationListPending,
+        scrollToTopRequest = scrollToTopRequest,
         modifier = modifier
     )
 }
@@ -829,7 +832,8 @@ private fun SharedActivityPanelContent(
     mainTab: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
     /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
-    conversationListPending: Boolean = false
+    conversationListPending: Boolean = false,
+    scrollToTopRequest: Int = 0
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     // task #232 (#2224 review blocker 1): the panel owns per-page scroll
@@ -849,6 +853,13 @@ private fun SharedActivityPanelContent(
         rememberLazyListState(),
     )
     val scrollToTopScope = rememberCoroutineScope()
+    // Bottom-tab double tap scrolls the same list the title tap does (the selected filter's page).
+    val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
+            activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
+        }
+    }
     Column(
         modifier = modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
     ) {
