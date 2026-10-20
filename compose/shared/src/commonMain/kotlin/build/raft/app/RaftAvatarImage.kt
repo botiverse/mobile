@@ -16,7 +16,11 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.appAvatarApiFallbackUrl
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
+import build.raft.app.image.raftNetworkImageCacheKey
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.delay
+import kotlin.time.TimeSource
 
 /**
  * An http(s) avatar, loaded entirely through the Raft Coil image loader.
@@ -33,7 +37,7 @@ import kotlinx.coroutines.delay
  * trip had granted the request, even when the bytes were already on disk (Hands dd79da45).
  *
  * Rendering: [placeholder] until the image is decoded, the image on success, [fallback] once every
- * candidate has failed (also while a backoff retry is pending). [cacheSubject] / [cacheServerId]
+ * candidate has failed (also while its process-wide failure cooldown runs). [cacheSubject] / [cacheServerId]
  * are accepted for call-site compatibility; they are deliberately not part of the cache identity.
  */
 @Composable
@@ -56,17 +60,31 @@ internal fun RaftAvatarHttpImage(
             ?.apiBaseUrl
             ?.trimEnd('/')
     val candidates = remember(source, apiBaseUrl) { raftAvatarImageCandidates(source, apiBaseUrl) }
-    var attempt by remember(candidates) { mutableStateOf(RaftAvatarImageAttempt()) }
-    val model = candidates.getOrElse(attempt.candidateIndex) { candidates.first() }
-    key(model, attempt.retry) {
+    val cooldownKey = remember(candidates) { raftNetworkImageCacheKey(candidates.first()) }
+    // A full round = every candidate tried once. Failed rounds are remembered process-wide (keyed by
+    // content), so a failed avatar scrolled back into view shows its fallback without refetching.
+    var round by remember(candidates) { mutableStateOf(0) }
+    var candidateIndex by remember(candidates) { mutableStateOf(0) }
+    val coolingDownMillis = remember(cooldownKey, round) { raftAvatarFailureCooldown.retryDelayMillis(cooldownKey) }
+    if (coolingDownMillis > 0L) {
+        fallback()
+        LaunchedEffect(cooldownKey, round) {
+            delay(coolingDownMillis)
+            candidateIndex = 0
+            round += 1
+        }
+        return
+    }
+    val model = candidates.getOrElse(candidateIndex) { candidates.first() }
+    key(model, round) {
         val painter = rememberAsyncImagePainter(model = model)
         val imageState by painter.state.collectAsState()
         val failed = imageState is AsyncImagePainter.State.Error
         LaunchedEffect(imageState) {
             val outcome = imageState.raftAvatarImageOutcome()
             val message =
-                "source=${source.raftAvatarDiagnosticsSource()} candidate=${attempt.candidateIndex} " +
-                    "retry=${attempt.retry} painter=${outcome.painter} dataSource=${outcome.dataSource}"
+                "source=${source.raftAvatarDiagnosticsSource()} candidate=$candidateIndex " +
+                    "round=$round painter=${outcome.painter} dataSource=${outcome.dataSource}"
             diagnostics?.let { row ->
                 row.logger("thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} $message")
             }
@@ -76,10 +94,17 @@ internal fun RaftAvatarHttpImage(
                     "server_avatar_painter serverHash=${serverId.raftAvatarDiagnosticsHash()} role=$diagnosticsRole $message"
                 )
             }
-            if (imageState is AsyncImagePainter.State.Error) {
-                val next = attempt.next(candidates.size) ?: return@LaunchedEffect
-                if (next.retry != attempt.retry) delay(raftAvatarImageRetryDelayMillis(attempt.retry))
-                attempt = next
+            when (imageState) {
+                is AsyncImagePainter.State.Success -> raftAvatarFailureCooldown.recordSuccess(cooldownKey)
+                is AsyncImagePainter.State.Error ->
+                    if (candidateIndex + 1 < candidates.size) {
+                        candidateIndex += 1
+                    } else {
+                        raftAvatarFailureCooldown.recordFailure(cooldownKey)
+                        candidateIndex = 0
+                        round += 1
+                    }
+                else -> Unit
             }
         }
         when {
@@ -105,24 +130,48 @@ internal fun RaftAvatarHttpImage(
     }
 }
 
-/** Which avatar URL is being tried and how many full rounds have failed. */
-internal data class RaftAvatarImageAttempt(
-    val candidateIndex: Int = 0,
-    val retry: Int = 0,
+/**
+ * Process-wide failure cooldown of http avatars, keyed by content ([raftNetworkImageCacheKey]).
+ * Coil does not cache failures, so without it every recomposition of a failed row (scrolling,
+ * server switch) would fetch again. Consecutive failures back off exponentially up to
+ * [maxCooldownMillis]; a success clears the key.
+ */
+internal class RaftAvatarFailureCooldown(
+    private val maxEntries: Int = 512,
+    private val baseCooldownMillis: Long = 10_000L,
+    private val maxCooldownMillis: Long = 5 * 60 * 1_000L,
+    private val nowMillis: () -> Long = { raftAvatarCooldownOrigin.elapsedNow().inWholeMilliseconds },
 ) {
-    /** The next attempt after a failure, or null when the retry budget is spent. */
-    fun next(candidateCount: Int): RaftAvatarImageAttempt? =
-        when {
-            candidateIndex + 1 < candidateCount -> copy(candidateIndex = candidateIndex + 1)
-            retry + 1 <= RaftAvatarImageMaxRetries -> RaftAvatarImageAttempt(candidateIndex = 0, retry = retry + 1)
-            else -> null
+    private class Entry(val failures: Int, val retryAtMillis: Long)
+
+    private val lock = SynchronizedObject()
+    private val entries = linkedMapOf<String, Entry>()
+
+    /** Remaining cooldown of [key] in ms; 0 when it may load now. */
+    fun retryDelayMillis(key: String): Long =
+        synchronized(lock) {
+            val entry = entries[key] ?: return@synchronized 0L
+            (entry.retryAtMillis - nowMillis()).coerceAtLeast(0L)
         }
+
+    fun recordFailure(key: String) {
+        synchronized(lock) {
+            val failures = (entries.remove(key)?.failures ?: 0) + 1
+            val cooldown =
+                (baseCooldownMillis shl (failures - 1).coerceIn(0, 16)).coerceAtMost(maxCooldownMillis)
+            entries[key] = Entry(failures, nowMillis() + cooldown)
+            while (entries.size > maxEntries) entries.remove(entries.keys.first())
+        }
+    }
+
+    fun recordSuccess(key: String) {
+        synchronized(lock) { entries.remove(key) }
+    }
 }
 
-internal const val RaftAvatarImageMaxRetries = 2
+private val raftAvatarCooldownOrigin = TimeSource.Monotonic.markNow()
 
-/** Backoff before full retry round `retry + 1` (failures are not cached by Coil). */
-internal fun raftAvatarImageRetryDelayMillis(retry: Int): Long = 5_000L shl retry.coerceIn(0, 4)
+internal val raftAvatarFailureCooldown = RaftAvatarFailureCooldown()
 
 /**
  * The URLs to try for [source], in order: the source itself, then (for a raft CDN avatar) the same

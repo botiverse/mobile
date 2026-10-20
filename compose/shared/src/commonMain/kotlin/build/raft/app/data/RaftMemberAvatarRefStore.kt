@@ -3,7 +3,7 @@ package build.raft.app.data
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
@@ -29,24 +29,37 @@ internal class RaftMemberAvatarRefStore(
     private val maxEntriesPerServer: Int = DefaultMaxEntriesPerServer,
 ) {
     private val lock = SynchronizedObject()
-    private val loadedByServerId = mutableMapOf<String, Map<String, String>>()
+    private val loadedByServerId = mutableMapOf<String, RaftMemberAvatarRefPage>()
 
-    fun avatarWireValue(serverId: String?, memberId: String?): String? {
+    /**
+     * The stored reference, or null. [currentOwnerKey] is the current `environment|account` owner of
+     * [serverId] when known: a page written by a different owner is never read. While the owner is
+     * not resolved yet (cold start before the auth context is published) the page of the last
+     * owner is used; it is wiped with the auth session, so it is never another account's.
+     */
+    fun avatarWireValue(serverId: String?, memberId: String?, currentOwnerKey: String?): String? {
         val serverKey = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val memberKey = memberId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        return synchronized(lock) { refsLocked(serverKey)[memberKey] }
+        return synchronized(lock) {
+            val page = pageLocked(serverKey)
+            if (currentOwnerKey != null && page.owner != currentOwnerKey) return@synchronized null
+            page.refs[memberKey]
+        }
     }
 
     /**
-     * Applies authoritative avatar values for [serverId]. A null / blank value means "this member has
-     * no avatar" and removes the reference; members absent from [avatarsByMemberId] are kept.
-     * Writes only when something changed.
+     * Applies authoritative avatar values for [serverId] observed by [ownerKey] (`environment|
+     * account`, required: a write without a current owner binding is dropped). A null / blank value
+     * means "this member has no avatar" and removes the reference; members absent from
+     * [avatarsByMemberId] are kept. A different owner replaces the page. Writes only on change.
      */
-    fun record(serverId: String?, avatarsByMemberId: Map<String, String?>) {
+    fun record(serverId: String?, ownerKey: String?, avatarsByMemberId: Map<String, String?>) {
         val serverKey = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val owner = ownerKey?.trim()?.takeIf { it.isNotEmpty() } ?: return
         if (avatarsByMemberId.isEmpty()) return
         synchronized(lock) {
-            val current = refsLocked(serverKey)
+            val currentPage = pageLocked(serverKey)
+            val current = if (currentPage.owner == owner) currentPage.refs else emptyMap()
             val next = LinkedHashMap(current)
             avatarsByMemberId.forEach { (memberId, avatar) ->
                 val memberKey = memberId.trim().takeIf { it.isNotEmpty() } ?: return@forEach
@@ -58,14 +71,15 @@ internal class RaftMemberAvatarRefStore(
             while (next.size > maxEntriesPerServer) {
                 next.remove(next.keys.first())
             }
-            loadedByServerId[serverKey] = next
-            // Same references (possibly re-ordered by recency): nothing to write.
-            if (next == current) return@synchronized
+            val nextPage = RaftMemberAvatarRefPage(owner, next)
+            loadedByServerId[serverKey] = nextPage
+            // Same owner and references (possibly re-ordered by recency): nothing to write.
+            if (currentPage.owner == owner && next == current) return@synchronized
             runCatching {
                 if (next.isEmpty()) {
                     store.putString(serverKeyFor(serverKey), null)
                 } else {
-                    store.putString(serverKeyFor(serverKey), RefJson.encodeToString(RefMapSerializer, next))
+                    store.putString(serverKeyFor(serverKey), RefJson.encodeToString(RaftMemberAvatarRefPage.serializer(), nextPage))
                 }
                 val index = indexedServerIdsLocked()
                 if (next.isEmpty() && serverKey in index) {
@@ -88,12 +102,14 @@ internal class RaftMemberAvatarRefStore(
         }
     }
 
-    private fun refsLocked(serverKey: String): Map<String, String> =
+    private fun pageLocked(serverKey: String): RaftMemberAvatarRefPage =
         loadedByServerId.getOrPut(serverKey) {
             runCatching { store.getString(serverKeyFor(serverKey)) }
                 .getOrNull()
-                ?.let { encoded -> runCatching { RefJson.decodeFromString(RefMapSerializer, encoded) }.getOrNull() }
-                .orEmpty()
+                ?.let { encoded ->
+                    runCatching { RefJson.decodeFromString(RaftMemberAvatarRefPage.serializer(), encoded) }.getOrNull()
+                }
+                ?: RaftMemberAvatarRefPage()
         }
 
     private fun indexedServerIdsLocked(): List<String> =
@@ -113,13 +129,18 @@ internal class RaftMemberAvatarRefStore(
     internal companion object {
         const val DefaultMaxEntriesPerServer = 2000
         // Persisted key family: keep the spelling stable across releases.
-        const val KeyPrefix = "raft:member-avatar-refs:v1:server:"
-        const val IndexKey = "raft:member-avatar-refs:v1:index"
+        const val KeyPrefix = "raft:member-avatar-refs:v2:server:"
+        const val IndexKey = "raft:member-avatar-refs:v2:index"
 
         fun serverKeyFor(serverId: String): String = KeyPrefix + serverId
 
         private val RefJson = Json { ignoreUnknownKeys = true }
-        private val RefMapSerializer = MapSerializer(String.serializer(), String.serializer())
         private val IndexSerializer = ListSerializer(String.serializer())
     }
 }
+
+@Serializable
+internal data class RaftMemberAvatarRefPage(
+    val owner: String = "",
+    val refs: Map<String, String> = emptyMap(),
+)

@@ -65,6 +65,7 @@ internal class RaftThreadReplyWindowCache(
     private val dirtyPageKeys = mutableSetOf<String>()
     private val ioMutex = Mutex()
     private var clearGeneration = 0L
+    private var diskWipePending = false
 
     /** The cached windows of [page] keyed by parent message id (reads disk once per page). */
     suspend fun load(page: ThreadRepliesPageIdentity): Map<String, RaftCachedThreadReplyWindow> {
@@ -110,17 +111,26 @@ internal class RaftThreadReplyWindowCache(
         changedPageKeys.forEach { pageKey -> scope.launch { flush(pageKey) } }
     }
 
-    /** Drops every cached window, memory and disk (auth session ended). */
-    suspend fun clearAll() {
+    /**
+     * Drops every cached window (auth session ended). Memory is cleared synchronously, so it can
+     * run inside the auth terminal-revision gate; pending write-behind flushes of the old
+     * generation are discarded, and the disk wipe is queued behind any flush already writing.
+     */
+    fun clearAll() {
         synchronized(lock) {
             clearGeneration += 1
             pages.clear()
             loadedPageKeys.clear()
             dirtyPageKeys.clear()
+            diskWipePending = true
         }
-        ioMutex.withLock {
-            runCatchingStorage("clear") { storage.clearAll() }
-        }
+        scope.launch { ioMutex.withLock { wipeDiskIfPendingLocked() } }
+    }
+
+    /** Must run under [ioMutex]: every disk read or write first completes a pending wipe. */
+    private suspend fun wipeDiskIfPendingLocked() {
+        val pending = synchronized(lock) { diskWipePending.also { diskWipePending = false } }
+        if (pending) runCatchingStorage("clear") { storage.clearAll() }
     }
 
     private suspend fun flush(pageKey: String) {
@@ -146,6 +156,7 @@ internal class RaftThreadReplyWindowCache(
 
     /** Must run under [ioMutex]. Merges the disk page under the in-memory entries (memory wins). */
     private suspend fun ensureLoadedLocked(pageKey: String) {
+        wipeDiskIfPendingLocked()
         val generation = synchronized(lock) {
             if (pageKey in loadedPageKeys) return
             clearGeneration

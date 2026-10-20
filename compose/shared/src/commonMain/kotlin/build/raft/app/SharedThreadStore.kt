@@ -2315,7 +2315,16 @@ internal class SharedThreadDataSource(
 
     /** Persists accepted reply-preview windows for the next cold start. */
     internal fun recordReplyWindows(projections: Collection<ThreadRepliesAcceptedProjection>) {
-        durableLastKnownReader?.replyWindowCache?.record(projections)
+        val cache = durableLastKnownReader?.replyWindowCache ?: return
+        // Only the current principal's windows are written: a summary that lands after a sign-out
+        // or account switch must not re-create content the auth cleanup just wiped.
+        val provenance = currentReplyCacheProvenance() ?: return
+        val current =
+            projections.filter { projection ->
+                projection.identity.page.principalId == provenance.principalId &&
+                    projection.identity.page.serverId == provenance.serverId
+            }
+        cache.record(current)
     }
 
     internal suspend fun durableLastKnownPayloadIfCurrent(
@@ -6618,9 +6627,16 @@ internal class SharedThreadStore(
         // Hands dd79da45: with no in-memory candidate (cold start), seed the reply-preview windows
         // persisted by the last session. The durable frame shows them on its first frame, and the
         // first network commit re-reads them from the sync host until the summaries confirm them.
+        // Only a durable first frame waits for the (small) disk read; a loading-shell first frame
+        // must not, so there the seed runs beside the network fetch, whose commit re-reads it.
         val seededReplyWindows =
             if (cached == null && current == null && producerContext != null) {
-                seedCachedReplyWindows(routeContextPayload, producerContext)
+                if (durableLastKnown != null) {
+                    seedCachedReplyWindows(routeContextPayload, producerContext)
+                } else {
+                    scope.launch { seedCachedReplyWindows(routeContextPayload, producerContext) }
+                    emptyMap()
+                }
             } else {
                 emptyMap()
             }

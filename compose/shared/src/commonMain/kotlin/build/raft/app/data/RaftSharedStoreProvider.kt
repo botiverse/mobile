@@ -656,6 +656,9 @@ internal class RaftSharedStoreProvider private constructor(
                     homeRowHintPersistStorage.clearAll()
                     // Avatar references are account-visible directory data: same lifetime.
                     memberAvatarRefStore.clearAll()
+                    // Reply previews are message content: same lifetime (page keys are also
+                    // principal-scoped, so a successor never reads them in the meantime).
+                    threadDurableLastKnownReader.replyWindowCache?.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -673,9 +676,6 @@ internal class RaftSharedStoreProvider private constructor(
                 }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                 clearActiveServerSelectionsIfUnchanged(selectionReceipts)
-                // Reply previews are message content: they leave with the session (their page
-                // keys are principal-scoped, so a successor never reads them in the meantime).
-                threadDurableLastKnownReader.replyWindowCache?.clearAll()
             }
         }
         updateNetworkKmmRecoveryEnvironment()
@@ -1811,6 +1811,11 @@ internal class RaftSharedStoreProvider private constructor(
                 SharedApiEnvironmentStore(
                     apiEnvironmentKeyValueStore
                 )
+            // Content-addressed avatar keys are host-free only for the active environment's hosts.
+            apiEnvironmentStore.current().let { RaftAvatarTrustedHosts.configure(it.apiBaseUrl, it.webUrl) }
+            CoroutineScope(SupervisorJob()).launch {
+                apiEnvironmentStore.state.collect { RaftAvatarTrustedHosts.configure(it.apiBaseUrl, it.webUrl) }
+            }
             val tasksDataStore =
                 SharedTasksDataStore(
                     ownerIdentityProvider = {

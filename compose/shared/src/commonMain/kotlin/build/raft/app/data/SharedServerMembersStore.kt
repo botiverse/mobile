@@ -526,8 +526,17 @@ class SharedServerMembersStore internal constructor(
      * The last authoritative avatar wire value persisted for [memberId] in [serverId], or null. Read
      * only as a fallback while the in-memory directory has no avatar for the member yet.
      */
-    fun durableMemberAvatarWireValue(serverId: ServerId?, memberId: String?): String? =
-        avatarRefStore?.avatarWireValue(serverId?.value, memberId)
+    fun durableMemberAvatarWireValue(serverId: ServerId?, memberId: String?): String? {
+        val refStore = avatarRefStore ?: return null
+        val serverKey = serverId?.value?.normalizedServerMembersId() ?: return null
+        return refStore.avatarWireValue(serverKey, memberId, avatarRefOwnerKey(serverKey))
+    }
+
+    /** `environment|account` of the current auth binding for [serverKey], or null when not bound. */
+    private fun avatarRefOwnerKey(serverKey: String): String? =
+        presenceOwner(ServerId(serverKey))
+            ?.takeIf { owner -> owner.serverId.trim() == serverKey }
+            ?.let { owner -> "${owner.environmentId.trim()}|${owner.accountId.trim()}" }
 
     fun memberProfile(serverId: ServerId, memberId: String): MemberProfile? {
         val cleanServerId = serverId.value.normalizedServerMembersId() ?: return null
@@ -2714,7 +2723,8 @@ class SharedServerMembersStore internal constructor(
             val avatar = profile.avatarWireValueForRenderedAvatar()?.trim()?.takeIf { it.isNotEmpty() }
             if (avatar != null || authoritativeAbsence) avatars[memberId] = avatar
         }
-        refStore.record(key, avatars)
+        // A load that finishes after an auth change has no current owner binding: drop its write.
+        refStore.record(key, avatarRefOwnerKey(key.trim()), avatars)
     }
 
     private fun putChannelSlice(

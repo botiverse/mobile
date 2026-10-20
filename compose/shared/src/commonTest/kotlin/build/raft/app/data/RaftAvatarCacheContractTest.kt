@@ -15,7 +15,7 @@ class RaftAvatarCacheContractTest {
             )
         val api =
             raftAvatarContentIdentity(
-                "https://api.example.test/api/avatars/agents/0123456789abcdef0123456789abcdef.webp?token=two"
+                "https://api.raft.build/api/avatars/agents/0123456789abcdef0123456789abcdef.webp?token=two"
             )
         assertEquals(RaftAvatarContentKind.RaftImmutable, cdn.kind)
         assertEquals(cdn, api)
