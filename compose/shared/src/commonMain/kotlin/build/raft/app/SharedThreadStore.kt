@@ -12506,7 +12506,38 @@ private fun RaftThreadScreenPayload.applyRealtimeMessageUpdate(
             message.matchesSharedThread(this, activeReplyParentMessageId)
         }
     val shouldUpdateTimeline = matchesTimeline || matchesThreadContent
-    if (!matchesOrigin && !shouldUpdateTimeline) return this
+    if (!matchesOrigin && !shouldUpdateTimeline) {
+        // A message can belong to this timeline yet sit outside the loaded window: replying to an
+        // older message updates that older message. It is not in `messages`, so matchesTimeline is
+        // false, and it is not the origin, so matchesThreadContent is false -- which used to drop
+        // the update silently. Identify it by timeline identity alone (channel / thread), without
+        // requiring it to be loaded, and refresh only its summary fields.
+        val timelineChannelId = cacheThreadId()
+        val belongsToTimeline =
+            timelineChannelId != null &&
+                matchesResolvedReplyThreadTimeline(
+                    resolvedThreadChannelId = timelineChannelId,
+                    messageChannelId = message.channelId?.value ?: message.threadId.value,
+                    messageThreadId = message.threadChannelId?.value,
+                )
+        if (!belongsToTimeline) return this
+        // Summary only: inserting an off-window message would shift the timeline and move the
+        // user's scroll position, which is a separate product decision.
+        return copy(
+            messages =
+                messages.map { item ->
+                    if (item.id == incoming.id) {
+                        item.mergeRealtimeUpdate(
+                            update = incoming,
+                            reactionUpdate = null,
+                            preserveExistingReactions = preserveExistingReactions,
+                        )
+                    } else {
+                        item
+                    }
+                },
+        )
+    }
     val reactionUpdate = message.reactions.toRealtimeThreadReactionItems(currentUserId, threadReactorNameById())
     val updatedMessages =
         if (shouldUpdateTimeline) {
