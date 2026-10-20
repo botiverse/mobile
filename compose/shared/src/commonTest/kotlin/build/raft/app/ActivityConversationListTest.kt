@@ -33,6 +33,9 @@ import kotlin.test.assertTrue
  */
 class ActivityConversationListTest {
 
+    /** Compose foundation's `appendInlineContent` annotation tag. */
+    private val inlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"
+
     private fun channel(key: String, channelId: String, unread: Int = 0, mention: Boolean = false) =
         InboxItem(
             key = key,
@@ -261,10 +264,37 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun bodyTextPrefixesTheSenderOnlyWhenThereIsOne() {
-        assertEquals("Cindy: hi", activityConversationBodyText("Cindy", "hi").text)
-        assertEquals("hi", activityConversationBodyText(null, "hi").text)
-        assertEquals("hi", activityConversationBodyText(" ", "hi").text)
+    fun bodyTextIsOneLineOfChannelLabelSenderFaceAndPreview() {
+        // The channel label lives in the same string as the preview, so a long channel name ellipsizes
+        // the whole line instead of squeezing the preview out (web InboxItemBody truncates as one line).
+        data class Case(val channelLabel: String?, val sender: String?, val avatar: Boolean, val text: String, val faces: Int)
+        val longChannel = "#" + "a-very-long-channel-name".repeat(4) + " ·"
+        val cases =
+            listOf(
+                Case(channelLabel = null, sender = "Cindy", avatar = false, text = "Cindy: hi", faces = 0),
+                Case(channelLabel = null, sender = null, avatar = false, text = "hi", faces = 0),
+                Case(channelLabel = null, sender = " ", avatar = false, text = "hi", faces = 0),
+                Case(channelLabel = "#design ·", sender = "Mahua", avatar = false, text = "#design · Mahua: hi", faces = 0),
+                Case(channelLabel = longChannel, sender = null, avatar = false, text = "$longChannel hi", faces = 0),
+                // The sender face is an inline placeholder between the label and the name.
+                Case(channelLabel = "#design ·", sender = "Mahua", avatar = true, text = "#design ·  Mahua: hi", faces = 1),
+                // No sender, no face.
+                Case(channelLabel = "#design ·", sender = null, avatar = true, text = "#design · hi", faces = 0),
+            )
+        for (case in cases) {
+            val body =
+                activityConversationBodyText(
+                    sender = case.sender,
+                    preview = "hi",
+                    channelLabel = case.channelLabel,
+                    senderAvatar = case.avatar,
+                )
+            assertEquals(case.text, body.text, "$case")
+            val faces =
+                body.getStringAnnotations(inlineContentAnnotationTag, 0, body.length)
+                    .filter { it.item == ActivityConversationSenderAvatarInlineId }
+            assertEquals(case.faces, faces.size, "$case")
+        }
     }
 
     @Test

@@ -13,13 +13,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -439,45 +445,53 @@ internal fun ActivityConversationListRow(
                         )
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val namedSender = model.sender as? ActivityConversationSender.Named
-                    if (threadChannelText != null) {
-                        RaftText(
-                            text = "$threadChannelText ",
-                            style = typography.callout,
-                            color = bodyColor,
-                            maxLines = 1,
-                        )
+                // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
+                // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
+                // starving the preview to zero width. The sender face rides inline as a placeholder.
+                val senderAvatar = (model.sender as? ActivityConversationSender.Named)?.avatar
+                val density = LocalDensity.current
+                val inlineContent =
+                    remember(senderAvatar, density) {
+                        senderAvatar?.let { identity ->
+                            val width = with(density) { (ConversationSenderAvatar + 4.dp).toSp() }
+                            val height = with(density) { ConversationSenderAvatar.toSp() }
+                            mapOf(
+                                ActivityConversationSenderAvatarInlineId to
+                                    InlineTextContent(
+                                        Placeholder(width, height, PlaceholderVerticalAlign.TextCenter)
+                                    ) {
+                                        RaftAppAvatar(
+                                            avatarWireValue = identity.avatarWireValue,
+                                            label = identity.label,
+                                            modifier = Modifier.padding(end = 4.dp),
+                                            avatarSize = ConversationSenderAvatar,
+                                            borderWidth = 1.dp,
+                                            cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
+                                        )
+                                    }
+                            )
+                        }.orEmpty()
                     }
-                    namedSender?.avatar?.let { identity ->
-                        RaftAppAvatar(
-                            avatarWireValue = identity.avatarWireValue,
-                            label = identity.label,
-                            modifier = Modifier.padding(end = 4.dp),
-                            avatarSize = ConversationSenderAvatar,
-                            borderWidth = 1.dp,
-                            cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
-                        )
-                    }
-                    RaftText(
-                        text =
-                            activityConversationBodyText(
-                                sender =
-                                    when (val sender = model.sender) {
-                                        ActivityConversationSender.System -> systemLabel
-                                        is ActivityConversationSender.Named -> sender.name
-                                        null -> null
-                                    },
-                                preview = model.preview ?: fallback,
-                                senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
-                            ),
-                        modifier = Modifier.weight(1f),
-                        style = typography.callout,
-                        color = bodyColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                RaftText(
+                    text =
+                        activityConversationBodyText(
+                            channelLabel = threadChannelText,
+                            sender =
+                                when (val sender = model.sender) {
+                                    ActivityConversationSender.System -> systemLabel
+                                    is ActivityConversationSender.Named -> sender.name
+                                    null -> null
+                                },
+                            preview = model.preview ?: fallback,
+                            senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
+                            senderAvatar = senderAvatar != null,
+                        ),
+                    style = typography.callout,
+                    color = bodyColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    inlineContent = inlineContent,
+                )
             }
             ActivityConversationTrailing(item, model, timeContext)
         }
@@ -493,13 +507,25 @@ internal fun ActivityConversationListRow(
     }
 }
 
-/** "Sender: preview" with the sender in semibold `foreground` (raft-ui `InboxItemSender`). */
+internal const val ActivityConversationSenderAvatarInlineId = "activity-conversation-sender-avatar"
+
+/**
+ * The one-line body: "#channel · " (thread rows), the sender's face (inline placeholder
+ * [ActivityConversationSenderAvatarInlineId]), "Sender: " in semibold `foreground` (raft-ui
+ * `InboxItemSender`), then the preview. One string, so the whole line ellipsizes together.
+ */
 internal fun activityConversationBodyText(
     sender: String?,
     preview: String,
     senderStyle: SpanStyle = SpanStyle(fontWeight = FontWeight.SemiBold),
+    channelLabel: String? = null,
+    senderAvatar: Boolean = false,
 ): AnnotatedString =
     buildAnnotatedString {
+        if (!channelLabel.isNullOrBlank()) append("$channelLabel ")
+        if (senderAvatar && !sender.isNullOrBlank()) {
+            appendInlineContent(ActivityConversationSenderAvatarInlineId, alternateText = " ")
+        }
         if (!sender.isNullOrBlank()) {
             withStyle(senderStyle) { append("$sender: ") }
         }
