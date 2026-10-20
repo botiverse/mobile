@@ -33,8 +33,8 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
-import ssl
 import os
+import ssl
 import sys
 import time
 import urllib.error
