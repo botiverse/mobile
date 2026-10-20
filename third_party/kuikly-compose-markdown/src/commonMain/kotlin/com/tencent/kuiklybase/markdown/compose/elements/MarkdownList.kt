@@ -22,8 +22,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.isEm
-import androidx.compose.ui.unit.isSp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
