@@ -20604,6 +20604,19 @@ internal fun SharedHomeSearchPanel(
     var sortAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
     var activePinMenu by remember { mutableStateOf<SharedHomeSearchPinMenuState?>(null) }
     var historyEditing by remember(initialHistoryEditing) { mutableStateOf(initialHistoryEditing) }
+    // web filter popups (Base UI, `align="start"`, 4dp side offset): when the popup would run
+    // past the panel edge its alignment flips to the chip's end edge.
+    var filterChipWidths by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var searchPanelWidthPx by remember { mutableStateOf(0) }
+    val searchDensity = LocalDensity.current
+    fun filterPopoverOffsetDp(filterId: String, anchor: RaftPopoverAnchor?, widthDp: Float): Float {
+        val anchorX = anchor?.rootOffsetOrNull()?.x ?: return 0f
+        val chipWidth = filterChipWidths[filterId] ?: return 0f
+        val popoverWidthPx = with(searchDensity) { maxOf(widthDp, 220f).dp.toPx() }
+        val gapPx = with(searchDensity) { RaftFloatingDefaultViewportGap.dp.toPx() }
+        if (searchPanelWidthPx <= 0 || anchorX + popoverWidthPx <= searchPanelWidthPx - gapPx) return 0f
+        return with(searchDensity) { (chipWidth - popoverWidthPx).toDp().value }
+    }
     val searchEditor = remember { SharedHomeSearchEditorOwner(state.query) }
     val searchFocusRequester = remember { FocusRequester() }
     var senderSearch by remember { mutableStateOf("") }
@@ -20664,6 +20677,7 @@ internal fun SharedHomeSearchPanel(
             modifier =
                 modifier
                     .background(RaftColor.Canvas)
+                    .onGloballyPositioned { searchPanelWidthPx = it.size.width }
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 SharedHomeSearchToolbar(
@@ -20702,7 +20716,10 @@ internal fun SharedHomeSearchPanel(
                         openFilterId = id
                     },
                     onIntent = onIntent,
-                    showSenderFilter = showSenderFilter
+                    showSenderFilter = showSenderFilter,
+                    onChipWidth = { id, width ->
+                        if (filterChipWidths[id] != width) filterChipWidths = filterChipWidths + (id to width)
+                    }
                 )
                 SharedHomeSearchDivider()
                 LazyColumn(
@@ -20924,6 +20941,8 @@ internal fun SharedHomeSearchPanel(
                 "scope" ->
                     RaftFilterPopover(
                         anchor = scopeAnchor,
+                        horizontalOffsetDp = filterPopoverOffsetDp("scope", scopeAnchor, 180f),
+                        verticalOffsetDp = 4f,
                         title = stringResource(MR.strings.search_filter_scope),
                         searchPlaceholder = "",
                         searchText = "",
@@ -20948,6 +20967,8 @@ internal fun SharedHomeSearchPanel(
                 "sender" ->
                     RaftFilterPopover(
                         anchor = senderAnchor,
+                        horizontalOffsetDp = filterPopoverOffsetDp("sender", senderAnchor, 220f),
+                        verticalOffsetDp = 4f,
                         title = stringResource(MR.strings.search_filter_from),
                         searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
                         searchText = senderSearch,
@@ -20985,6 +21006,8 @@ internal fun SharedHomeSearchPanel(
                 "channel" ->
                     RaftFilterPopover(
                         anchor = channelAnchor,
+                        horizontalOffsetDp = filterPopoverOffsetDp("channel", channelAnchor, 220f),
+                        verticalOffsetDp = 4f,
                         title = stringResource(MR.strings.search_filter_channels),
                         searchPlaceholder = stringResource(MR.strings.search_filter_search),
                         searchText = channelSearch,
@@ -21006,6 +21029,8 @@ internal fun SharedHomeSearchPanel(
                 "time" ->
                     RaftFilterPopover(
                         anchor = timeAnchor,
+                        horizontalOffsetDp = filterPopoverOffsetDp("time", timeAnchor, 168f),
+                        verticalOffsetDp = 4f,
                         title = stringResource(MR.strings.search_filter_time),
                         searchPlaceholder = "",
                         searchText = "",
@@ -21029,6 +21054,8 @@ internal fun SharedHomeSearchPanel(
                 "sort" ->
                     RaftFilterPopover(
                         anchor = sortAnchor,
+                        horizontalOffsetDp = filterPopoverOffsetDp("sort", sortAnchor, 148f),
+                        verticalOffsetDp = 4f,
                         title = stringResource(MR.strings.search_filter_sort),
                         searchPlaceholder = "",
                         searchText = "",
@@ -21754,8 +21781,10 @@ private fun SharedHomeSearchFilters(
     sortAnchorChanged: (RaftPopoverAnchorResolver) -> Unit,
     onOpenFilter: (String, RaftPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
-    showSenderFilter: Boolean = true
+    showSenderFilter: Boolean = true,
+    onChipWidth: (String, Int) -> Unit = { _, _ -> }
 ) {
+    fun Modifier.reportsChipWidth(id: String): Modifier = onGloballyPositioned { onChipWidth(id, it.size.width) }
     val hasActiveFilters =
         state.selectedScopes.isNotEmpty() ||
             state.myMessagesOnly ||
@@ -21787,6 +21816,7 @@ private fun SharedHomeSearchFilters(
                             RaftAnchoredToolbarChip(
                                 label = state.localizedSenderFilterLabel(),
                                 anchorIdentity = "search_filter:sender",
+                                modifier = Modifier.reportsChipWidth("sender"),
                                 active = senderActive,
                                 enabled = true,
                                 uppercase = !senderActive,
@@ -21803,6 +21833,7 @@ private fun SharedHomeSearchFilters(
                             RaftAnchoredToolbarChip(
                                 label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                                 anchorIdentity = "search_filter:scope",
+                                modifier = Modifier.reportsChipWidth("scope"),
                                 active = scopeActive,
                                 enabled = true,
                                 uppercase = !scopeActive,
@@ -21819,6 +21850,7 @@ private fun SharedHomeSearchFilters(
                             RaftAnchoredToolbarChip(
                                 label = selectedChannel?.label ?: channelLabel,
                                 anchorIdentity = "search_filter:channel",
+                                modifier = Modifier.reportsChipWidth("channel"),
                                 active = channelActive,
                                 enabled = true,
                                 uppercase = selectedChannel == null,
@@ -21835,6 +21867,7 @@ private fun SharedHomeSearchFilters(
                             RaftAnchoredToolbarChip(
                                 label = state.timeRange.localizedSearchLabel(),
                                 anchorIdentity = "search_filter:time",
+                                modifier = Modifier.reportsChipWidth("time"),
                                 active = timeActive,
                                 enabled = true,
                                 uppercase = false,
@@ -21854,6 +21887,7 @@ private fun SharedHomeSearchFilters(
                 RaftAnchoredToolbarChip(
                     label = state.sort.localizedSearchLabel(),
                     anchorIdentity = "search_filter:sort",
+                                modifier = Modifier.reportsChipWidth("sort"),
                     active = sortActive,
                     enabled = true,
                     uppercase = false,
