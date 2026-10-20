@@ -5915,7 +5915,9 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
                 .size(32.dp)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
                 .raftThemedCorners(RaftAppRadius.Sticker)
-                .background(RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
+                // No ink fill behind an uploaded image: a transparent server avatar must show the
+                // surface it sits on (the yellow frame), not a black square. The ink tile belongs to
+                // the initial-letter fallback only (ServerAvatarFallbackLabel draws it).
                 .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
         contentAlignment = Alignment.Center
     ) {
@@ -5954,6 +5956,12 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
 
 @Composable
 private fun ServerAvatarFallbackLabel(label: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
+        contentAlignment = Alignment.Center
+    ) {
     Text(
         label,
         style =
@@ -5967,6 +5975,7 @@ private fun ServerAvatarFallbackLabel(label: String) {
         maxLines = 1,
         textAlign = TextAlign.Center
     )
+    }
 }
 
 internal data class ServerSwitcherAvatarPresentation(
