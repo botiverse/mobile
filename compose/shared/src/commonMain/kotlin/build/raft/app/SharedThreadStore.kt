@@ -134,6 +134,7 @@ import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
+import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ThreadRepliesScopeIdentity
 import build.raft.app.network.sync.ThreadRepliesSyncHost
 import build.raft.app.network.sync.RaftCachedThreadReplyWindow
@@ -6809,10 +6810,14 @@ internal class SharedThreadStore(
                 payload.sourceThreadId ?: payload.streamChannelId
             }?.trim()?.takeIf { it.isNotBlank() } ?: return null
         val parentScopeKind =
-            if (payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
-                payload.parentChannelKind ?: payload.parentSurfaceKind
-            } else {
-                payload.channelKind.ifBlank { payload.surfaceKind }
+            when (payload.surfaceKind) {
+                RaftThreadSurfaceKind.ReplyThread -> payload.parentChannelKind ?: payload.parentSurfaceKind
+                // Hands b6068b41: a DM route never carries a channel kind, so `channelKind` keeps its
+                // "channel" default. The server's `syncCoreReplyWindow` names a DM parent scope "dm";
+                // deriving "channel" here rejected every live reply frame on DM pages, so the inline
+                // preview count moved (ThreadUpdated) while its rows stayed stale.
+                RaftThreadSurfaceKind.DirectMessage -> RaftThreadSurfaceKind.DirectMessage
+                else -> payload.channelKind.ifBlank { payload.surfaceKind }
             }.toThreadRepliesParentScopeKind()
         return ThreadRepliesPageIdentity(
             serverId = context.provenance.serverId,
@@ -8366,7 +8371,11 @@ internal class SharedThreadStore(
                 )
                 val acceptedRepliesProjection =
                     if (event is ThreadUpdated && repliesPageIdentity != null) {
-                        threadRepliesSyncHost.ingestFrame(repliesPageIdentity, event)
+                        threadRepliesSyncHost.ingestFrame(
+                            page = repliesPageIdentity,
+                            event = event,
+                            baseline = currentPayload.inlineRepliesBaselineFor(event),
+                        )
                     } else {
                         null
                     }
@@ -11471,7 +11480,7 @@ private fun String?.toThreadRepliesParentScopeKind(): String =
     when (this?.trim()?.lowercase()) {
         "private" -> "private"
         "joint" -> "joint"
-        "dm", "direct", "direct_message" -> "dm"
+        "dm", "direct", "direct_message", "direct-message", "directmessage" -> "dm"
         else -> "channel"
     }
 
@@ -11629,6 +11638,20 @@ internal fun RaftThreadScreenPayload.withSeededReplyWindows(
     } else {
         copy(messages = filledMessages, originMessage = filledOrigin)
     }
+}
+
+/**
+ * The replies window currently rendered under [event]'s parent, used to seed a reply scope the
+ * sync host has not accepted yet (cold cache / last-known payload). A parent whose own thread
+ * channel names a different scope contributes nothing.
+ */
+private fun RaftThreadScreenPayload.inlineRepliesBaselineFor(event: ThreadUpdated): ThreadRepliesReadModel? {
+    val parent =
+        (messages + listOfNotNull(originMessage)).firstOrNull { it.id == event.parentMessageId.value }
+            ?: return null
+    val ownThreadChannelId = parent.threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+    if (ownThreadChannelId != null && ownThreadChannelId != event.threadChannelId.value) return null
+    return parent.inlineReplies?.takeIf { it.replies.isNotEmpty() }
 }
 
 private fun RaftThreadScreenPayload.withAcceptedThreadRepliesProjection(

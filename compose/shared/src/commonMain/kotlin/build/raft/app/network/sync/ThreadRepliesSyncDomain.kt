@@ -145,17 +145,28 @@ internal class ThreadRepliesSyncHost(
         }
     }
 
-    fun ingestFrame(page: ThreadRepliesPageIdentity, event: ThreadUpdated): ThreadRepliesAcceptedProjection? =
+    /**
+     * [baseline] is the replies window the Store currently renders for the frame's parent (cold
+     * cache / last-known payload). It only seeds a scope this host has never seen, so the first
+     * live frame folds into the visible rows instead of replacing them with a one-row window.
+     */
+    fun ingestFrame(
+        page: ThreadRepliesPageIdentity,
+        event: ThreadUpdated,
+        baseline: ThreadRepliesReadModel? = null,
+    ): ThreadRepliesAcceptedProjection? =
         synchronized(linearizationLock) {
-            ingestFrameLocked(page, event)
+            ingestFrameLocked(page, event, baseline)
         }
 
     private fun ingestFrameLocked(
         page: ThreadRepliesPageIdentity,
         event: ThreadUpdated,
+        baseline: ThreadRepliesReadModel?,
     ): ThreadRepliesAcceptedProjection? {
         val identity = event.scopeIdentityOrNull(page) ?: return null
         val reply = event.latestReply ?: return null
+        if (baseline != null) seedOwnerIfAbsent(identity, baseline)
         val frame =
             SyncFrame(
                 scopeId = identity.scopeId,
@@ -309,36 +320,43 @@ internal class ThreadRepliesSyncHost(
                         .takeIf(ThreadRepliesScopeIdentity::isValid)
                         ?: return@forEach
                 val model = window.model
-                if (model.replies.isEmpty()) return@forEach
-                val watermark = maxOf(model.snapshotSeq, model.replies.maxOf { it.seq })
-                val core = newThreadRepliesSyncCore()
-                val outcome =
-                    core.ingestSnapshot(
-                        THREAD_REPLIES_SYNC_DOMAIN,
-                        SyncSnapshot(
-                            scopeId = identity.scopeId,
-                            watermark = watermark.toSyncSeq(),
-                            epoch = null,
-                            state = model,
-                        ),
-                    )
-                if (outcome !is SyncIngestOutcome.Applied) return@forEach
-                val created =
-                    synchronized(ownersLock) {
-                        if (identity.scopeId in owners) {
-                            false
-                        } else {
-                            owners[identity.scopeId] = ScopeOwner(activeCore = core, seededFromCache = true)
-                            true
-                        }
-                    }
-                if (created) {
+                if (seedOwnerIfAbsent(identity, model)) {
                     seeded[parentMessageId] =
                         ThreadRepliesAcceptedProjection(identity, model, revision = 0L, fromLocalCache = true)
                 }
             }
         }
         return seeded
+    }
+
+    /**
+     * Installs a last-known [model] as the baseline of a scope this host has never seen. Returns
+     * false (and changes nothing) when the scope already has an owner or the window is empty.
+     */
+    private fun seedOwnerIfAbsent(identity: ThreadRepliesScopeIdentity, model: ThreadRepliesReadModel): Boolean {
+        if (model.replies.isEmpty()) return false
+        if (ownerOrNull(identity.scopeId) != null) return false
+        val watermark = maxOf(model.snapshotSeq, model.replies.maxOf { it.seq })
+        val core = newThreadRepliesSyncCore()
+        val outcome =
+            core.ingestSnapshot(
+                THREAD_REPLIES_SYNC_DOMAIN,
+                SyncSnapshot(
+                    scopeId = identity.scopeId,
+                    watermark = watermark.toSyncSeq(),
+                    epoch = null,
+                    state = model,
+                ),
+            )
+        if (outcome !is SyncIngestOutcome.Applied) return false
+        return synchronized(ownersLock) {
+            if (identity.scopeId in owners) {
+                false
+            } else {
+                owners[identity.scopeId] = ScopeOwner(activeCore = core, seededFromCache = true)
+                true
+            }
+        }
     }
 
     /**

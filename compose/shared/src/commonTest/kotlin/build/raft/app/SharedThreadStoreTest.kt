@@ -7639,6 +7639,141 @@ class SharedThreadStoreTest {
         }
     }
 
+    /**
+     * Hands b6068b41: on a DM page, replies posted from another device arrived as `thread:updated`
+     * and moved the inline preview's count while its rows stayed stale. The DM route carries no
+     * channel kind, so the replies page scope was derived as "channel" and every upstream frame
+     * (parentScopeKey.scopeKind = "dm") was rejected. Also covers the cold-cache path: the first
+     * live frame must fold into the cached rows instead of replacing them with a one-row window.
+     */
+    @Test
+    fun dmRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+            )
+        fun reply(seq: Long, senderId: String, senderType: String) =
+            ReplyPreview(
+                messageId = "reply-$seq",
+                seq = seq,
+                content = "reply $seq",
+                senderId = senderId,
+                senderType = senderType,
+                senderName = senderId,
+                createdAt = "2026-10-20T01:2$seq:00.000Z",
+            )
+        val cachedReplies =
+            build.raft.app.network.sync.initialThreadRepliesReadModel(
+                replies =
+                    listOf(
+                        reply(1, "sindresorhus", "agent"),
+                        reply(2, "u1", "user"),
+                        reply(3, "sindresorhus", "agent"),
+                    ),
+                replyCount = 3,
+                limit = build.raft.app.network.sync.InlineThreadReplyPreviewLimit,
+            )
+        val cached =
+            contentPayloadForRoute(directMessagePayload(), "parent").let { payload ->
+                payload.copy(
+                    messages =
+                        listOf(
+                            payload.messages.single().copy(
+                                threadChannelId = "dm-thread-1",
+                                replyCount = 3,
+                                inlineReplies = cachedReplies,
+                            )
+                        )
+                )
+            }
+        dataSource.cachePayloadForTest(cached)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(directMessagePayload()))
+        assertEquals(
+            listOf("reply-1", "reply-2", "reply-3"),
+            store.state.value.payload.messages.single().inlineReplies?.replies?.map { it.messageId },
+        )
+
+        // Upstream shape: messageService.ts `thread:updated` for a DM parent
+        // ({ parentMessageId, threadChannelId, ...getThreadInfo, syncCoreReplyWindow, latestReply }).
+        fun threadUpdatedJson(seq: Long, replyCount: Int): String =
+            """
+            {
+              "parentMessageId": "m1",
+              "threadChannelId": "dm-thread-1",
+              "replyCount": $replyCount,
+              "lastReplyAt": "2026-10-20T01:2$seq:30.000Z",
+              "participantIds": ["sindresorhus", "u1"],
+              "syncCoreReplyWindow": {
+                "producer": "message-service.thread-replies-window.v1",
+                "discussion": {
+                  "root": { "kind": "message", "serverId": "server-1", "id": "m1" },
+                  "relation": { "kind": "replies" },
+                  "parentScopeKey": { "serverId": "server-1", "scopeKind": "dm", "scopeId": "dm-1" },
+                  "backing": "sync-scope"
+                },
+                "window": { "kind": "sync-scope-window", "scopeCursor": null, "epoch": null }
+              },
+              "latestReply": {
+                "id": "reply-$seq",
+                "channelId": "dm-thread-1",
+                "seq": $seq,
+                "content": "desktop reply $seq",
+                "senderId": "u1",
+                "senderType": "user",
+                "senderName": "artin",
+                "senderDisplayName": "artin",
+                "senderAvatarUrl": null,
+                "messageType": "chat",
+                "createdAt": "2026-10-20T01:2$seq:30.000Z",
+                "conversationContext": {
+                  "channelType": "thread",
+                  "parentMessageId": "m1",
+                  "parentChannelId": "dm-1",
+                  "parentChannelType": "dm"
+                }
+              }
+            }
+            """.trimIndent()
+        val mapper = build.raft.app.data.realtime.RealtimeEventMapper(diagnosticsLogger = {})
+        fun frame(seq: Long, replyCount: Int): ThreadUpdated =
+            assertIs<ThreadUpdated>(mapper.map("thread:updated", threadUpdatedJson(seq, replyCount)))
+        fun parent() = store.state.value.payload.messages.single()
+
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(frame(seq = 6, replyCount = 6)))
+        assertEquals(listOf("reply-2", "reply-3", "reply-6"), parent().inlineReplies?.replies?.map { it.messageId })
+        assertEquals("desktop reply 6", parent().inlineReplies?.replies?.last()?.content)
+        assertEquals(6, parent().replyCount)
+
+        // Replay is idempotent (dedupe by message id), and a late reply lands in its seq position.
+        val afterFirst = parent().inlineReplies
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(frame(seq = 6, replyCount = 6)))
+        assertSame(afterFirst, parent().inlineReplies)
+        store.accept(SharedThreadIntent.ApplyRealtimeEvent(frame(seq = 5, replyCount = 6)))
+        assertEquals(listOf("reply-3", "reply-5", "reply-6"), parent().inlineReplies?.replies?.map { it.messageId })
+        assertEquals(6, parent().replyCount)
+
+        val presentation =
+            threadInlineReplyPresentation(
+                model = parent().inlineReplies,
+                replyMetadata =
+                    ThreadReplyMetadata(
+                        parentMessageId = parent().id,
+                        threadChannelId = parent().threadChannelId,
+                        replyCount = parent().replyCount,
+                        unreadReplyCount = parent().unreadReplyCount,
+                        firstUnreadReplyMessageId = parent().firstUnreadReplyMessageId,
+                        isThreadFollowed = parent().isThreadFollowed,
+                    ),
+                hasDraft = false,
+            )
+        assertEquals(listOf("reply 3", "desktop reply 5", "desktop reply 6"), presentation?.replies?.map { it.content })
+        scope.cancel()
+    }
+
     @Test
     fun acceptedRealtimeInlineReplySeedsResolverWhileRejectedScopeWritesNothing() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
