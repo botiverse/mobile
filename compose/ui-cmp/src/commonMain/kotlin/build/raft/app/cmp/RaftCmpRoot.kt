@@ -1,5 +1,6 @@
 package build.raft.app.cmp
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.cmp.host.LocalRaftHost
@@ -41,9 +43,13 @@ fun RaftCmpRoot(
             if (onDarkThemeResolved != null) {
                 LaunchedEffect(dark) { onDarkThemeResolved(dark) }
             }
-            Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-                val content = RaftCmpRouter.content(args.pageName)
-                if (content != null) content() else UnknownCmpPage(args.pageName)
+            val pressWash = RaftTheme.colors.fillPressed
+            val indication = remember(pressWash) { RaftPressIndication(pressWash) }
+            CompositionLocalProvider(LocalIndication provides indication) {
+                Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+                    val content = RaftCmpRouter.content(args.pageName)
+                    if (content != null) content() else UnknownCmpPage(args.pageName)
+                }
             }
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -160,7 +161,12 @@ internal fun RaftTopPageHeader(
                 titleContent.invoke(this)
             } else {
                 Column(
-                    modifier = Modifier.weight(1f).clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                    // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
+                    modifier = Modifier.weight(1f).clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        enabled = onTitleClick != null
+                    ) { onTitleClick?.invoke() },
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
