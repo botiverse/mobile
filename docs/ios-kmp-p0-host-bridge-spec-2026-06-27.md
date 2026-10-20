@@ -1,5 +1,7 @@
 # iOS KMP P0 Host Bridge Spec
 
+> **Obsolete (2026-10-20):** Kuikly-era iOS host spec (OpenKuiklyIOSRender). iOS ships on Compose Multiplatform; kept for history only.
+
 Date: 2026-06-27
 
 ## Background

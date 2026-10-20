@@ -1,5 +1,7 @@
 # Spec: Merge Outer Android App into KMP `compose/androidApp`
 
+> **Historical (2026-10-20):** implemented — `compose/androidApp` is the only Android app. Kuikly references reflect the pre-CMP state.
+
 **Status:** Draft  
 **Author:** Codex analysis  
 **Date:** 2026-06-05

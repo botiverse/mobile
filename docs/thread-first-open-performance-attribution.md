@@ -1,5 +1,7 @@
 # Thread First-Open Performance Attribution
 
+> **Obsolete (2026-10-20):** Kuikly-era investigation snapshot; the attributed render path was replaced by Compose Multiplatform. Kept for history only.
+
 Date: 2026-06-22
 Owner: KMP / Kuikly shared
 Status: Investigation note

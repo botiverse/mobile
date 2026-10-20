@@ -1,5 +1,7 @@
 # Android Hands Release Practices
 
+> **Note (2026-10-20):** the "GitHub Actions Release Dispatch" preflight list below predates release branches and OHOS removal; `docs/android-release-sop.md` is authoritative for the order of operations (skill `raft-android-release`).
+
 This document records the current Slock Android release/update conventions for
 Hands. It covers the app/channel model, Android versioning, SDK integration,
 release artifacts, and validation scope.

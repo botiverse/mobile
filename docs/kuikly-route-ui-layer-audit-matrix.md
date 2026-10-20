@@ -1,5 +1,7 @@
 # Kuikly Route UI Layer Audit Matrix
 
+> **Obsolete (2026-10-20):** Kuikly/OHOS route audit plan; both were removed from `main`. Kept for history only.
+
 Baseline: `origin/main` at `67747e49`, after `6a654fc8` / #137 was moved
 to review. This matrix is the execution plan for the broader UI-layer audit
 requested after the OHOS Home -> Thread freeze investigation.

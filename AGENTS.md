@@ -8,6 +8,37 @@
   changes, enable visible touches/pointer overlay and follow
   `docs/android-review-recording.md` before attaching evidence to a task thread.
 
+## Skills
+
+Step-by-step procedures live in `.agents/skills/<name>/SKILL.md`. Load the
+matching skill before starting that kind of work; each links to the docs it
+summarizes.
+
+- `raft-designsystem-ui` — adding or changing a page, panel or control with
+  `compose/designsystem` (raft-ui source of truth, dark mode, goldens).
+- `raft-i18n-strings` — adding or changing user-visible text in en/zh-CN/ja.
+- `raft-api-endpoint` — calling a new/changed server endpoint or DTO field.
+- `raft-realtime-event` — adding a Socket.IO event or `RealtimeEvent` subtype.
+- `raft-bug-triage` — stale/wrong data, missing realtime updates, scroll
+  jumps, or "is the fix in this build".
+- `raft-feedback-diagnostics` — reading a Hands feedback ticket and its
+  diagnostics logs.
+- `raft-visual-parity` — web vs Android/iOS visual cases, targeted
+  `visual-testing.yml` rounds, reading diffs and residuals.
+- `raft-ci-validation` — choosing hosted CI tiers, forcing iOS/full runs,
+  Alpha builds, cache incidents.
+- `raft-stamp-git` — push, PR, review/approve and merge through Stamp.
+- `raft-release-changeset` — a version-targeted change needs its changeset;
+  aggregating release notes.
+- `raft-android-release` — Android release train on Hands (draft-first).
+- `raft-ios-release` — iOS release build, TestFlight, iOS audit tag.
+- `blacksmith-testbox` / `blacksmith-visual-testbox` — warm CI VM for focused
+  Gradle work or single visual cases.
+- `mobile-use`, `slock-android-adb-audit` — driving devices/emulators from
+  the command line.
+- `slock-android-packaging` — local signed APK artifact for `#artifacts`.
+- `slock-launch-contract` — route/launch/pageData and store-boundary audits.
+
 ## Code Naming: Raft, not Slock
 
 - The product is Raft. New types, files and functions use the `Raft` prefix;
