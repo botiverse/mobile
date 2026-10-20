@@ -30788,7 +30788,7 @@ private fun threadAttachmentCommentsListHeight(count: Int): Dp =
     }
 
 @Composable
-private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
+internal fun threadAttachmentCommentBlockedCopy(reason: String?): String =
     when (reason?.trim()?.lowercase()) {
         "archived" -> stringResource(MR.strings.thread_comments_blocked_archived)
         "not_member" -> stringResource(MR.strings.thread_comments_blocked_not_member)

@@ -74,6 +74,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -1906,7 +1907,6 @@ private fun RaftFilePreviewStandalonePageContent() {
         RaftFilePreviewProgressMailbox()
     }
     val unableToSendComment = stringResource(MR.strings.file_preview_error_send_comment)
-    val unableToResolveComment = stringResource(MR.strings.file_preview_error_resolve_comment)
     val attachmentFallback = stringResource(MR.strings.file_preview_fallback_attachment)
     val actionTerms = raftFilePreviewLocalizedActionTerms()
     val downloadStopped = stringResource(MR.strings.file_preview_download_stopped)
@@ -2136,60 +2136,6 @@ private fun RaftFilePreviewStandalonePageContent() {
                                 serverMessage = failure.serverMessage
                             )
                     bridge.toast(unableToSendComment)
-                }
-                null -> {
-                    payload = payload.withFilePreviewAuthorityRejected()
-                    attachmentCommentsState = null
-                }
-            }
-        }
-    }
-    fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem) {
-        val current = attachmentCommentsState ?: return
-        if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
-        if (comment.id in current.resolvingCommentIds) return
-        attachmentCommentsState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
-                .clearAttachmentCommentsError()
-        coroutineScope.launch {
-            val operationScope =
-                remoteOperationScope?.takeIf { remoteAuthorityCurrent }
-                    ?: run {
-                        payload = payload.withFilePreviewAuthorityRejected()
-                        attachmentCommentsState = null
-                        return@launch
-                    }
-            val authorityResult =
-                operationScope.runThreadApi(
-                    diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
-                ) { threadApi ->
-                    threadApi.addReaction(comment.id, "✅")
-                }
-            when (val result = (authorityResult as? DataResult.Content)?.data) {
-                is ThreadApiResult.Success -> {
-                    val loading =
-                        attachmentCommentsState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
-                            ?.clearAttachmentCommentsError()
-                            ?: return@launch
-                    attachmentCommentsState = loading
-                    loadAttachmentComments(loading)
-                }
-                is ThreadApiResult.Failure -> {
-                    val failure = result.toThreadAttachmentCommentsFailureProjection()
-                    attachmentCommentsState =
-                        attachmentCommentsState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.let { state ->
-                                state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
-                                ).withAttachmentCommentsError(
-                                    errorCode = failure.errorCode,
-                                    serverMessage = failure.serverMessage
-                                )
-                            }
-                    bridge.toast(unableToResolveComment)
                 }
                 null -> {
                     payload = payload.withFilePreviewAuthorityRejected()
@@ -3898,12 +3844,6 @@ private fun RaftFilePreviewStandalonePageContent() {
             RaftFilePreviewAttachmentCommentsPanel(
                 state = state,
                 onClose = { attachmentCommentsState = null },
-                onFilterChange = { filter ->
-                    attachmentCommentsState =
-                        attachmentCommentsState
-                            ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.copy(filter = filter)
-                },
                 onDraftChange = { draft ->
                     attachmentCommentsState =
                         attachmentCommentsState
@@ -3912,68 +3852,43 @@ private fun RaftFilePreviewStandalonePageContent() {
                 },
                 onRetry = ::reloadAttachmentComments,
                 onSend = ::sendAttachmentComment,
-                onResolve = ::resolveAttachmentComment,
-                onQuote = { comment ->
+                onClearAnchor = {
                     attachmentCommentsState =
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == state.attachment.id }
-                            ?.withQuotedAttachmentComment(comment)
+                            ?.copy(pendingAnchorLabel = null, pendingQuoteLabel = null)
                 }
             )
         }
     }
 }
 
+/**
+ * The attachment comments sheet under the preview: the web phone sheet's panel
+ * ([RaftAttachmentCommentsPanel]) on half of the preview's height.
+ */
 @Composable
 internal fun RaftFilePreviewAttachmentCommentsPanel(
     state: ThreadAttachmentCommentsDialogState,
     onClose: () -> Unit,
-    onFilterChange: (String) -> Unit,
     onDraftChange: (TextFieldValue) -> Unit,
     onRetry: () -> Unit,
     onSend: () -> Unit,
-    onResolve: (ThreadAttachmentCommentItem) -> Unit,
-    onQuote: (ThreadAttachmentCommentItem) -> Unit
+    onClearAnchor: () -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth().fillMaxHeight(RaftFilePreviewCommentsSheetHeightFraction)
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(MR.strings.thread_comments_title),
-                style = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                color = RaftColor.TextBlack,
-                modifier = Modifier.weight(1f)
-            )
-            RaftBrutalIconButton(
-                iconName = RaftLucideIconName.X,
-                onClick = onClose,
-                size = 28.dp,
-                shadowOffset = 2.dp
-            )
-        }
-        ThreadAttachmentCommentsContent(
-            state = state,
-            onFilterChange = onFilterChange,
-            onDraftChange = onDraftChange,
-            onRetry = onRetry,
-            onSend = onSend,
-            onResolve = onResolve,
-            onQuote = onQuote,
-            compact = true
-        )
-    }
+    RaftAttachmentCommentsPanel(
+        state = state,
+        onDraftChange = onDraftChange,
+        onRetry = onRetry,
+        onSend = onSend,
+        onClose = onClose,
+        onClearAnchor = onClearAnchor,
+        modifier = modifier
+    )
 }
+
+private const val RaftFilePreviewCommentsSheetHeightFraction = 0.5f
 
 @Composable
 internal fun RaftFilePreviewComposerImageActionBar(

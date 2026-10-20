@@ -166,6 +166,37 @@ class ThreadApiTest {
     }
 
     @Test
+    fun attachmentCommentAnchorsUseWebSectionAndLineLabels() = runBlocking {
+        val api =
+            RaftThreadApiClient(
+                FakeThreadNetworkApi(
+                    attachmentCommentsBody =
+                        """
+                        {
+                          "threadChannelId": "thread-comments",
+                          "viewer": {"canComment": true, "reason": "ok"},
+                          "comments": [
+                            {"id": "c1", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "md-section", "data": {"headingId": "intro", "headingTitle": "Intro"}}},
+                            {"id": "c2", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "lines", "data": {"start": 3, "end": 7}}},
+                            {"id": "c3", "channelId": "t", "senderType": "user", "senderId": "u1", "senderName": "A",
+                             "content": "x", "createdAt": "2026-06-20T01:00:00Z", "reactions": [],
+                             "anchor": {"type": "lines", "data": {"start": 4}}}
+                          ]
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val page = assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(api.attachmentComments("att-1")).data
+
+        assertEquals(listOf("§ Intro", "L3–7", "L4"), page.comments.map { it.anchorLabel })
+    }
+
+    @Test
     fun syncRequiresCanonicalRootArray() = runBlocking {
         val api = RaftThreadApiClient(FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""))
 
