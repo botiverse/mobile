@@ -915,10 +915,50 @@ class RaftHomeComponentsTest {
             RaftColor.TextBlack,
             homeConversationTitleColor(muted = false, joined = true)
         )
+        // raft-ui SidebarItem `tone="away"`: a channel you have not joined reads foreground-hint.
         assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.46f),
+            RaftColor.ForegroundHint,
             homeConversationTitleColor(muted = false, joined = false)
         )
+    }
+
+    @Test
+    fun homeChannelSymbolIsInkThreeUnlessSelected() {
+        // raft-ui `sidebarItemChannelIcon`: the # glyph is foreground-hint for joined and
+        // unjoined channels alike; the selected sticker turns it sticker ink.
+        assertEquals(raftArgbHex(RaftColor.ForegroundHint), homeChannelSymbolColorArgb(selected = false))
+        assertEquals(raftArgbHex(RaftColor.StickerInk), homeChannelSymbolColorArgb(selected = true))
+    }
+
+    @Test
+    fun pinnedConversationsLeaveTheirSystemSectionLikeWeb() {
+        // Web Sidebar.tsx: sortableChannels / orderedDms drop everything the typed Pinned
+        // section shows, so "Channels 38" there is "41 minus 3 pinned" here.
+        val channels =
+            listOf(
+                RaftHomeConversationItem(id = "c-1", name = "proj-mobile", kind = "channel"),
+                RaftHomeConversationItem(id = "c-2", name = "proj-apps", kind = "channel"),
+                RaftHomeConversationItem(id = "c-3", name = "proj-deploy", kind = "channel")
+            )
+        val pinned =
+            pinnedRowsForSidebar(
+                channels = channels,
+                directMessages = emptyList(),
+                pinnedIds = emptyList(),
+                pinnedOrder = emptyList(),
+                typedPinnedItems =
+                    listOf(
+                        SettingsServerSidebarPinnedItem(kind = "channel", id = "c-2"),
+                        // A stale pin the Pinned section cannot render must not hide anything.
+                        SettingsServerSidebarPinnedItem(kind = "channel", id = "gone")
+                    ),
+                mode = RaftSidebarSortMode.Manual
+            )
+
+        val pinnedIds = pinned.sidebarPinnedConversationIds()
+
+        assertEquals(setOf("c-2"), pinnedIds)
+        assertEquals(listOf("c-1", "c-3"), channels.filter { it.id !in pinnedIds }.map { it.id })
     }
 
     @Test

@@ -179,29 +179,36 @@ import kotlinx.serialization.json.Json
 const val RAFT_HOME_PAGE = "compose_home"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
-private val SidebarActionIconSize = 14.dp
-private val SidebarActionIconBoxSize = 14.dp
+// Phone Home entry rows (Search / Activity / Saved), web `SIDEBAR_ENTRY_ROW_CLASS` +
+// `SIDEBAR_ENTRY_ICON_CLASS`: a 20px ink-3 (foreground-hint) icon, `gap-3` to the name.
+private val SidebarActionIconSize = 20.dp
+private val SidebarActionIconBoxSize = 20.dp
+private val SidebarEntryLabelGap = 12.dp
 private val HomeSmallShadowOffset = 2.dp
 private val SidebarRowHorizontalPadding = 8.dp
-private val SidebarActionLabelGap = 6.dp
+/** raft-ui `SidebarItem` `gap-2` between the icon box and the name. */
+private val SidebarActionLabelGap = 8.dp
 private val SidebarActionTrailingSlotWidth = 36.dp
 private val ChannelSymbolWidth = 18.dp
-private val ChannelSymbolIconSize = 14.dp
+/** raft-ui `sidebarItemChannelIcon`: a bare 16px glyph (`[&_svg]:size-4`) in the 19px box. */
+private val ChannelSymbolIconSize = 16.dp
 private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
-private val ChannelRowHeight = 32.dp
+/** raft-ui phone `SidebarItem`: `max-md:min-h-11` (44px). */
+private val ChannelRowHeight = 44.dp
 
 /**
- * Sidebar row height: 32dp at the default font scale, grown with the font scale so the
- * text-body (16/24) name never clips. Fixed (not heightIn) so the sort sheet's row step matches.
+ * Sidebar row height: 44dp at the default font scale (web phone rows), grown with the font
+ * scale so the text-body (16/24) name never clips. Fixed (not heightIn) so the sort sheet's
+ * row step matches.
  */
 @Composable
 @ReadOnlyComposable
 private fun sidebarRowHeight(): Dp =
     with(LocalDensity.current) { maxOf(ChannelRowHeight, RaftTextSize.ContentLineHeight.toDp() + SidebarRowTextInset) }
 
-// Vertical room around the name inside the 32dp row (32 - 24).
-private val SidebarRowTextInset = 8.dp
+// Vertical room around the name: raft-ui phone `SidebarItem` `max-md:py-[8.5px]`.
+private val SidebarRowTextInset = 17.dp
 private const val EdgeAutoScrollStepPx = 18f
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
@@ -216,6 +223,10 @@ private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = RaftAppSpacing.Md
+// Web phone sidebar: the list is `px-2` and section headers add their own `px-2`, while rows
+// add only `pl-2` inside their highlight. Rows therefore sit 8dp from the edge so their icon
+// lines up under the section chevron (16dp), not 8dp past it.
+private val HomeListRowHorizontalPadding = RaftAppSpacing.Sm
 // #372 React parity: the post-sign-in loading state shows skeleton rows
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
@@ -280,10 +291,15 @@ internal fun homeConversationTitleColor(
     joined: Boolean = true
 ): Color =
     when {
+        // raft-ui SidebarItem tones: `muted` = foreground-muted, `away` (not joined) =
+        // foreground-hint, otherwise foreground.
         muted -> RaftColor.TextMutedGray
         joined -> RaftColor.TextBlack
-        else -> RaftColor.TextBlack.copy(alpha = 0.46f)
+        else -> RaftColor.ForegroundHint
     }
+
+internal fun homeChannelSymbolColorArgb(selected: Boolean): String =
+    if (selected) raftArgbHex(RaftColor.StickerInk) else raftArgbHex(RaftColor.ForegroundHint)
 
 internal fun homeChannelTitleTextStyle(
     selected: Boolean,
@@ -1940,11 +1956,8 @@ private fun RaftStructuralHomeShellContent(
                 "withMemberId=${directMessages.count { !it.presenceMemberId.isNullOrBlank() }} sample=$sample"
         )
     }
-    // #211 React parity (revised by @artin 23:38): pinned rows are
-    // shown alongside the original section copy, not deduped. The user
-    // sees both, can click either, and either copy is independently
-    // pressed / selected. Dedup still applies *inside* the pinned
-    // section itself (handled by `pinnedItemsForSidebar`).
+    // Pinned conversations leave their system and custom sections (web typed pinned section);
+    // dedup inside the pinned section itself is handled by `pinnedRowsForSidebar`.
     @Suppress("UNUSED_VARIABLE")
     val pinnedIdSet =
         remember(directMessages, pinnedChannelIds, pinnedAgentIds, pinnedItems) {
@@ -2019,32 +2032,6 @@ private fun RaftStructuralHomeShellContent(
     val customPlacedConversationIds = remember(sectionPlacements, directMessages) {
         sidebarCustomPlacedConversationIds(sectionPlacements, directMessages)
     }
-    val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds) {
-        val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
-        regularChannels
-            .filter { it.id !in customPlacedConversationIds }
-            .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
-            .sortedForSidebar(channelSortModeState, pinnedFirstId = allChannelId) { it.name }
-    }
-    val displayedChannels = baseDisplayedChannels
-    val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
-        baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
-    }
-    val displayedJointChannels = remember(channels, channelOrder, jointChannelSortModeState, customPlacedConversationIds) {
-        channels
-            .filter { it.kind == JointChannelKindWireValue }
-            .filter { it.id !in customPlacedConversationIds }
-            .orderedBySidebarIds(channelOrder)
-            .sortedForSidebar(jointChannelSortModeState) { it.name }
-    }
-    val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
-    val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet, customPlacedConversationIds) {
-        directMessages
-            .filter { it.id !in customPlacedConversationIds }
-            .orderedBySidebarIds(dmOrder)
-            .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
-            .sortedForSidebar(directMessageSortMode) { it.name }
-    }
     val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedAgentIds, pinnedOrder, pinnedItems, pinnedSortModeState, pinnedMemberProfileResolver) {
         pinnedRowsForSidebar(
             channels = channels,
@@ -2056,6 +2043,37 @@ private fun RaftStructuralHomeShellContent(
             pinnedMemberProfileResolver = pinnedMemberProfileResolver,
             mode = pinnedSortModeState
         )
+    }
+    // Web Sidebar.tsx (typed pinned section, #4569): a pinned channel or DM leaves its system
+    // section — Channels / Joint Channels / Direct Messages list and count only what is not
+    // already shown under Pinned. Only rows the Pinned section actually renders are removed, so
+    // a stale pin can never hide a conversation from every section.
+    val pinnedShownConversationIds = remember(displayedPinned) { displayedPinned.sidebarPinnedConversationIds() }
+    val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
+        val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
+        regularChannels
+            .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
+            .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
+            .sortedForSidebar(channelSortModeState, pinnedFirstId = allChannelId) { it.name }
+    }
+    val displayedChannels = baseDisplayedChannels
+    val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
+        baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
+    }
+    val displayedJointChannels = remember(channels, channelOrder, jointChannelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
+        channels
+            .filter { it.kind == JointChannelKindWireValue }
+            .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
+            .orderedBySidebarIds(channelOrder)
+            .sortedForSidebar(jointChannelSortModeState) { it.name }
+    }
+    val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
+    val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet, customPlacedConversationIds, pinnedShownConversationIds) {
+        directMessages
+            .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
+            .orderedBySidebarIds(dmOrder)
+            .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
+            .sortedForSidebar(directMessageSortMode) { it.name }
     }
     LaunchedEffect(currentServerId, pinnedItems, displayedPinned) {
         val resolvedKeys = displayedPinned.mapTo(mutableSetOf()) { it.key }
@@ -2440,7 +2458,7 @@ private fun RaftStructuralHomeShellContent(
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
                                 item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
-                                item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
+                                item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
                                 // artin 2026-10-20: the Home 动态 row stays alongside the Activity bottom tab (muscle
                                 // memory); it opens that same kept-alive tab via openHomeSecondaryDestination(Activity).
                                 item {
@@ -2454,11 +2472,11 @@ private fun RaftStructuralHomeShellContent(
                                         unreadCount = activityProjection.unreadLabel,
                                         totalCount = activityProjection.totalLabel,
                                         selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                         onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null
                                     )
                                 }
-                                item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
+                                item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
                                 inlineError?.let { error ->
                                     item {
                                         HomeInlineErrorCard(
@@ -2568,7 +2586,7 @@ private fun RaftStructuralHomeShellContent(
                                                         cacheServerId = currentServerId,
                                                         agentStatusResolver = agentStatusResolver,
                                                         memberAvatarResolver = memberAvatarResolver,
-                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                         hasDraft = pinned?.hasDraft == true,
                                                         muted = pinned?.activityMuted == true,
                                                         badge = badgeProjection?.label,
@@ -2621,7 +2639,7 @@ private fun RaftStructuralHomeShellContent(
                                                                 badge = badgeProjection.label,
                                                                 badgeTone = badgeProjection.tone
                                                             ),
-                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                         interaction =
                                                             ChannelRowInteraction(
                                                                 identity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
@@ -2694,7 +2712,7 @@ private fun RaftStructuralHomeShellContent(
                                                             badge = badgeProjection.label,
                                                             badgeTone = badgeProjection.tone
                                                         ),
-                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                     interaction =
                                                         ChannelRowInteraction(
                                                             identity = homeSidebarInteractionIdentity("joint", channel.id),
@@ -2770,7 +2788,7 @@ private fun RaftStructuralHomeShellContent(
                                                             badge = badgeProjection.label,
                                                             badgeTone = badgeProjection.tone
                                                         ),
-                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                     interaction =
                                                         ChannelRowInteraction(
                                                             identity = homeSidebarInteractionIdentity("channel", channel.id),
@@ -2792,7 +2810,7 @@ private fun RaftStructuralHomeShellContent(
                                         }
                                         if (channelsExpanded && showLoadingSkeletons) {
                                             items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
-                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
                                     }
@@ -2852,7 +2870,7 @@ private fun RaftStructuralHomeShellContent(
                                                     cacheServerId = currentServerId,
                                                     agentStatusResolver = agentStatusResolver,
                                                     memberAvatarResolver = memberAvatarResolver,
-                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                     hasDraft = dm.hasDraft,
                                                     muted = dm.activityMuted,
                                                     badge = badgeProjection.label,
@@ -2874,14 +2892,14 @@ private fun RaftStructuralHomeShellContent(
                                         }
                                         if (directMessagesExpanded && showLoadingSkeletons) {
                                             items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
-                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
                                     }
 
                                     // task #512: custom sections (web channel-sections port), each
-                                    // with an emoji + name header; long-press (or the trailing
-                                    // ellipsis) opens the section menu.
+                                    // with an emoji + name header; long-press opens the section menu
+                                    // (web: right-click / long-press, no trailing control).
                                     is RaftHomeSidebarSection.Custom -> {
                                         val sectionRows = sidebarSection.rows
                                         val customSection = sectionRows.section
@@ -2919,18 +2937,7 @@ private fun RaftStructuralHomeShellContent(
                                                     },
                                                 longPressAnchorIdentity = "$currentServerId:${customSection.id}",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                            ) {
-                                                RaftSectionHeaderIconAction(
-                                                    RaftLucideIconName.Ellipsis,
-                                                    customSection.name,
-                                                    onClick2 = { anchor ->
-                                                        if (sidebarInteractionsEnabled) {
-                                                            activeSectionMenuId = customSection.id
-                                                            sectionMenuAnchor = anchor
-                                                        }
-                                                    }
-                                                )
-                                            }
+                                            )
                                         }
                                         if (customSectionExpanded && sectionRows.items.isEmpty()) {
                                             item(key = "custom-section-empty:$currentServerId:${customSection.id}") {
@@ -2968,7 +2975,7 @@ private fun RaftStructuralHomeShellContent(
                                                         cacheServerId = currentServerId,
                                                         agentStatusResolver = agentStatusResolver,
                                                         memberAvatarResolver = memberAvatarResolver,
-                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                         hasDraft = item.hasDraft,
                                                         muted = item.activityMuted,
                                                         badge = badgeProjection.label,
@@ -2993,7 +3000,7 @@ private fun RaftStructuralHomeShellContent(
                                                                 badge = badgeProjection.label,
                                                                 badgeTone = badgeProjection.tone
                                                             ),
-                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding),
                                                         interaction =
                                                             ChannelRowInteraction(
                                                                 identity = homeSidebarInteractionIdentity("custom", customRowKey),
@@ -4536,6 +4543,10 @@ internal fun pinnedItemsForSidebar(
         pinnedOrder = pinnedOrder,
         mode = mode
     ).mapNotNull { it.conversation }
+
+/** Conversation ids the Pinned section renders; they leave their system section (web parity). */
+internal fun List<RaftHomePinnedRow>.sidebarPinnedConversationIds(): Set<String> =
+    mapNotNullTo(HashSet()) { row -> row.conversation?.id }
 
 internal fun pinnedRowsForSidebar(
     channels: List<RaftHomeConversationItem>,
@@ -6410,7 +6421,7 @@ internal fun HomeSidebarRowStatesVisualContent() {
                 .padding(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        val rowModifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+        val rowModifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
         SidebarActionRow(RaftLucideIconName.Search, "Search", modifier = rowModifier, selected = true)
         SidebarActionRow(RaftLucideIconName.Bookmark, "Saved", modifier = rowModifier)
         ChannelRow(
@@ -6504,8 +6515,8 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
                     .padding(horizontal = SidebarRowHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = if (selected) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb) }
-            Text(label, style = if (selected) RaftType.ListItemBold else RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = if (selected) raftArgbHex(RaftColor.StickerInk) else raftArgbHex(RaftColor.ForegroundHint)) }
+            Text(label, style = if (selected) RaftType.ListItemBold else RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarEntryLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),
@@ -6611,6 +6622,9 @@ private fun ChannelRow(
         else -> Color.Transparent
     }
     val titleColor = homeConversationTitleColor(muted = content.muted, joined = content.joined)
+    // raft-ui `sidebarItemChannelIcon`: the # / lock glyph is ink-3 (foreground-hint) whether or
+    // not the channel is joined; only the selected sticker turns it sticker ink.
+    val channelSymbolColor = homeChannelSymbolColorArgb(selected)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(content.muted)
     val rowAnchor = remember(interactionIdentity) { RaftLiveRootAnchorRef(identity = interactionIdentity) }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
@@ -6791,24 +6805,24 @@ private fun ChannelRow(
                     RaftLucideIcon(
                         "hash",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = when { selected -> raftArgbHex(RaftColor.StickerInk); content.joined -> RaftColor.TextBlackArgb; else -> raftArgbHex(RaftColor.ForegroundHint) }
+                        color = channelSymbolColor
                     )
                 } else if (content.symbol == HomeChannelSymbolHashGlobe) {
                     RaftHashGlobeIcon(
                         size = ChannelSymbolIconSize,
-                        color = when { selected -> raftArgbHex(RaftColor.StickerInk); content.joined -> RaftColor.TextBlackArgb; else -> raftArgbHex(RaftColor.ForegroundHint) }
+                        color = channelSymbolColor
                     )
                 } else if (content.symbol == "git-branch") {
                     RaftLucideIcon(
                         "git-branch",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = when { selected -> raftArgbHex(RaftColor.StickerInk); content.joined -> RaftColor.TextBlackArgb; else -> raftArgbHex(RaftColor.ForegroundHint) }
+                        color = channelSymbolColor
                     )
                 } else if (content.symbol == "lock") {
                     RaftLucideIcon(
                         "lock",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = when { selected -> raftArgbHex(RaftColor.StickerInk); content.joined -> RaftColor.TextBlackArgb; else -> raftArgbHex(RaftColor.ForegroundHint) }
+                        color = channelSymbolColor
                     )
                 } else {
                     Text(content.symbol, style = RaftType.Button, color = (if (selected) RaftColor.StickerInk else RaftColor.TextBlack).copy(alpha = if (content.joined) 1f else 0.46f), textAlign = TextAlign.Center)

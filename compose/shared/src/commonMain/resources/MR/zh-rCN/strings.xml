@@ -1594,11 +1594,11 @@
     <string name="home_nav_search">搜索</string>
     <string name="home_nav_activity">动态</string>
     <string name="home_nav_followed_threads">已关注的消息列</string>
-    <string name="home_nav_saved">收藏</string>
+    <string name="home_nav_saved">已保存</string>
     <string name="home_section_channels">频道</string>
     <string name="home_section_joint_channels">联合频道</string>
     <string name="home_section_direct_messages">私信</string>
-    <string name="home_section_pinned">置顶</string>
+    <string name="home_section_pinned">已置顶</string>
     <string name="home_action_pin">置顶</string>
     <string name="home_action_unpin">取消置顶</string>
     <string name="home_action_mark_as_read">标记已读</string>
@@ -1715,7 +1715,7 @@
     <string name="search_sender_me">我</string>
     <string name="saved_empty_title">暂无收藏的消息</string>
     <string name="saved_empty_detail">点击任意消息上的书签图标即可收藏。</string>
-    <string name="saved_title">收藏</string>
+    <string name="saved_title">已保存</string>
     <string name="saved_count">%1$d 项</string>
     <string name="saved_count_one">%1$d 项</string>
     <string name="saved_action_load_more">加载更多</string>

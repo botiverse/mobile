@@ -7,12 +7,13 @@ import kotlin.test.assertEquals
 
 class RaftCollapsibleSectionHeaderVisualContractTest {
     @Test
-    fun countMatchesReactMonoNormalTrackingAndBlackFortyPercent() {
-        assertEquals(4.dp, RaftCollapsibleSectionContentGap)
+    fun countMatchesRaftUiMonoNormalTrackingInForegroundHint() {
+        // raft-ui `sidebarSectionDisclosure` `gap-1.5`.
+        assertEquals(6.dp, RaftCollapsibleSectionContentGap)
         assertEquals(RaftMonoFamily, RaftCollapsibleSectionCountTextStyle.fontFamily)
         assertEquals(12.sp, RaftCollapsibleSectionCountTextStyle.fontSize)
         assertEquals(16.sp, RaftCollapsibleSectionCountTextStyle.lineHeight)
         assertEquals(0.sp, RaftCollapsibleSectionCountTextStyle.letterSpacing)
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.4f), RaftCollapsibleSectionCountColor)
+        assertEquals(RaftColor.ForegroundHint, RaftCollapsibleSectionCountColor)
     }
 }

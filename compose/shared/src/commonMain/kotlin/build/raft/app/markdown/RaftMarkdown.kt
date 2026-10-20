@@ -1519,10 +1519,19 @@ internal fun AnnotatedString.withRaftMarkdownSpanFonts(baseStyle: TextStyle): An
         if (shouldNormalizeFamily &&
             (range.item.fontFamily == FontFamily.Monospace || family != resolvedBase.fontFamily)
         ) {
+            // Space Grotesk spans carry the weight their face encodes (when the platform keeps
+            // it) so CJK fallback glyphs in **bold** render bold too; mono stays Regular-weighted.
+            val spanWeight =
+                when {
+                    range.item.fontFamily == FontFamily.Monospace -> FontWeight.Normal
+                    explicitWeight != null ->
+                        build.raft.app.raftSpanStyleForWeight(explicitWeight).fontWeight ?: FontWeight.Normal
+                    else -> resolvedBase.fontWeight ?: FontWeight.Normal
+                }
             builder.addStyle(
                 SpanStyle(
                     fontFamily = family,
-                    fontWeight = FontWeight.Normal
+                    fontWeight = spanWeight
                 ),
                 range.start,
                 range.end

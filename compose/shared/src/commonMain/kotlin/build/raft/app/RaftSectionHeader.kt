@@ -46,17 +46,19 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 
-private val SectionChevronSize = 12.dp
+// raft-ui `sidebarSectionDisclosure`: a 14px chevron (`size-3.5`), `gap-1.5`, all in ink-3.
+private val SectionChevronSize = 14.dp
 private val LoadingSpinnerSize = 14.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-internal val RaftCollapsibleSectionContentGap = 4.dp
+internal val RaftCollapsibleSectionContentGap = 6.dp
 // raft-ui sidebarSectionCount: `font-mono text-mono-meta font-normal` (12/16 Space Mono).
 internal val RaftCollapsibleSectionCountTextStyle: TextStyle
     // Getter: the UI-text locale and rendering defaults can change at runtime.
     get() =
         RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 0.sp)
-internal val RaftCollapsibleSectionCountColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
+// raft-ui `sidebarSectionCount`: `text-foreground-hint`.
+internal val RaftCollapsibleSectionCountColor: Color get() = RaftColor.ForegroundHint
 internal val RaftMainTabHeaderStartPadding = 8.dp
 // Task #179: getter so the header follows the Settings font option.
 internal val RaftMainTabHeaderTitleStyle: TextStyle
@@ -489,6 +491,7 @@ internal fun RaftCollapsibleSectionHeader(
         RaftLucideIcon(
             RaftLucideIconName.ChevronRight,
             Modifier.size(SectionChevronSize),
+            color = raftArgbHex(RaftColor.ForegroundHint),
             rotationDegrees = if (expanded) 90f else 0f,
             rotationAnimationDurationSeconds = RaftCollapsibleSectionTokens.AnimationDurationSeconds
         )
@@ -496,7 +499,7 @@ internal fun RaftCollapsibleSectionHeader(
             if (uppercaseLabel) label.raftDisplayUppercase() else label,
             // raft-ui `SidebarSectionDisclosure`: normal tracking in source case.
             style = if (uppercaseLabel) RaftType.SectionLabel else RaftType.SectionLabel.copy(letterSpacing = 0.sp),
-            color = RaftColor.TextBlack
+            color = RaftColor.ForegroundHint
         )
         Text(
             countPrefix + count,

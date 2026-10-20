@@ -65,7 +65,7 @@ internal actual fun raftPlatformSupportsPublicAttachmentDownloadReadback(): Bool
 
 internal actual fun raftPlatformSupportsPrivateAttachmentExport(): Boolean = false
 
-internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean = false
+internal actual fun raftPlatformPreservesEncodedFontWeightForFallback(): Boolean = true
 
 internal actual fun raftReleaseNotesAppSlug(): String = "raft-ios"
 
