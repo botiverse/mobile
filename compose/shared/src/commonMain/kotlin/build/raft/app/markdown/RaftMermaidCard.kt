@@ -1,5 +1,7 @@
 package build.raft.app.markdown
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -165,9 +167,13 @@ internal fun RaftMermaidCard(
         } else {
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                 val fittedScale = raftMermaidCardInlineScale(diagramWidth, maxWidth.value, scale)
+                val backSwipeRowState = rememberLazyListState()
+                val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
                 LazyRow(
+                    state = backSwipeRowState,
+                    userScrollEnabled = backSwipeRow.userScrollEnabled,
                     modifier =
-                        Modifier
+                        Modifier.then(backSwipeRow.modifier)
                             .fillMaxWidth()
                             .heightIn(min = RaftMermaidInlineMinHeight)
                             .clipToBounds()
