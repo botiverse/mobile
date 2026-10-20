@@ -33,12 +33,18 @@ object SlockAndroidPushRegistrationBridge {
      * realtime path keeps posting this device's notifications itself.
      */
     fun install(candidateInstallationId: String, fcmUnavailableReason: String? = null): String {
-        val runtime = coordinator ?: createCoordinator().also {
-            coordinator = it
-            SlockPushRegistrationLifecycle.install(it)
+        val existing = coordinator
+        val runtime = existing ?: createCoordinator()
+        if (fcmUnavailableReason != null) {
+            // Before the coordinator is published or handed to the lifecycle: once installed there, a
+            // session observer could already start a flush of a payload persisted by an earlier process.
+            runtime.reportProviderUnavailable(fcmUnavailableReason)
+        }
+        if (existing == null) {
+            coordinator = runtime
+            SlockPushRegistrationLifecycle.install(runtime)
         }
         if (fcmUnavailableReason != null) {
-            runtime.reportProviderUnavailable(fcmUnavailableReason)
             scope.launch { runtime.markProviderUnavailable(fcmUnavailableReason) }
         }
         val installationId = runtime.installationId(candidateInstallationId)
