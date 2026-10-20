@@ -75,6 +75,7 @@ import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -251,6 +252,29 @@ class RaftDisplaySemanticsTest {
             }
             assertEquals(6f, gap("peer-a", "peer-b"), 0.5f)
             assertEquals(4f, gap("place-a", "place-b"), 0.5f)
+        }
+
+    /** The app's UI language reaches every type style; by default there is none. */
+    @Test
+    fun theThemePutsTheUiLanguageOnEveryTypeStyle() =
+        runComposeUiTest {
+            val ko = LocaleList("ko")
+            var themed: RaftTypography? = null
+            var plain: RaftTypography? = null
+            setContent {
+                Column {
+                    RaftTheme(appearance = RaftAppearance.Light, systemDark = false, localeList = ko) { themed = RaftTheme.typography }
+                    RaftTheme(appearance = RaftAppearance.Light, systemDark = false) { plain = RaftTheme.typography }
+                }
+            }
+            waitForIdle()
+            val withLocale = assertNotNull(themed)
+            val without = assertNotNull(plain)
+            listOf(withLocale.body, withLocale.footnote, withLocale.headline, withLocale.monoMeta, withLocale.field).forEach {
+                assertEquals(ko, it.localeList)
+            }
+            assertEquals(null, without.body.localeList)
+            assertEquals(null, without.monoMeta.localeList)
         }
 
     @Test

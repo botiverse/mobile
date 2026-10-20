@@ -18,6 +18,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.text.intl.LocaleList
 import build.raft.designsystem.components.LocalRaftPulseClock
 import build.raft.designsystem.components.rememberRaftPulseClock
 import build.raft.designsystem.tokens.RaftRadius
@@ -127,6 +128,11 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
  * [fonts]) and provides colours, typography, shapes, the content colour and the text
  * selection colours (`brand-soft`).
  *
+ * [localeList] is the app's UI language for every [RaftTypography] style (`LocaleList("ja")`,
+ * `"ko"`, `"zh-Hant"`): the platform picks CJK fallback glyphs from the text's locale, so Han
+ * characters take that language's forms. Null (the default) sets none and leaves the
+ * device locale in charge. A span's own `localeList` (a user's name) still wins.
+ *
  * This is not a Material theme: components read [RaftTheme], never `MaterialTheme`.
  */
 @Composable
@@ -134,6 +140,7 @@ fun RaftTheme(
     state: RaftThemeState = RaftThemeState.App,
     systemDark: Boolean = isSystemInDarkTheme(),
     fonts: RaftFonts? = null,
+    localeList: LocaleList? = null,
     content: @Composable () -> Unit,
 ) {
     SideEffect { state.onSystemDarkChanged(systemDark) }
@@ -142,7 +149,7 @@ fun RaftTheme(
     // A host with its own faces (the app's Settings > Appearance face) passes them in, so the
     // bundled Space Grotesk / Space Mono are never loaded just to be replaced.
     val resolvedFonts = fonts ?: rememberRaftFonts()
-    val typography = remember(resolvedFonts) { RaftTypography.from(resolvedFonts) }
+    val typography = remember(resolvedFonts, localeList) { RaftTypography.from(resolvedFonts, localeList) }
     CompositionLocalProvider(
         LocalRaftColors provides colors,
         LocalRaftTypography provides typography,
@@ -160,17 +167,19 @@ fun RaftTheme(
 
 /**
  * Pins an [appearance] for a subtree (previews, fixtures, screenshot tests, an app screen
- * hosting designsystem components). [fonts] replaces the bundled faces when given.
+ * hosting designsystem components). [fonts] replaces the bundled faces when given;
+ * [localeList] is the UI language of the type styles, as in the state overload.
  */
 @Composable
 fun RaftTheme(
     appearance: RaftAppearance,
     systemDark: Boolean = isSystemInDarkTheme(),
     fonts: RaftFonts? = null,
+    localeList: LocaleList? = null,
     content: @Composable () -> Unit,
 ) {
     val state = remember(appearance) { RaftThemeState(appearance) }
-    RaftTheme(state = state, systemDark = systemDark, fonts = fonts, content = content)
+    RaftTheme(state = state, systemDark = systemDark, fonts = fonts, localeList = localeList, content = content)
 }
 
 /** Read access to the enclosing [RaftTheme]. */

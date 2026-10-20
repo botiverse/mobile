@@ -108,6 +108,11 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
   parameters default to it and still take a per-call value.
 - `RaftTheme` also provides `LocalTextSelectionColors`: a selection is `brand-soft`
   (raft-web `::selection`), the handles `foreground`.
+- `RaftTheme(localeList = ...)` puts the app's UI language on every `RaftTypography` style
+  (`RaftTypography.from(fonts, localeList)`), so Android and iOS pick the CJK fallback
+  glyphs of that language (`ja`, `ko`, `zh-Hant`) for Han characters. The default, null,
+  sets none (the device locale decides). A span's own `localeList` still wins: pass a
+  user's name as an `AnnotatedString` to keep its own.
 - `LocalRaftSurfaceColor` (`RaftTheme.surfaceColor`) is the opaque surface under the
   content: `layer-canvas` at the root, `layer-card` inside `RaftCard` and
   `RaftListRowGroup`, a selected row's `info-soft` over the card, a banner's fill for its
