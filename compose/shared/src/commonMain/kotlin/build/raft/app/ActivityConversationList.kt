@@ -556,7 +556,7 @@ internal fun ActivityConversationListRow(
         if (showDoneAction) {
             RaftIconButton(
                 onClick = onDone,
-                contentDescription = stringResource(MR.strings.thread_action_mark_done),
+                tooltip = stringResource(MR.strings.thread_action_mark_done),
                 // The 32dp button keeps its look inside a 48dp touch target; the 8dp of the slot on each
                 // side replaces 8dp of the old row padding, so nothing moves.
                 modifier = Modifier.padding(end = 8.dp).minimumInteractiveComponentSize(),
