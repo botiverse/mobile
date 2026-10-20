@@ -21240,14 +21240,14 @@ private fun ThreadMessagesListContent(
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
                 val liveTodayEpochDay = LocalRaftTimeContextProvider.current?.todayEpochDay
-                val dateDividerLabel =
+                val dateDividerDay =
                     remember(
                         previousMessage?.timestampLabel,
                         message.timestampLabel,
                         renderConfig.timeContext.localOffsetMinutes,
                         liveTodayEpochDay
                     ) {
-                        threadDateDividerLabel(
+                        threadDateDividerDay(
                             previous = previousMessage,
                             next = message,
                             timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
@@ -21266,8 +21266,8 @@ private fun ThreadMessagesListContent(
                                 drawContent()
                             }
                 ) {
-                    dateDividerLabel?.let { label ->
-                        ThreadDateDivider(label)
+                    dateDividerDay?.let { day ->
+                        ThreadDateDivider(day.localizedLabel())
                     }
                     Box(
                         modifier =
@@ -21971,7 +21971,9 @@ internal data class ThreadInlineActionSpec(
 internal data class ThreadHistoryStatusSpec(
     val label: StringDesc,
     val leadingIcon: RaftLucideIconName? = null,
-    val secondaryLabel: String? = null
+    val secondaryLabel: String? = null,
+    /** When set, the secondary line is this reply count, localized at render time. */
+    val secondaryReplyCount: Int? = null
 )
 
 private fun ThreadTimelineSlice.threadSelectedShareMessages(
@@ -22093,6 +22095,7 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
         secondaryLabel = timelineSlice.beginningReplyCountLabel,
+        secondaryReplyCount = timelineSlice.beginningReplyCount,
         durableLastKnown = timelineSlice.durableLastKnown,
         durableReachedOldest = timelineSlice.durableReachedOldest
     )
@@ -22100,6 +22103,7 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
     secondaryLabel: String? = null,
+    secondaryReplyCount: Int? = null,
     durableLastKnown: Boolean = false,
     durableReachedOldest: Boolean = false
 ): ThreadHistoryStatusSpec =
@@ -22110,7 +22114,12 @@ internal fun threadOlderMessagesStatusSpec(
         // conversation. Say what is true instead of claiming a boundary the frame cannot prove —
         // unless the stored window itself reaches the start (task #168): then it is the beginning.
         durableLastKnown && !durableReachedOldest -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
-        else -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
+        else ->
+            ThreadHistoryStatusSpec(
+                label = MR.strings.thread_state_beginning_conversation.desc(),
+                secondaryLabel = secondaryLabel,
+                secondaryReplyCount = secondaryReplyCount
+            )
     }
 
 /**
@@ -23865,10 +23874,16 @@ private fun ThreadHistoryStatusRow(
                 color = RaftColor.TextMutedGray
             )
         }
-        if (!spec.secondaryLabel.isNullOrBlank()) {
+        val secondaryText =
+            when (val count = spec.secondaryReplyCount) {
+                null -> spec.secondaryLabel
+                1 -> stringResource(MR.strings.thread_inline_reply_count_one)
+                else -> stringResource(MR.strings.thread_inline_reply_count_many, count)
+            }
+        if (!secondaryText.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
             Text(
-                text = spec.secondaryLabel,
+                text = secondaryText,
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray
             )
@@ -27256,11 +27271,17 @@ internal fun shouldSuppressCompactThreadAuthor(
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
 
-internal fun threadDateDividerLabel(
+/** The local day a thread date divider names; rendered from string resources by [localizedLabel]. */
+internal data class ThreadDateDividerDay(
+    val epochDay: Long,
+    val todayEpochDay: Long?
+)
+
+internal fun threadDateDividerDay(
     previous: RaftThreadMessageItem?,
     next: RaftThreadMessageItem,
     timeContext: RaftTimeContext
-): String? {
+): ThreadDateDividerDay? {
     val localOffsetMinutes = timeContext.localOffsetMinutes
     val nextEpochDay = next.threadMessageLocalEpochDayOrNull(localOffsetMinutes) ?: return null
     val previousEpochDay = previous?.threadMessageLocalEpochDayOrNull(localOffsetMinutes)
@@ -27268,8 +27289,34 @@ internal fun threadDateDividerLabel(
     val todayEpochDay =
         timeContext.todayEpochDay
             ?: timeContext.nowEpochMillis?.let { threadLocalEpochDay(it, localOffsetMinutes) }
-    return threadDateDividerLabel(nextEpochDay, todayEpochDay)
+    return ThreadDateDividerDay(epochDay = nextEpochDay, todayEpochDay = todayEpochDay)
 }
+
+/** Canonical (English) divider label; the UI renders [ThreadDateDividerDay.localizedLabel]. */
+internal fun threadDateDividerLabel(
+    previous: RaftThreadMessageItem?,
+    next: RaftThreadMessageItem,
+    timeContext: RaftTimeContext
+): String? =
+    threadDateDividerDay(previous, next, timeContext)?.let { day ->
+        threadDateDividerLabel(day.epochDay, day.todayEpochDay)
+    }
+
+@Composable
+private fun ThreadDateDividerDay.localizedLabel(): String =
+    when {
+        todayEpochDay != null && epochDay == todayEpochDay -> stringResource(MR.strings.thread_date_divider_today)
+        todayEpochDay != null && epochDay == todayEpochDay - 1L -> stringResource(MR.strings.thread_date_divider_yesterday)
+        else -> {
+            val date = threadCivilDateFromEpochDay(epochDay)
+            stringResource(
+                MR.strings.thread_date_divider_date,
+                stringResource(ThreadWeekdayNameResources[threadWeekdayIndex(epochDay)]),
+                stringResource(ThreadMonthNameResources[date.month - 1]),
+                date.day
+            )
+        }
+    }
 
 private fun RaftThreadMessageItem.isCompactContinuationBefore(
     next: RaftThreadMessageItem,
@@ -27353,6 +27400,33 @@ private val ThreadWeekdayNames =
 
 private val ThreadMonthNames =
     listOf("JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER")
+
+private val ThreadWeekdayNameResources =
+    listOf(
+        MR.strings.thread_date_divider_weekday_sunday,
+        MR.strings.thread_date_divider_weekday_monday,
+        MR.strings.thread_date_divider_weekday_tuesday,
+        MR.strings.thread_date_divider_weekday_wednesday,
+        MR.strings.thread_date_divider_weekday_thursday,
+        MR.strings.thread_date_divider_weekday_friday,
+        MR.strings.thread_date_divider_weekday_saturday
+    )
+
+private val ThreadMonthNameResources =
+    listOf(
+        MR.strings.thread_date_divider_month_january,
+        MR.strings.thread_date_divider_month_february,
+        MR.strings.thread_date_divider_month_march,
+        MR.strings.thread_date_divider_month_april,
+        MR.strings.thread_date_divider_month_may,
+        MR.strings.thread_date_divider_month_june,
+        MR.strings.thread_date_divider_month_july,
+        MR.strings.thread_date_divider_month_august,
+        MR.strings.thread_date_divider_month_september,
+        MR.strings.thread_date_divider_month_october,
+        MR.strings.thread_date_divider_month_november,
+        MR.strings.thread_date_divider_month_december
+    )
 
 private const val ThreadMillisPerMinute = 60_000L
 private const val ThreadMillisPerDay = 86_400_000L
@@ -27879,12 +27953,16 @@ internal fun Set<String>.hasReplyComposerDraft(parentMessageId: String): Boolean
     parentMessageId in this
 
 internal fun RaftThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
-    val replyCount = originMessage?.replyCount ?: return null
+    val replyCount = threadBeginningReplyCount() ?: return null
     return buildString {
-        append(replyCount.coerceAtLeast(0))
+        append(replyCount)
         append(if (replyCount == 1) " reply" else " replies")
     }
 }
+
+/** Origin-projected reply count under "Beginning of conversation"; rendered via string resources. */
+internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? =
+    originMessage?.replyCount?.coerceAtLeast(0)
 
 private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem> =
     SharedTaskStatusChipMetas.map { option ->

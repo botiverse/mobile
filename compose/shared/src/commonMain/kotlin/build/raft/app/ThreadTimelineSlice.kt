@@ -39,6 +39,8 @@ internal data class ThreadTimelineSlice(
     val showTaskStatusActions: Boolean,
     val canConvertMessagesToTasks: Boolean,
     val beginningReplyCountLabel: String?,
+    /** The count behind [beginningReplyCountLabel], so the UI can render it from string resources. */
+    val beginningReplyCount: Int? = null,
     /** Task #232 arrival provenance projected from the payload; see [RaftThreadScreenPayload.gapRefillMessageIds]. */
     val gapRefillMessageIds: Set<String> = emptySet(),
     /** Task #1125: the frame is the offline durable stand-in (see [RaftThreadScreenPayload.durableLastKnown]). */
@@ -88,7 +90,8 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         showTaskOpenActions = showTaskOpenActions,
         showTaskStatusActions = showTaskStatusActions,
         canConvertMessagesToTasks = canConvertMessagesToTasks(),
-        beginningReplyCountLabel = threadBeginningReplyCountLabel()
+        beginningReplyCountLabel = threadBeginningReplyCountLabel(),
+        beginningReplyCount = threadBeginningReplyCount()
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =
