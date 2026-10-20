@@ -738,8 +738,6 @@ class SharedActivityStoreTest {
                 isFollowing = true,
                 hasMention = true
             )
-        // A compliant server reports the aggregate without unfollowed attention;
-        // the projection guards the row and never re-derives that aggregate.
         val raw = snapshot(listOf(unfollowed, followed), totalCount = 2, totalUnreadCount = 2)
 
         val all = raw.projectActivityFilter(InboxFilter.All)
@@ -1830,8 +1828,7 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
         store.dispatch(SharedActivityIntent.MarkAllRead)
 
-        // slock channelService.ts:13136-13168: read mentions stay in Mentions.
-        assertEquals(listOf(row.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)), store.state.value.items)
+        assertEquals(listOf(row.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)), store.state.value.items, "slock channelService.ts:13136-13168")
         assertEquals(1, store.state.value.totalCount)
         assertEquals(0, store.state.value.totalUnreadCount)
         pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
@@ -2336,9 +2333,7 @@ class SharedActivityStoreTest {
         val patched = store.state.value.items.single()
         assertEquals(3, patched.replyCount)
         assertEquals("2026-07-13T03:05:00Z", patched.latestActivityAt)
-        // Web updateThreadActivityMeta (slock 1bb70cbeb inboxStore.ts:1779-1795):
-        // the event's unread never overwrites the row.
-        assertEquals(1, patched.unreadCount)
+        assertEquals(1, patched.unreadCount, "web updateThreadActivityMeta never overwrites unread")
         assertEquals(MessageId("first-thread-channel-1"), patched.firstUnreadMessageId)
 
         store.dispatch(
@@ -2636,8 +2631,7 @@ class SharedActivityStoreTest {
         assertEquals(false, store.state.value.refreshing)
         assertEquals(false, store.state.value.pullRefreshing)
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
-        // The patch moves content only; unread arrives with the canonical row.
-        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount, "unread arrives with the canonical row")
         assertEquals(0, store.state.value.totalUnreadCount)
 
         inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
@@ -2820,8 +2814,7 @@ class SharedActivityStoreTest {
         awaitPendingCount(inbox, 1)
         inbox.completeNextSnapshot(snapshot(listOf(laggingReadProjection), totalUnreadCount = 0))
         delay(1L)
-        // The canonical row reached the patch marker, so it wins, unread included.
-        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount, "canonical reached the patch marker")
         assertEquals(0, store.state.value.totalUnreadCount)
 
         store.dispatch(SharedActivityIntent.Refresh)
@@ -3175,9 +3168,7 @@ class SharedActivityStoreTest {
             )
         )
         assertEquals(2, loadCountAfterRealtime)
-        // The row carries no read-state frontier, so the read cannot be
-        // projected locally; it takes exactly one canonical reconcile.
-        assertEquals(loadCountAfterRealtime + 1, inbox.initialLoadCount)
+        assertEquals(loadCountAfterRealtime + 1, inbox.initialLoadCount, "no row frontier: one reconcile")
         val patched = store.state.value.items.single()
         assertEquals(MessageId("message-new"), patched.latestActivityMessageId)
         assertEquals("Realtime preview", patched.latestActivityPreview)
