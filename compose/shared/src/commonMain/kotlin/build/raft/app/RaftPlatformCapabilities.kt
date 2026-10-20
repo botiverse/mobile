@@ -2,11 +2,8 @@ package build.raft.app
 
 import build.raft.app.components.RaftPullToRefreshStyle
 
-/**
- * The platform's own pull-to-refresh, used when Settings → Mobile "Native pull-to-refresh" is on:
- * Android = Material 3, iOS = UIRefreshControl-style. Off = Raft's custom implementation.
- */
-internal expect fun raftPlatformNativePullToRefreshStyle(): RaftPullToRefreshStyle
+/** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style. */
+internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle
 
 internal expect fun raftPlatformUsesNativeLucideIconRotation(): Boolean
 

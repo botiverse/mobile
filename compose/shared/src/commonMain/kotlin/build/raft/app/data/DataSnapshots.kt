@@ -1748,14 +1748,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Unsupported",
             detail = "The bottom-up message list is not available on this build."
         ),
-    /** Native pull-to-refresh switch (off = Raft's custom one); see RaftNativePullToRefreshPreferenceStore. */
-    val nativePullToRefresh: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = RAFT_NATIVE_PULL_TO_REFRESH_DEFAULT,
-            available = false,
-            statusLabel = "Off",
-            detail = "Native pull-to-refresh is not available on this build."
-        ),
     /** Task #3: effective value (user choice, else the server-sent transport variant); see RaftHttp3Policy. */
     val http3: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

@@ -466,7 +466,6 @@ sealed interface SharedSettingsIntent {
     data class SetRealtimeCurlSocketIoEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHttp3Enabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadReverseLayoutEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetNativePullToRefreshEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -606,7 +605,6 @@ class SharedSettingsDataSource(
     private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
-    private val nativePullToRefreshPreferenceStore: RaftNativePullToRefreshPreferenceStore? = null,
     private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
@@ -1287,30 +1285,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setNativePullToRefreshEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val store =
-            nativePullToRefreshPreferenceStore
-                ?: return DataResult.Error(ScreenError("settings_native_pull_to_refresh_unavailable", retryable = false))
-        store.saveNativePullToRefreshEnabled(enabled)
-        diagnosticsLogger?.invoke("native_pull_to_refresh enabled=$enabled")
-        return loadMobilePreferences()
-    }
-
-    /** Off (default) = Raft's custom pull-to-refresh; on = the platform's own style. Applies live. */
-    private fun SettingsMobileSnapshot.withNativePullToRefreshPreference(): SettingsMobileSnapshot {
-        val store = nativePullToRefreshPreferenceStore ?: return this
-        val enabled = store.readNativePullToRefreshEnabledSync()
-        return copy(
-            nativePullToRefresh =
-                SettingsMobileToggleSnapshot(
-                    enabled = enabled,
-                    available = true,
-                    statusLabel = if (enabled) "Enabled" else "Off",
-                    detail = "Use the system pull-to-refresh style of this platform. When off, keep Raft's pull-to-refresh."
-                )
-        )
-    }
-
     /** The switch shows the user's choice when there is one, otherwise the default it follows. Applies to the next thread open. */
     private suspend fun SettingsMobileSnapshot.withThreadReverseLayoutPreference(): SettingsMobileSnapshot {
         val store = threadReverseLayoutPreferenceStore ?: return this
@@ -1759,7 +1733,6 @@ class SharedSettingsDataSource(
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
         ).withRealtimeCurlSocketIoPreference().withHttp3Preference().withThreadReverseLayoutPreference()
-            .withNativePullToRefreshPreference()
     }
 
     private fun SettingsMobileSnapshot.withSystemNotificationPermission(
@@ -2634,14 +2607,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setThreadReverseLayoutEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_THREAD_REVERSE_LAYOUT)
-            }
-            is SharedSettingsIntent.SetNativePullToRefreshEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_NATIVE_PULL_TO_REFRESH, inProgress = true)
-                    )
-                dataSource.setNativePullToRefreshEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_NATIVE_PULL_TO_REFRESH)
             }
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled -> {
                 _state.value =
@@ -3813,7 +3778,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled,
             is SharedSettingsIntent.SetHttp3Enabled,
             is SharedSettingsIntent.SetThreadReverseLayoutEnabled,
-            is SharedSettingsIntent.SetNativePullToRefreshEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -4058,7 +4022,6 @@ internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val MOBILE_ACTION_REALTIME_CURL_SOCKETIO = "realtimeCurlSocketIo"
 internal const val MOBILE_ACTION_HTTP3 = "http3"
 internal const val MOBILE_ACTION_THREAD_REVERSE_LAYOUT = "threadReverseLayout"
-internal const val MOBILE_ACTION_NATIVE_PULL_TO_REFRESH = "nativePullToRefresh"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
