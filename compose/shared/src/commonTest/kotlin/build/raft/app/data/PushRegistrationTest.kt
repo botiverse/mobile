@@ -934,6 +934,67 @@ class PushRegistrationTest {
     }
 
     @Test
+    fun aFailedReUpsertAfterAPreviewChangeIsRetriedWithBackoff() = runBlocking {
+        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                previewModeProvider = preferences::readPushPreviewModeSync
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        preferences.savePushPreviewMode("hidden")
+        var failuresLeft = 2
+        api.upsertResponseFor = { payload ->
+            if (failuresLeft-- > 0) HomeNetworkResponse(code = 503, bodyText = null) else confirmedUpsert(payload)
+        }
+
+        assertTrue(coordinator.syncPreviewModeWithRetry())
+
+        val posts = api.calls.filter { it.startsWith("POST ") }
+        assertEquals(4, posts.size, "initial + two failed + the successful retry")
+        assertTrue(posts.drop(1).all { it.contains(""""previewMode":"hidden"""") })
+    }
+
+    @Test
+    fun retriesStopWhenTheServerKeepsFailing() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                previewModeProvider = { "sender_only" }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        api.upsertResponse = HomeNetworkResponse(code = 503, bodyText = null)
+        assertFalse(coordinator.registerFcm())
+
+        assertFalse(coordinator.syncPreviewModeWithRetry())
+
+        assertEquals(5, api.calls.count { it.startsWith("POST ") }, "1 + first try + 3 bounded retries")
+    }
+
+    @Test
+    fun aPreviewChangeWithNothingToSendDoesNotRetry() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertFalse(coordinator.syncPreviewModeWithRetry())
+
+        assertTrue(api.calls.isEmpty())
+    }
+
+    @Test
     fun aPendingPayloadFromAnOlderBuildGainsThePreviewModeOnTheNextFlush() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         store.putString(
@@ -988,7 +1049,8 @@ class PushRegistrationTest {
         currentEnvironmentId: (() -> String?)? = null,
         clockMillis: () -> Long = { 0L },
         scope: CoroutineScope = CoroutineScope(SupervisorJob()),
-        previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT }
+        previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT },
+        previewRetryDelaysMillis: List<Long> = listOf(0L, 0L, 0L)
     ): RaftPushRegistrationCoordinator =
         RaftPushRegistrationCoordinator(
             store = store,
@@ -999,7 +1061,8 @@ class PushRegistrationTest {
             remoteNotificationsController = remoteNotificationsController,
             currentEnvironmentId = currentEnvironmentId,
             clockMillis = clockMillis,
-            previewModeProvider = previewModeProvider
+            previewModeProvider = previewModeProvider,
+            previewRetryDelaysMillis = previewRetryDelaysMillis
         )
 
     private class TestClock(var now: Long = 1_700_000_000_000L) {
@@ -1079,9 +1142,11 @@ class PushRegistrationTest {
 
         /** Null answers like the server: 200 echoing the stored registration. */
         var upsertResponse: HomeNetworkResponse? = null
+        var upsertResponseFor: ((String) -> HomeNetworkResponse)? = null
 
         override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
             calls += "POST $payloadJson"
+            upsertResponseFor?.let { return it(payloadJson) }
             return upsertResponse ?: confirmedUpsert(payloadJson)
         }
 

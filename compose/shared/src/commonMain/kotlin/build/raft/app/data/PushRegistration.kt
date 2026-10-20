@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
@@ -108,6 +109,9 @@ private const val FCM_MAX_TOKEN_LENGTH = 4096
  * stored a confirmation time.
  */
 const val PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS: Long = 24L * 60L * 60L * 1000L
+
+/** Backoff between retries of a failed re-upsert after the push preview choice changed. */
+val PUSH_PREVIEW_RETRY_DELAYS_MILLIS: List<Long> = listOf(5_000L, 30_000L, 2L * 60_000L, 10L * 60_000L)
 
 /** A delivery-status answer older than this is unknown: the background path posts locally again. */
 const val PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS: Long = 30L * 60L * 1000L
@@ -324,6 +328,11 @@ internal class RaftPushRegistrationCoordinator(
      * an unrecognized value or a failed read fails closed with [PUSH_PREVIEW_MODE_UNREADABLE].
      */
     private val previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT },
+    /**
+     * Waits before each retry of a failed re-upsert after a preview change. Without them the server
+     * would keep redacting with the old choice until the next trigger (login, token, 24h refresh).
+     */
+    private val previewRetryDelaysMillis: List<Long> = PUSH_PREVIEW_RETRY_DELAYS_MILLIS,
     private val infoLogger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : RaftPushRegistrationLifecycleSink {
@@ -456,12 +465,37 @@ internal class RaftPushRegistrationCoordinator(
         }
     }
 
+    // The retry loop of the latest preview change; a newer change replaces it.
+    private var previewChangeJob: Job? = null
+
     override fun onPreviewModeChanged() {
         if (unbindInProgress) return
-        scope.launch {
-            handlePreviewModeChanged()
-        }
+        previewChangeJob?.cancel()
+        previewChangeJob = scope.launch { syncPreviewModeWithRetry() }
     }
+
+    /**
+     * [handlePreviewModeChanged], retried after [previewRetryDelaysMillis] while it fails with a
+     * registration still waiting to be sent (network or server failure). It stops once nothing could
+     * be sent anyway: no pending registration, logged out, or no usable provider on this device.
+     */
+    internal suspend fun syncPreviewModeWithRetry(): Boolean {
+        if (handlePreviewModeChanged()) return true
+        for ((attempt, waitMillis) in previewRetryDelaysMillis.withIndex()) {
+            if (!previewSyncRetryable()) return false
+            infoLogger("registration_retry trigger=preview_mode_changed attempt=${attempt + 1} delayMs=$waitMillis")
+            delay(waitMillis)
+            if (handlePreviewModeChanged()) return true
+        }
+        warningLogger("registration_retry_exhausted trigger=preview_mode_changed")
+        return false
+    }
+
+    private fun previewSyncRetryable(): Boolean =
+        !registrationSuspended &&
+            !unbindInProgress &&
+            providerUnavailableReason == null &&
+            !store.getString(PENDING_REGISTRATION_KEY).isNullOrBlank()
 
     /**
      * Re-upserts the pending registration with the current preview choice. The flush re-reads
