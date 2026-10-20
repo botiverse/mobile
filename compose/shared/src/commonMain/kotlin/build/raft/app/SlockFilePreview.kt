@@ -104,8 +104,6 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.text.SelectionContainer
-import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -3827,6 +3825,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                     payload = payload,
                     onOpenUrl = {},
                     htmlDesktopMode = htmlDesktopMode,
+                    onCopyText = { text ->
+                        bridge.copyToPasteboard(text)
+                        bridge.toast(copiedLabel)
+                    },
                     onExternalBrowserOpen =
                         if (
                             payload.source == SlockFilePreviewSourceThreadAttachment &&
@@ -7679,6 +7681,8 @@ internal fun SlockFilePreviewPayloadContent(
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
     onExternalBrowserOpen: (() -> Unit)? = null,
+    /** Copies an in-place selection from a Markdown / text body; null keeps the body unselectable. */
+    onCopyText: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -7724,7 +7728,8 @@ internal fun SlockFilePreviewPayloadContent(
                     modifier = Modifier.fillMaxSize(),
                     performanceKey = "preview:${payload.path}",
                     textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                    showChrome = false
+                    showChrome = false,
+                    onCopyText = onCopyText
                 )
             }
         "text" ->
@@ -7742,7 +7747,8 @@ internal fun SlockFilePreviewPayloadContent(
                     meta = payload.meta,
                     content = payload.content,
                     modifier = Modifier.fillMaxSize(),
-                    showChrome = false
+                    showChrome = false,
+                    onCopyText = onCopyText
                 )
             }
         "xlsx" -> {
@@ -9993,7 +9999,8 @@ internal fun SlockFilePreviewMarkdownPanel(
     modifier: Modifier = Modifier,
     performanceKey: String? = null,
     textStyle: TextStyle? = null,
-    showChrome: Boolean = true
+    showChrome: Boolean = true,
+    onCopyText: ((String) -> Unit)? = null
 ) {
     if (!showChrome && status == "content") {
         LazyColumn(
@@ -10003,10 +10010,7 @@ internal fun SlockFilePreviewMarkdownPanel(
         ) {
             item {
                 // Long-press selects the rendered text in place; copy yields plain text.
-                SelectionContainer(
-                    state = rememberSelectionContainerState(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SlockFilePreviewSelectableBody(onCopyText) {
                     SlockMarkdownBody(
                         body = body.orEmpty(),
                         textStyle = textStyle ?: SlockType.Body,
@@ -10067,12 +10071,30 @@ internal fun SlockFilePreviewMarkdownPanel(
 }
 
 @Composable
+private fun SlockFilePreviewSelectableBody(
+    onCopyText: ((String) -> Unit)?,
+    content: @Composable () -> Unit
+) {
+    if (onCopyText == null) {
+        content()
+    } else {
+        SlockInPlaceTextSelection(
+            onCopy = onCopyText,
+            modifier = Modifier.fillMaxWidth(),
+            testTag = "file_preview_selection_text",
+            content = content
+        )
+    }
+}
+
+@Composable
 internal fun SlockFilePreviewTextPanel(
     name: String,
     meta: String,
     content: String,
     modifier: Modifier = Modifier,
-    showChrome: Boolean = true
+    showChrome: Boolean = true,
+    onCopyText: ((String) -> Unit)? = null
 ) {
     if (!showChrome) {
         LazyColumn(
@@ -10080,10 +10102,7 @@ internal fun SlockFilePreviewTextPanel(
             contentPadding = PaddingValues(SlockSpacing.Md)
         ) {
             item {
-                SelectionContainer(
-                    state = rememberSelectionContainerState(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                SlockFilePreviewSelectableBody(onCopyText) {
                     Text(
                         text = content,
                         modifier = Modifier.fillMaxWidth(),
