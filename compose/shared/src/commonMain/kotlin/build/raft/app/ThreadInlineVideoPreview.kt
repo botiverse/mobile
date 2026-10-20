@@ -35,6 +35,9 @@ import build.raft.app.compat.ui.VideoPlayControl
 
 internal enum class ThreadInlineVideoPreviewStatus {
     Loading,
+
+    /** A fetch failed transiently and an automatic retry is scheduled (video likely still processing). */
+    Processing,
     Ready,
     Error
 }
@@ -42,11 +45,14 @@ internal enum class ThreadInlineVideoPreviewStatus {
 internal data class ThreadInlineVideoPreviewUiState(
     val status: ThreadInlineVideoPreviewStatus,
     val url: String = "",
-    val expiresAt: String? = null
+    val expiresAt: String? = null,
+    /** 1-based fetch attempt that produced this state. */
+    val attempt: Int = 0
 )
 
 internal enum class ThreadInlineVideoRenderMode {
     Loading,
+    Processing,
     Ready,
     Error
 }
@@ -55,6 +61,7 @@ internal fun ThreadInlineVideoPreviewUiState?.renderMode(): ThreadInlineVideoRen
     when (this?.status) {
         null -> ThreadInlineVideoRenderMode.Loading
         ThreadInlineVideoPreviewStatus.Loading -> ThreadInlineVideoRenderMode.Loading
+        ThreadInlineVideoPreviewStatus.Processing -> ThreadInlineVideoRenderMode.Processing
         ThreadInlineVideoPreviewStatus.Ready ->
             if (url.isBlank()) ThreadInlineVideoRenderMode.Error else ThreadInlineVideoRenderMode.Ready
         ThreadInlineVideoPreviewStatus.Error -> ThreadInlineVideoRenderMode.Error
@@ -66,11 +73,15 @@ internal fun Map<String, ThreadInlineVideoPreviewUiState>.canRequestInlineVideoP
     if (attachmentId.isBlank()) return false
     return when (this[attachmentId]?.status) {
         ThreadInlineVideoPreviewStatus.Loading,
+        ThreadInlineVideoPreviewStatus.Processing,
         ThreadInlineVideoPreviewStatus.Ready -> false
         ThreadInlineVideoPreviewStatus.Error,
         null -> true
     }
 }
+
+internal fun ThreadInlineVideoPreviewUiState?.shouldRetryOnAttachmentUpdate(): Boolean =
+    this?.status == ThreadInlineVideoPreviewStatus.Processing || this?.status == ThreadInlineVideoPreviewStatus.Error
 
 internal data class ThreadInlineVideoPreviewHost(
     val states: Map<String, ThreadInlineVideoPreviewUiState>,
@@ -91,6 +102,16 @@ internal fun ThreadInlineVideoAttachmentCard(
     LaunchedEffect(attachment.id, host != null) {
         if (previewState == null) {
             host?.requestPreview?.invoke(attachment.id, false)
+        }
+    }
+    // A realtime update to this attachment (metadata filled in once the server finishes processing)
+    // retries at once instead of waiting for the backoff, and revives an exhausted preview.
+    var lastSeenAttachment by remember(attachment.id) { mutableStateOf(attachment) }
+    LaunchedEffect(attachment) {
+        if (attachment == lastSeenAttachment) return@LaunchedEffect
+        lastSeenAttachment = attachment
+        if (previewState.shouldRetryOnAttachmentUpdate()) {
+            host?.requestPreview?.invoke(attachment.id, true)
         }
     }
 
@@ -151,6 +172,15 @@ private fun ThreadInlineVideoSurface(
     var playState by remember(source) { mutableStateOf(PlayState.NONE) }
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
     val nativeController = raftPlatformUsesNativeVideoController()
+    // Like the web client: a media error right after a link was issued refreshes the link once
+    // before showing "playback failed".
+    var playbackAutoRefreshed by remember(attachment.id) { mutableStateOf(false) }
+    LaunchedEffect(playState, source) {
+        if (playState == PlayState.ERROR && previewEnabled && !playbackAutoRefreshed) {
+            playbackAutoRefreshed = true
+            onRetry()
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF000000)), // raft-color: video letterbox black
@@ -194,7 +224,13 @@ private fun ThreadInlineVideoSurface(
                     label = stringResource(MR.strings.thread_video_preview_loading),
                     spinning = true
                 )
-            playState == PlayState.ERROR ->
+            renderMode == ThreadInlineVideoRenderMode.Processing ->
+                ThreadInlineVideoOverlay(
+                    iconName = RaftLucideIconName.LoaderCircle,
+                    label = stringResource(MR.strings.thread_video_preview_processing),
+                    spinning = true
+                )
+            playState == PlayState.ERROR && playbackAutoRefreshed ->
                 ThreadInlineVideoOverlay(
                     iconName = RaftLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_playback_failed),

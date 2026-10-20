@@ -643,6 +643,7 @@
     <string name="thread_image_preview_loading">Loading image…</string>
     <string name="thread_video_preview_unavailable">Video preview unavailable</string>
     <string name="thread_video_preview_loading">Loading video preview</string>
+    <string name="thread_video_preview_processing">Video is still processing…</string>
     <string name="thread_video_playback_failed">Video playback failed</string>
     <string name="thread_video_attachment_fallback_name">Video attachment</string>
     <string name="thread_audio_preview_unavailable">Audio preview unavailable</string>

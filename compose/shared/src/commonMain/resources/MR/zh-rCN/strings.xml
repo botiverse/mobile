@@ -643,6 +643,7 @@
     <string name="thread_image_preview_loading">正在加载图片…</string>
     <string name="thread_video_preview_unavailable">视频预览不可用</string>
     <string name="thread_video_preview_loading">正在加载视频预览</string>
+    <string name="thread_video_preview_processing">视频处理中…</string>
     <string name="thread_video_playback_failed">视频播放失败</string>
     <string name="thread_video_attachment_fallback_name">视频附件</string>
     <string name="thread_audio_preview_unavailable">音频预览不可用</string>
