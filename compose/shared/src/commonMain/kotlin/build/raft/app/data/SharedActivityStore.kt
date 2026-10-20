@@ -1145,7 +1145,7 @@ class SharedActivityStore internal constructor(
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
-                    val filter = previous.selectedFilter
+                    var filter = previous.selectedFilter
                     var refreshLimit = SharedActivityPageSize
                     try {
                         logActivityLoadStart(
@@ -1228,7 +1228,10 @@ class SharedActivityStore internal constructor(
                             }
                             val stateForOwner =
                                 if (ownerChanged) {
-                                    SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
+                                    // Web registerServerReset (slock 1bb70cbeb,
+                                    // inboxStore.ts:1854-1898) starts the new server on All.
+                                    filter = InboxFilter.All
+                                    SharedActivityState()
                                 } else {
                                     stateBeforeOwner
                                 }
