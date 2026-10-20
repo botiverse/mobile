@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.RaftAppThemeState
+import build.raft.app.RaftUiTextLocaleState
 import build.raft.app.raftMultiWeightFontFamily
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.runtime.Composable
@@ -28,6 +29,9 @@ import build.raft.designsystem.theme.RaftTheme
  * [LocalTextSelectionColors] are put back for the subtree so a text field in here selects
  * the same way as every other field in the app.
  *
+ * The type styles carry the UI language ([RaftUiTextLocaleState]), so Android draws Han
+ * characters in the ja / ko / zh-Hant glyph forms the UI language asks for.
+ *
  * The components' own words ([LocalRaftStrings]: the optional-field marker, the close, clear
  * and loading names) come from the app's `MR.strings`, so they follow the UI language.
  *
@@ -49,7 +53,7 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
             )
         }
     val strings = raftAppDesignSystemStrings()
-    RaftTheme(appearance = appearance, fonts = fonts) {
+    RaftTheme(appearance = appearance, fonts = fonts, localeList = RaftUiTextLocaleState.localeList) {
         CompositionLocalProvider(
             LocalTextSelectionColors provides appSelectionColors,
             LocalRaftStrings provides strings,

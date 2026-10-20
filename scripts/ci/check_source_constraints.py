@@ -29,7 +29,6 @@ BASIC_WIDGET = "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.
 THREAD_COMPOSER_PAGE = (
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
 )
-HOME_COMPONENTS = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt"
 SHARED_TASKS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt"
 SHARED_INBOX_PANEL = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt"
 SETTINGS_HOME_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt"
@@ -102,12 +101,6 @@ GESTURE_OWNER_REGIONS = (
         "touch-listener",
     ),
     (BASIC_WIDGET, "internal fun Button(", "internal class Border(", "button"),
-    (
-        HOME_COMPONENTS,
-        "private fun Modifier.homeSidebarLongPress(",
-        "internal fun homeConversationRowTone(",
-        "home-sidebar-long-press",
-    ),
     (SHARED_TASKS_PAGE, "private fun SharedTaskCard(", "internal fun tasksStatusChipClickIdentity(", "tasks-card"),
     (SHARED_INBOX_PANEL, "internal fun Modifier.activityRowGestures(", "internal fun InboxItem.inboxItemOpenGestureKey(", "activity-row"),
     (SETTINGS_HOME_PAGE, "private fun SharedSettingsRow(", "internal fun SharedSettingsAboutContent(", "settings-row"),
