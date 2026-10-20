@@ -16,12 +16,12 @@ kotlin {
 
     androidTarget {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
+            // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
+            jvmTarget.set(JvmTarget.JVM_11)
         }
         publishLibraryVariants("release")
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
@@ -31,13 +31,13 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.ui)
+            implementation(libs.cmp.runtime)
+            implementation(libs.cmp.foundation)
+            implementation(libs.cmp.ui)
             // TooltipBox / PlainTooltip only (the icon button's long-press / hover label);
             // everything else is drawn from raft-ui tokens, not Material.
-            implementation(compose.material3)
-            implementation(compose.components.resources)
+            implementation(libs.cmp.material3)
+            implementation(libs.cmp.components.resources)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -47,8 +47,7 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(kotlin("test-junit"))
                 // Semantics and input tests (runComposeUiTest).
-                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-                implementation(compose.uiTest)
+                implementation(libs.cmp.ui.test)
             }
         }
     }
@@ -67,8 +66,8 @@ android {
         minSdk = 21
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 

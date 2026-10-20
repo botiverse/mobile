@@ -822,8 +822,8 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    // Pinned to the AndroidX Compose runtime line CMP 1.8.x is built against.
-    implementation("androidx.compose.runtime:runtime:1.8.3")
+    // Pinned to the AndroidX Compose runtime line CMP 1.12.x is built against.
+    implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -844,7 +844,7 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.installations)
     testImplementation(libs.junit)
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -1,14 +1,14 @@
 # Raft design system (Compose Multiplatform)
 
 `:designsystem` is the Raft design system (raft-ui 0.8.0 docs and components), written on official
-JetBrains Compose Multiplatform (1.8.2, Kotlin 2.1.21). It is the base for screens that
+JetBrains Compose Multiplatform (1.12.2, Kotlin 2.4.21). It is the base for screens that
 move off Kuikly (see the CMP migration assessment, §3.2 `:ui-cmp`).
 
 - Depends only on `compose.runtime`, `compose.foundation`, `compose.ui`,
   `compose.components.resources` and `compose.material3`. Material 3 is used for
   `TooltipBox` / `PlainTooltip` only (positioning and gestures of `RaftTooltip`); nothing
   is drawn in Material's colours, type or ripple. No Kuikly, no `:shared`.
-- Targets: `androidTarget`, `iosX64` / `iosArm64` / `iosSimulatorArm64`, and
+- Targets: `androidTarget`, `iosArm64` / `iosSimulatorArm64` (no `iosX64`: CMP 1.11+ dropped Apple x86_64), and
   `jvm("desktop")`. The desktop target exists only to render the screenshot tests
   offscreen; nothing ships on it.
 - Package: `build.raft.designsystem` (`.tokens`, `.theme`, `.text`, `.components`).

@@ -89,7 +89,6 @@ kotlin {
         publishLibraryVariants("release")
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
@@ -145,23 +144,23 @@ kotlin {
                 // surface lives in the build.raft.app.compat package (TODO(cmp-switch) shims).
                 api(project(":ui-cmp"))
                 implementation(project(":designsystem"))
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.ui)
-                implementation(compose.material3)
-                implementation("org.jetbrains.compose.ui:ui-backhandler:${libs.versions.composePlugin.get()}")
-                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
-                // Coil 3.2.0 is the last line built for Kotlin 2.1 / CMP 1.8.0 (3.3+ needs Kotlin 2.2).
-                implementation("io.coil-kt.coil3:coil-compose:3.2.0")
+                implementation(libs.cmp.runtime)
+                implementation(libs.cmp.foundation)
+                implementation(libs.cmp.ui)
+                implementation(libs.cmp.material3)
+                implementation(libs.cmp.ui.backhandler)
+                implementation(libs.cmp.lifecycle.viewmodel.compose)
+                implementation(libs.cmp.lifecycle.runtime.compose)
+                // Coil 3.6.x is built against Kotlin 2.4 / CMP foundation 1.12.
+                implementation(libs.coil.compose)
                 // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
                 // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.
-                implementation("io.coil-kt.coil3:coil-svg:3.2.0")
+                implementation(libs.coil.svg)
 
-                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+                implementation(libs.kotlinx.serialization.json)
+                implementation(libs.kotlinx.coroutines.core)
                 // Common platform-safe monitor used by the synchronous shell-store cache.
-                implementation("org.jetbrains.kotlinx:atomicfu:0.25.0")
+                implementation(libs.atomicfu)
                 implementation("app.cash.sqldelight:runtime:2.1.0")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.5")
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
@@ -188,7 +187,7 @@ kotlin {
                 // Virtual-time coroutine testing (runTest/advanceTimeBy) — the
                 // required default for new async tests; see AGENTS.md unit-test
                 // rules (task #18). Version tracks kotlinx-coroutines-core above.
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
         val androidMain by getting {
@@ -224,25 +223,21 @@ kotlin {
             }
         }
 
-        val iosX64Main by getting
         val iosArm64Main by getting
         val iosSimulatorArm64Main by getting
         val iosMain by creating {
             dependsOn(commonMain)
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/nativeMain/kotlin"))
-            iosX64Main.dependsOn(this)
             iosArm64Main.dependsOn(this)
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
             }
         }
-        val iosX64Test by getting
         val iosArm64Test by getting
         val iosSimulatorArm64Test by getting
         val iosTest by creating {
             dependsOn(commonTest)
-            iosX64Test.dependsOn(this)
             iosArm64Test.dependsOn(this)
             iosSimulatorArm64Test.dependsOn(this)
         }
@@ -328,7 +323,6 @@ tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
         when (name) {
             "kspKotlinIosArm64" -> "generateMRiosArm64Main"
             "kspKotlinIosSimulatorArm64" -> "generateMRiosSimulatorArm64Main"
-            "kspKotlinIosX64" -> "generateMRiosX64Main"
             else -> null
         }
     if (generatedResourcesTask != null) {

@@ -15,7 +15,6 @@ val kmpAndroidIosConfigurations: List<String> =
         "debugCompileClasspath",
         "debugRuntimeClasspath",
         "iosArm64CompileKlibraries",
-        "iosX64CompileKlibraries",
         "iosSimulatorArm64CompileKlibraries",
         "metadataCommonMainCompileClasspath",
         "metadataIosMainCompileClasspath",
