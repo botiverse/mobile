@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
@@ -5298,6 +5299,7 @@ private fun HomeServerDrawerPanel(
                     .background(RaftColor.Canvas)
                     .border(RaftAppStroke.Thin, RaftColor.BorderSeam)
                     .clickable(onClick = {})
+                    .raftKeepsBackSwipe()
                     .pointerInput(onDismiss) {
                         detectHorizontalDragGestures(
                             onDragStart = { horizontalDragPx = 0f },
@@ -6589,7 +6591,8 @@ private fun ChannelRow(
         )
     val dragHandleModifier =
         if (drag.enabled && drag.onStart != null && drag.onMove != null && drag.onEnd != null) {
-            Modifier.raftGesturePointerInput(dragHandleGestureOwner, drag.enabled) { owner ->
+            // Sort mode: the handle drags immediately, so it keeps drags from the host back swipe.
+            Modifier.raftKeepsBackSwipe().raftGesturePointerInput(dragHandleGestureOwner, drag.enabled) { owner ->
                 var gesture: RaftGestureSession<HomeConversationRowGestureCallbacks>? = null
                 // Sort mode is explicit, so the handle drags immediately —
                 // no long-press gate (task #356: the v2 long-press-drag felt stuck).
