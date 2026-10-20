@@ -1,8 +1,10 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftRadius
@@ -74,13 +77,28 @@ enum class RaftButtonSize {
     Xl,
 }
 
-/** raft-ui Button icon sizes (`icon-xs` / `icon-sm` are old names of [Md]). */
-enum class RaftIconButtonSize {
+/**
+ * raft-ui Button icon sizes. raft-ui's `icon-xs` / `icon-sm` are old names of [Md] (32dp);
+ * [Sm] and [Xs] are the smaller square buttons raft-ui draws inside its components.
+ */
+enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
+    /**
+     * 24dp with a 16dp icon: an action inside a card or an attachment row (raft-ui
+     * MessageAttachmentAction, `size-6`). Its touch target is widened to 44dp.
+     */
+    Xs(24.dp, 16.dp),
+
+    /**
+     * 28dp with a 16dp icon: a dense toolbar (raft-ui MessageItemToolbarButton, `size-7`, the
+     * hover toolbar's 28px buttons in Spacing). Its touch target is widened to 44dp.
+     */
+    Sm(28.dp, 16.dp),
+
     /** 32dp with an 18dp icon (36dp / 20dp on the frame). */
-    Md,
+    Md(32.dp, 18.dp),
 
     /** 44dp with a 22dp icon: a phone top bar, next to a 44dp input. */
-    Lg,
+    Lg(44.dp, 22.dp),
 }
 
 /** Resolved colours of one variant x state (raft-ui button.tsx). */
@@ -195,6 +213,7 @@ private fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant
  * web; never a Material ripple), the focus ring outside it all, and [LocalRaftContentColor]
  * set to the ink for the content.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RaftButtonBox(
     look: RaftButtonLook,
@@ -204,6 +223,9 @@ private fun RaftButtonBox(
     loading: Boolean,
     loadingLabel: String,
     interactionSource: MutableInteractionSource?,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    widenTouchTarget: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -224,12 +246,33 @@ private fun RaftButtonBox(
                 .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
                 .border(RaftStroke.Control, look.edge, shape)
                 .semantics { if (loading) disabled() }
-                .clickable(
-                    interactionSource = source,
-                    indication = null,
-                    enabled = enabled,
-                    role = Role.Button,
-                    onClick = { if (!loading) onClick() },
+                .then(
+                    if (widenTouchTarget) {
+                        Modifier.raftTouchTarget(enabled && !loading, source, onClick, onLongClick = onLongClick?.let { long -> { if (!loading) long() } })
+                    } else {
+                        Modifier
+                    },
+                )
+                .then(
+                    if (onLongClick != null) {
+                        Modifier.combinedClickable(
+                            interactionSource = source,
+                            indication = null,
+                            enabled = enabled,
+                            role = Role.Button,
+                            onLongClickLabel = onLongClickLabel,
+                            onLongClick = { if (!loading) onLongClick() },
+                            onClick = { if (!loading) onClick() },
+                        )
+                    } else {
+                        Modifier.clickable(
+                            interactionSource = source,
+                            indication = null,
+                            enabled = enabled,
+                            role = Role.Button,
+                            onClick = { if (!loading) onClick() },
+                        )
+                    },
                 ),
         contentAlignment = Alignment.Center,
     ) {
@@ -276,7 +319,7 @@ fun RaftButton(
     size: RaftButtonSize = RaftButtonSize.Md,
     enabled: Boolean = true,
     loading: Boolean = false,
-    loadingLabel: String = "Loading",
+    loadingLabel: String = LocalRaftStrings.current.loading,
     leadingIcon: (@Composable () -> Unit)? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
@@ -332,45 +375,68 @@ fun RaftButton(
  * its radius, as the web does on hover: `fill-pressed` on a ghost or default button,
  * `fill-frame-pressed` on the frame, `sticker-pressed` on a sticker. Disabled, no fill.
  *
- * [tooltip] names the action in Title Case ("Add Reaction"). It is required: an icon
- * alone does not say what it does. It is the button's content description for screen
- * readers, and the label of a [RaftTooltip] shown on a long press, or while a mouse
- * hovers (also when disabled, as raft-ui's tooltip on a disabled button). A long press
- * that opens the tooltip does not click. [icon] is drawn in an icon-size box with
- * [LocalRaftContentColor] set to the button ink.
+ * [tooltip] names the action in Title Case ("Add Reaction"): an icon alone does not say
+ * what it does. It is the button's content description for screen readers, and the label
+ * of a [RaftTooltip] shown on a long press, or while a mouse hovers (also when disabled, as
+ * raft-ui's tooltip on a disabled button). A long press that opens the tooltip does not
+ * click. [icon] is drawn in an icon-size box with [LocalRaftContentColor] set to the button
+ * ink.
+ *
+ * - [tooltip] = null shows no tooltip; the button is then named by [contentDescription]
+ *   (which defaults to the tooltip). Pass one unless the button sits in a row whose own
+ *   label already says what it does (the row merges it); raft-ui's Button doc still asks
+ *   for an `aria-label` on every icon-only button.
+ * - [onLongClick] is a second action on a long press (named [longClickLabel] for screen
+ *   readers). The long press then belongs to the action: the tooltip opens only under a
+ *   mouse or trackpad pointer.
+ * - [RaftIconButtonSize.Sm] (28dp) and [RaftIconButtonSize.Xs] (24dp) widen their touch
+ *   target to 44dp without growing (a tap there clicks; a long press needs the box); keep
+ *   the space round them free.
  */
 @Composable
 fun RaftIconButton(
     onClick: () -> Unit,
-    tooltip: String,
+    tooltip: String?,
     modifier: Modifier = Modifier,
     variant: RaftButtonVariant = RaftButtonVariant.Default,
     size: RaftIconButtonSize = RaftIconButtonSize.Md,
     enabled: Boolean = true,
     loading: Boolean = false,
-    loadingLabel: String = "Loading",
+    loadingLabel: String = LocalRaftStrings.current.loading,
     interactionSource: MutableInteractionSource? = null,
+    contentDescription: String? = tooltip,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
     icon: @Composable () -> Unit,
 ) {
     val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
     val onFrame = variant == RaftButtonVariant.OnFrame && size == RaftIconButtonSize.Md
-    val (box, glyph) =
-        when {
-            onFrame -> 36.dp to 20.dp
-            size == RaftIconButtonSize.Md -> 32.dp to 18.dp
-            else -> 44.dp to 22.dp
-        }
-    RaftTooltip(text = tooltip, modifier = modifier) {
+    val box = if (onFrame) 36.dp else size.box
+    val glyph = if (onFrame) 20.dp else size.glyph
+    val description = contentDescription
+    require(description != null) { "RaftIconButton needs a name: pass tooltip or contentDescription" }
+    val button: @Composable (Modifier) -> Unit = { outer ->
         RaftButtonBox(
             look = look,
             onClick = onClick,
-            modifier = Modifier.size(box).semantics { this.contentDescription = tooltip },
+            modifier =
+                outer
+                    .size(box)
+                    .then(if (description != null) Modifier.semantics { this.contentDescription = description } else Modifier),
             enabled = enabled,
             loading = loading,
             loadingLabel = loadingLabel,
             interactionSource = interactionSource,
+            onLongClick = onLongClick,
+            onLongClickLabel = longClickLabel,
+            widenTouchTarget = size == RaftIconButtonSize.Sm || size == RaftIconButtonSize.Xs,
         ) {
             Box(Modifier.size(glyph), contentAlignment = Alignment.Center) { icon() }
         }
+    }
+    if (tooltip != null) {
+        RaftTooltip(text = tooltip, modifier = modifier, openOnLongPress = onLongClick == null) { button(Modifier) }
+    } else {
+        button(modifier)
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -31,7 +33,9 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
@@ -48,6 +52,7 @@ import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftDescriptionList
@@ -57,6 +62,7 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftPulseClock
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarSectionHeader
+import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -282,6 +288,87 @@ class RaftDisplaySemanticsTest {
             timeUp.complete(Unit)
             mainClock.advanceTimeBy(1_000)
             onNode(hasText("Add Reaction")).assertDoesNotExist()
+        }
+
+    /** With its own long-press action, a long press runs it (not the click) and opens no tooltip. */
+    @Test
+    fun aLongPressActionTakesTheLongPressFromTheTooltip() =
+        runComposeUiTest {
+            var clicks = 0
+            var longClicks = 0
+            setContent(
+                themed {
+                    RaftIconButton(
+                        onClick = { clicks++ },
+                        tooltip = "Add Reaction",
+                        variant = RaftButtonVariant.Ghost,
+                        onLongClick = { longClicks++ },
+                        longClickLabel = "Pick Any Emoji",
+                    ) {}
+                },
+            )
+            mainClock.autoAdvance = false
+            val button = onNodeWithContentDescription("Add Reaction")
+            button.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            assertEquals("Pick Any Emoji", button.fetchSemanticsNode().config[SemanticsActions.OnLongClick].label)
+            button.performTouchInput { longClick() }
+            mainClock.advanceTimeBy(300)
+            onNode(hasText("Add Reaction")).assertDoesNotExist()
+            assertEquals(1, longClicks)
+            assertEquals(0, clicks)
+            button.performClick()
+            assertEquals(1, clicks)
+        }
+
+    /** Without a tooltip the button is named by its content description, and a long press shows nothing. */
+    @Test
+    fun anIconButtonWithoutATooltipIsNamedByItsContentDescription() =
+        runComposeUiTest {
+            var clicks = 0
+            setContent(themed { RaftIconButton(onClick = { clicks++ }, tooltip = null, contentDescription = "Remove Attachment") {} })
+            mainClock.autoAdvance = false
+            val button = onNodeWithContentDescription("Remove Attachment")
+            button.performTouchInput { longClick() }
+            mainClock.advanceTimeBy(300)
+            onNode(hasText("Remove Attachment")).assertDoesNotExist()
+            // Without a tooltip or onLongClick, releasing a long press is an ordinary click.
+            clicks = 0
+            button.performClick()
+            assertEquals(1, clicks)
+        }
+
+    /** A 24dp button takes a tap 8dp above its box (inside the 44dp target). */
+    @Test
+    fun aSmallIconButtonTakesTapsInItsWidenedTarget() =
+        runComposeUiTest {
+            var clicks = 0
+            setContent(
+                themed {
+                    Column(Modifier.padding(20.dp)) {
+                        RaftIconButton(onClick = { clicks++ }, tooltip = "Remove", size = RaftIconButtonSize.Xs) {}
+                    }
+                },
+            )
+            onNodeWithContentDescription("Remove").performTouchInput { click(Offset(centerX, -8.dp.toPx())) }
+            assertEquals(1, clicks, "a tap 8dp above the button clicks it")
+        }
+
+    /** A read-only value is one 44dp line unless it may wrap; then the box grows by its lines. */
+    @Test
+    fun aMultiLineReadOnlyFieldGrowsWithItsLines() =
+        runComposeUiTest {
+            val long = "Reviews pull requests in #design and posts a summary of every change that touches the tokens."
+            setContent(
+                themed {
+                    Column(Modifier.width(200.dp)) {
+                        RaftReadOnlyField(long, Modifier.testTag("one"))
+                        RaftReadOnlyField(long, Modifier.testTag("wrapped"), maxLines = Int.MAX_VALUE)
+                    }
+                },
+            )
+            fun height(tag: String) = onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.height / density.density
+            assertEquals(44f, height("one"), 0.5f)
+            assertTrue(height("wrapped") >= 44f + 20f * 2, "wrapped is ${height("wrapped")}dp")
         }
 
     @Test

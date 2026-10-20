@@ -191,6 +191,11 @@ object RaftTheme {
         @Composable @ReadOnlyComposable
         get() = LocalRaftIsDark.current
 
+    /** [LocalRaftStrings]: the components' own words, English unless the app provides them. */
+    val strings: RaftStrings
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftStrings.current
+
     /** [LocalRaftSurfaceColor], or `layer-canvas` outside any surface. */
     val surfaceColor: Color
         @Composable @ReadOnlyComposable

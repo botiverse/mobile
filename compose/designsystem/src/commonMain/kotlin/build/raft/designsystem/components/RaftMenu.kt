@@ -115,18 +115,34 @@ fun RaftMenuSurface(
     header: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    RaftPopoverChrome(
+        modifier
+            // Material DropdownMenu does the same: the popup hugs its rows instead of
+            // taking the window's width (rows fill the column, so they measure by intrinsics).
+            .then(if (width != null) Modifier.width(width) else Modifier.widthIn(min = minWidth).width(IntrinsicSize.Max)),
+    ) {
+        header?.invoke()
+        Column(Modifier.padding(6.dp), content = content)
+    }
+}
+
+/**
+ * The popover layer every popup surface shares (a menu, a select list, a popover): a
+ * column on `layer-popover` with the container radius, a 1dp `line-seam` ring and
+ * `shadow-float`, its content clipped; provides `foreground` as the content colour and
+ * `layer-popover` as the surface.
+ */
+@Composable
+internal fun RaftPopoverChrome(
+    modifier: Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val colors = RaftTheme.colors
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
-            modifier
-                // Material DropdownMenu does the same: the popup hugs its rows instead of
-                // taking the window's width (rows fill the column, so they measure by intrinsics).
-                .then(if (width != null) Modifier.width(width) else Modifier.widthIn(min = minWidth).width(IntrinsicSize.Max))
-                .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Container),
-        ) {
-            header?.invoke()
-            Column(Modifier.padding(6.dp), content = content)
-        }
+            modifier.raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Container),
+            content = content,
+        )
     }
 }
 

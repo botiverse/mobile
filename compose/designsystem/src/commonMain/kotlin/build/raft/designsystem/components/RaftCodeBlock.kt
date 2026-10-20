@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,29 +76,37 @@ fun RaftCodeBlock(
  * A value shown in a field's place that can't be edited: the disabled field look. 44dp,
  * control radius, `fill-muted`, a 1.5dp `line-hairline` edge, 15/20 `foreground-muted`
  * text, `px-3`. [mono] sets machine values in Space Mono.
+ *
+ * One line by default, cut with an ellipsis. [maxLines] above 1 lets a long value (a
+ * description, a path) wrap: the box is then at least 44dp and grows by its lines, 12dp
+ * above and below them (a one-line value sits where it does in the 44dp box), and
+ * ellipsizes past [maxLines] (`Int.MAX_VALUE`: never).
  */
 @Composable
 fun RaftReadOnlyField(
     text: String,
     modifier: Modifier = Modifier,
     mono: Boolean = false,
+    maxLines: Int = 1,
 ) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Control)
+    val wraps = maxLines > 1
     Box(
         modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .then(if (wraps) Modifier.heightIn(min = 44.dp) else Modifier.height(44.dp))
             .background(colors.fillMuted, shape)
             .border(RaftStroke.Control, colors.lineHairline, shape)
-            .padding(horizontal = 12.dp + RaftStroke.Control),
+            .padding(horizontal = 12.dp + RaftStroke.Control)
+            .then(if (wraps) Modifier.padding(vertical = 12.dp) else Modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
         RaftText(
             text,
             style = if (mono) RaftTheme.typography.monoCode else RaftTheme.typography.subhead,
             color = colors.foregroundMuted,
-            maxLines = 1,
+            maxLines = maxLines.coerceAtLeast(1),
             overflow = TextOverflow.Ellipsis,
         )
     }

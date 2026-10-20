@@ -83,12 +83,16 @@ internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (dura
  * are ours (Material's own add an unlabeled merging semantics node round [content] and
  * close a hovered tooltip after 1.5s). The bubble's width is capped at Material's 200dp
  * (raft-ui allows 320dp): keep labels short.
+ *
+ * [openOnLongPress] = false leaves the long press to [content] (an icon button with its own
+ * long-press action): the tooltip then opens only under a mouse or trackpad pointer.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RaftTooltip(
     text: String,
     modifier: Modifier = Modifier,
+    openOnLongPress: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val preview = LocalRaftTooltipPreview.current
@@ -99,7 +103,7 @@ fun RaftTooltip(
     val scope = rememberCoroutineScope()
     // TooltipBox puts [modifier] on an inner box, where parent-data modifiers (`align`,
     // `weight`) would be lost: the caller's modifier goes on this outer box instead.
-    Box(modifier.raftTooltipGestures(state, scope, touchTimer), propagateMinConstraints = true) {
+    Box(modifier.raftTooltipGestures(state, scope, touchTimer, openOnLongPress), propagateMinConstraints = true) {
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing),
             tooltip = {
@@ -145,13 +149,23 @@ private fun CoroutineScope.showForTouch(
 }
 
 /**
- * Hover (mouse) opens [state] until the pointer leaves; a touch / stylus long press opens it
- * for [RaftTooltipMetrics.TouchDuration] and eats the rest of that gesture so [content]
- * doesn't click. Runs in the Initial pass and consumes nothing else, so [content]'s own
- * clicks, presses and hover are unchanged.
+ * Hover (mouse) opens [state] until the pointer leaves; with [onLongPress], a touch / stylus
+ * long press opens it for [RaftTooltipMetrics.TouchDuration] and eats the rest of that
+ * gesture so [content] doesn't click. Runs in the Initial pass and consumes nothing else, so
+ * [content]'s own clicks, presses and hover are unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 private fun Modifier.raftTooltipGestures(
+    state: TooltipState,
+    scope: CoroutineScope,
+    touchTimer: suspend (Long) -> Unit,
+    onLongPress: Boolean,
+): Modifier =
+    then(if (onLongPress) Modifier.raftTooltipLongPress(state, scope, touchTimer) else Modifier)
+        .raftTooltipHover(state, scope)
+
+@OptIn(ExperimentalMaterial3Api::class)
+private fun Modifier.raftTooltipLongPress(
     state: TooltipState,
     scope: CoroutineScope,
     touchTimer: suspend (Long) -> Unit,
@@ -172,7 +186,14 @@ private fun Modifier.raftTooltipGestures(
                 } while (event.changes.any { it.pressed })
             }
         }
-    }.pointerInput(state) {
+    }
+
+@OptIn(ExperimentalMaterial3Api::class)
+private fun Modifier.raftTooltipHover(
+    state: TooltipState,
+    scope: CoroutineScope,
+): Modifier =
+    pointerInput(state) {
         var hover: Job? = null
         awaitPointerEventScope {
             while (true) {

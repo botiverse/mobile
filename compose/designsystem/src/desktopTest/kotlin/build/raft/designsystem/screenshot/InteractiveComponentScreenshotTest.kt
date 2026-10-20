@@ -2,6 +2,7 @@ package build.raft.designsystem.screenshot
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.background
@@ -44,6 +45,7 @@ import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftCheckboxShape
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftDropdownMenu
@@ -62,6 +64,7 @@ import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.designsystem.components.RaftRadioRow
@@ -77,6 +80,8 @@ import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.components.RaftTabs
 import build.raft.designsystem.components.RaftTabsVariant
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldAction
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
@@ -152,6 +157,23 @@ class InteractiveComponentScreenshotTest {
                     RaftTextField("wug", {}, suffix = "@slock.ai", trailing = { RaftGlyphIcon(RaftGlyph.Info, size = 18.dp) })
                     RaftTextField("design lab", {}, prefix = "/", invalid = true)
                     RaftTextField("design-lab", {}, prefix = "/", enabled = false)
+                    Caption("Button addon: clear, copy (pressed), after a suffix, disabled")
+                    RaftTextField(
+                        "design",
+                        {},
+                        leading = { RaftGlyphIcon(RaftGlyph.Search, size = 18.dp) },
+                        trailingAction = { RaftTextFieldClearAction({}) },
+                    )
+                    StateCell(pressed = true) {
+                        RaftTextField(
+                            "raft.build/invite/7f3k",
+                            {},
+                            readOnly = true,
+                            trailingAction = { RaftTextFieldAction({}, "Copy Invite Link") { RaftGlyphIcon(RaftGlyph.Copy) } },
+                        )
+                    }
+                    RaftTextField("wug", {}, suffix = "@slock.ai", trailingAction = { RaftTextFieldClearAction({}) })
+                    RaftTextField("wug", {}, enabled = false, trailingAction = { RaftTextFieldClearAction({}, enabled = false) })
                 }
             }
         }
@@ -194,6 +216,16 @@ class InteractiveComponentScreenshotTest {
                         RaftTextField("raft-labs", {}, prefix = "/")
                     }
                     RaftField(label = "Small label", labelSize = RaftFieldLabelSize.Sm) { RaftTextField("", {}, placeholder = "Wug") }
+                    Caption("Label row trailing: a switch, a text link")
+                    RaftField(
+                        label = "Custom instructions",
+                        labelTrailing = { RaftSwitch(checked = true, onCheckedChange = {}, label = "Use Custom Instructions") },
+                    ) { RaftTextField("Answer in English.", {}) }
+                    RaftField(
+                        label = "Allowed domains for sign-in by email link",
+                        optional = true,
+                        labelTrailing = { RaftTextLink("Clear", {}, style = RaftTheme.typography.footnote) },
+                    ) { RaftTextField("slock.ai", {}) }
                     Caption("FieldItem md, sm: the control on the label's first line")
                     RaftFieldItem("Don't remind me again") { RaftCheckbox(true, {}) }
                     RaftFieldItem("Don't remind me again", size = RaftFieldLabelSize.Sm) { RaftCheckbox(true, {}) }
@@ -663,6 +695,69 @@ class InteractiveComponentScreenshotTest {
                 }
             }
         }
+
+    /**
+     * [RaftPopoverSurface]: the 300dp rename popover (field, ghost Cancel, Default confirm),
+     * and a hugging list panel with edge-to-edge rows (no padding) under a search header.
+     */
+    @Test
+    fun popoverSurface() =
+        capture("popover_surface") {
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.padding(bottom = 24.dp)) {
+                    Caption("Popover: 300dp, 16dp padding", Modifier.padding(bottom = 8.dp))
+                    RaftPopoverSurface {
+                        RaftField(label = "Channel name") { RaftTextField("design-lab", {}, prefix = "/") }
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        ) {
+                            RaftButton("Cancel", {}, variant = RaftButtonVariant.Ghost)
+                            RaftButton("Rename", {})
+                        }
+                    }
+                }
+                Column(Modifier.width(280.dp).padding(bottom = 24.dp)) {
+                    Caption("Panel: no width, no padding, header", Modifier.padding(bottom = 8.dp))
+                    RaftPopoverSurface(
+                        width = null,
+                        contentPadding = PaddingValues(0.dp),
+                        header = { RaftMenuSearchField("", {}, placeholder = "Search servers") },
+                    ) {
+                        RaftListRow("Raft Labs", variant = RaftListRowVariant.Plain, onClick = {}, selected = true)
+                        RaftListRow("Acme", variant = RaftListRowVariant.Plain, onClick = {}, divider = true)
+                    }
+                }
+            }
+        }
+
+    /**
+     * [RaftDialogHeader] on its own over a caller's body (a modal over a list): title only,
+     * with ×, with a description, and a title that wraps beside the ×.
+     */
+    @Test
+    fun dialogHeader() =
+        capture("dialog_header") {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                DialogHeaderCell { RaftDialogHeader("Members") }
+                DialogHeaderCell { RaftDialogHeader("Members", onClose = {}) }
+                DialogHeaderCell { RaftDialogHeader("Forward Message", description = "Pick where to send it.", onClose = {}) }
+                DialogHeaderCell { RaftDialogHeader("Connect a computer to run agents on your own machine", onClose = {}) }
+            }
+        }
+
+    @Composable
+    private fun DialogHeaderCell(header: @Composable () -> Unit) {
+        Column(Modifier.width(358.dp).background(RaftTheme.colors.layerPopover)) {
+            header()
+            RaftText(
+                "Body starts 6dp under the header.",
+                Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp),
+                style = RaftTheme.typography.subhead,
+                color = RaftTheme.colors.foregroundMuted,
+            )
+        }
+    }
 
     /**
      * A real [RaftDropdownMenu] and an open [RaftSelect] in their popups, in a window much

@@ -51,6 +51,21 @@ import kotlin.math.abs
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.RaftPopoverSurface
+import androidx.compose.foundation.layout.widthIn
+import build.raft.designsystem.components.RaftTextFieldClearAction
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftDialogHeader
+import build.raft.designsystem.components.RaftDialogSurface
+import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.theme.LocalRaftStrings
+import build.raft.designsystem.theme.RaftStrings
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftCheckbox
@@ -132,6 +147,134 @@ class RaftInteractiveSemanticsTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Enter a name"))
             onNodeWithText("Enter a name")
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        }
+
+    /** A control beside the label keeps its own name; the field's control is still named by the label. */
+    @Test
+    fun aFieldLabelTrailingControlIsNamedOnItsOwn() =
+        runComposeUiTest {
+            var on by mutableStateOf(false)
+            setContent(
+                themed {
+                    RaftField(
+                        label = "Custom instructions",
+                        labelTrailing = { RaftSwitch(checked = on, onCheckedChange = { on = it }, label = "Use Custom Instructions") },
+                    ) {
+                        RaftTextField("", {}, placeholder = "Answer in English.")
+                    }
+                },
+            )
+            onNodeWithContentDescription("Custom instructions").assertIsDisplayed()
+            onNodeWithContentDescription("Use Custom Instructions")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+                .performClick()
+            assertTrue(on, "the trailing switch works")
+        }
+
+    /** The app's words reach the optional marker, the dialog's × and a busy button. */
+    @Test
+    fun providedStringsReplaceTheEnglishDefaults() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    CompositionLocalProvider(
+                        LocalRaftStrings provides RaftStrings(optional = "(facultatif)", close = "Fermer", loading = "Chargement"),
+                    ) {
+                        Column {
+                            RaftFieldLabel("Description", optional = true)
+                            RaftDialogSurface(title = "Renommer", onClose = {})
+                            RaftButton("Créer", {}, loading = true)
+                        }
+                    }
+                },
+            )
+            onNodeWithText("Description (facultatif)").assertIsDisplayed()
+            onNodeWithContentDescription("Fermer").assertIsDisplayed()
+            onNodeWithContentDescription("Chargement").assertExists()
+        }
+
+    /** On a TextFieldValue the textarea types at the caller's caret, counts the text and focuses its editor. */
+    @Test
+    fun aTextareaOnATextFieldValueTypesAtTheCallersCaret() =
+        runComposeUiTest {
+            var value by mutableStateOf(TextFieldValue("Hello", selection = TextRange(5)))
+            var focused = false
+            setContent(
+                themed {
+                    RaftField(label = "Message") {
+                        RaftTextarea(
+                            value = value,
+                            onValueChange = { value = it },
+                            limit = 10,
+                            inputModifier = Modifier.onFocusChanged { focused = it.isFocused },
+                        )
+                    }
+                },
+            )
+            val textarea = onNodeWithContentDescription("Message")
+            textarea.requestFocus()
+            assertTrue(focused, "the input modifier reaches the editor")
+            textarea.performTextInput(" Wug")
+            assertEquals("Hello Wug", value.text)
+            assertEquals(TextRange(9), value.selection)
+            onNodeWithText("9/10").assertExists()
+        }
+
+    /** The clear button addon is a named button of its own inside the field, and clears it. */
+    @Test
+    fun aTextFieldClearActionIsANamedButtonThatClears() =
+        runComposeUiTest {
+            var value by mutableStateOf("design")
+            setContent(
+                themed {
+                    RaftField(label = "Search channels") {
+                        RaftTextField(
+                            value,
+                            { value = it },
+                            trailingAction = if (value.isNotEmpty()) ({ RaftTextFieldClearAction({ value = "" }, label = "Clear Search") }) else null,
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("Clear Search")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .performClick()
+            assertEquals("", value)
+            onNodeWithContentDescription("Clear Search").assertDoesNotExist()
+            onNodeWithContentDescription("Search channels").assertIsDisplayed()
+        }
+
+    /** A standalone dialog header: the title is a heading and the × a named button that closes. */
+    @Test
+    fun aDialogHeaderHasAHeadingAndANamedClose() =
+        runComposeUiTest {
+            var closed = false
+            setContent(themed { RaftDialogHeader("Members", description = "Everyone in #design.", onClose = { closed = true }) })
+            onNodeWithText("Members").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            onNodeWithText("Everyone in #design.").assertIsDisplayed()
+            onNodeWithContentDescription("Close")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .performClick()
+            assertTrue(closed)
+        }
+
+    /** A popover is 300dp by default; without a width it takes the room it is given, never under 220dp. */
+    @Test
+    fun aPopoverIs300dpOrTheRoomItIsGiven() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(1000.dp)) {
+                        RaftPopoverSurface(Modifier.testTag("default")) { RaftText("Snooze") }
+                        RaftPopoverSurface(Modifier.testTag("bounded").widthIn(max = 260.dp), width = null) { RaftText("Raft Labs") }
+                        RaftPopoverSurface(Modifier.testTag("narrow").widthIn(max = 120.dp), width = null) { RaftText("Acme") }
+                    }
+                },
+            )
+            fun width(tag: String) = onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.width / density.density
+            assertEquals(300f, width("default"), 0.5f)
+            assertEquals(260f, width("bounded"), 0.5f)
+            assertEquals(120f, width("narrow"), 0.5f, "a caller's max still wins over the 220dp minimum")
         }
 
     @Test

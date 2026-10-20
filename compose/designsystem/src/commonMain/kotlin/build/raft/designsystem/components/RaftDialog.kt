@@ -43,7 +43,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 
@@ -80,7 +82,7 @@ fun RaftDialogSurface(
     size: RaftDialogSize = RaftDialogSize.Md,
     description: String? = null,
     onClose: (() -> Unit)? = null,
-    closeLabel: String = "Close",
+    closeLabel: String = LocalRaftStrings.current.close,
     footer: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
@@ -93,27 +95,7 @@ fun RaftDialogSurface(
                 .fillMaxWidth()
                 .raftOverlaySurface(colors.layerPopover, colors.lineSeam, RaftTheme.isDark, RaftRadius.Dialog),
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RaftText(
-                    title,
-                    Modifier.weight(1f).semantics { heading() },
-                    style = typography.headline,
-                    color = colors.foreground,
-                )
-                if (onClose != null) {
-                    // `-my-1.5 -mr-1.5`: the 32dp button doesn't make the header taller and
-                    // its glyph lines up with the body's edge.
-                    Box(Modifier.raftBleed(end = 6.dp, vertical = 6.dp)) {
-                        RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost) {
-                            RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
-                        }
-                    }
-                }
-            }
+            RaftDialogHeader(title = title, onClose = onClose, closeLabel = closeLabel)
             val hasBody = description != null || content != null
             if (hasBody) {
                 Column(
@@ -142,6 +124,59 @@ fun RaftDialogSurface(
 }
 
 /**
+ * raft-ui DialogHeader (with DialogTitle, DialogDescription and DialogClose) on its own, for
+ * a dialog-like surface whose body the caller lays out: a modal over a lazy list, a panel
+ * drawn on its own `raftOverlaySurface`. [RaftDialogSurface] draws the same title row.
+ *
+ * - `px-5 pt-5`, no bottom padding: follow it with the body at 20dp sides (DialogBody
+ *   `pt-1.5 pb-5`: 6dp under the header).
+ * - [title]: `text-headline` bold `foreground`, a heading for screen readers; it wraps.
+ * - [description]: `text-subhead` `foreground-muted`, 6dp under the title row.
+ * - [onClose]: the ghost × `icon-md` named [closeLabel] ([RaftStrings.close] by default) at
+ *   the end, pulled 6dp into the corner (`-my-1.5 -mr-1.5`) so it doesn't make the row taller.
+ */
+@Composable
+fun RaftDialogHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    description: String? = null,
+    onClose: (() -> Unit)? = null,
+    closeLabel: String = LocalRaftStrings.current.close,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(
+        modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftText(
+                title,
+                Modifier.weight(1f).semantics { heading() },
+                style = typography.headline,
+                color = colors.foreground,
+            )
+            if (onClose != null) {
+                // `-my-1.5 -mr-1.5`: the 32dp button doesn't make the header taller and
+                // its glyph lines up with the body's edge.
+                Box(Modifier.raftBleed(end = 6.dp, vertical = 6.dp)) {
+                    RaftIconButton(onClick = onClose, tooltip = closeLabel, variant = RaftButtonVariant.Ghost) {
+                        RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
+                    }
+                }
+            }
+        }
+        if (description != null) {
+            RaftText(description, style = typography.subhead, color = colors.foregroundMuted)
+        }
+    }
+}
+
+/**
  * raft-ui 0.8.0 Dialog: [RaftDialogSurface] centred over the scrim, 16dp inside the
  * window's safe area (system bars, cutout, and the keyboard while it is up, so a form's
  * fields stay above it) and never taller than that area less 32dp. It appears and goes without
@@ -162,7 +197,7 @@ fun RaftDialog(
     description: String? = null,
     dismissOnClickOutside: Boolean = true,
     showClose: Boolean = true,
-    closeLabel: String = "Close",
+    closeLabel: String = LocalRaftStrings.current.close,
     footer: (@Composable RowScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {

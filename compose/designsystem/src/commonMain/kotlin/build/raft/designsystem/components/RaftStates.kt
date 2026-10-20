@@ -449,21 +449,24 @@ internal fun Modifier.raftTouchTarget(
     interactionSource: MutableInteractionSource,
     onClick: () -> Unit,
     minSize: Dp = RaftTouchTargetSize,
-): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick)
+    onLongClick: (() -> Unit)? = null,
+): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick, onLongClick)
 
 private data class RaftTouchTargetElement(
     val minSize: Dp,
     val enabled: Boolean,
     val interactionSource: MutableInteractionSource,
     val onClick: () -> Unit,
+    val onLongClick: (() -> Unit)?,
 ) : ModifierNodeElement<RaftTouchTargetNode>() {
-    override fun create() = RaftTouchTargetNode(minSize, enabled, interactionSource, onClick)
+    override fun create() = RaftTouchTargetNode(minSize, enabled, interactionSource, onClick, onLongClick)
 
     override fun update(node: RaftTouchTargetNode) {
         node.minSize = minSize
         node.enabled = enabled
         node.interactionSource = interactionSource
         node.onClick = onClick
+        node.updateLongClick(onLongClick)
     }
 }
 
@@ -472,8 +475,16 @@ private class RaftTouchTargetNode(
     var enabled: Boolean,
     var interactionSource: MutableInteractionSource,
     var onClick: () -> Unit,
+    private var onLongClick: (() -> Unit)?,
 ) : DelegatingNode(), PointerInputModifierNode, LayoutAwareModifierNode {
     private var size = IntSize.Zero
+
+    /** The gesture detector is set up once: restart it when a long press appears or goes. */
+    fun updateLongClick(value: (() -> Unit)?) {
+        val restart = (value == null) != (onLongClick == null)
+        onLongClick = value
+        if (restart) pointer.resetPointerInputHandler()
+    }
 
     private fun outside(offset: Offset): Boolean =
         offset.x < 0f || offset.y < 0f || offset.x > size.width || offset.y > size.height
@@ -492,6 +503,14 @@ private class RaftTouchTargetNode(
                             interactionSource.emit(if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press))
                         }
                     },
+                    // With a long press, a long press in the ring is that action (not a tap on
+                    // release), as `combinedClickable` does inside the box.
+                    onLongPress =
+                        if (onLongClick != null) {
+                            { offset -> if (enabled && outside(offset)) onLongClick?.invoke() }
+                        } else {
+                            null
+                        },
                     onTap = { offset -> if (enabled && outside(offset)) onClick() },
                 )
             },

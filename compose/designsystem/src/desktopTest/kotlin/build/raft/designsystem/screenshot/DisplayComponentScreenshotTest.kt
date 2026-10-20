@@ -214,7 +214,7 @@ class DisplayComponentScreenshotTest {
     fun iconButton() =
         capture("icon_button") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Caption("Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
+                Caption("Xs (24), Sm (28), Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
                 RaftButtonVariant.entries.forEach { variant ->
                     val onFrame = variant == RaftButtonVariant.OnFrame
                     Row(
@@ -232,7 +232,16 @@ class DisplayComponentScreenshotTest {
                                         variant = variant,
                                         size = size,
                                         enabled = state != "Disabled",
-                                    ) { Glyph(RaftGlyph.Plus, if (size == RaftIconButtonSize.Lg) 22.dp else 18.dp) }
+                                    ) {
+                                        Glyph(
+                                            RaftGlyph.Plus,
+                                            when (size) {
+                                                RaftIconButtonSize.Lg -> 22.dp
+                                                RaftIconButtonSize.Md -> 18.dp
+                                                else -> 16.dp
+                                            },
+                                        )
+                                    }
                                 }
                             }
                             Box(Modifier.width(12.dp))
@@ -794,6 +803,13 @@ class DisplayComponentScreenshotTest {
                     )
                     Box(Modifier.height(8.dp))
                     RaftReadOnlyField("rft_9c2b…9a8f", mono = true)
+                    Box(Modifier.height(8.dp))
+                    RaftReadOnlyField(
+                        "Reviews pull requests in #design and posts a summary of every change that touches the tokens.",
+                        maxLines = Int.MAX_VALUE,
+                    )
+                    Box(Modifier.height(8.dp))
+                    RaftReadOnlyField("/home/wug/work/raft-mobile/compose/designsystem/src/commonMain/kotlin", mono = true, maxLines = 2)
                 }
                 RaftSection("Created agents", count = "3") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
