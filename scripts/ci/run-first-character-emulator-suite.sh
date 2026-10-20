@@ -411,6 +411,9 @@ main() {
     # pager scroll, thread align-right) poll for rendered colors and would
     # read all-black frames if the emulator sleeps mid-test.
     adb shell settings put system screen_off_timeout 2147483647 || true
+    # A system "isn't responding" dialog (often from the image's GMS) steals
+    # window focus and fails every focus-dependent test that follows; hide it.
+    adb shell settings put global hide_error_dialogs 1 || true
 
     SOURCE_EXACT="${SOURCE_EXACT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}" \
     ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE="${ANDROID_EMULATOR_SYSTEM_IMAGE_PACKAGE:-system-images;android-34;google_apis;x86_64}" \

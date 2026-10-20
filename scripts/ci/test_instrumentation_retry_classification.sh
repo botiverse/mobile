@@ -104,6 +104,36 @@ INSTRUMENTATION_MAX_ATTEMPTS=2 "$retry" "$tmp/persist.txt" 1 -- bash -c gen_alwa
 check "retry: persistent infra-abort -> 1 (not masked)" 1 $?
 check "retry: persistent infra-abort exhausted attempts" 2 "$(<"$counter")"
 
+# app killed by the system because a provider process died -> retryable;
+# the same "Process crashed" without that logcat evidence stays fatal.
+echo 0 > "$counter"
+gen_dying_provider() {
+  local n; n=$(<"$counter"); n=$((n + 1)); echo "$n" > "$counter"
+  if [[ "$n" -lt 2 ]]; then
+    echo "INSTRUMENTATION_RESULT: shortMsg=Process crashed."
+  else
+    echo "OK (1 tests)"
+  fi
+}
+export -f gen_dying_provider
+printf '%s\n' "10-20 06:47:23.031   519  1100 I ActivityManager: Killing 6012:build.raft.app.connectedtest/u0a192 (adj 0): depends on provider com.google.android.gms/.fonts.provider.FontsProvider in dying proc com.google.android.gms.persistent (adj -10000)" > "$tmp/logcat-dying.txt"
+INSTRUMENTATION_LOGCAT_DUMP_CMD="cat $tmp/logcat-dying.txt" \
+  INSTRUMENTATION_MAX_ATTEMPTS=3 "$retry" "$tmp/dying.txt" 1 -- bash -c gen_dying_provider
+check "retry: app killed via dying provider then OK -> 0" 0 $?
+check "retry: app killed via dying provider retried once" 2 "$(<"$counter")"
+
+echo 0 > "$counter"
+gen_app_crash() {
+  local n; n=$(<"$counter"); n=$((n + 1)); echo "$n" > "$counter"
+  echo "INSTRUMENTATION_RESULT: shortMsg=Process crashed."
+}
+export -f gen_app_crash
+printf 'FATAL EXCEPTION: main\nProcess: build.raft.app.connectedtest, PID: 6012\n' > "$tmp/logcat-crash.txt"
+INSTRUMENTATION_LOGCAT_DUMP_CMD="cat $tmp/logcat-crash.txt" \
+  INSTRUMENTATION_MAX_ATTEMPTS=3 "$retry" "$tmp/appcrash.txt" 1 -- bash -c gen_app_crash
+check "retry: real app crash -> 1 (fatal)" 1 $?
+check "retry: real app crash ran once (no retry)" 1 "$(<"$counter")"
+
 if [[ "$fail" -ne 0 ]]; then
   echo "instrumentation retry/classification test FAILED" >&2
   exit 1
