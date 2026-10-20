@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -1556,6 +1558,14 @@ class RaftAppShellTest {
         assertTrue(raftAppShellBottomTabsShown(showBottomTabs = true, imeVisible = false))
         assertFalse(raftAppShellBottomTabsShown(showBottomTabs = true, imeVisible = true))
         assertFalse(raftAppShellBottomTabsShown(showBottomTabs = false, imeVisible = false))
+    }
+
+    @Test
+    fun bottomBarComesBackAnimatedWhenKeyboardCloses() {
+        // raft-design #620: back with a ~200ms slide/fade up, not an instant jump; gone at once.
+        assertEquals(200, RaftAppShellBottomBarReturnMillis)
+        assertNotEquals(EnterTransition.None, RaftAppShellBottomBarReturn)
+        assertEquals(ExitTransition.None, RaftAppShellBottomBarLeave)
     }
 
     @Test

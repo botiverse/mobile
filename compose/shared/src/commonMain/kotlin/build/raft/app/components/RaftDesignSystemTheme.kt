@@ -8,6 +8,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.resources.MR
+import build.raft.app.cmp.RaftCmpRouter
+import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftFonts
@@ -29,6 +31,9 @@ import build.raft.designsystem.theme.RaftTheme
  * The components' own words ([LocalRaftStrings]: the optional-field marker, the close, clear
  * and loading names) come from the app's `MR.strings`, so they follow the UI language.
  *
+ * Debug builds fail on design-system misuse ([RaftProvideDesignSystemMisuse]); release stays
+ * silent.
+ *
  * Everything that reads `RaftTheme.typography` (the search result parts included) must sit
  * inside this wrapper: outside any designsystem theme that read throws.
  */
@@ -48,8 +53,34 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
         CompositionLocalProvider(
             LocalTextSelectionColors provides appSelectionColors,
             LocalRaftStrings provides strings,
-            content = content,
-        )
+        ) {
+            RaftProvideDesignSystemMisuse(content = content)
+        }
+    }
+}
+
+/** What a debug build (or a test) does on design-system misuse: fail, with the component's message. */
+internal val RaftFailOnDesignSystemMisuse: (String) -> Unit = { message -> error(message) }
+
+/**
+ * Makes [LocalRaftMisuse] (e.g. a [build.raft.designsystem.components.RaftIconButton] with no
+ * name) fail in [content] when [failOnMisuse]: by default the host's debug flag
+ * ([RaftCmpRouter.isDebugBuild]), so a debug build crashes on the spot and a release build keeps
+ * the design system's silent default. When [failOnMisuse] is false the parent's reporter is kept,
+ * so a test that provides a failing one is not silenced by a theme nested inside it.
+ *
+ * Provided round every page (the pager host) and again inside [RaftDesignSystemTheme]; tests and
+ * visual fixtures that draw without either pass `failOnMisuse = true`.
+ */
+@Composable
+internal fun RaftProvideDesignSystemMisuse(
+    failOnMisuse: Boolean = RaftCmpRouter.isDebugBuild,
+    content: @Composable () -> Unit,
+) {
+    if (failOnMisuse) {
+        CompositionLocalProvider(LocalRaftMisuse provides RaftFailOnDesignSystemMisuse, content = content)
+    } else {
+        content()
     }
 }
 

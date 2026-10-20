@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.RaftProvideDesignSystemMisuse
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +49,7 @@ import build.raft.designsystem.theme.RaftTheme
 /**
  * The designsystem theme pinned light (every components.ui.* page pins light), in the
  * app's bundled Space Grotesk / Space Mono faces, as [build.raft.app.components.RaftDesignSystemTheme].
+ * Design-system misuse fails the capture whatever the build type.
  */
 @Composable
 private fun UiDesignSystemFrame(height: Dp, content: @Composable () -> Unit) {
@@ -59,15 +61,17 @@ private fun UiDesignSystemFrame(height: Dp, content: @Composable () -> Unit) {
             )
         }
     RaftTheme(appearance = RaftAppearance.Light, fonts = fonts) {
-        Box(
-            modifier =
-                Modifier
-                    .width(342.dp)
-                    .height(height)
-                    .background(RaftTheme.colors.layerCanvas)
-                    .padding(16.dp)
-        ) {
-            content()
+        RaftProvideDesignSystemMisuse(failOnMisuse = true) {
+            Box(
+                modifier =
+                    Modifier
+                        .width(342.dp)
+                        .height(height)
+                        .background(RaftTheme.colors.layerCanvas)
+                        .padding(16.dp)
+            ) {
+                content()
+            }
         }
     }
 }
