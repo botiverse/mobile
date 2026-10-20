@@ -867,6 +867,13 @@ internal open class RaftCmpActivity :
             finish()
             return
         }
+        raftLegacyAppShellTabRedirect(pageName, JSONObject(resolvedPageData(intent).text))?.let { shellPageData ->
+            // Old page name of an app-shell tab (the Home 动态 page): open the shell on that tab.
+            RaftAppLog.record("SlockKuiklyActivity", "legacy_tab_page_redirect page=$pageName")
+            startAppShell(this, shellPageData)
+            finish()
+            return
+        }
         if (pageName == PAGE_LOGIN) {
             loginTransitionToken = AndroidLoginTransitionRouting.bindLogin(
                 this,
@@ -2947,6 +2954,10 @@ internal open class RaftCmpActivity :
             loginTransitionToken: String? = null,
         ) {
             RaftAdapters.init(context.applicationContext)
+            raftLegacyAppShellTabRedirect(pageName, pageData)?.let { shellPageData ->
+                startAppShell(context, shellPageData, clearTask)
+                return
+            }
             val hostPageData = pageData.withAndroidHostPageData(pageName)
             val starter =
                     Intent(context, hostActivityClass ?: raftHostActivityClass(pageName))
