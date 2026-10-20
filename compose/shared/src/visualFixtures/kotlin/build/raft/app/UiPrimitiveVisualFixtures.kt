@@ -7,7 +7,6 @@ import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
 import build.raft.app.components.RaftAttentionDot
-import build.raft.app.components.RaftCheckboxLabelRow
 import build.raft.app.components.RaftFormField
 import build.raft.app.components.RaftFormFieldLabelStyle
 import build.raft.app.components.RaftFormFieldSize
@@ -251,26 +250,6 @@ internal fun UiTextareaVisualContent() {
             fieldHeight = 96.dp,
             maxLines = 2
         )
-    }
-}
-
-@Composable
-internal fun UiCheckboxVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(132.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // web: raft-ui <Checkbox> is a fixed size-5 (20px) box; the disabled row is the whole
-            // <label> at opacity-60 over a disabled Checkbox.
-            RaftCheckboxLabelRow(label = "As Task selected", checked = true, size = 20.dp)
-            RaftCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 20.dp)
-            RaftCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 20.dp, modifier = Modifier.alpha(0.6f))
-        }
     }
 }
 

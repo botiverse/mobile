@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,7 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftListRow
@@ -167,5 +169,32 @@ internal fun UiAvatarListRowVisualContent() {
                 trailing = { RaftButton("Open", onClick = {}) }
             )
         }
+    }
+}
+
+@Composable
+internal fun UiCheckboxVisualContent() {
+    // web `ui-checkbox`: three <label> rows (`text-sm font-bold`, 14/20 at 700; the box 8dp
+    // before the text, as the audited fixture had it) around a raft-ui <Checkbox> (the
+    // fixed 20px box). The disabled row is the
+    // case's own composition: the whole <label> at `opacity-60` over a disabled Checkbox,
+    // its text still `foreground`. This mirrors that markup with RaftCheckbox and a
+    // RaftText label. RaftCheckboxRow keeps raft-ui's own disabled label
+    // (`foreground-disabled`, components/label.md and field.md, States: Disabled), which
+    // is a different composition from the case's, not a component gap.
+    UiDesignSystemFrame(height = 132.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            UiCheckboxLabelRow("As Task selected", checked = true)
+            UiCheckboxLabelRow("Permission row unchecked", checked = false)
+            UiCheckboxLabelRow("Disabled checked", checked = true, enabled = false, modifier = Modifier.alpha(0.6f))
+        }
+    }
+}
+
+@Composable
+private fun UiCheckboxLabelRow(label: String, checked: Boolean, enabled: Boolean = true, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        RaftCheckbox(checked = checked, onCheckedChange = {}, enabled = enabled)
+        RaftText(label, style = UiCalloutBold, color = RaftTheme.colors.foreground, maxLines = 1)
     }
 }
