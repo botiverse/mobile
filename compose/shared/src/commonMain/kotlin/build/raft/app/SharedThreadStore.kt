@@ -4433,7 +4433,13 @@ internal class SharedThreadDataSource(
                         )
                     )
             } ?: repository
-        return boundRepository.getAttachmentUploadCapabilities().map { capabilities -> capabilities.maxBytes }
+        return boundRepository.getAttachmentUploadCapabilities().map { capabilities ->
+            // Pre-check against what the selected transport can actually carry. The legacy
+            // multipart path is capped independently of the plan limit, so using maxBytes alone
+            // lets a 90-200MiB file through the client gate and then fail server side after the
+            // user has waited for the whole request to time out.
+            capabilities.effectiveMultipartMaxBytes
+        }
     }
 
     suspend fun captureExternalShareSendAuthority(): SlockExpectedAuthBinding? {

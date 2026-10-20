@@ -38,6 +38,8 @@ private data class AttachmentUploadCapabilitiesDto(
     val directUploadThresholdBytes: Long? = null,
     val maxBytes: Long = 0L,
     val sessionExpiresInSeconds: Int? = null,
+    /** Advertised legacy multipart cap; absent until the server ships the field. */
+    val legacyMultipartMaxBytes: Long? = null,
 )
 
 @Serializable
@@ -98,6 +100,12 @@ internal fun parseSharedAttachmentUploadCapabilities(bodyText: String): Attachme
     require(dto.sessionExpiresInSeconds == null || dto.sessionExpiresInSeconds in 1..86_400) {
         "attachment upload sessionExpiresInSeconds is invalid"
     }
+    // A legacy-multipart cap above the contract limit is a server bug; fail closed on the
+    // document rather than silently trusting a number the client cannot honour.
+    require(dto.legacyMultipartMaxBytes == null ||
+        dto.legacyMultipartMaxBytes in 1L..ATTACHMENT_UPLOAD_MAX_BYTES) {
+        "attachment upload legacyMultipartMaxBytes is invalid"
+    }
     if (!dto.directUploadEnabled) {
         require(dto.directUploadThresholdBytes == null && dto.sessionExpiresInSeconds == null) {
             "disabled direct upload cannot advertise session parameters"
@@ -108,6 +116,7 @@ internal fun parseSharedAttachmentUploadCapabilities(bodyText: String): Attachme
         directUploadEnabled = dto.directUploadEnabled,
         directUploadThresholdBytes = dto.directUploadThresholdBytes,
         sessionExpiresInSeconds = dto.sessionExpiresInSeconds,
+        legacyMultipartMaxBytes = dto.legacyMultipartMaxBytes,
     )
 }
 

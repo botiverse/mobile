@@ -613,7 +613,37 @@ data class AttachmentUploadCapabilities(
     val directUploadThresholdBytes: Long? = null,
     /** Optional session lifetime hint, in seconds. */
     val sessionExpiresInSeconds: Int? = null,
-)
+    /**
+     * Optional cap the server advertises for its legacy multipart transport.
+     *
+     * The legacy multipart path is capped independently of [maxBytes] (the plan limit), so a file
+     * can pass a `maxBytes`-only pre-check and still fail server side. When the server advertises
+     * this, clients must pre-check against [effectiveMultipartMaxBytes] instead of [maxBytes].
+     * Null means the server does not advertise it yet; callers fall back to the documented default.
+     */
+    val legacyMultipartMaxBytes: Long? = null,
+) {
+    /**
+     * The largest file that can actually travel over the legacy multipart transport.
+     *
+     * Never larger than [maxBytes]: the plan limit always applies. A server that advertises a
+     * legacy cap above the plan limit cannot raise the plan limit through this field.
+     */
+    val effectiveMultipartMaxBytes: Long
+        get() = legacyMultipartMaxBytes?.let { advertised ->
+            minOf(maxBytes, advertised)
+        } ?: minOf(maxBytes, ATTACHMENT_LEGACY_MULTIPART_DEFAULT_MAX_BYTES)
+
+    companion object {
+        /**
+         * Legacy multipart cap used until the server advertises one.
+         *
+         * Mirrors the server's `min(plan limit, 90MiB)` rule, which reserves headroom for the
+         * Cloudflare request body. Keep this the ONLY client-side copy of that constant.
+         */
+        const val ATTACHMENT_LEGACY_MULTIPART_DEFAULT_MAX_BYTES: Long = 90L * 1024L * 1024L
+    }
+}
 
 /** Input for the authenticated direct attachment-session create operation. */
 data class AttachmentUploadSessionCreateRequest(

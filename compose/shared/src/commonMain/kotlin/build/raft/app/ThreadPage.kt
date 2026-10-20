@@ -9210,7 +9210,10 @@ private fun SharedThreadRouteContentContent(
         }
         val admittedFiles = admittedComposerAttachmentFiles(
             files = files,
-            maxBytesOverride = directCapabilities?.maxBytes,
+            // Gate on the transport actually in use, not the plan limit. Harmless here because
+            // skipClientSizeGate is true today, but keeping the raw maxBytes would silently
+            // reintroduce the 90-200MiB hole the moment that gate is turned back on.
+            maxBytesOverride = directCapabilities?.effectiveMultipartMaxBytes,
             // Caller sizeBytes is an untrusted hint. Direct and fail-open paths
             // decide TooLarge/threshold only after authority-bound prepare/stat
             // (or skip the gate entirely when capabilities cannot be read).
