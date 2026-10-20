@@ -1292,13 +1292,57 @@ private fun SharedActivityList(
     // foreground, and disarms as soon as the reader starts scrolling. A data
     // change that arrives mid-scroll must never move the viewport (task #436).
     var viewportRecoveryArmed by remember { mutableStateOf(active) }
+    // Task #47: the entry session owns the top edge until the reader moves the
+    // list (see ActivityEntryTopAnchorOwner for owner + fence). Declared before
+    // the canonical-snapshot effect so activation arms it before that effect runs.
+    val entryTopAnchorOwner = remember(listState) { ActivityEntryTopAnchorOwner() }
+    var newActivityAbove by
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf(false)
+        }
     LaunchedEffect(active, foregroundEpoch) {
-        if (active) viewportRecoveryArmed = true
+        if (active) {
+            viewportRecoveryArmed = true
+            entryTopAnchorOwner.arm()
+        } else {
+            entryTopAnchorOwner.retire()
+        }
     }
     LaunchedEffect(listState, active) {
         if (!active) return@LaunchedEffect
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling -> if (scrolling) viewportRecoveryArmed = false }
+    }
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
+        entryTopAnchorOwner.fenceUserScroll(snapshotFlow { listState.isScrollInProgress })
+    }
+    // The reader reached the top themselves: nothing new is hidden above any more.
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
+        snapshotFlow {
+            activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+        }
+            .collect { atTop -> if (atTop) newActivityAbove = false }
+    }
+    fun shouldAnchorTop(pullRefreshOwnsTop: Boolean, genuineTopUpdate: Boolean): Boolean =
+        activityShouldAnchorTopOnCanonicalSnapshot(
+            entryOwnerArmed = entryTopAnchorOwner.armed,
+            pullRefreshOwnsTop = pullRefreshOwnsTop,
+            parkedAtTop =
+                activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset),
+            scrollInProgress = listState.isScrollInProgress,
+            genuineTopUpdate = genuineTopUpdate,
+        )
+    // Same snapshot as the list change: the next measure pass applies both, so
+    // LazyList cannot first re-anchor on the old head key and no delayed job exists.
+    fun settleTopEdge(previousItems: List<InboxItem>, nextItems: List<InboxItem>, anchorTop: Boolean) {
+        if (anchorTop) {
+            newActivityAbove = false
+            listState.requestScrollToItem(0)
+        } else if (activityHasNewTopRow(previousItems.map(InboxItem::key), nextItems.map(InboxItem::key))) {
+            newActivityAbove = true
+        }
     }
     LaunchedEffect(presentedItems, active, viewportRecoveryArmed) {
         if (!active || !viewportRecoveryArmed || listState.isScrollInProgress) return@LaunchedEffect
@@ -1360,6 +1404,13 @@ private fun SharedActivityList(
             ActivityStableOrderDecisionVersion(stableOrderEnabled, stableOrderDecisionRevision)
         if (appliedStableOrderDecision != nextStableOrderDecision) {
             presentationStore.clearOwner(presentationAccountId, presentationServerId)
+            val anchorTop =
+                shouldAnchorTop(
+                    pullRefreshOwnsTop = pullRefreshing,
+                    genuineTopUpdate =
+                        activityHasNewTopRow(presentedItems.map(InboxItem::key), snapshot.items.map(InboxItem::key)),
+                )
+            val previousPresentedItems = presentedItems
             val canonicalCheckpoint =
                 activityCanonicalCheckpointAfterStableOrderDecisionChange(
                     selectedFilter = selectedFilter,
@@ -1372,6 +1423,7 @@ private fun SharedActivityList(
             presentationGeneration = canonicalCheckpoint.presentationGeneration
             pullRefreshInFlight = false
             appliedStableOrderDecision = nextStableOrderDecision
+            settleTopEdge(previousPresentedItems, canonicalCheckpoint.presentedItems, anchorTop)
             if (stableOrderEnabled) {
                 presentationStore.save(
                     accountId = presentationAccountId,
@@ -1382,7 +1434,13 @@ private fun SharedActivityList(
             }
             return@LaunchedEffect
         }
+        if (pullRefreshing) {
+            pullRefreshInFlight = true
+        }
+        val pullRefreshCompleted = pullRefreshInFlight && !pullRefreshing
+        val pullRefreshOwnsTop = pullRefreshing || pullRefreshCompleted
         if (!stableOrderEnabled) {
+            val previousPresentedItems = presentedItems
             val nextPresentedItems =
                 activityItemsAfterCanonicalSnapshot(
                     stableOrderEnabled = false,
@@ -1401,13 +1459,22 @@ private fun SharedActivityList(
             updateTracking =
                 ActivityUpdateTrackingState(selectedFilter)
                     .recordSnapshot(selectedFilter, snapshot.items)
-            pullRefreshInFlight = false
+            pullRefreshInFlight = pullRefreshing
+            settleTopEdge(
+                previousPresentedItems,
+                nextPresentedItems,
+                anchorTop =
+                    shouldAnchorTop(
+                        pullRefreshOwnsTop = pullRefreshOwnsTop,
+                        genuineTopUpdate =
+                            activityHasNewTopRow(
+                                previousPresentedItems.map(InboxItem::key),
+                                nextPresentedItems.map(InboxItem::key),
+                            ),
+                    ),
+            )
             return@LaunchedEffect
         }
-        if (pullRefreshing) {
-            pullRefreshInFlight = true
-        }
-        val pullRefreshCompleted = pullRefreshInFlight && !pullRefreshing
         var nextTracking =
             updateTracking
                 .recordSnapshot(selectedFilter, snapshot.items)
@@ -1415,14 +1482,28 @@ private fun SharedActivityList(
                     nextFilter = selectedFilter,
                     currentItems = snapshot.items
                 )
-        val nextPresentedItems =
-            activityItemsAfterCanonicalSnapshot(
-                stableOrderEnabled = true,
-                pendingCount = nextTracking.pendingCount,
-                pullRefreshCompleted = pullRefreshCompleted,
-                presentedItems = presentedItems,
-                canonicalItems = snapshot.items
+        val previousPresentedItems = presentedItems
+        // An owned top edge adopts the canonical order now instead of withholding
+        // the new head rows behind the "new updates" button.
+        val anchorTop =
+            shouldAnchorTop(
+                pullRefreshOwnsTop = pullRefreshOwnsTop,
+                genuineTopUpdate =
+                    nextTracking.pendingCount > 0 ||
+                        activityHasNewTopRow(presentedItems.map(InboxItem::key), snapshot.items.map(InboxItem::key)),
             )
+        val nextPresentedItems =
+            if (anchorTop) {
+                snapshot.items
+            } else {
+                activityItemsAfterCanonicalSnapshot(
+                    stableOrderEnabled = true,
+                    pendingCount = nextTracking.pendingCount,
+                    pullRefreshCompleted = pullRefreshCompleted,
+                    presentedItems = presentedItems,
+                    canonicalItems = snapshot.items
+                )
+            }
         presentationGeneration =
             activityNextPresentationGeneration(
                 currentGeneration = presentationGeneration,
@@ -1430,11 +1511,15 @@ private fun SharedActivityList(
                 nextPresentedItems = nextPresentedItems
             )
         presentedItems = nextPresentedItems
+        if (anchorTop) {
+            nextTracking = nextTracking.consumePending()
+        }
         if (pullRefreshCompleted) {
             nextTracking = nextTracking.consumePending()
             pullRefreshInFlight = false
         }
         updateTracking = nextTracking
+        settleTopEdge(previousPresentedItems, nextPresentedItems, anchorTop)
         savePresentation()
     }
     LaunchedEffect(selectedFilter, revealRequest) {
@@ -1698,6 +1783,7 @@ private fun SharedActivityList(
                     // marker and remains actionable; animation completion never
                     // clears work that arrived after this click.
                     updateTracking = updateTracking.consumePending()
+                    newActivityAbove = false
                     presentationGeneration =
                         activityNextPresentationGeneration(
                             currentGeneration = presentationGeneration,
@@ -1707,6 +1793,17 @@ private fun SharedActivityList(
                     presentedItems = snapshot.items
                     revealRequest += 1
                     savePresentation()
+                },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+            )
+        } else if (newActivityAbove) {
+            // Task #47: newer rows landed above a reader who had already scrolled;
+            // the viewport stays theirs until they tap (explicit viewport replacement).
+            RaftButton(
+                text = stringResource(MR.strings.activity_new_activity),
+                onClick = {
+                    newActivityAbove = false
+                    revealRequest += 1
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             )

@@ -807,6 +807,7 @@
     <string name="activity_filter_mentions">提及</string>
     <string name="activity_updates_one">↑ %1$d 条新动态</string>
     <string name="activity_updates_many">↑ %1$d 条新动态</string>
+    <string name="activity_new_activity">↑ 有新动态</string>
     <string name="activity_replies_one">%1$d 条回复</string>
     <string name="activity_replies_many">%1$d 条回复</string>
     <string name="activity_mention_you">你</string>
