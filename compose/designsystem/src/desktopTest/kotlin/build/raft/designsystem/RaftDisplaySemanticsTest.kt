@@ -3,6 +3,7 @@ package build.raft.designsystem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -27,6 +29,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.longClick
@@ -52,6 +55,8 @@ import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftPulseClock
+import build.raft.designsystem.components.RaftSidebarChannelItem
+import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -86,6 +91,34 @@ class RaftDisplaySemanticsTest {
             )
             onNodeWithText("general").assertIsSelected()
             onNodeWithText("random").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+        }
+
+    @Test
+    fun aSidebarRowIsAButtonAndSaysWhereYouAre() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column {
+                        RaftSidebarChannelItem("general", onClick = {}, selected = true)
+                        RaftSidebarChannelItem("random", onClick = {}, unreadCount = 3, threadCount = 2)
+                    }
+                },
+            )
+            onNodeWithText("general").assertIsSelected()
+            onNodeWithText("general").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            onNodeWithText("random").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+            onNodeWithText("random").assert(hasContentDescription("3 unread, 2 threads with new replies"))
+        }
+
+    @Test
+    fun aSidebarSectionHeaderExpandsAndCollapses() =
+        runComposeUiTest {
+            var expanded by mutableStateOf(true)
+            setContent(themed { RaftSidebarSectionHeader("Channels", expanded = expanded, onExpandedChange = { expanded = it }, count = 2) })
+            onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
+            onNodeWithText("Channels").performClick()
+            assertFalse(expanded)
+            onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
         }
 
     @Test

@@ -154,7 +154,7 @@ Other checks:
 | --- | --- | --- | --- |
 | `RaftSeparator` | Separator | Done | Horizontal, vertical, with a word |
 | `RaftBadge` | Badge | Done | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not clickable |
-| `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+, read as "N unread" with the full number), @ marker, gray muted count, `agent` tag, agent state chips |
+| `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+, read as "N unread" with the full number), with a thread segment (`RaftUnreadCount(count, threadCount)`: `5 · [thread] 2`, raft-ui `SidebarItemThreadCount`), @ marker, gray muted count, `agent` tag, agent state chips |
 | `RaftSpinner` | Spinner | Done | Pixel spinner, xs–lg, inverse, `stillStep` for stills and reduced motion |
 | `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed and mouse hover (the press overlay, as the web's `hover:`; no ripple), focus ring, disabled (no overlay), busy (focusable, semantics disabled, taps ignored). No underlined-text variant: that is `RaftTextLink`. `RaftIconButton(onClick, tooltip, …)`: `tooltip` is required, names the action in Title Case, is the content description, and is shown as a `RaftTooltip` on a long press or mouse hover (a long press that opens it does not click). The tooltip adds no screen-reader stop: the button is the one node |
 | `RaftTooltip` | Tooltip | Done | The dark HUD bubble (`layer-hud`, `foreground-on-hud`, `radius-chip`, 10 x 4dp padding, footnote 13/18 medium, `shadow-float`) with a 10 x 5.25dp caret, 8dp above the anchor (below when there is no room). A mouse / trackpad hover keeps it open until the pointer leaves; a long press opens it for 1.5s (and does not click). Not focusable, no semantics node of its own. Material3 `TooltipBox` + `PlainTooltip` (positioning and popup; the gestures are the module's), so its width caps at 200dp (raft-ui: 320dp) |
@@ -164,6 +164,7 @@ Other checks:
 | `RaftStatusDot` | Status | Done | 8 variants, 5 presence lights, xs–lg |
 | `RaftSkeleton` | Skeleton | Done | Line, block, square; pulse (all in phase, one shared frame loop per theme), or still for screenshots / reduced motion |
 | `RaftBanner`, `RaftPanelNotice` | Banner, PanelNotice | Done | 4 intents + default, sm / md / lg, title, action; a text action goes inside the description as a strong `appendRaftTextLink` |
+| `RaftSidebarItem`, `RaftSidebarChannelItem`, `RaftSidebarItemIcon`, `RaftSidebarItemMarks`, `RaftSidebarItemMeta`, `RaftSidebarSectionHeader`, `RaftSidebarSectionAction` | Sidebar (SidebarItem, SidebarSection*) | Done | Phone size (raft-ui 0.10, below `md`): rows at least 44dp, `text-body` 600 (700 unread / selected), 19dp icon slot with a 16dp `foreground-hint` icon, `#` / lock for channels; tones; selected is the yellow sticker with the ink edge (`selected` in semantics); pressed / hovered, focus ring; display-only row. Marks: pink count with thread segment, yellow @ (replaces the count; threads still show), muted gray pixel. Group header: chevron, `text-footnote` 700 title, mono count, attention pixel when collapsed, ghost icon controls overhanging the 18dp line; one button with expand / collapse in semantics. The page keeps the rows 8dp from its edge |
 | `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`, `selected` semantics), pressed, inset focus, disabled, subtitle (AvatarListRow) |
 | `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below, two columns at content width when unbounded; values wrap; each fact is one screen-reader item |
 | `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
@@ -337,6 +338,12 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Skeleton line** uses the chip radius (DRI page spec); raft-ui uses the sticker radius.
 - **Code block wraps** by default (the pages' `break-all`); raft-ui CopyableCode keeps
   one line (`wrap = false`).
+- **Sidebar.** Only the phone size: the desktop 36dp / `text-subhead` row and the
+  hover-only section controls are not drawn. A group header's disclosure is a target as
+  tall as the header (40dp; the web's is its 18dp line) and its controls are 32dp ghost
+  icon buttons (raft-ui `h-7`, 28px). A muted place with something unread shows the gray
+  status pixel the web Home draws; raft-ui's quiet number is `RaftSidebarItemMeta`. The
+  chevron leads the group title, as on the web Home (the docs composition puts it after).
 - **ListRow** follows the pages' AvatarListRow too: an optional mono `subtitle` line and a
   trailing slot 6dp apart. Rows don't know their siblings: pass `divider = true` from the
   second row on. A selected or disabled row hides its badge.
