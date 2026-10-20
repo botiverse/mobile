@@ -12761,9 +12761,11 @@ private fun MembersAgentDmRow(
     serverMembersState: SharedServerMembersState,
     divider: Boolean = false
 ) {
-    val peerProfile =
+    val avatarCacheIdentity =
         remember(row.peerId, currentServerId, serverMembersState) {
-            serverMembersState.membersAgentDmPeerProfile(row, currentServerId)
+            serverMembersState
+                .membersAgentDmPeerProfile(row, currentServerId)
+                ?.raftAvatarCacheIdentity(currentServerId)
         }
     // raft-ui AvatarListRow: the 35dp peer avatar, name, "Agent DM · @handle" in Space Mono,
     // the last message as the preview (up to 3 lines) with an Activity only tag, the time on

@@ -7657,7 +7657,6 @@ internal fun MemberProfile.raftAvatarName(): String =
 internal fun raftAvatarFallbackFill(kind: MemberKind?): Color =
     if (kind == MemberKind.Agent) RaftColor.Inactive else RaftColor.AccentLavender
 
-@Composable
 private val RaftAppPresence.homeRowColor: Color
     get() = when (this) { RaftAppPresence.Online -> RaftColor.AccentLime; RaftAppPresence.Offline -> RaftColor.StatusNeutralGray; RaftAppPresence.Unknown -> RaftColor.BrandYellow }
 
