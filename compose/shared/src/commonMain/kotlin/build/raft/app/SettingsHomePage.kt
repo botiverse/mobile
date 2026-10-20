@@ -378,6 +378,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.ConnectedAccountStatus
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.InboxFilter
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.savedMessageIdOrNull
 import build.raft.app.data.SettingsAppearanceSnapshot
@@ -26311,13 +26312,33 @@ internal fun HomeSavedVisualContent() {
     }
 }
 
+/** [homeActivityVisualSnapshot] as the server answers [filter]; totals stay server-wide. */
+internal fun homeActivityVisualSnapshotFor(filter: InboxFilter): InboxSnapshot {
+    val base = homeActivityVisualSnapshot
+    val items =
+        when (filter) {
+            InboxFilter.All -> return base
+            InboxFilter.Unread -> base.items.filter { it.unreadCount > 0 }
+            InboxFilter.Mentions -> base.items.filter { it.hasMention }
+        }
+    return base.copy(items = items, totalCount = base.totalCount, totalUnreadCount = base.totalUnreadCount)
+}
+
 @Composable
 internal fun HomeActivityVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
+    // pageData `segment` (all / unread / mentions) selects the filter page; the
+    // fixture rows are narrowed the way the server answers that filter, while
+    // the header totals stay server-wide (web inboxStore contract).
+    val filter =
+        InboxFilter.entries.firstOrNull { it.wireValue == params.optString("segment") }
+            ?: InboxFilter.All
+    val snapshot = remember(filter) { homeActivityVisualSnapshotFor(filter) }
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeActivityPanel(
-            snapshot = homeActivityVisualSnapshot,
+            snapshot = snapshot,
+            selectedFilter = filter,
             onOpenItem = {},
             onClose = {},
             includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false),

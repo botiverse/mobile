@@ -1752,7 +1752,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-row-saved")
                     .put("visualFixture", "saved"),
             crop = THREAD_MESSAGE_ROW_SAVED_CROP,
-            requireReactionAtlas = true
+            requireReactionAtlas = true,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.saved-badge", "visual-thread-message-row-saved", widthDp = 374, insetDp = 16) }
         )
     }
 
@@ -2406,7 +2407,9 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-inline-replies")
                     .put("visualFixture", "inline_replies"),
-            crop = FULL_VIEWPORT_CROP
+            crop = FULL_VIEWPORT_CROP,
+            // React pair: MessageItem with InlineThreadReplies inside the p-4 page.
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.inline-replies", "visual-thread-message-row-inline-replies", widthDp = 374, insetDp = 16) }
         )
     }
 
@@ -2434,6 +2437,7 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-row-gfm-task-list-short")
                     .put("visualFixture", "gfm_task_list_short"),
             crop = FULL_VIEWPORT_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.gfm-task-list-short", "visual-thread-message-row-gfm-task-list-short", widthDp = 390) },
             // This route is the regression consumer for task #211.  A native
             // CALL_KOTLIN fallback can still produce a rich-looking PNG and
             // therefore must not be admitted by the generic colour/stability
@@ -2533,7 +2537,10 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-code-block")
                     .put("visualFixture", "md_code_block"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            // React pair renders the MessageItem flush in a 390px column
+            // (component-bounds), same width contract as md-link-ref.
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-code-block", "visual-thread-message-row-md-code-block", widthDp = 390) }
         )
     }
 
@@ -2585,7 +2592,10 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-table")
                     .put("visualFixture", "md_table"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            // React pair renders the MessageItem flush in a 390px column
+            // (component-bounds), same width contract as md-link-ref.
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-table", "visual-thread-message-row-md-table", widthDp = 390) }
         )
     }
 
@@ -2611,7 +2621,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-escapes")
                     .put("visualFixture", "md_escapes"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-escapes", "visual-thread-message-row-md-escapes", widthDp = 390) }
         )
     }
 
@@ -2624,7 +2635,10 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-blockquote")
                     .put("visualFixture", "md_blockquote"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            // React pair renders the MessageItem flush in a 390px column
+            // (component-bounds), same width contract as md-link-ref.
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-blockquote", "visual-thread-message-row-md-blockquote", widthDp = 390) }
         )
     }
 
@@ -3247,6 +3261,31 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeActivityUnread() {
+        // Activity Unread segment: the same panel as components.home.activity.results
+        // with the Unread filter page selected and the rows the server returns for it.
+        captureKmpComponentCase(
+            caseId = "components.home.activity.unread",
+            pageName = "compose_home_activity_visual",
+            pageData = JSONObject().put("segment", "unread"),
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeActivityMentions() {
+        // Activity Mentions segment: only the rows that @-mention the viewer.
+        captureKmpComponentCase(
+            caseId = "components.home.activity.mentions",
+            pageName = "compose_home_activity_visual",
+            pageData = JSONObject().put("segment", "mentions"),
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureTask797ActivityHeaderSafeArea0() {
         captureTask797HeaderEvidence(
             caseId = "evidence.task797.activity.safe-area-0",
@@ -3360,6 +3399,19 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "screens.home.loading",
             pageName = "compose_home_loading_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeIndexScreen() {
+        // The loaded Home screen (most visited surface): production RaftStructuralHomeShell with
+        // the shared homeIndexFixture.json rows — pinned agent DM, channels with unread badges,
+        // agent DMs with live activity, a human DM and the bottom tab bar.
+        captureKmpComponentCase(
+            caseId = "screens.home.index",
+            pageName = "compose_home_index_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )

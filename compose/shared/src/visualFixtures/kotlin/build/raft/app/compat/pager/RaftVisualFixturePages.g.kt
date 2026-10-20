@@ -39,6 +39,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_home_app_update_banner_visual" to { build.raft.app.ComposeHomeAppUpdateBannerVisualPage() },
         "compose_home_create_channel_dialog_visual" to { build.raft.app.ComposeHomeCreateChannelDialogVisualPage() },
         "compose_home_dm_agent_activity_visual" to { build.raft.app.ComposeHomeDmAgentActivityVisualPage() },
+        "compose_home_index_visual" to { build.raft.app.ComposeHomeIndexVisualPage() },
         "compose_home_loading_visual" to { build.raft.app.ComposeHomeLoadingVisualPage() },
         "compose_home_notification_center_visual" to { build.raft.app.ComposeHomeNotificationCenterVisualPage() },
         "compose_home_notification_trigger_states_visual" to { build.raft.app.ComposeHomeNotificationTriggerStatesVisualPage() },
