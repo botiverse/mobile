@@ -708,7 +708,7 @@ internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
     }
 }
 
-private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
+internal fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
     val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
     val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
     val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
