@@ -322,6 +322,9 @@ interface ChatLayoutPreferenceStore {
     fun readServerDrawerEnabledSync(): Boolean
     suspend fun readServerDrawerEnabled(): Boolean
     suspend fun saveServerDrawerEnabled(enabled: Boolean)
+    fun readPushPreviewModeSync(): String
+    suspend fun readPushPreviewMode(): String
+    suspend fun savePushPreviewMode(wireName: String)
     fun readNewDesignSettingsEnabledSync(): Boolean
     suspend fun readNewDesignSettingsEnabled(): Boolean
     suspend fun saveNewDesignSettingsEnabled(enabled: Boolean)
@@ -497,6 +500,21 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_SERVER_DRAWER_ENABLED, enabled)
     }
 
+    override fun readPushPreviewModeSync(): String {
+        val stored = store.getString(KEY_PUSH_PREVIEW_MODE)
+        // Unknown or missing values fall back to the server-visible default rather than throwing:
+        // a corrupt preference must not block notifications, and full is the pre-existing behaviour.
+        return PushPreviewMode.fromWire(stored)?.wireName ?: DEFAULT_PUSH_PREVIEW_MODE
+    }
+
+    override suspend fun readPushPreviewMode(): String = readPushPreviewModeSync()
+
+    override suspend fun savePushPreviewMode(wireName: String) {
+        // Only canonical wire values are ever persisted.
+        val canonical = PushPreviewMode.fromWire(wireName)?.wireName ?: return
+        store.putString(KEY_PUSH_PREVIEW_MODE, canonical)
+    }
+
     override fun readNewDesignSettingsEnabledSync(): Boolean = true
 
     override suspend fun readNewDesignSettingsEnabled(): Boolean =
@@ -557,6 +575,8 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
+        const val KEY_PUSH_PREVIEW_MODE = "mobile:push_preview_mode"
+        const val DEFAULT_PUSH_PREVIEW_MODE = "full"
         const val KEY_NEW_DESIGN_SETTINGS_ENABLED = "mobile:new_design_settings_enabled"
         const val KEY_HOME_SERVER_AVATAR_ENABLED = "mobile:home_server_avatar_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
