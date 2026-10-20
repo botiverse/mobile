@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.selection.SelectionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -68,6 +70,14 @@ internal class ThreadInPlaceTextSelectionHost(
     val copyText: (String) -> Unit,
 ) {
     private var active: ThreadInPlaceSelectionTarget? = null
+
+    /** The thread list's visible viewport in window space; the bar never leaves it. */
+    var viewportInWindow by mutableStateOf<Rect?>(null)
+        private set
+
+    internal fun updateViewport(bounds: Rect) {
+        if (bounds != viewportInWindow) viewportInWindow = bounds
+    }
 
     internal fun activate(target: ThreadInPlaceSelectionTarget) {
         val previous = active
@@ -140,13 +150,32 @@ internal fun threadInPlaceSelectionBackOwner(
     }
 
 /**
- * Bar anchor for this frame: the selection rect while it is still visible inside the (clipped)
- * body bounds, else null so the bar hides instead of floating over the composer or top bar.
+ * Where the bar may anchor this frame, all in window space: [visibleSelection] is the part of the
+ * selection actually on screen (selection ∩ clipped body ∩ list viewport) and [area] is the list's
+ * visible viewport the bar must stay inside (never over the composer or the top bar).
  */
-internal fun threadInPlaceSelectionVisibleAnchor(selectionInWindow: Rect?, visibleBodyInWindow: Rect?): Rect? {
+internal data class ThreadInPlaceSelectionBarAnchor(
+    val visibleSelection: Rect,
+    val area: Rect?,
+)
+
+/** Null (hide the bar) only when no part of the selection is visible in the list viewport. */
+internal fun threadInPlaceSelectionVisibleAnchor(
+    selectionInWindow: Rect?,
+    visibleBodyInWindow: Rect?,
+    viewportInWindow: Rect?,
+): ThreadInPlaceSelectionBarAnchor? {
     if (selectionInWindow == null || visibleBodyInWindow == null) return null
-    if (visibleBodyInWindow.width <= 0f || visibleBodyInWindow.height <= 0f) return null
-    return selectionInWindow.takeIf { it.overlaps(visibleBodyInWindow) }
+    var visible = selectionInWindow.intersectOrNull(visibleBodyInWindow) ?: return null
+    if (viewportInWindow != null) {
+        visible = visible.intersectOrNull(viewportInWindow) ?: return null
+    }
+    return ThreadInPlaceSelectionBarAnchor(visibleSelection = visible, area = viewportInWindow)
+}
+
+private fun Rect.intersectOrNull(other: Rect): Rect? {
+    val clipped = intersect(other)
+    return clipped.takeIf { it.width > 0f && it.height > 0f }
 }
 
 internal val LocalThreadInPlaceTextSelectionHost =
@@ -234,7 +263,7 @@ internal class ThreadInPlaceSelectionController(
     }
 
     /** Window-space bar anchor for the current frame (snapshot reads keep it live), or null to hide. */
-    fun currentMenuAnchorInWindow(): Rect? {
+    fun currentMenuAnchorInWindow(): ThreadInPlaceSelectionBarAnchor? {
         @Suppress("UNUSED_VARIABLE")
         val tick = bodyLayoutTick
         val body = bodyCoordinates?.takeIf { it.isAttached } ?: return null
@@ -243,7 +272,7 @@ internal class ThreadInPlaceSelectionController(
                 ?: menuRectInBody
                 ?: return null
         val selection = Rect(body.localToWindow(local.topLeft), local.size)
-        return threadInPlaceSelectionVisibleAnchor(selection, body.boundsInWindow())
+        return threadInPlaceSelectionVisibleAnchor(selection, body.boundsInWindow(), host.viewportInWindow)
     }
 
     fun selectedTexts(): List<String> = selectionState.selectedTexts.map { it.text }
@@ -376,6 +405,15 @@ internal fun ThreadInPlaceSelectableBody(
             content()
         }
     }
+    // A kept-alive page that goes inactive (hidden shell tab) drops its selection so the popup
+    // bar cannot linger over the visible page.
+    val pageActive = LocalRaftPageActive.current
+    LaunchedEffect(pageActive, controller) {
+        if (!pageActive && controller.hasSelection) {
+            diagnosticsLogger("thread_in_place_selection_page_inactive_clear messageId=${controller.messageId}")
+            controller.clear()
+        }
+    }
     val backOwner =
         threadInPlaceSelectionBackOwner(
             hasSelection = controller.hasSelection,
@@ -388,7 +426,7 @@ internal fun ThreadInPlaceSelectableBody(
         diagnosticsLogger("thread_in_place_selection_back_clear messageId=${controller.messageId}")
         controller.clear()
     }
-    if (controller.menuRequested && controller.hasSelection) {
+    if (pageActive && controller.menuRequested && controller.hasSelection) {
         ThreadInPlaceSelectionBarHost(
             controller = controller,
             onAction = { action ->
@@ -412,7 +450,9 @@ internal fun ThreadInPlaceSelectableBody(
                     ThreadInPlaceSelectionBarAction.More -> {
                         diagnosticsLogger("thread_in_place_selection_more messageId=${controller.messageId}")
                         val rowLocal =
-                            controller.currentMenuAnchorInWindow()?.let { controller.rowLocalOffsetOf(it.bottomCenter) }
+                            controller.currentMenuAnchorInWindow()?.let {
+                                controller.rowLocalOffsetOf(it.visibleSelection.bottomCenter)
+                            }
                         controller.clear()
                         onShowMessageMenu(rowLocal)
                     }
@@ -429,20 +469,20 @@ private fun ThreadInPlaceSelectionBarHost(
     onAction: (ThreadInPlaceSelectionBarAction) -> Unit,
 ) {
     val anchor = controller.currentMenuAnchorInWindow() ?: return
-    ThreadInPlaceSelectionBar(anchorInWindow = anchor, onAction = onAction)
+    ThreadInPlaceSelectionBar(anchor = anchor, onAction = onAction)
 }
 
 @Composable
 private fun ThreadInPlaceSelectionBar(
-    anchorInWindow: Rect,
+    anchor: ThreadInPlaceSelectionBarAnchor,
     onAction: (ThreadInPlaceSelectionBarAction) -> Unit,
 ) {
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
     val edgePx = with(density) { 8.dp.roundToPx() }
     val positionProvider =
-        remember(anchorInWindow, gapPx, edgePx) {
-            ThreadInPlaceSelectionBarPositionProvider(anchorInWindow, gapPx, edgePx)
+        remember(anchor, gapPx, edgePx) {
+            ThreadInPlaceSelectionBarPositionProvider(anchor, gapPx, edgePx)
         }
     Popup(
         popupPositionProvider = positionProvider,
@@ -482,9 +522,9 @@ private fun ThreadInPlaceSelectionBarAction.icon(): RaftLucideIconName =
         ThreadInPlaceSelectionBarAction.More -> RaftLucideIconName.Ellipsis
     }
 
-/** Above the selection when there is room, otherwise below it; always inside the window. */
+/** Positions the bar against the visible selection, inside the list viewport (window as fallback). */
 internal class ThreadInPlaceSelectionBarPositionProvider(
-    private val anchorInWindow: Rect,
+    private val anchor: ThreadInPlaceSelectionBarAnchor,
     private val gapPx: Int,
     private val edgePx: Int,
 ) : PopupPositionProvider {
@@ -494,21 +534,39 @@ internal class ThreadInPlaceSelectionBarPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize
     ): IntOffset =
-        threadInPlaceSelectionBarOffset(anchorInWindow, windowSize, popupContentSize, gapPx, edgePx)
+        threadInPlaceSelectionBarOffset(
+            visibleSelection = anchor.visibleSelection,
+            area = anchor.area ?: Rect(0f, 0f, windowSize.width.toFloat(), windowSize.height.toFloat()),
+            popupSize = popupContentSize,
+            gapPx = gapPx,
+            edgePx = edgePx
+        )
 }
 
+/**
+ * Above the visible selection when it fits inside [area], else below it, else (the selection
+ * fills the viewport, e.g. Select All on a tall message) pinned to the top of [area]. The bar is
+ * always clamped inside [area], the list's visible viewport.
+ */
 internal fun threadInPlaceSelectionBarOffset(
-    anchorInWindow: Rect,
-    windowSize: IntSize,
+    visibleSelection: Rect,
+    area: Rect,
     popupSize: IntSize,
     gapPx: Int,
     edgePx: Int,
 ): IntOffset {
-    val maxX = (windowSize.width - popupSize.width - edgePx).coerceAtLeast(edgePx)
-    val x = (anchorInWindow.center.x - popupSize.width / 2f).toInt().coerceIn(edgePx, maxX)
-    val above = anchorInWindow.top.toInt() - gapPx - popupSize.height
-    val below = anchorInWindow.bottom.toInt() + gapPx
-    val maxY = (windowSize.height - popupSize.height - edgePx).coerceAtLeast(edgePx)
-    val y = if (above >= edgePx) above else below.coerceIn(edgePx, maxY)
-    return IntOffset(x, y)
+    val minX = area.left.toInt() + edgePx
+    val maxX = (area.right.toInt() - edgePx - popupSize.width).coerceAtLeast(minX)
+    val x = (visibleSelection.center.x - popupSize.width / 2f).toInt().coerceIn(minX, maxX)
+    val minY = area.top.toInt() + edgePx
+    val maxY = (area.bottom.toInt() - edgePx - popupSize.height).coerceAtLeast(minY)
+    val above = visibleSelection.top.toInt() - gapPx - popupSize.height
+    val below = visibleSelection.bottom.toInt() + gapPx
+    val y =
+        when {
+            above >= minY -> above
+            below <= maxY -> below
+            else -> minY
+        }
+    return IntOffset(x, y.coerceIn(minY, maxY))
 }

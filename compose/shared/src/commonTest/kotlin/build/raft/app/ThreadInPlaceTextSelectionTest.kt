@@ -104,21 +104,6 @@ class ThreadInPlaceTextSelectionTest {
     }
 
     @Test
-    fun barSitsAboveTheSelectionWhenThereIsRoomAndBelowOtherwise() {
-        val window = IntSize(1080, 2000)
-        val popup = IntSize(300, 120)
-
-        val above = threadInPlaceSelectionBarOffset(Rect(400f, 800f, 700f, 900f), window, popup, gapPx = 16, edgePx = 16)
-        assertEquals(IntOffset(400, 800 - 16 - 120), above)
-
-        val below = threadInPlaceSelectionBarOffset(Rect(400f, 60f, 700f, 160f), window, popup, gapPx = 16, edgePx = 16)
-        assertEquals(IntOffset(400, 160 + 16), below)
-
-        val clamped = threadInPlaceSelectionBarOffset(Rect(0f, 800f, 40f, 900f), window, popup, gapPx = 16, edgePx = 16)
-        assertEquals(16, clamped.x)
-    }
-
-    @Test
     fun selectionHostIsOnlyEnabledByTheNewMessageMenuToggle() {
         assertFalse(ThreadInPlaceTextSelectionHost(enabled = false, copyText = {}).enabled)
         assertTrue(ThreadInPlaceTextSelectionHost(enabled = true, copyText = {}).enabled)
@@ -230,15 +215,91 @@ class ThreadInPlaceTextSelectionTest {
         )
     }
 
+
+    // Phone-ish window: top bar 0..200, list viewport 200..1600, composer 1600..2000.
+    private val viewport = Rect(0f, 200f, 1080f, 1600f)
+    private val popup = IntSize(300, 120)
+
+    private fun offset(visibleSelection: Rect) =
+        threadInPlaceSelectionBarOffset(visibleSelection, viewport, popup, gapPx = 16, edgePx = 16)
+
+    private fun assertInsideViewport(offset: IntOffset) {
+        assertTrue(offset.y >= viewport.top + 16, "bar over the top bar: $offset")
+        assertTrue(offset.y + popup.height <= viewport.bottom - 16, "bar over the composer: $offset")
+        assertTrue(offset.x >= viewport.left + 16 && offset.x + popup.width <= viewport.right - 16)
+    }
+
     @Test
-    fun barHidesWhileTheSelectionIsScrolledOutOfTheVisibleBody() {
+    fun selectAllOnAMessageTallerThanTheScreenKeepsTheBarInsideTheViewport() {
+        // Body spans -3000..5000; everything selected; visible part == the whole viewport.
+        val anchor =
+            threadInPlaceSelectionVisibleAnchor(
+                selectionInWindow = Rect(16f, -3000f, 1064f, 5000f),
+                visibleBodyInWindow = Rect(16f, 200f, 1064f, 1600f),
+                viewportInWindow = viewport
+            )!!
+        assertEquals(Rect(16f, 200f, 1064f, 1600f), anchor.visibleSelection)
+        val bar = offset(anchor.visibleSelection)
+        assertInsideViewport(bar)
+        assertEquals(216, bar.y) // pinned to the top of the list, not the window bottom
+    }
+
+    @Test
+    fun selectingTheFirstVisibleLineDoesNotPutTheBarOverTheTopBar() {
+        val anchor =
+            threadInPlaceSelectionVisibleAnchor(
+                selectionInWindow = Rect(100f, 210f, 600f, 260f),
+                visibleBodyInWindow = Rect(16f, 200f, 1064f, 900f),
+                viewportInWindow = viewport
+            )!!
+        val bar = offset(anchor.visibleSelection)
+        assertInsideViewport(bar)
+        assertEquals(260 + 16, bar.y) // no room above inside the list -> below the line
+    }
+
+    @Test
+    fun selectingTheLastVisibleLineKeepsTheBarOffTheComposer() {
+        val bar = offset(Rect(100f, 1540f, 600f, 1590f))
+        assertInsideViewport(bar)
+        assertEquals(1540 - 16 - 120, bar.y)
+    }
+
+    @Test
+    fun partiallyScrolledSelectionAnchorsToItsVisiblePart() {
+        // Selection 1400..1900 but the list ends at 1600 (composer below): only 1400..1600 counts.
+        val anchor =
+            threadInPlaceSelectionVisibleAnchor(
+                selectionInWindow = Rect(100f, 1400f, 600f, 1900f),
+                visibleBodyInWindow = Rect(16f, 1000f, 1064f, 1600f),
+                viewportInWindow = viewport
+            )!!
+        assertEquals(Rect(100f, 1400f, 600f, 1600f), anchor.visibleSelection)
+        val bar = offset(anchor.visibleSelection)
+        assertInsideViewport(bar)
+        assertEquals(1400 - 16 - 120, bar.y)
+    }
+
+    @Test
+    fun barHidesOnlyWhenNoPartOfTheSelectionIsVisible() {
         val selection = Rect(100f, 500f, 400f, 560f)
-        // Fully visible body: anchor follows the live selection rect.
-        assertEquals(selection, threadInPlaceSelectionVisibleAnchor(selection, Rect(0f, 300f, 1080f, 900f)))
-        // Body clipped so the selected lines are under the composer / above the top bar: hide.
-        assertEquals(null, threadInPlaceSelectionVisibleAnchor(selection, Rect(0f, 600f, 1080f, 900f)))
-        // Body scrolled fully out of the list viewport (clipped bounds are empty): hide.
-        assertEquals(null, threadInPlaceSelectionVisibleAnchor(selection, Rect(0f, 900f, 1080f, 900f)))
-        assertEquals(null, threadInPlaceSelectionVisibleAnchor(null, Rect(0f, 300f, 1080f, 900f)))
+        // Selected lines scrolled under the composer (body clipped above them): hide.
+        assertEquals(null, threadInPlaceSelectionVisibleAnchor(selection, Rect(0f, 600f, 1080f, 1600f), viewport))
+        // Body scrolled fully out of the list (clipped bounds empty): hide.
+        assertEquals(null, threadInPlaceSelectionVisibleAnchor(selection, Rect(0f, 1600f, 1080f, 1600f), viewport))
+        // Selection above the list viewport (under the top bar): hide.
+        assertEquals(
+            null,
+            threadInPlaceSelectionVisibleAnchor(Rect(100f, 100f, 400f, 180f), Rect(0f, 0f, 1080f, 900f), viewport)
+        )
+        assertEquals(null, threadInPlaceSelectionVisibleAnchor(null, Rect(0f, 300f, 1080f, 900f), viewport))
+        // Fully visible: anchor is the selection itself.
+        assertEquals(selection, threadInPlaceSelectionVisibleAnchor(selection, Rect(0f, 300f, 1080f, 900f), viewport)?.visibleSelection)
+    }
+
+    @Test
+    fun narrowSelectionNearTheEdgeIsClampedHorizontallyInsideTheViewport() {
+        val bar = offset(Rect(0f, 800f, 40f, 900f))
+        assertEquals(16, bar.x)
+        assertInsideViewport(bar)
     }
 }

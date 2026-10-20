@@ -348,6 +348,7 @@ import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
@@ -21168,10 +21169,21 @@ private fun ThreadMessagesListContent(
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
                 )
             }
+            val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
             LazyColumn(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    .then(
+                        if (inPlaceSelectionViewportHost?.enabled == true) {
+                            // In-place selection bar stays inside the list's visible viewport.
+                            Modifier.onGloballyPositioned { coordinates ->
+                                inPlaceSelectionViewportHost.updateViewport(coordinates.boundsInWindow())
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .raftLongMessageCollapseViewport(
                         controller = longMessageCollapseController,
                         verticalContentPaddingPx =
