@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
@@ -40,7 +41,9 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckbox
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxRow
+import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftDropdownMenu
@@ -101,7 +104,8 @@ import kotlin.test.Test
  * - [field]: `components.ui.form-field.states`; [dialogForm]:
  *   `components.home.create-channel.dialog`, `components.members.create-agent.dialog`
  *   and `.dialog-error`.
- * - [checkbox]: `components.ui.checkbox.states`, `library.raft-ui.checkbox-status.states`.
+ * - [checkbox]: `components.ui.checkbox.states`, `library.raft-ui.checkbox-status.states`,
+ *   `components.ui.check-marker.states` (the indicator, square and circle).
  * - [radio]: `library.raft-ui.label-radio.states`.
  * - [switch]: `components.settings.appearance.page` (switch rows).
  * - [tabs]: `library.raft-ui.tabs.states`, `screens.members.agent-detail.workspace`.
@@ -256,6 +260,28 @@ class InteractiveComponentScreenshotTest {
                         RaftCheckbox(checked, {}, indeterminate = mixed)
                         StateCell(focused = true) { RaftCheckbox(checked, {}, indeterminate = mixed) }
                         RaftCheckbox(checked, {}, indeterminate = mixed, enabled = false)
+                    }
+                }
+                Caption("Indicator (check marker): square, circle x unchecked, checked, indeterminate, disabled")
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    listOf(RaftCheckboxShape.Square, RaftCheckboxShape.Circle).forEach { shape ->
+                        RaftCheckboxIndicator(checked = false, shape = shape)
+                        RaftCheckboxIndicator(checked = true, shape = shape)
+                        RaftCheckboxIndicator(checked = false, shape = shape, indeterminate = true)
+                        RaftCheckboxIndicator(checked = true, shape = shape, enabled = false)
+                    }
+                }
+                Caption("components.ui.check-marker.states")
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    listOf(
+                        Triple("Square checked", true, RaftCheckboxShape.Square),
+                        Triple("Square unchecked", false, RaftCheckboxShape.Square),
+                        Triple("Circle yellow", true, RaftCheckboxShape.Circle),
+                    ).forEach { (label, checked, shape) ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RaftCheckboxIndicator(checked = checked, shape = shape)
+                            RaftText(label, style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold))
+                        }
                     }
                 }
                 Caption("Rows: label, description, focused, disabled")
@@ -552,12 +578,13 @@ class InteractiveComponentScreenshotTest {
         capture("menu") {
             Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.width(260.dp).padding(bottom = 24.dp)) {
-                    Caption("Menu: highlighted (pressed), focused, disabled", Modifier.padding(bottom = 8.dp))
+                    Caption("Menu: highlighted (pressed), focused, disabled, divider", Modifier.padding(bottom = 8.dp))
                     RaftMenuSurface(Modifier.fillMaxWidth()) {
                         RaftMenuItem("Open Channel", {}, shortcut = "⌘K", leadingIcon = { RaftGlyphIcon(RaftGlyph.ChevronRight) })
                         StateCell(pressed = true) { RaftMenuItem("Mark as Read", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Check) }) }
                         StateCell(focused = true) { RaftMenuItem("Copy Link", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Copy) }) }
                         RaftMenuItem("Archive Channel", {}, enabled = false)
+                        RaftMenuItem("Delete Message", {}, divider = true)
                         RaftMenuSeparator()
                         RaftMenuLabel("Sort by")
                         RaftMenuItem("Recent Activity", {}, checked = true)

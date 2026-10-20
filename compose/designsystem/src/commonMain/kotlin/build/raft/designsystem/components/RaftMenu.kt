@@ -142,6 +142,10 @@ internal val LocalRaftMenuFieldType = staticCompositionLocalOf { false }
  * - [leadingIcon]: 16dp in `foreground-muted`. [shortcut]: Space Mono `text-mono-meta`
  *   `foreground-hint` at the end ("⌘K").
  * - Disabled: `foreground-disabled`, no highlight.
+ * - [divider]: a 1dp `line-hairline` along the row's top edge, inside its 36dp (CSS
+ *   `border-t` on a border-box row, as the web's menu rows that start a section inside a
+ *   flush card): the row stays 36dp and its content centres in the 35dp under the line.
+ *   Between the groups of a popup use [RaftMenuSeparator] instead.
  *
  * In a [RaftDropdownMenu] the rows take part in its keyboard navigation (arrows, Home /
  * End, the first letter of a row).
@@ -155,6 +159,7 @@ fun RaftMenuItem(
     checked: Boolean = false,
     leadingIcon: (@Composable () -> Unit)? = null,
     shortcut: String? = null,
+    divider: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val colors = RaftTheme.colors
@@ -188,8 +193,11 @@ fun RaftMenuItem(
                 },
             )
             .background(if (highlighted) colors.brandSoft else Color.Transparent, shape)
+            // Drawn over the highlight, as a CSS border paints over the background.
+            .then(if (divider) Modifier.topHairline(colors.lineHairline) else Modifier)
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { if (checked) selected = true }
+            .then(if (divider) Modifier.padding(top = RaftStroke.Hairline) else Modifier)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,

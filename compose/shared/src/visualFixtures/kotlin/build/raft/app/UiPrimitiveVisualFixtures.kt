@@ -2,28 +2,19 @@ package build.raft.app
 
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftAvatarListRow
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalBadge
-import build.raft.app.components.RaftBrutalBadgeButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
 import build.raft.app.components.RaftAttentionDot
-import build.raft.app.components.RaftCheckMarker
-import build.raft.app.components.RaftCheckMarkerShape
-import build.raft.app.components.RaftCheckboxLabelRow
 import build.raft.app.components.RaftFormField
 import build.raft.app.components.RaftFormFieldLabelStyle
 import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.components.RaftProgressBar
 import build.raft.app.components.RaftProgressBarTone
-import build.raft.app.components.RaftBrutalTone
 import build.raft.app.components.RaftSectionHeader
 import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.RaftAppSelectTrigger
-import build.raft.app.components.RaftMenuItemRow
-import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.RaftSelectionPopover
 import build.raft.app.components.RaftSelectionPopoverOption
 import build.raft.app.components.RaftAppSkeleton
@@ -39,8 +30,6 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -81,38 +70,6 @@ internal fun UiSegmentedControlVisualContent() {
                 ),
             onValueSelected = {}
         )
-    }
-}
-
-@Composable
-internal fun UiButtonVisualContent(rowSpacing: Dp = 12.dp) {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(150.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // Mirrors web VisualTestingCases `ui-button` (342x150 canvas frame): two rows of
-        // `size="sm"` buttons 12px apart — outline Save / primary Sync / accent Delete,
-        // information Add / success Continue / muted disabled Disabled. Every button takes the
-        // same sm parameters (web has one size); the brutal fills map onto those variants and
-        // every minHeight below 38dp lands on raft's 32dp `md` size.
-        // Raft buttons cast no shadow and reserve none, so the gap is the full 12dp.
-        Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
-                RaftBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                RaftBrutalActionButton(label = "Sync", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                RaftBrutalActionButton(label = "Delete", onClick = {}, backgroundColor = RaftColor.AccentPink, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(rowSpacing), verticalAlignment = Alignment.CenterVertically) {
-                RaftBrutalActionButton(label = "Add", onClick = {}, backgroundColor = RaftColor.AccentCyan, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                RaftBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = RaftColor.AccentLime, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-                // Disabled is raft's opaque fill-muted / line-muted / disabled-ink chrome.
-                RaftBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = RaftColor.AccentStone, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
-            }
-        }
     }
 }
 
@@ -291,58 +248,6 @@ internal fun UiTextareaVisualContent() {
             fieldHeight = 96.dp,
             maxLines = 2
         )
-    }
-}
-
-@Composable
-internal fun UiCheckboxVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(132.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // web: raft-ui <Checkbox> is a fixed size-5 (20px) box; the disabled row is the whole
-            // <label> at opacity-60 over a disabled Checkbox.
-            RaftCheckboxLabelRow(label = "As Task selected", checked = true, size = 20.dp)
-            RaftCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 20.dp)
-            RaftCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 20.dp, modifier = Modifier.alpha(0.6f))
-        }
-    }
-}
-
-@Composable
-internal fun UiCheckMarkerVisualContent() {
-    // web `ui-check-marker`: three raft-ui <CheckboxIndicator> rows (all the fixed size-5 =
-    // 20px indicator) in a `flex flex-col gap-3 text-sm font-bold` stack, each row `gap-3`.
-    // The third is `shape="circle"` checked, which web draws as a black disc with the check
-    // mark; RaftCheckMarker's Circle is the product radio (dot) - a component gap, not
-    // something this fixture can paper over.
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(112.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftCheckMarker(checked = true, size = 20.dp)
-                Text("Square checked", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftCheckMarker(checked = false, size = 20.dp)
-                Text("Square unchecked", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftCheckMarker(checked = true, shape = RaftCheckMarkerShape.Circle, size = 20.dp)
-                Text("Circle yellow", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-        }
     }
 }
 
@@ -556,45 +461,6 @@ internal fun UiSelectionPopoverVisualContent() {
 }
 
 @Composable
-internal fun UiMenuItemVisualContent() {
-    // Mirrors the web case: four slock `MenuItem` rows (36dp, px-2.5, callout medium, mono
-    // hint shortcut) stacked flush inside a `rounded-container border border-line-seam
-    // bg-layer-popover shadow-float` card -- no popup inset -- with the last row
-    // carrying its own `border-t border-line-hairline` inside its 36dp box. 342 x 178dp =
-    // 16 + 1 + 4 x 36 + 1 + 16.
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(178.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .raftLookOverlaySurface()
-                    .padding(RaftAppStroke.Thin)
-        ) {
-            RaftMenuItemRow(label = "Open Channel", trailing = "⌘K")
-            RaftMenuItemRow(label = "Mark as Read")
-            RaftMenuItemRow(label = "Archive unavailable", enabled = false)
-            Box(modifier = Modifier.fillMaxWidth()) {
-                RaftMenuItemRow(label = "Delete Message")
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(RaftAppStroke.Thin)
-                            .background(RaftColor.BorderHairline)
-                )
-            }
-        }
-    }
-}
-
-@Composable
 internal fun UiSelectVisualContent() {
     Box(
         modifier =
@@ -610,36 +476,6 @@ internal fun UiSelectVisualContent() {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             RaftAppSelectTrigger(label = "Codex")
             RaftAppSelectTrigger(label = "", enabled = false)
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun UiBadgeVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // React renders one `flex flex-wrap gap-2` run of six raft-ui <Badge>s
-        // whose default flipped to uppercase=false ("case-sensitive content
-        // stays intact") — Title Case, no tracking, wrap where width dictates
-        // (drift #773). Warning fill is --state-warning-base #FF6900, not the
-        // softer AccentOrange.
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RaftBrutalBadge("Shared", tone = RaftBrutalTone.White, uppercase = false)
-            RaftBrutalBadge("Installed", tone = RaftBrutalTone.Lime, uppercase = false)
-            RaftBrutalBadge("Update", tone = RaftBrutalTone.Warning, uppercase = false)
-            RaftBrutalBadge("Built In", tone = RaftBrutalTone.Stone, uppercase = false)
-            RaftBrutalBadge("task #273", tone = RaftBrutalTone.Red, uppercase = false)
-            RaftBrutalBadgeButton("Install", tone = RaftBrutalTone.Pink, uppercase = false, onClick = {})
         }
     }
 }
@@ -695,40 +531,6 @@ internal fun UiSurfaceListItemVisualContent() {
                     Text("Selected list item state", style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp), color = RaftColor.TextMuted, maxLines = 1)
                 }
             }
-        }
-    }
-}
-
-@Composable
-internal fun UiAvatarListRowVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(168.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftAvatarListRow(
-                avatarWireValue = null,
-                avatarLabel = "Cindy",
-                name = "Cindy",
-                subtitle = "Claude Code",
-                rightContent = {
-                    RaftBrutalBadge("Online", tone = RaftBrutalTone.Lime, uppercase = false)
-                }
-            )
-            RaftAvatarListRow(
-                avatarWireValue = null,
-                avatarLabel = "Product UX Designer",
-                name = "Product UX Designer",
-                subtitle = "product@slock.ai",
-                selected = true,
-                rightContent = {
-                    RaftBrutalActionButton(label = "Open", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
-                }
-            )
         }
     }
 }
