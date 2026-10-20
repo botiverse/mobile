@@ -27,7 +27,7 @@ object RaftBackButtonDefaults {
  * `arrow-left`. Every page header, search bar, sheet and preview uses this one control;
  * do not draw a back arrow with a bare icon, a `clickable` box or a `RaftBrutal*` button.
  *
- * [label] is the accessible name and the hover tooltip ("Back", or "Close" with
+ * [label] is the accessible name and the long-press tooltip ("Back", or "Close" with
  * [glyph] = [RaftGlyph.X]). The arrow takes the button ink (`LocalRaftContentColor`,
  * `foreground`) unless [color] is given: pass a light ink on a dark overlay such as an
  * image preview. Place it [RaftBackButtonDefaults.EdgeInset] from the leading edge.

@@ -334,9 +334,9 @@ fun RaftButton(
  *
  * [tooltip] names the action in Title Case ("Add Reaction"). It is required: an icon
  * alone does not say what it does. It is the button's content description for screen
- * readers, and the label of a [RaftTooltip] shown while a mouse hovers (also when
- * disabled, as raft-ui's tooltip on a disabled button). Touch never opens the tooltip: a
- * long press belongs to the element's menu (raft-design Touch). [icon] is drawn in an icon-size box with
+ * readers, and the label of a [RaftTooltip] shown on a long press, or while a mouse
+ * hovers (also when disabled, as raft-ui's tooltip on a disabled button). A long press
+ * that opens the tooltip does not click. [icon] is drawn in an icon-size box with
  * [LocalRaftContentColor] set to the button ink.
  */
 @Composable
