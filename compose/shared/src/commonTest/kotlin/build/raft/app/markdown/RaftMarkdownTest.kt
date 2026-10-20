@@ -119,7 +119,7 @@ class RaftMarkdownTest {
                 resolveLabel = { "proj" },
             )
 
-        assertEquals("#proj msg", resolved.text.text.replace("\uFFFC", ""))
+        assertEquals("#proj msg", resolved.text.text.replace("\uFFFC", "").replace("\u2060", ""))
         assertEquals(3, resolved.inlineContent.size)
     }
 
@@ -141,9 +141,10 @@ class RaftMarkdownTest {
 
         assertEquals(
             "See #proj-server-management msg now",
-            resolved.text.replace("\uFFFC", ""),
+            resolved.text.replace("\uFFFC", "").replace("\u2060", ""),
         )
-        assertEquals(3, resolved.raftMarkdownInlineContentIds().size)
+        // icon, icon gap, suffix gap + the chip's reserved outer gap (raft-inline-gap).
+        assertEquals(4, resolved.raftMarkdownInlineContentIds().size)
         assertEquals(url, link.url)
         // CMP switch: the chip box travels as a RaftInlineBoxStyle annotation over the link text.
         val linkRange = resolved.getLinkAnnotations(0, resolved.length).single()
@@ -179,7 +180,7 @@ class RaftMarkdownTest {
 
         assertEquals(
             "linked message msg",
-            source.withRaftMessagePermalinkChips().text.replace("\uFFFC", ""),
+            source.withRaftMessagePermalinkChips().text.replace("\uFFFC", "").replace("\u2060", ""),
         )
     }
 
@@ -199,7 +200,8 @@ class RaftMarkdownTest {
 
         assertEquals("#proj-server-management", resolved.text.substring(labelStyle.start, labelStyle.end))
         assertEquals("msg", resolved.text.substring(suffixStyle.start, suffixStyle.end))
-        assertEquals(3, resolved.raftMarkdownInlineContentIds().size)
+        // icon, icon gap, suffix gap + the chip's reserved outer gap (raft-inline-gap).
+        assertEquals(4, resolved.raftMarkdownInlineContentIds().size)
     }
 
     @Test
@@ -214,7 +216,7 @@ class RaftMarkdownTest {
 
         val resolved = source.withRaftMessagePermalinkChips { "proj-server-management" }
 
-        assertEquals("#proj-server-management thread", resolved.text.replace("\uFFFC", ""))
+        assertEquals("#proj-server-management thread", resolved.text.replace("\uFFFC", "").replace("\u2060", ""))
     }
 
     @Test
@@ -228,7 +230,7 @@ class RaftMarkdownTest {
 
         assertEquals(
             "Thread reply: #proj-server-management thread",
-            resolved.text.replace("\uFFFC", ""),
+            resolved.text.replace("\uFFFC", "").replace("\u2060", ""),
         )
     }
 
@@ -252,7 +254,7 @@ class RaftMarkdownTest {
 
         val resolved = source.withRaftMessagePermalinkChips()
 
-        assertEquals("$url external", resolved.text.replace("\uFFFC", ""))
+        assertEquals("$url external", resolved.text.replace("\uFFFC", "").replace("\u2060", ""))
         val remainingLink =
             resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
         assertEquals(externalUrl, remainingLink.url)
@@ -462,12 +464,12 @@ class RaftMarkdownTest {
             )
 
         assertEquals(2, rendered.size)
-        assertEquals("请看 #markdown专修", rendered[0].text)
+        assertEquals("请看 #markdown专修", rendered[0].raftTextWithoutInlineGaps())
         assertEquals(
             setOf("slock:5"),
             rendered[0].raftMarkdownClickableTags()
         )
-        assertEquals("继续看 #markdown专修:7933cf78 和 #50", rendered[1].text)
+        assertEquals("继续看 #markdown专修:7933cf78 和 #50", rendered[1].raftTextWithoutInlineGaps())
         assertEquals(
             setOf("slock:23", "slock:46"),
             rendered[1].raftMarkdownClickableTags()
@@ -765,7 +767,7 @@ class RaftMarkdownTest {
         val body = "Ping @not-a-member in #not-a-channel for #15"
         val annotated = buildRaftMarkdownParagraphAnnotatedString(body)
 
-        assertEquals("Ping @not-a-member in #not-a-channel for #15", annotated.text)
+        assertEquals("Ping @not-a-member in #not-a-channel for #15", annotated.raftTextWithoutInlineGaps())
         assertEquals(setOf("slock:41"), annotated.raftMarkdownClickableTags())
     }
 
@@ -831,7 +833,7 @@ class RaftMarkdownTest {
                 annotated.raftMarkdownClickableTagInlineBoxBackground(token.id)
             }
         )
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
     }
 
     @Test
@@ -1005,7 +1007,7 @@ class RaftMarkdownTest {
                 annotated.raftMarkdownClickableTagInlineBoxBackground(tag)
             }
         )
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
     }
 
     @Test
@@ -1147,7 +1149,7 @@ class RaftMarkdownTest {
                     )
             )
 
-        assertEquals(body, annotated.text)
+        assertEquals(body, annotated.raftTextWithoutInlineGaps())
         assertEquals(setOf("slock:17", "slock:26"), annotated.raftMarkdownClickableTags())
         assertEquals(
             listOf(
@@ -1462,12 +1464,12 @@ class RaftMarkdownTest {
             .withRaftMarkdownSpanFonts(RaftType.Body)
         val expectedTagIds = tokenPlan.tagTokens().mapTo(mutableSetOf()) { it.id }
 
-        assertEquals("Ping @artin with ${inlineCodeSegment("mimo")} and bold in #markdown专修", annotated.text)
+        assertEquals("Ping @artin with ${inlineCodeSegment("mimo")} and bold in #markdown专修", annotated.raftTextWithoutInlineGaps())
         assertEquals(
             setOf("slock-message-mixed:5", "slock-message-mixed:40"),
             annotated.raftMarkdownClickableTags()
         )
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
         val boldStart = annotated.text.indexOf("bold")
         val boldSpan = annotated.spanStyles.last { it.start == boldStart && it.end == boldStart + "bold".length }
@@ -1561,9 +1563,9 @@ class RaftMarkdownTest {
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
         val annotated = buildRaftMarkdownParagraphAnnotatedString(body, annotator)
-        assertEquals("Ping @artin for #405 and ${inlineCodeSegment("mimo")}", annotated.text)
+        assertEquals("Ping @artin for #405 and ${inlineCodeSegment("mimo")}", annotated.raftTextWithoutInlineGaps())
         assertEquals(setOf("slock:5", "slock:16"), annotated.raftMarkdownClickableTags())
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertEquals(listOf(inlineCodeSegment("mimo")), annotated.raftInlineCodeMarkerTextSegments())
     }
 
@@ -1584,9 +1586,9 @@ class RaftMarkdownTest {
 
         val annotated = buildRaftMarkdownParagraphAnnotatedString(body, annotator)
 
-        assertEquals("Bold text for @artin in #markdown专修 with ${inlineCodeSegment("code")}", annotated.text)
+        assertEquals("Bold text for @artin in #markdown专修 with ${inlineCodeSegment("code")}", annotated.raftTextWithoutInlineGaps())
         assertEquals(setOf("slock:18", "slock:28"), annotated.raftMarkdownClickableTags())
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertEquals(listOf(inlineCodeSegment("code")), annotated.raftInlineCodeMarkerTextSegments())
     }
 
@@ -1996,8 +1998,9 @@ class RaftMarkdownTest {
                 "then task #1487"
         val annotated = buildRaftMarkdownParagraphAnnotatedString(body)
         val links = annotated.getLinkAnnotations(0, annotated.length)
+        // The task chip starts after its reserved leading gap (placeholder + word joiner).
         assertEquals(
-            listOf("Url:0..32", "Clickable:43..48"),
+            listOf("Url:0..32", "Clickable:45..50"),
             links.map { range ->
                 val kind =
                     when (range.item) {
@@ -2011,7 +2014,7 @@ class RaftMarkdownTest {
         val external = links.single { it.item is LinkAnnotation.Url }
         val raft = links.single { it.item is LinkAnnotation.Clickable }
 
-        assertEquals("#1487 feat(search): pin entities then task #1487", annotated.text)
+        assertEquals("#1487 feat(search): pin entities then task #1487", annotated.raftTextWithoutInlineGaps())
         assertEquals("#1487 feat(search): pin entities", annotated.text.substring(external.start, external.end))
         assertEquals("#1487", annotated.text.substring(raft.start, raft.end))
         assertTrue(raft.start >= external.end)

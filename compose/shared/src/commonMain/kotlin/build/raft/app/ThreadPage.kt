@@ -206,6 +206,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
@@ -7774,11 +7775,11 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val markdownTaskStatuses =
-        remember(taskProjectionSlice.tasks, serverTaskProjectionSlice.tasks, timelineSlice.messages, timelineSlice.originMessage) {
+        remember(taskProjectionSlice, serverTaskProjectionSlice) {
             threadMarkdownTaskStatusesByNumber(
                 channelTasks = taskProjectionSlice.tasks,
                 serverTasks = serverTaskProjectionSlice.tasks,
-                messages = listOfNotNull(timelineSlice.originMessage) + timelineSlice.messages
+                loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
     val linkedTasksProjection =
@@ -25052,26 +25053,33 @@ private fun ThreadMessageCardContent(
                                                     )
                                                 }
                                                 key(markdownRenderSignature) {
-                                                    RaftMarkdownBody(
-                                                        body = bodyForRender,
-                                                        fillWidth = !alignOwnMessageRight,
-                                                        textStyle = messageBodyTextStyle,
-                                                        highlightedMentions = highlightedMentions,
-                                                        isTagValid = isMarkdownTagValid,
-                                                        resolveTagLabel = resolveMarkdownTagLabel,
-                                                        inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                                        activeTagKey = activeMarkdownTagKey,
-                                                        onOpenTagAction = { tag, actionId ->
-                                                            tapMovementGate.rejectChildAction("markdown_tag")
-                                                            onOpenMarkdownTag(tag, actionId)
-                                                        },
-                                                        onOpenUrl = { url ->
-                                                            tapMovementGate.rejectChildAction("markdown_url")
-                                                            onOpenMarkdownUrl(url)
-                                                        },
-                                                        performanceKey = messagePerformanceKey,
-                                                        performanceLogger = diagnosticsLogger
-                                                    )
+                                                    // web MessageItem taskByNumber: the message's own
+                                                    // linked task wins, for this body only.
+                                                    RaftMarkdownOwnTaskStatusScope(
+                                                        taskNumber = message.taskNumber,
+                                                        taskStatus = message.taskStatus,
+                                                    ) {
+                                                        RaftMarkdownBody(
+                                                            body = bodyForRender,
+                                                            fillWidth = !alignOwnMessageRight,
+                                                            textStyle = messageBodyTextStyle,
+                                                            highlightedMentions = highlightedMentions,
+                                                            isTagValid = isMarkdownTagValid,
+                                                            resolveTagLabel = resolveMarkdownTagLabel,
+                                                            inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                            activeTagKey = activeMarkdownTagKey,
+                                                            onOpenTagAction = { tag, actionId ->
+                                                                tapMovementGate.rejectChildAction("markdown_tag")
+                                                                onOpenMarkdownTag(tag, actionId)
+                                                            },
+                                                            onOpenUrl = { url ->
+                                                                tapMovementGate.rejectChildAction("markdown_url")
+                                                                onOpenMarkdownUrl(url)
+                                                            },
+                                                            performanceKey = messagePerformanceKey,
+                                                            performanceLogger = diagnosticsLogger
+                                                        )
+                                                    }
                                                 }
                                             } else {
                                                 Text(

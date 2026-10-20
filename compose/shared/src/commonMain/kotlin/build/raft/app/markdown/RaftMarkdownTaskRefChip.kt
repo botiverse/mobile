@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,8 +38,9 @@ import build.raft.app.raftSpanStyleForWeight
 
 /**
  * Status of every task the current surface knows, keyed by task number, for inline `#N` task
- * refs in Markdown. Mirrors web `taskByNumber` (MessageItem.tsx: server tasks, then channel tasks,
- * then the message's own linked task win).
+ * refs in Markdown. Mirrors web `taskByNumber` (MessageItem.tsx): the surface provides server
+ * tasks overlaid by channel tasks (channel wins); [RaftMarkdownOwnTaskStatusScope] then layers the
+ * message's own linked task on top for that message's body only.
  *
  * `null` means the surface has no task source at all (search previews, fixtures, …): task refs keep
  * the legacy uniform chip there. A non-null map switches to web parity: a known task renders the
@@ -44,6 +48,41 @@ import build.raft.app.raftSpanStyleForWeight
  * that claims no status.
  */
 internal val LocalRaftMarkdownTaskStatuses = compositionLocalOf<Map<Int, TaskStatus>?> { null }
+
+/**
+ * The status map with a message's own linked task layered on top (web: "the message's own linked
+ * task is always the freshest source for a ref in that message's body"). A `null` base stays
+ * `null`: the surface has no (loaded) task source, so refs keep the legacy chip.
+ */
+internal fun Map<Int, TaskStatus>?.withRaftMarkdownOwnTaskStatus(
+    taskNumber: Int?,
+    taskStatus: TaskStatus?,
+): Map<Int, TaskStatus>? {
+    val base = this ?: return null
+    val number = taskNumber?.takeIf { it > 0 } ?: return base
+    val status = taskStatus ?: return base
+    if (base[number] == status) return base
+    return base + (number to status)
+}
+
+/** Overrides [LocalRaftMarkdownTaskStatuses] with the message's own linked task for [content]. */
+@Composable
+internal fun RaftMarkdownOwnTaskStatusScope(
+    taskNumber: Int?,
+    taskStatus: String?,
+    content: @Composable () -> Unit,
+) {
+    val base = LocalRaftMarkdownTaskStatuses.current
+    val statuses =
+        remember(base, taskNumber, taskStatus) {
+            base.withRaftMarkdownOwnTaskStatus(taskNumber, TaskStatus.fromWireValue(taskStatus))
+        }
+    if (statuses === base) {
+        content()
+    } else {
+        CompositionLocalProvider(LocalRaftMarkdownTaskStatuses provides statuses, content = content)
+    }
+}
 
 /** The pixel raft-ui draws for a status (`TaskStatusPixel`): a filled square with an ink edge. */
 @Immutable
@@ -62,7 +101,8 @@ internal data class RaftTaskStatusPixelStyle(
  * edge, `rounded-sticker`, `px-1.5`, bold sticker-ink text, no pixel.
  *
  * Horizontal padding is carried by placeholders ([leadingGap], [trailingGap]) inside the boxed
- * range because the painted box does not reserve advance width (see [RaftInlineBoxStyle]).
+ * range (the pixel lives in the leading one); the box's margin is reserved outside the chip by
+ * [withRaftInlineChipGaps].
  */
 @Immutable
 internal data class RaftMarkdownTaskChipStyle(
@@ -85,6 +125,9 @@ private val RaftMarkdownTaskChipPaddingEnd = 6.dp
 private val RaftMarkdownTaskBadgePaddingX = 6.dp
 private val RaftMarkdownTaskBadgeEdge = 1.5.dp
 private val RaftMarkdownTaskChipVerticalPadding = 1.dp
+// Outer gap reserved by withRaftInlineChipGaps so adjacent chips / CJK punctuation never touch the
+// chip (web `mx-0.5`-sized breathing room; the chip padding itself lives in the lead/trail gaps).
+private val RaftMarkdownTaskChipMargin = 2.dp
 
 internal fun raftMarkdownTaskChipStyle(
     status: TaskStatus?,
@@ -101,6 +144,8 @@ internal fun raftMarkdownTaskChipStyle(
                     paddingTop = RaftMarkdownTaskChipVerticalPadding,
                     paddingBottom = RaftMarkdownTaskChipVerticalPadding,
                     cornerRadius = RaftAppRadius.Sticker,
+                marginStart = RaftMarkdownTaskChipMargin,
+                marginEnd = RaftMarkdownTaskChipMargin,
                 ),
             pixel = null,
             textColor = RaftUiPalette.inactiveForeground,
@@ -117,6 +162,8 @@ internal fun raftMarkdownTaskChipStyle(
                 paddingTop = RaftMarkdownTaskChipVerticalPadding,
                 paddingBottom = RaftMarkdownTaskChipVerticalPadding,
                 cornerRadius = RaftAppRadius.Sticker,
+                marginStart = RaftMarkdownTaskChipMargin,
+                marginEnd = RaftMarkdownTaskChipMargin,
             ),
         pixel =
             RaftTaskStatusPixelStyle(
@@ -191,6 +238,25 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
     }
 }
 
+private val RaftMarkdownTaskChipInlineContentLight: Map<String, InlineTextContent> by lazy {
+    raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftLight)
+}
+private val RaftMarkdownTaskChipInlineContentDark: Map<String, InlineTextContent> by lazy {
+    raftMarkdownTaskChipInlineContentForColors(RaftUiThemeColors.RaftDark)
+}
+
+/**
+ * Inline content for every chip style (each status plus the unknown badge) in one theme. Built
+ * once per theme: the placeholders and pixel colours depend only on status and theme.
+ */
+internal fun raftMarkdownTaskChipInlineContent(dark: Boolean): Map<String, InlineTextContent> =
+    if (dark) RaftMarkdownTaskChipInlineContentDark else RaftMarkdownTaskChipInlineContentLight
+
+private fun raftMarkdownTaskChipInlineContentForColors(colors: RaftUiThemeColors): Map<String, InlineTextContent> =
+    raftMarkdownTaskChipInlineContent(
+        (TaskStatus.entries + listOf<TaskStatus?>(null)).map { status -> raftMarkdownTaskChipStyle(status, colors) }
+    )
+
 /** Inline content for every chip style used in a document (shared ids per status). */
 internal fun raftMarkdownTaskChipInlineContent(
     styles: Collection<RaftMarkdownTaskChipStyle>
@@ -232,7 +298,7 @@ private fun raftMarkdownTaskChipSpacer(width: Dp): InlineTextContent =
     ) {}
 
 /** raft-ui `TaskStatusPixel`: 7.5px rect, 1.5px sticker-ink stroke, 1.25px radius (9px outer). */
-@androidx.compose.runtime.Composable
+@Composable
 internal fun RaftTaskStatusPixel(
     style: RaftTaskStatusPixelStyle,
     modifier: Modifier = Modifier,
