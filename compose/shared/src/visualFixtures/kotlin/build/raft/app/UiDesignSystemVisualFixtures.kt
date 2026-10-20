@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,6 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
@@ -102,6 +107,29 @@ internal fun UiButtonVisualContent() {
                 RaftButton("Continue", onClick = {}, variant = RaftButtonVariant.Default)
                 RaftButton("Disabled", onClick = {}, variant = RaftButtonVariant.Default, enabled = false)
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun UiBadgeVisualContent() {
+    // web `ui-badge`: one `flex flex-wrap gap-2` run of six raft-ui <Badge>s in source
+    // case. "Shared" is `appearance="outline"`: a transparent chip with a 1dp hairline and
+    // Space Mono `foreground-muted` type (components/badge.md, Variants), not a solid paper
+    // sticker. The rest are solid stickers by colour role; Install is the accent badge
+    // rendered as a button, drawn here as its badge (RaftBadge has no button form).
+    UiDesignSystemFrame(height = 92.dp) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RaftBadge("Shared", appearance = RaftBadgeAppearance.Outline)
+            RaftBadge("Installed", variant = RaftBadgeVariant.Success)
+            RaftBadge("Update", variant = RaftBadgeVariant.Warning)
+            RaftBadge("Built In", variant = RaftBadgeVariant.Muted)
+            RaftBadge("task #273", variant = RaftBadgeVariant.Danger)
+            RaftBadge("Install", variant = RaftBadgeVariant.Accent)
         }
     }
 }

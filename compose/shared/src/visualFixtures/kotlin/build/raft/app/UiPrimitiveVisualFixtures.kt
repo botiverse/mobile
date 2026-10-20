@@ -6,7 +6,6 @@ import build.raft.app.components.RaftAvatarListRow
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalBadge
-import build.raft.app.components.RaftBrutalBadgeButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
 import build.raft.app.components.RaftAttentionDot
@@ -37,8 +36,6 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -544,36 +541,6 @@ internal fun UiSelectVisualContent() {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             RaftAppSelectTrigger(label = "Codex")
             RaftAppSelectTrigger(label = "", enabled = false)
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun UiBadgeVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(92.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        // React renders one `flex flex-wrap gap-2` run of six raft-ui <Badge>s
-        // whose default flipped to uppercase=false ("case-sensitive content
-        // stays intact") — Title Case, no tracking, wrap where width dictates
-        // (drift #773). Warning fill is --state-warning-base #FF6900, not the
-        // softer AccentOrange.
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RaftBrutalBadge("Shared", tone = RaftBrutalTone.White, uppercase = false)
-            RaftBrutalBadge("Installed", tone = RaftBrutalTone.Lime, uppercase = false)
-            RaftBrutalBadge("Update", tone = RaftBrutalTone.Warning, uppercase = false)
-            RaftBrutalBadge("Built In", tone = RaftBrutalTone.Stone, uppercase = false)
-            RaftBrutalBadge("task #273", tone = RaftBrutalTone.Red, uppercase = false)
-            RaftBrutalBadgeButton("Install", tone = RaftBrutalTone.Pink, uppercase = false, onClick = {})
         }
     }
 }
