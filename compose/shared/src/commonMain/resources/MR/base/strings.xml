@@ -809,6 +809,7 @@
     <string name="activity_list_mentioned_you">Mentioned you</string>
     <string name="activity_list_unread_count_description">%1$d new</string>
     <string name="activity_list_draft_description">Thread has an unsent draft</string>
+    <string name="activity_list_marked_done">Marked as done</string>
     <string name="activity_fallback_thread_update">Thread update</string>
     <string name="activity_fallback_action_required">Action required</string>
     <string name="activity_fallback_conversation_update">Conversation update</string>
