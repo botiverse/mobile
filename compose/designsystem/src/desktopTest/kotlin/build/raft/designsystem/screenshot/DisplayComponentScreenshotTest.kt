@@ -803,6 +803,13 @@ class DisplayComponentScreenshotTest {
                     )
                     Box(Modifier.height(8.dp))
                     RaftReadOnlyField("rft_9c2b…9a8f", mono = true)
+                    Box(Modifier.height(8.dp))
+                    RaftReadOnlyField(
+                        "Reviews pull requests in #design and posts a summary of every change that touches the tokens.",
+                        maxLines = Int.MAX_VALUE,
+                    )
+                    Box(Modifier.height(8.dp))
+                    RaftReadOnlyField("/home/wug/work/raft-mobile/compose/designsystem/src/commonMain/kotlin", mono = true, maxLines = 2)
                 }
                 RaftSection("Created agents", count = "3") {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {

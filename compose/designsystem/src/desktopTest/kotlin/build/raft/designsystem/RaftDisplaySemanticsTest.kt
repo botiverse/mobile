@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -32,6 +33,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
@@ -60,6 +62,7 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftPulseClock
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarSectionHeader
+import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -346,6 +349,24 @@ class RaftDisplaySemanticsTest {
             )
             onNodeWithContentDescription("Remove").performTouchInput { click(Offset(centerX, -8.dp.toPx())) }
             assertEquals(1, clicks, "a tap 8dp above the button clicks it")
+        }
+
+    /** A read-only value is one 44dp line unless it may wrap; then the box grows by its lines. */
+    @Test
+    fun aMultiLineReadOnlyFieldGrowsWithItsLines() =
+        runComposeUiTest {
+            val long = "Reviews pull requests in #design and posts a summary of every change that touches the tokens."
+            setContent(
+                themed {
+                    Column(Modifier.width(200.dp)) {
+                        RaftReadOnlyField(long, Modifier.testTag("one"))
+                        RaftReadOnlyField(long, Modifier.testTag("wrapped"), maxLines = Int.MAX_VALUE)
+                    }
+                },
+            )
+            fun height(tag: String) = onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.height / density.density
+            assertEquals(44f, height("one"), 0.5f)
+            assertTrue(height("wrapped") >= 44f + 20f * 2, "wrapped is ${height("wrapped")}dp")
         }
 
     @Test

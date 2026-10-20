@@ -175,7 +175,7 @@ Other checks:
 | `RaftListRowGroup`, `RaftListRow` | ListRow | Done | Default / plain / entry, tones, selected (`info-soft`, `selected` semantics), pressed, inset focus, disabled, subtitle (AvatarListRow) |
 | `RaftDescriptionList` | DescriptionList | Done | Vertical; horizontal grid at 640dp+, one column below, two columns at content width when unbounded; values wrap; each fact is one screen-reader item |
 | `RaftIconTile`, `RaftStickerTile` | IconTile | Done | Tile variants and sizes; the sticker tile of the pages |
-| `RaftCodeBlock`, `RaftReadOnlyField` | CopyableCode | Done | Read-only command (wraps), the disabled-field value |
+| `RaftCodeBlock`, `RaftReadOnlyField` | CopyableCode | Done | Read-only command (wraps), the disabled-field value (one 44dp line, or `maxLines` > 1: wraps and grows from 44dp, 12dp above and below) |
 | `RaftSection`, `RaftSectionEyebrow` | — | Done | Profile / settings section heading |
 | `RaftTextField`, `RaftTextFieldAction`, `RaftTextFieldClearAction` | Input, InputGroup | Done | Placeholder, value, focus ring on any focus (tap included), invalid, disabled, read-only (`fill-muted`, hairline, muted text); icon and text addons (`/` prefix, suffix) ring the whole group; `trailingAction`: the button addon at the end (28dp, `foreground-muted`, pressed `fill-pressed`, named; clear with the `LocalRaftStrings` "Clear", show password, copy) |
 | `RaftTextarea`, `RaftTextareaCounter` | Textarea | Done | Grows to `maxHeight`; counter turns bold red past the limit or when invalid; `String` and `TextFieldValue` overloads; `inputModifier` reaches the editor (focus requester, focus and IME hooks) |
