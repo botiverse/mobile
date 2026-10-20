@@ -213,6 +213,10 @@ fun androidMMKVNetworkRecoveryKeyValueStore(context: Context): RaftKeyValueStore
 fun androidMMKVApiEnvironmentKeyValueStore(context: Context): RaftKeyValueStore =
     AndroidAppScopeKeyValueStores.get(context, SharedApiEnvironmentStore.Namespace)
 
+/** The shared `slockLocal` preference store (holds e.g. the persisted pixel-avatar table). */
+fun androidMMKVLocalPreferenceKeyValueStore(context: Context): RaftKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, RaftLocalPreferenceStore.KuiklyNamespace)
+
 fun androidMMKVActivityUnreadKeyValueStore(context: Context): RaftKeyValueStore =
     AndroidAppScopeKeyValueStores.get(context, RAFT_ACTIVITY_UNREAD_MMKV_NAMESPACE)
 
