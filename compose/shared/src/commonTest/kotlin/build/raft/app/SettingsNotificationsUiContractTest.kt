@@ -60,6 +60,28 @@ class SettingsNotificationsUiContractTest {
     }
 
     @Test
+    fun previewModeStrictnessOrdersFullBelowSenderOnlyBelowHidden() {
+        assertEquals(0, PushPreviewMode.Full.strictness)
+        assertEquals(1, PushPreviewMode.SenderOnly.strictness)
+        assertEquals(2, PushPreviewMode.Hidden.strictness)
+        assertTrue(PushPreviewMode.Full.strictness < PushPreviewMode.SenderOnly.strictness)
+        assertTrue(PushPreviewMode.SenderOnly.strictness < PushPreviewMode.Hidden.strictness)
+    }
+
+    @Test
+    fun stricterOfIsOrderIndependent() {
+        for (a in PushPreviewMode.entries) {
+            for (b in PushPreviewMode.entries) {
+                val expected = if (a.strictness >= b.strictness) a else b
+                assertEquals(expected, PushPreviewMode.stricterOf(a, b), "stricterOf($a, $b)")
+                assertEquals(PushPreviewMode.stricterOf(a, b), PushPreviewMode.stricterOf(b, a), "stricterOf($b, $a)")
+            }
+        }
+        assertEquals(PushPreviewMode.Hidden, PushPreviewMode.stricterOf(PushPreviewMode.Full, PushPreviewMode.Hidden))
+        assertEquals(PushPreviewMode.SenderOnly, PushPreviewMode.stricterOf(PushPreviewMode.SenderOnly, PushPreviewMode.Full))
+    }
+
+    @Test
     fun previewModeEachEntryHasDistinctIconAndLabel() {
         assertEquals(
             PushPreviewMode.entries.size,

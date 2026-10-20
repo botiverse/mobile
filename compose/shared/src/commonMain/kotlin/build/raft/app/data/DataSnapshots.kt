@@ -1792,13 +1792,21 @@ enum class ServerPushMode(val wireName: String) {
     }
 }
 
-enum class PushPreviewMode(val wireName: String) {
-    Full("full"),
-    SenderOnly("sender_only"),
-    Hidden("hidden");
+/**
+ * [strictness] orders how much a mode hides (full < sender_only < hidden). Compare on it, never on
+ * declaration order, so reordering the entries cannot change which redaction wins.
+ */
+enum class PushPreviewMode(val wireName: String, val strictness: Int) {
+    Full("full", strictness = 0),
+    SenderOnly("sender_only", strictness = 1),
+    Hidden("hidden", strictness = 2);
 
     companion object {
         fun fromWire(value: String?): PushPreviewMode? = entries.firstOrNull { it.wireName == value }
+
+        /** The mode that hides more; order-independent. */
+        fun stricterOf(first: PushPreviewMode, second: PushPreviewMode): PushPreviewMode =
+            if (second.strictness > first.strictness) second else first
     }
 }
 

@@ -87,7 +87,7 @@ internal fun resolveUnreadNotificationText(
         strings.resolve(if (mentioned) PushPreviewKeys.HIDDEN_MENTION else PushPreviewKeys.HIDDEN_MESSAGE, emptyList())
             ?: defaultBody
     val pushMode = pushRedactionMode(bodyKey, request.optString("previewMode"))
-    if (bodyKey != null && pushMode.ordinal >= devicePreviewMode.ordinal) {
+    if (bodyKey != null && pushMode.strictness >= devicePreviewMode.strictness) {
         val title =
             request.optString("titleKey").takeIf { it.isNotBlank() }
                 ?.let { titleKey -> strings.resolve(titleKey, emptyList()) }
@@ -115,7 +115,7 @@ internal fun resolveUnreadNotificationText(
 }
 
 /**
- * How strictly the push itself is redacted. Entry order of [PushPreviewMode] is the strictness order
+ * How strictly the push itself is redacted, by [PushPreviewMode.strictness]
  * (full < sender_only < hidden). Without `bodyKey` the push carries raw content. With one, the key
  * and the `previewMode` field are both honoured and the stricter counts; an unknown key from a newer
  * server without a usable `previewMode` is treated as hidden, since its text is a redacted fallback.
@@ -129,7 +129,10 @@ private fun pushRedactionMode(bodyKey: String?, previewMode: String?): PushPrevi
             else -> null
         }
     val fromField = PushPreviewMode.fromWire(previewMode?.trim())
-    return listOfNotNull(fromKey, fromField).maxByOrNull { it.ordinal } ?: PushPreviewMode.Hidden
+    return when {
+        fromKey != null && fromField != null -> PushPreviewMode.stricterOf(fromKey, fromField)
+        else -> fromKey ?: fromField ?: PushPreviewMode.Hidden
+    }
 }
 
 /** `bodyArgs` is a JSON array of strings on the FCM wire; anything else means no arguments. */
