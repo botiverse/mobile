@@ -801,25 +801,9 @@ data class SettingsComputerRegistrationResult(
     val apiKeyPrefix: String
 )
 
-/**
- * A machine API key the server returned once (`POST .../rotate-key`). It is a credential: it lives
- * only in the detail page's in-memory store until the one-time dialog closes, and [toString] never
- * prints it, so a logged result, state or intent cannot carry it into logs, diagnostics or crash
- * reports. Read [value] only to render or copy it.
- */
-class SettingsComputerApiKey(val value: String) {
-    override fun equals(other: Any?): Boolean = other is SettingsComputerApiKey && other.value == value
-
-    override fun hashCode(): Int = value.hashCode()
-
-    override fun toString(): String = "SettingsComputerApiKey(<redacted>)"
-}
-
 data class SettingsComputerKeyRotationResult(
     val machineId: String,
-    val apiKeyPrefix: String,
-    /** The full new key; shown to the user once, never stored. */
-    val apiKey: SettingsComputerApiKey
+    val apiKeyPrefix: String
 )
 
 data class SettingsComputerRuntimeModelsSnapshot(

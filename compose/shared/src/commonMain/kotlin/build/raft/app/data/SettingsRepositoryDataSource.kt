@@ -712,8 +712,7 @@ class RealSettingsRepository(
         return computersApiClient.rotateMachineKey(ServerId(serverId), normalizedMachineId).mapComputerResult {
             SettingsComputerKeyRotationResult(
                 machineId = normalizedMachineId,
-                apiKeyPrefix = it.apiKeyPrefix,
-                apiKey = it.apiKey
+                apiKeyPrefix = it.apiKeyPrefix
             )
         }
     }

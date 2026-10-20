@@ -112,7 +112,6 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.RequestConnectedAppPublish -> MviActionKey("${CONNECTED_APPS_ACTION_PUBLISH}:${request.id}")
                 is SharedSettingsIntent.InstallMarketplaceApp -> MviActionKey("${CONNECTED_APPS_ACTION_INSTALL}:$clientRecordId")
                 is SharedSettingsIntent.UninstallMarketplaceApp -> MviActionKey("${CONNECTED_APPS_ACTION_UNINSTALL}:$clientRecordId")
-                is SharedSettingsIntent.RotateComputerKey -> MviActionKey("${COMPUTER_ACTION_ROTATE_KEY}:$machineId")
                 is SharedSettingsIntent.UpdateServerProfile -> MviActionKey(request.serverProfileActionKey)
                 is SharedSettingsIntent.CreateServerInvite -> MviActionKey(SERVER_ACTION_INVITE_CREATE)
                 is SharedSettingsIntent.RevokeServerInvite -> MviActionKey("${SERVER_ACTION_INVITE_REVOKE}:$inviteId")

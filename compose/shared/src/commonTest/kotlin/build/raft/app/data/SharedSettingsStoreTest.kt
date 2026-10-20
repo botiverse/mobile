@@ -1886,6 +1886,50 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun rotateComputerKeyIntentCallsRepositoryAndReloadsDetailWithNewPrefix() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rotated =
+            SettingsComputerKeyRotationResult(
+                machineId = "machine-42",
+                apiKeyPrefix = "sk_machine_xyz"
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                rotateComputerKeyResult = DataResult.Content(rotated)
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the detail page first, then rotate the key. The rotate-key
+        // helper should call rotateComputerKey + reload the detail snapshot.
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.RotateComputerKey("machine-42"))
+
+        assertEquals(
+            listOf(
+                "computerDetail:machine-42",
+                "rotateComputerKey:machine-42",
+                "computerDetail:machine-42"
+            ),
+            repository.calls
+        )
+        val actionState = assertIs<SharedSettingsActionState>(store.state.value.actionState)
+        assertEquals("rotateComputerKey", actionState.action)
+        assertEquals("machine-42", actionState.itemId)
+        assertEquals(false, actionState.inProgress)
+        assertNull(actionState.errorCode)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMachineUpdateReloadsDetailWhenRouteMatchesMachineId() = runBlocking {
         // #79: when a RealtimeRefreshRequired(Machines, machineId) event
         // arrives and the user is currently on the ComputerDetail page for

@@ -86,28 +86,20 @@ class SharedSettingsStoreComputersTest {
     }
 
     @Test
-    fun renameDeleteAndRotateFollowTheServerMachineGate() = runTest {
+    fun renameAndDeleteFollowTheServerMachineGate() = runTest {
         data class Case(
             val label: String,
             val role: String,
             val creatorUserId: String? = null,
             val attachedByCurrentUser: Boolean = false,
             val expected: Boolean,
-            /** rotate-key: creator or `rotateMachineKeys` only; attaching the Computer is not enough. */
-            val expectedRotate: Boolean = expected,
         )
         val cases =
             listOf(
                 Case("owner", role = "owner", expected = true),
-                Case("admin (editMachines/removeMachines/rotateMachineKeys)", role = "admin", expected = true),
+                Case("admin (editMachines/removeMachines)", role = "admin", expected = true),
                 Case("member who created the machine", role = "member", creatorUserId = "user-1", expected = true),
-                Case(
-                    "member who attached the Computer",
-                    role = "member",
-                    attachedByCurrentUser = true,
-                    expected = true,
-                    expectedRotate = false
-                ),
+                Case("member who attached the Computer", role = "member", attachedByCurrentUser = true, expected = true),
                 Case("member", role = "member", creatorUserId = "user-2", expected = false),
                 Case("guest", role = "guest", expected = false),
             )
@@ -130,7 +122,6 @@ class SharedSettingsStoreComputersTest {
             val snapshot = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail).data
             assertEquals(case.expected, snapshot.canEditMachine, "${case.label}: edit")
             assertEquals(case.expected, snapshot.canRemoveMachine, "${case.label}: remove")
-            assertEquals(case.expectedRotate, snapshot.canRotateMachineKey, "${case.label}: rotate key")
             assertEquals(case.expected, snapshot.canManageMachines, "${case.label}: manage")
         }
     }
@@ -159,7 +150,6 @@ class SharedSettingsStoreComputersTest {
         val snapshot = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detail.state.value.computerDetail).data
         assertEquals(false, snapshot.canEditMachine)
         assertEquals(false, snapshot.canRemoveMachine)
-        assertEquals(false, snapshot.canRotateMachineKey)
     }
 
     @Test

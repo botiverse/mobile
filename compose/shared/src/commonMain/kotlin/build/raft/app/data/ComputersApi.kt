@@ -296,7 +296,7 @@ internal class RaftComputersApiClient(
             RotateComputerKeyResponseDto.serializer()
         ) { wire ->
             val apiKey = wire.apiKey.takeIf { it.isNotBlank() } ?: return@mapComputersBody null
-            ComputerApiKeyRotationSummary(apiKeyPrefix = computerApiKeyPrefix(apiKey), apiKey = SettingsComputerApiKey(apiKey))
+            ComputerApiKeyRotationSummary(apiKeyPrefix = apiKey.take(12))
         }
 
     suspend fun machineWorkspaces(serverId: ServerId, machineId: String): DataResult<ComputerWorkspacePage> =
@@ -439,11 +439,7 @@ internal data class ComputerSummary(
 )
 
 internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKey: String, val apiKeyPrefix: String)
-/** `POST .../rotate-key`: the new key in full (a redacting [SettingsComputerApiKey]) and its stored prefix. */
-internal data class ComputerApiKeyRotationSummary(val apiKeyPrefix: String, val apiKey: SettingsComputerApiKey)
-
-/** The server's `extractApiKeyPrefix` (slock packages/server/src/services/machineService.ts): the first 20 characters. */
-internal fun computerApiKeyPrefix(apiKey: String): String = apiKey.take(20)
+internal data class ComputerApiKeyRotationSummary(val apiKeyPrefix: String)
 internal data class ComputerWorkspaceSummary(
     val directoryName: String,
     val totalSizeBytes: Long,
@@ -705,14 +701,8 @@ private data class ComputerRegistrationResponseDto(
     val apiKey: String
 )
 
-/**
- * slock packages/server/src/routes/servers.ts `POST /:id/machines/:machineId/rotate-key` answers
- * `res.json({ apiKey })`. Not a data class: its [toString] must not print the key.
- */
 @Serializable
-private class RotateComputerKeyResponseDto(val apiKey: String) {
-    override fun toString(): String = "RotateComputerKeyResponseDto(apiKey=<redacted>)"
-}
+private data class RotateComputerKeyResponseDto(val apiKey: String)
 
 @Serializable
 private data class ComputerWorkspaceDto(

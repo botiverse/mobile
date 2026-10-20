@@ -1329,16 +1329,14 @@ data class SettingsComputerDetailSnapshot(
     val workspacesError: SettingsSectionErrorSnapshot? = null,
     val agentsError: SettingsSectionErrorSnapshot? = null,
     /**
-     * Any of [canEditMachine], [canRemoveMachine], [canRotateMachineKey]: the page shows its Actions section. The
+     * Either [canEditMachine] or [canRemoveMachine]: the page shows its Actions section. The
      * server still enforces 403 on the API endpoints, so a permissive client cannot bypass it.
      */
     val canManageMachines: Boolean = false,
     /** Rename / description: creator, attaching user, or the `editMachines` capability (owner/admin). */
     val canEditMachine: Boolean = false,
     /** Delete: creator, attaching user, or the `removeMachines` capability (owner/admin). */
-    val canRemoveMachine: Boolean = false,
-    /** Rotate API key: the machine creator or the `rotateMachineKeys` capability (owner/admin). */
-    val canRotateMachineKey: Boolean = false
+    val canRemoveMachine: Boolean = false
 )
 
 data class SettingsSectionErrorSnapshot(
