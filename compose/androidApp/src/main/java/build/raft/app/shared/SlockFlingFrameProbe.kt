@@ -27,7 +27,7 @@ import java.lang.ref.WeakReference
 internal object SlockFlingFrameProbe {
     private const val Tag = "thread_fling_frame"
     private const val MaxFramesPerFling = 90
-    private const val MaxFramesPerProcess = 600
+    private const val MaxFramesPerProcess = 3000
     private const val IdleFramesToEndFling = 8
     private const val RescanIntervalNanos = 1_000_000_000L
 
