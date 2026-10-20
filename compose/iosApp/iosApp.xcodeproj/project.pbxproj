@@ -44,6 +44,7 @@
 		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
 		D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */; };
 		D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */; };
+		D491633A2E14000100C0DE01 /* space_grotesk_light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D491633B2E14000100C0DE01 /* space_grotesk_light.ttf */; };
 		D49163062E14000100C0DE01 /* space_mono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163162E14000100C0DE01 /* space_mono_regular.ttf */; };
 		D4917390E5367A7D7EB82C50 /* hanken_grotesk_light.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49176760F269AC92A98049B /* hanken_grotesk_light.ttf */; };
 		D49178D70BBF4F4EF65C1964 /* hanken_grotesk_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49172B1EF9FEE2DBBD802B6 /* hanken_grotesk_regular.ttf */; };
@@ -146,6 +147,7 @@
 		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
 		D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_semibold.ttf; sourceTree = "<group>"; };
 		D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_bold.ttf; sourceTree = "<group>"; };
+		D491633B2E14000100C0DE01 /* space_grotesk_light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_light.ttf; sourceTree = "<group>"; };
 		D49163162E14000100C0DE01 /* space_mono_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_mono_regular.ttf; sourceTree = "<group>"; };
 		D49176760F269AC92A98049B /* hanken_grotesk_light.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = hanken_grotesk_light.ttf; sourceTree = "<group>"; };
 		D49172B1EF9FEE2DBBD802B6 /* hanken_grotesk_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = hanken_grotesk_regular.ttf; sourceTree = "<group>"; };
@@ -365,6 +367,7 @@
 				D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */,
 				D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */,
 				D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */,
+				D491633B2E14000100C0DE01 /* space_grotesk_light.ttf */,
 				D49163162E14000100C0DE01 /* space_mono_regular.ttf */,
 				D49176760F269AC92A98049B /* hanken_grotesk_light.ttf */,
 				D49172B1EF9FEE2DBBD802B6 /* hanken_grotesk_regular.ttf */,
@@ -559,6 +562,7 @@
 				D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */,
 				D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */,
 				D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */,
+				D491633A2E14000100C0DE01 /* space_grotesk_light.ttf in Resources */,
 				D49163062E14000100C0DE01 /* space_mono_regular.ttf in Resources */,
 				D4917390E5367A7D7EB82C50 /* hanken_grotesk_light.ttf in Resources */,
 				D49178D70BBF4F4EF65C1964 /* hanken_grotesk_regular.ttf in Resources */,

@@ -24,6 +24,7 @@ import shared
             RaftIosDiagnosticsRecord("warn", "SlockCmpHost", "cmp_host_unknown_page page=\(pageName)")
         }
         let container = RaftPageViewController(pageName: pageName, pageData: pageData)
+        container.raftInitialBackgroundColor = RaftCmpIos.shared.lastCanvasColor()
         let bridge = RaftCmpBridgeHost()
         bridge.hostController = container
         let navigator = RaftCmpPageNavigator()
