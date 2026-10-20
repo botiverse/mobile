@@ -660,7 +660,7 @@ class DisplayComponentScreenshotTest {
                     expanded = false,
                     onExpandedChange = {},
                     count = 3,
-                    actions = { RaftSidebarSectionAction(RaftGlyph.ChevronDown, "Sort Pinned", onClick = {}) },
+                    actions = { RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Pinned", onClick = {}) },
                 )
                 RaftSidebarSectionHeader(
                     "automation/infra",
@@ -677,8 +677,9 @@ class DisplayComponentScreenshotTest {
                     count = 38,
                     attention = true,
                     actions = {
-                        RaftSidebarSectionAction(RaftGlyph.ChevronDown, "Sort Channels", onClick = {})
-                        RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", onClick = {})
+                        RaftSidebarSectionAction(RaftGlyph.ArrowDownUp, "Sort Channels", onClick = {})
+                        // Any icon: an app icon through the slot.
+                        RaftSidebarSectionAction(tooltip = "Create Channel", onClick = {}) { Glyph(RaftGlyph.Plus) }
                     },
                 )
                 RaftSidebarChannelItem("proj-raft-computer", onClick = {}, mentioned = true, unreadCount = 4, threadCount = 2)

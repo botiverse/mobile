@@ -489,7 +489,8 @@ fun RaftSidebarSectionHeader(
 /**
  * A group header's control (`SidebarSectionControl`: ghost, icon size): a
  * [RaftIconButton] [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
- * by [tooltip] (Title Case: "Sort Channels", "Create Channel").
+ * by [tooltip] (Title Case: "Sort Channels", "Create Channel"). Sort is
+ * [RaftGlyph.ArrowUpDown] (or [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
  */
 @Composable
 fun RaftSidebarSectionAction(
@@ -499,6 +500,24 @@ fun RaftSidebarSectionAction(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    RaftSidebarSectionAction(tooltip = tooltip, onClick = onClick, modifier = modifier, enabled = enabled) {
+        RaftGlyphIcon(glyph, size = RaftSidebarSectionActionIconSize)
+    }
+}
+
+/**
+ * [RaftSidebarSectionAction] with any [icon] (an app icon the module has no [RaftGlyph]
+ * for), drawn in a 16dp box in the button's ink ([LocalRaftContentColor]: `foreground`,
+ * `foreground-disabled` when not [enabled]). Size the icon 16dp or let it fill the box.
+ */
+@Composable
+fun RaftSidebarSectionAction(
+    tooltip: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: @Composable () -> Unit,
+) {
     RaftIconButton(
         onClick = onClick,
         tooltip = tooltip,
@@ -506,9 +525,12 @@ fun RaftSidebarSectionAction(
         variant = RaftButtonVariant.Ghost,
         enabled = enabled,
     ) {
-        RaftGlyphIcon(glyph, size = 16.dp)
+        Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
     }
 }
+
+/** `SidebarSectionControl` `[&>svg]:size-4`. */
+private val RaftSidebarSectionActionIconSize = 16.dp
 
 /**
  * Lays the content out at its own height but reports [height] (padding included in the

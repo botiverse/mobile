@@ -22,7 +22,8 @@ import build.raft.designsystem.theme.RaftTheme
  * The few Lucide icons (ISC licence, lucide.dev; the same SVGs the app ships) that the
  * components themselves draw: the banner intents, the list and select chevrons, the @ marker,
  * the check of a checkbox and of a menu's current value, the dialog's close, a menu's search,
- * the top bar's Back arrow and a sidebar channel's `hash` / `lock`. Each is the 24x24 outline drawn with Lucide's 2-unit round
+ * the top bar's Back arrow, a sidebar channel's `hash` / `lock` and a group header's sort
+ * arrows. Each is the 24x24 outline drawn with Lucide's 2-unit round
  * stroke. App icons are not this module's business: pass them through the components' icon
  * slots.
  */
@@ -56,6 +57,12 @@ enum class RaftGlyph(internal vararg val paths: String) {
         "M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z",
         "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
     ),
+
+    /** Lucide `arrow-down-up` (sort): the down arrow on the left, the up arrow on the right. */
+    ArrowDownUp("m3 16 4 4 4-4", "M7 20V4", "m21 8-4-4-4 4", "M17 4v16"),
+
+    /** Lucide `arrow-up-down` (sort): the up arrow on the left; the app's sort controls draw this one. */
+    ArrowUpDown("m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16"),
     ;
 
     internal val parsed: List<Path> by lazy { paths.map { PathParser().parsePathString(it).toPath() } }
