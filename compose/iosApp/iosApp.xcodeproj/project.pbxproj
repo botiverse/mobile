@@ -33,6 +33,7 @@
 		A53100010000000000000004 /* RaftIosTabBarItemMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */; };
 		A13000010000000000000004 /* RaftAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */; };
 		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
+		A39700010000000000000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39700020000000000000001 /* Localizable.strings */; };
 		A42100010000000000000001 /* RaftAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */; };
 		A42400010000000000000001 /* RaftIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */; };
 		A42400010000000000000002 /* RaftIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */; };
@@ -116,6 +117,9 @@
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A39700030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		A39700030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		A39700030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
 		A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftAdaptiveNavigationSession.m; sourceTree = "<group>"; };
 		A42100020000000000000002 /* RaftAdaptiveNavigationSession.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RaftAdaptiveNavigationSession.h; sourceTree = "<group>"; };
 		A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAvatarCacheProvider.swift; sourceTree = "<group>"; };
@@ -298,6 +302,7 @@
 				A47200020000000000000001 /* RaftIosShellWindowContract.swift */,
 				7555FF8C242A565B00829871 /* Info.plist */,
 				A39600020000000000000001 /* InfoPlist.strings */,
+				A39700020000000000000001 /* Localizable.strings */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
 				A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */,
 				A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */,
@@ -526,6 +531,7 @@
 				D49163072E14000100C0DE01 /* space_mono_bold.ttf in Resources */,
 				058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */,
 				A39600010000000000000001 /* InfoPlist.strings in Resources */,
+				A39700010000000000000001 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -804,6 +810,16 @@
 				A39600030000000000000003 /* ja */,
 			);
 			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		A39700020000000000000001 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A39700030000000000000001 /* en */,
+				A39700030000000000000002 /* zh-Hans */,
+				A39700030000000000000003 /* ja */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

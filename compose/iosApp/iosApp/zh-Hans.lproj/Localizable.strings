@@ -1,0 +1,6 @@
+/* Push notification preview modes; keys must match the server's PUSH_PREVIEW_KEYS. */
+"push.preview.hidden.title" = "Raft";
+"push.preview.hidden.message" = "你有一条新消息";
+"push.preview.hidden.mention" = "有人提到了你";
+"push.preview.sender_only.message" = "%@ 发来一条消息";
+"push.preview.sender_only.mention" = "%@ 提到了你";

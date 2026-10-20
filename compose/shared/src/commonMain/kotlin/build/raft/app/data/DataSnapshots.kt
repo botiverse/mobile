@@ -1586,13 +1586,13 @@ data class SettingsMobileSnapshot(
     val muteServer: SettingsMobileToggleSnapshot,
     val serverNotificationMode: SettingsMobileSelectionSnapshot =
         ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false),
-    val pushMessagePreviews: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = true,
-            available = false,
-            statusLabel = "Unsupported",
-            detail = "Message preview privacy is not available on this server."
-        ),
+    /**
+     * Message-preview choice for push notifications on this device. Kept as the three-state enum
+     * rather than a toggle so the UI can render one choice per mode; availability is separate so an
+     * unsupported build still shows the current selection as read-only.
+     */
+    val pushPreviewMode: SettingsMobileSelectionSnapshot =
+        PushPreviewMode.Full.toSettingsMobileSelectionSnapshot(available = false),
     val sendTestEnabled: Boolean = false,
     val notificationPermission: SettingsMobileActionSnapshot =
         SettingsMobileActionSnapshot(
@@ -1792,14 +1792,38 @@ enum class ServerPushMode(val wireName: String) {
     }
 }
 
-enum class PushPreviewMode(val wireName: String) {
-    Full("full"),
-    Private("private");
+/**
+ * [strictness] orders how much a mode hides (full < sender_only < hidden). Compare on it, never on
+ * declaration order, so reordering the entries cannot change which redaction wins.
+ */
+enum class PushPreviewMode(val wireName: String, val strictness: Int) {
+    Full("full", strictness = 0),
+    SenderOnly("sender_only", strictness = 1),
+    Hidden("hidden", strictness = 2);
 
     companion object {
         fun fromWire(value: String?): PushPreviewMode? = entries.firstOrNull { it.wireName == value }
+
+        /** The mode that hides more; order-independent. */
+        fun stricterOf(first: PushPreviewMode, second: PushPreviewMode): PushPreviewMode =
+            if (second.strictness > first.strictness) second else first
     }
 }
+
+fun PushPreviewMode.toSettingsMobileSelectionSnapshot(
+    available: Boolean = true
+): SettingsMobileSelectionSnapshot =
+    SettingsMobileSelectionSnapshot(
+        selectedKey = wireName,
+        selectedLabel = wireName,
+        statusLabel = wireName,
+        detail = "",
+        options =
+            PushPreviewMode.entries.map { mode ->
+                SettingsMobileSelectionOptionSnapshot(key = mode.wireName, label = mode.wireName)
+            },
+        available = available
+    )
 
 fun ServerPushMode.toSettingsMobileSelectionSnapshot(
     available: Boolean = true,

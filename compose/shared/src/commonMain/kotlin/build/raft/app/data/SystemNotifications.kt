@@ -138,7 +138,14 @@ data class SystemUnreadNotificationRequest(
     val category: SystemUnreadNotificationCategory,
     val title: String,
     val body: String,
-    val notificationKey: String
+    val notificationKey: String,
+    /**
+     * Who sent the message, without any message text. The Android poster uses it to redact a locally
+     * built request for this device's push preview choice (sender_only shows only this name).
+     */
+    val senderName: String? = null,
+    /** The message mentions the current user; picks the "mentioned you" wording when redacted. */
+    val mentioned: Boolean = false
 )
 
 data class SystemUnreadNotificationServerGateResult(
@@ -253,6 +260,8 @@ fun buildSystemUnreadNotificationRequest(
         category = category,
         title = title,
         body = body,
+        senderName = sender,
+        mentioned = mentioned,
         // Message ids are canonical across host/peer joint projections. The
         // local route stays in the request, while the tray identity deliberately
         // does not include Server/channel so two projected deliveries replace
@@ -305,7 +314,9 @@ fun buildSystemUnreadNotificationRequestFromPush(
         category = category,
         title = push.title.ifBlank { "Raft" },
         body = push.body.ifBlank { "Sent a new message." },
-        notificationKey = "unread:message:${push.messageId.value}"
+        notificationKey = "unread:message:${push.messageId.value}",
+        senderName = push.senderName?.trim()?.takeIf { it.isNotEmpty() },
+        mentioned = push.mentioned == true
     )
 }
 

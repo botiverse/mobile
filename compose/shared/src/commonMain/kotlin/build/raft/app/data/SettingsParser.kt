@@ -626,8 +626,7 @@ data class SettingsServerNotificationPreferences(
     val mode: ServerPushMode,
     val pushPreviewMode: PushPreviewMode,
     val legacyMuted: Boolean,
-    val canonicalModeSupported: Boolean,
-    val pushPreviewModeSupported: Boolean
+    val canonicalModeSupported: Boolean
 )
 
 fun parseSharedSettingsServerNotificationSettings(
@@ -664,8 +663,7 @@ fun parseSharedSettingsServerNotificationSettings(
         mode = mode,
         pushPreviewMode = pushPreviewMode,
         legacyMuted = wire.serverPushMuted,
-        canonicalModeSupported = canonicalModePresent,
-        pushPreviewModeSupported = pushPreviewModePresent
+        canonicalModeSupported = canonicalModePresent
     )
 }.getOrNull()
 

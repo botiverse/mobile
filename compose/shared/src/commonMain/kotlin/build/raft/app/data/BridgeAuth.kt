@@ -642,6 +642,9 @@ internal class BridgeSettingsPlatformCapabilities(
                 put("title", request.title)
                 put("body", request.body)
                 put("notificationKey", request.notificationKey)
+                // Lets the Android poster apply the device's push preview choice without message text.
+                put("senderName", request.senderName.orEmpty())
+                put("mentioned", request.mentioned)
             }
         val response = settingsCapability(command)
             ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")

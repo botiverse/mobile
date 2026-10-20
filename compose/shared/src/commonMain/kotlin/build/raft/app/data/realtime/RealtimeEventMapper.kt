@@ -1438,16 +1438,17 @@ private fun NotificationPrefsUpdatedDto.toDomain(
     }
     if (serverMode != null) {
         val previewMode =
-            when (prefs.pushPreviewMode) {
-                null -> null
-                PushPreviewMode.Full.wireName -> PushPreviewMode.Full
-                PushPreviewMode.Private.wireName -> PushPreviewMode.Private
-                else -> {
-                    diagnostics(
-                        "projection_value_rejected source=realtime_server_notification field=push_preview_mode value=unknown"
-                    )
-                    return null
-                }
+            prefs.pushPreviewMode?.let { raw ->
+                // Only the three canonical wire values are accepted (the retired "private" included
+                // among the rejected); an unrecognized value is rejected rather than silently defaulted.
+                PushPreviewMode.fromWire(raw)
+                    ?: run {
+                        diagnostics(
+                            "projection_value_rejected source=realtime_server_notification " +
+                                "field=push_preview_mode value=unknown"
+                        )
+                        return null
+                    }
             }
         val cleanServerId = serverId?.takeIf { it.isNotBlank() } ?: cleanScopeId
         return ServerNotificationPreferencesChanged(

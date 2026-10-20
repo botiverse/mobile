@@ -1233,7 +1233,7 @@ class RealtimeEventMapperTest {
                     "serverPushMuted": false,
                     "serverPushMentionsOnly": true,
                     "serverPushMode": "mentions",
-                    "pushPreviewMode": "private"
+                    "pushPreviewMode": "sender_only"
                   },
                   "prefsVersion": 4
                 }
@@ -1243,7 +1243,7 @@ class RealtimeEventMapperTest {
         val changed = assertIs<ServerNotificationPreferencesChanged>(event)
         assertEquals("server-1", changed.serverId.value)
         assertEquals("mentions", changed.serverPushMode)
-        assertEquals("private", changed.pushPreviewMode)
+        assertEquals("sender_only", changed.pushPreviewMode)
         assertEquals(4L, changed.prefsVersion)
     }
 

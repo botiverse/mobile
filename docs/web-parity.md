@@ -66,7 +66,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Gap | What the server needs |
 |---|---|
 | Android push | FCM provider in `routes/push.ts` + push outbox sender |
-| Push preview mode (hide message text) | A `pushPreviewMode` field on notification settings. The mobile setting exists (`data/SettingsRepositoryDataSource.kt:1452`) behind `pushPreviewModeSupported`; no server field exists. |
+| Push preview mode (hide message text) | Per-device `previewMode` (`full` / `sender_only` / `hidden`) on `POST /api/push/registrations` (slock PR #10483). The mobile choice lives only in `PushPreviewModePreferenceStore` (`data/LocalPreferences.kt`); the push registration sends it and the Android poster redacts locally from it. |
 | Multi-sender search (optional) | Accept repeated `senderId`, or mobile drops multi-select to match web |
 | Activity sync cutover | A versioning rule for `contracts/activity-v1` so mobile can detect stale bindings |
 

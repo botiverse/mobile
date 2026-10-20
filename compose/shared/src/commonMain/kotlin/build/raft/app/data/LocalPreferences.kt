@@ -928,6 +928,44 @@ class KeyValueThreadReverseLayoutPreferenceStore(
 const val THREAD_REVERSE_LAYOUT_PREFERENCE_KEY = "chatLayout:thread_reverse_layout_enabled"
 
 /**
+ * Per-device choice of how much message content a push notification may show.
+ *
+ * This is a local preference, not a server setting: the push registration and the notification
+ * poster read it directly, so it never passes through the settings repository.
+ * A missing value means [PUSH_PREVIEW_MODE_DEFAULT] (the pre-existing behaviour). A stored value
+ * that cannot be read means [PUSH_PREVIEW_MODE_UNREADABLE]: this setting exists to keep message
+ * text out of notifications, so a corrupt preference must fail closed rather than silently start
+ * showing bodies again. The server applies the same split for the same reason.
+ */
+interface PushPreviewModePreferenceStore {
+    fun readPushPreviewModeSync(): String
+    suspend fun savePushPreviewMode(wireName: String)
+}
+
+class KeyValuePushPreviewModePreferenceStore(
+    private val store: SharedPreferenceStore
+) : PushPreviewModePreferenceStore {
+    override fun readPushPreviewModeSync(): String {
+        val stored = store.getString(PUSH_PREVIEW_MODE_PREFERENCE_KEY)
+        if (stored == null) return PUSH_PREVIEW_MODE_DEFAULT
+        // Stored but unrecognizable: fail closed, so corruption cannot turn previews back on.
+        return PushPreviewMode.fromWire(stored)?.wireName ?: PUSH_PREVIEW_MODE_UNREADABLE
+    }
+
+    override suspend fun savePushPreviewMode(wireName: String) {
+        // Only canonical wire values are ever persisted.
+        val canonical = PushPreviewMode.fromWire(wireName)?.wireName ?: return
+        store.putString(PUSH_PREVIEW_MODE_PREFERENCE_KEY, canonical)
+    }
+}
+
+const val PUSH_PREVIEW_MODE_PREFERENCE_KEY = "notifications:push_preview_mode"
+const val PUSH_PREVIEW_MODE_DEFAULT = "full"
+
+/** What a stored-but-unreadable preference resolves to: hide the body rather than show it. */
+const val PUSH_PREVIEW_MODE_UNREADABLE = "hidden"
+
+/**
  * Task #3: the Settings switch "Enable HTTP/3". Three states under [HTTP3_PREFERENCE_KEY]: absent =
  * follow the server-sent transport variant, "true" / "false" = the user's explicit choice.
  */

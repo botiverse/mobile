@@ -50,8 +50,46 @@ class SettingsNotificationsUiContractTest {
     }
 
     @Test
-    fun previewToggleMapsToCanonicalServerModes() {
-        assertEquals(PushPreviewMode.Full, pushPreviewModeForEnabled(true))
-        assertEquals(PushPreviewMode.Private, pushPreviewModeForEnabled(false))
+    fun previewModeExposesExactlyTheThreeCanonicalWireValues() {
+        // The settings control renders one option per enum entry, so the enum *is* the user-facing
+        // choice list: it must stay at three and must never resurface the retired "private" value.
+        assertEquals(
+            listOf("full", "sender_only", "hidden"),
+            PushPreviewMode.entries.map { it.wireName }
+        )
+    }
+
+    @Test
+    fun previewModeStrictnessOrdersFullBelowSenderOnlyBelowHidden() {
+        assertEquals(0, PushPreviewMode.Full.strictness)
+        assertEquals(1, PushPreviewMode.SenderOnly.strictness)
+        assertEquals(2, PushPreviewMode.Hidden.strictness)
+        assertTrue(PushPreviewMode.Full.strictness < PushPreviewMode.SenderOnly.strictness)
+        assertTrue(PushPreviewMode.SenderOnly.strictness < PushPreviewMode.Hidden.strictness)
+    }
+
+    @Test
+    fun stricterOfIsOrderIndependent() {
+        for (a in PushPreviewMode.entries) {
+            for (b in PushPreviewMode.entries) {
+                val expected = if (a.strictness >= b.strictness) a else b
+                assertEquals(expected, PushPreviewMode.stricterOf(a, b), "stricterOf($a, $b)")
+                assertEquals(PushPreviewMode.stricterOf(a, b), PushPreviewMode.stricterOf(b, a), "stricterOf($b, $a)")
+            }
+        }
+        assertEquals(PushPreviewMode.Hidden, PushPreviewMode.stricterOf(PushPreviewMode.Full, PushPreviewMode.Hidden))
+        assertEquals(PushPreviewMode.SenderOnly, PushPreviewMode.stricterOf(PushPreviewMode.SenderOnly, PushPreviewMode.Full))
+    }
+
+    @Test
+    fun previewModeEachEntryHasDistinctIconAndLabel() {
+        assertEquals(
+            PushPreviewMode.entries.size,
+            PushPreviewMode.entries.map { it.settingsPreviewModeIcon() }.toSet().size
+        )
+        assertEquals(
+            PushPreviewMode.entries.size,
+            PushPreviewMode.entries.map { it.settingsPreviewModeLabel() }.toSet().size
+        )
     }
 }

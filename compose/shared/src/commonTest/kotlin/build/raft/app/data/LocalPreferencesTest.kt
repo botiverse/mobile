@@ -423,4 +423,49 @@ class LocalPreferencesTest {
         assertEquals(TasksViewMode.Board, selected)
         assertEquals(TasksViewMode.Board, restored)
     }
+
+    @Test
+    fun pushPreviewModeDefaultsToFullWhenNeverStored() = runBlocking {
+        val store = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+
+        assertEquals(PUSH_PREVIEW_MODE_DEFAULT, store.readPushPreviewModeSync())
+        assertEquals("full", store.readPushPreviewModeSync())
+    }
+
+    @Test
+    fun pushPreviewModePersistsOnlyCanonicalWireValues() = runBlocking {
+        val backing = InMemoryRaftKeyValueStore()
+        val store = KeyValuePushPreviewModePreferenceStore(backing)
+
+        store.savePushPreviewMode("sender_only")
+        assertEquals("sender_only", store.readPushPreviewModeSync())
+
+        // Anything the enum does not know is ignored rather than written.
+        store.savePushPreviewMode("nonsense")
+        store.savePushPreviewMode("")
+        assertEquals("sender_only", store.readPushPreviewModeSync())
+        assertEquals("sender_only", backing.getString(PUSH_PREVIEW_MODE_PREFERENCE_KEY))
+    }
+
+    @Test
+    fun unreadableStoredPushPreviewModeFailsClosed() = runBlocking {
+        // This setting exists to keep message text out of notifications. A corrupt value must not
+        // silently start showing bodies again, so it resolves to hidden rather than full.
+        val backing = InMemoryRaftKeyValueStore(mapOf(PUSH_PREVIEW_MODE_PREFERENCE_KEY to "corrupt"))
+
+        val store = KeyValuePushPreviewModePreferenceStore(backing)
+
+        assertEquals(PUSH_PREVIEW_MODE_UNREADABLE, store.readPushPreviewModeSync())
+        assertEquals("hidden", store.readPushPreviewModeSync())
+    }
+
+    @Test
+    fun missingAndUnreadablePushPreviewModeResolveDifferently() {
+        val empty = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+        val corruptBacking = InMemoryRaftKeyValueStore(mapOf(PUSH_PREVIEW_MODE_PREFERENCE_KEY to "corrupt"))
+        val corrupt = KeyValuePushPreviewModePreferenceStore(corruptBacking)
+
+        assertEquals("full", empty.readPushPreviewModeSync())
+        assertEquals("hidden", corrupt.readPushPreviewModeSync())
+    }
 }

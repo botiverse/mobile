@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -16,6 +17,9 @@ import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
+import build.raft.app.data.PUSH_PREVIEW_MODE_UNREADABLE
+import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.SystemUnreadNotificationRequest
 import build.raft.app.data.conversationKindWireValue
 import build.raft.app.data.raftSharedPreferenceStore
@@ -58,8 +62,6 @@ internal object AndroidUnreadNotificationPoster {
         if (isNotificationChannelBlocked(appContext, channelId)) {
             return mapOf("status" to "error", "code" to "channel_blocked", "channelId" to channelId)
         }
-        val title = request.optString("title").takeIf { it.isNotBlank() } ?: appContext.getString(R.string.app_name)
-        val body = request.optString("body").takeIf { it.isNotBlank() } ?: appContext.getString(R.string.notification_unread_default_text)
         val notificationKey =
             request.optString("notificationKey").takeIf { it.isNotBlank() }
                 ?: "${request.optString("serverId")}:${request.optString("threadId")}:${request.optString("messageId")}"
@@ -69,19 +71,13 @@ internal object AndroidUnreadNotificationPoster {
             NotificationManagerCompat.from(appContext)
                 .notify(
                     notificationId,
-                    NotificationCompat.Builder(appContext, channelId)
-                        .setSmallIcon(android.R.drawable.ic_dialog_info)
-                        .setContentTitle(title)
-                        .setContentText(body)
-                        .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                        .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                        .setWhen(System.currentTimeMillis())
-                        .setShowWhen(true)
-                        .setContentIntent(contentIntent)
-                        .setAutoCancel(true)
-                        .build()
+                    buildUnreadNotification(
+                        context = appContext,
+                        channelId = channelId,
+                        request = request,
+                        previewMode = currentPushPreviewMode(),
+                        contentIntent = contentIntent
+                    )
                 )
             mapOf(
                 "status" to "ok",
@@ -97,6 +93,68 @@ internal object AndroidUnreadNotificationPoster {
             )
         }
     }
+
+    /**
+     * The tray notification for one unread request. Both entry points build it here: FCM
+     * (`RaftFirebaseMessagingService`, possibly already redacted by the server) and the local realtime
+     * path (`AndroidAppScopeRealtimeHostContext`, raw content, the only path on devices without GMS).
+     * [previewMode] is the device's choice from [KeyValuePushPreviewModePreferenceStore]; the title,
+     * the collapsed text and the expanded big text all use the same resolved text, and the lock
+     * screen gets a content-free public version.
+     */
+    internal fun buildUnreadNotification(
+        context: Context,
+        channelId: String,
+        request: JSONObject,
+        previewMode: PushPreviewMode,
+        contentIntent: PendingIntent?,
+        strings: PushPreviewStrings = AndroidResourcePushPreviewStrings(context),
+        whenMillis: Long = System.currentTimeMillis()
+    ): Notification {
+        val appContext = context.applicationContext
+        val text =
+            resolveUnreadNotificationText(
+                request = request,
+                devicePreviewMode = previewMode,
+                strings = strings,
+                defaultTitle = appContext.getString(R.string.app_name),
+                defaultBody = appContext.getString(R.string.notification_unread_default_text)
+            )
+        val publicVersion =
+            NotificationCompat.Builder(appContext, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(text.publicTitle)
+                .setContentText(text.publicBody)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setWhen(whenMillis)
+                .setShowWhen(true)
+                .build()
+        return NotificationCompat.Builder(appContext, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(text.title)
+            .setContentText(text.body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text.body))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .setWhen(whenMillis)
+            .setShowWhen(true)
+            .setContentIntent(contentIntent)
+            .setAutoCancel(true)
+            .build()
+    }
+
+    /**
+     * The store already maps a missing choice to full and a corrupt one to hidden; a store that cannot
+     * be opened at all is unreadable too and fails closed the same way.
+     */
+    private fun currentPushPreviewMode(): PushPreviewMode =
+        runCatching {
+            PushPreviewMode.fromWire(
+                KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()).readPushPreviewModeSync()
+            )
+        }.getOrNull() ?: PushPreviewMode.fromWire(PUSH_PREVIEW_MODE_UNREADABLE) ?: PushPreviewMode.Hidden
 
     private fun currentSelectedServerId(context: Context): String? =
         runCatching {
@@ -232,7 +290,7 @@ internal object AndroidUnreadNotificationPoster {
         }
     }
 
-    private fun SystemUnreadNotificationRequest.toJson(): JSONObject =
+    internal fun SystemUnreadNotificationRequest.toJson(): JSONObject =
         JSONObject()
             .put("serverId", serverId)
             .put("messageId", messageId)
@@ -245,4 +303,6 @@ internal object AndroidUnreadNotificationPoster {
             .put("title", title)
             .put("body", body)
             .put("notificationKey", notificationKey)
+            .put("senderName", senderName.orEmpty())
+            .put("mentioned", mentioned)
 }

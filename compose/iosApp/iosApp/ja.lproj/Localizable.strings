@@ -1,0 +1,6 @@
+/* Push notification preview modes; keys must match the server's PUSH_PREVIEW_KEYS. */
+"push.preview.hidden.title" = "Raft";
+"push.preview.hidden.message" = "新しいメッセージがあります";
+"push.preview.hidden.mention" = "メンションされました";
+"push.preview.sender_only.message" = "%@ さんからメッセージが届きました";
+"push.preview.sender_only.mention" = "%@ さんがあなたをメンションしました";

@@ -62,7 +62,7 @@ class PushRegistrationTest {
         assertTrue(coordinator.retryPendingRegistration(reason = "login"))
         assertEquals(1, api.calls.size)
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns","platform":"ios","deviceToken":"a0b1c2d3","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewMode":"full"}""",
             api.calls.single()
         )
 
@@ -326,7 +326,7 @@ class PushRegistrationTest {
             )
         )
         assertEquals(
-            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0"}""",
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewMode":"full"}""",
             api.calls.single(),
             "an FID is case-sensitive: it is trimmed but never lowercased"
         )
@@ -854,6 +854,191 @@ class PushRegistrationTest {
         assertEquals(listOf("saved", "saved", "authenticated"), received)
     }
 
+    @Test
+    fun registrationBodyCarriesThePreviewModeReadFromTheDeviceStore() = runBlocking {
+        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                previewModeProvider = preferences::readPushPreviewModeSync
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        preferences.savePushPreviewMode("hidden")
+
+        assertTrue(coordinator.registerFcm())
+
+        assertEquals(
+            """POST {"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.3.0","previewMode":"hidden"}""",
+            api.calls.single()
+        )
+    }
+
+    @Test
+    fun previewModeIsAlwaysSentAndFailsClosedWhenUnreadable() = runBlocking {
+        val cases =
+            listOf<Pair<() -> String?, String>>(
+                { null } to "full",
+                { "private" } to "hidden",
+                { error("store unavailable") } to "hidden"
+            )
+        for ((provider, expected) in cases) {
+            val api = RecordingPushRegistrationApi()
+            val coordinator =
+                coordinator(
+                    spec = RaftPushProviderSpec.Fcm,
+                    currentSession = { storedSession(userId = "user-1") },
+                    api = api,
+                    previewModeProvider = provider
+                )
+            coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            assertTrue(coordinator.registerFcm())
+            assertTrue(api.calls.single().endsWith(""","previewMode":"$expected"}"""), api.calls.single())
+        }
+    }
+
+    @Test
+    fun changingThePreviewModeReRegistersWithTheNewValueAndKeepsTheDeliveryStatus() = runBlocking {
+        val clock = TestClock()
+        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(
+                currentSession = { storedSession("user-1") },
+                api = api,
+                clock = clock,
+                previewModeProvider = preferences::readPushPreviewModeSync
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        val posts = { api.calls.filter { it.startsWith("POST ") } }
+        assertEquals(1, posts().size)
+        assertTrue(posts().last().contains(""""previewMode":"full""""))
+        val stored = coordinator.storedDeliveryStatus()
+        api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
+
+        preferences.savePushPreviewMode("sender_only")
+        assertTrue(coordinator.handlePreviewModeChanged())
+
+        assertEquals(2, posts().size, "the change is sent now, not at the next 24h refresh")
+        assertTrue(posts().last().contains(""""previewMode":"sender_only""""), posts().last())
+        assertEquals(stored, coordinator.storedDeliveryStatus(), "a preview-only change keeps the token binding")
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+
+        // Nothing changed since: the dedupe holds.
+        assertTrue(coordinator.handlePreviewModeChanged())
+        assertEquals(2, posts().size)
+    }
+
+    @Test
+    fun aFailedReUpsertAfterAPreviewChangeIsRetriedWithBackoff() = runBlocking {
+        val preferences = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                previewModeProvider = preferences::readPushPreviewModeSync
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        preferences.savePushPreviewMode("hidden")
+        var failuresLeft = 2
+        api.upsertResponseFor = { payload ->
+            if (failuresLeft-- > 0) HomeNetworkResponse(code = 503, bodyText = null) else confirmedUpsert(payload)
+        }
+
+        assertTrue(coordinator.syncPreviewModeWithRetry())
+
+        val posts = api.calls.filter { it.startsWith("POST ") }
+        assertEquals(4, posts.size, "initial + two failed + the successful retry")
+        assertTrue(posts.drop(1).all { it.contains(""""previewMode":"hidden"""") })
+    }
+
+    @Test
+    fun retriesStopWhenTheServerKeepsFailing() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                previewModeProvider = { "sender_only" }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        api.upsertResponse = HomeNetworkResponse(code = 503, bodyText = null)
+        assertFalse(coordinator.registerFcm())
+
+        assertFalse(coordinator.syncPreviewModeWithRetry())
+
+        assertEquals(5, api.calls.count { it.startsWith("POST ") }, "1 + first try + 3 bounded retries")
+    }
+
+    @Test
+    fun aPreviewChangeWithNothingToSendDoesNotRetry() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertFalse(coordinator.syncPreviewModeWithRetry())
+
+        assertTrue(api.calls.isEmpty())
+    }
+
+    @Test
+    fun aPendingPayloadFromAnOlderBuildGainsThePreviewModeOnTheNextFlush() = runBlocking {
+        val store = InMemoryRaftKeyValueStore()
+        store.putString(
+            "pendingRegistration",
+            """{"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"fcm","platform":"android","deviceToken":"cX9-AbC_dEfGhIjKlMnOpQ","topic":"build.raft.app","env":"production","appVersion":"1.2.0"}"""
+        )
+        store.putString("installationId", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                store = store,
+                spec = RaftPushProviderSpec.Fcm,
+                currentSession = { storedSession(userId = "user-1") },
+                api = api,
+                previewModeProvider = { "hidden" }
+            )
+
+        assertTrue(coordinator.retryPendingRegistration(reason = "startup"))
+
+        assertTrue(api.calls.single().endsWith(""","previewMode":"hidden"}"""), api.calls.single())
+    }
+
+    @Test
+    fun previewModeChangesReachTheInstalledSink() {
+        var changes = 0
+        RaftPushRegistrationLifecycle.install(
+            object : RaftPushRegistrationLifecycleSink {
+                override fun onSessionSaved() = Unit
+
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
+
+                override suspend fun unbindBeforeLogout() = Unit
+
+                override fun onPreviewModeChanged() {
+                    changes += 1
+                }
+            }
+        )
+
+        RaftPushRegistrationLifecycle.onPreviewModeChanged()
+
+        assertEquals(1, changes)
+    }
+
     private fun coordinator(
         store: RaftKeyValueStore = InMemoryRaftKeyValueStore(),
         spec: RaftPushProviderSpec = RaftPushProviderSpec.Apns,
@@ -863,7 +1048,9 @@ class PushRegistrationTest {
             RecordingRemoteNotificationsController(),
         currentEnvironmentId: (() -> String?)? = null,
         clockMillis: () -> Long = { 0L },
-        scope: CoroutineScope = CoroutineScope(SupervisorJob())
+        scope: CoroutineScope = CoroutineScope(SupervisorJob()),
+        previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT },
+        previewRetryDelaysMillis: List<Long> = listOf(0L, 0L, 0L)
     ): RaftPushRegistrationCoordinator =
         RaftPushRegistrationCoordinator(
             store = store,
@@ -873,7 +1060,9 @@ class PushRegistrationTest {
             scope = scope,
             remoteNotificationsController = remoteNotificationsController,
             currentEnvironmentId = currentEnvironmentId,
-            clockMillis = clockMillis
+            clockMillis = clockMillis,
+            previewModeProvider = previewModeProvider,
+            previewRetryDelaysMillis = previewRetryDelaysMillis
         )
 
     private class TestClock(var now: Long = 1_700_000_000_000L) {
@@ -888,7 +1077,8 @@ class PushRegistrationTest {
         currentSession: suspend () -> StoredAuthSession?,
         api: RaftPushRegistrationApi,
         clock: TestClock,
-        environmentId: () -> String? = { "https://api.example/" }
+        environmentId: () -> String? = { "https://api.example/" },
+        previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT }
     ): RaftPushRegistrationCoordinator =
         coordinator(
             store = store,
@@ -897,7 +1087,8 @@ class PushRegistrationTest {
             api = api,
             currentEnvironmentId = environmentId,
             clockMillis = { clock.now },
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            previewModeProvider = previewModeProvider
         )
 
     private suspend fun RaftPushRegistrationCoordinator.registerFcm(token: String = "cX9-AbC_dEfGhIjKlMnOpQ"): Boolean =
@@ -951,9 +1142,11 @@ class PushRegistrationTest {
 
         /** Null answers like the server: 200 echoing the stored registration. */
         var upsertResponse: HomeNetworkResponse? = null
+        var upsertResponseFor: ((String) -> HomeNetworkResponse)? = null
 
         override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
             calls += "POST $payloadJson"
+            upsertResponseFor?.let { return it(payloadJson) }
             return upsertResponse ?: confirmedUpsert(payloadJson)
         }
 

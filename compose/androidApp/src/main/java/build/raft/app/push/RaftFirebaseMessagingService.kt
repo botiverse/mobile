@@ -40,7 +40,7 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             RaftAppLog.i(TAG, "fcm_message_suppressed reason=visible_conversation")
             return
         }
-        val request = data.toUnreadNotificationRequest()
+        val request = raftFcmUnreadNotificationRequest(data)
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
         RaftAppLog.i(
             TAG,
@@ -48,23 +48,38 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
         )
     }
 
-    private fun Map<String, String>.toUnreadNotificationRequest(): JSONObject =
-        JSONObject().apply {
-            put("serverId", this@toUnreadNotificationRequest["serverId"].orEmpty())
-            put("messageId", this@toUnreadNotificationRequest["messageId"].orEmpty())
-            put("threadId", this@toUnreadNotificationRequest["threadId"].orEmpty())
-            put("channelId", this@toUnreadNotificationRequest["channelId"].orEmpty())
-            put("parentChannelId", this@toUnreadNotificationRequest["parentChannelId"].orEmpty())
-            put("parentMessageId", this@toUnreadNotificationRequest["parentMessageId"].orEmpty())
-            put("category", this@toUnreadNotificationRequest["category"].orEmpty())
-            put("title", this@toUnreadNotificationRequest["title"].orEmpty())
-            put("body", this@toUnreadNotificationRequest["body"].orEmpty())
-            put("notificationKey", this@toUnreadNotificationRequest["notificationKey"].orEmpty())
-            put("routeUrl", this@toUnreadNotificationRequest["routeUrl"].orEmpty())
-            put("serverSeq", this@toUnreadNotificationRequest["serverSeq"].orEmpty())
-        }
-
     private companion object {
         const val TAG = "SlockFCM"
     }
 }
+
+/**
+ * The poster request for one FCM data message. `previewMode` / `titleKey` / `bodyKey` / `bodyArgs`
+ * are present when the server redacted the push for this registration's preview choice.
+ */
+internal fun raftFcmUnreadNotificationRequest(data: Map<String, String>): JSONObject =
+    JSONObject().apply {
+        for (key in FCM_UNREAD_NOTIFICATION_KEYS) {
+            put(key, data[key].orEmpty())
+        }
+    }
+
+private val FCM_UNREAD_NOTIFICATION_KEYS =
+    listOf(
+        "serverId",
+        "messageId",
+        "threadId",
+        "channelId",
+        "parentChannelId",
+        "parentMessageId",
+        "category",
+        "title",
+        "body",
+        "notificationKey",
+        "routeUrl",
+        "serverSeq",
+        "previewMode",
+        "titleKey",
+        "bodyKey",
+        "bodyArgs"
+    )
