@@ -1,8 +1,11 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -50,6 +53,31 @@ class SharedActivityStoreRealtimeUnreadTest {
         assertEquals(MessageId("reply-2"), patched.latestActivityMessageId)
         assertEquals(0 to null, patched.unreadCount to patched.firstUnreadMessageId)
         assertEquals(0, store.state.value.totalUnreadCount)
+    }
+
+    @Test
+    fun dmNewSchedulesOneThrottledCanonicalReconcileLikeWeb() = runTest {
+        // botiverse/slock 1bb70cbeb channelRealtimeSync.ts:69-75: dm:new -> scheduleInboxRefresh.
+        val dm = activityItem("dm-new").copy(key = "dm:dm-new", kind = build.raft.app.model.InboxItemKind.DirectMessage)
+        val inbox =
+            FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()), snapshot(listOf(dm))))
+        val store =
+            activityStore(
+                backgroundScope,
+                inbox,
+                realtimeBackgroundRefreshIntervalMillis = 2_500L,
+                nowMillis = { testScheduler.currentTime }
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(DirectMessageCreated(ChannelId("dm-new"))))
+        runCurrent()
+        assertEquals(1, inbox.initialLoadCount, "inside the throttle window")
+        advanceTimeBy(2_501L)
+        runCurrent()
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(listOf("dm:dm-new"), store.state.value.items.map { it.key })
     }
 
     @Test

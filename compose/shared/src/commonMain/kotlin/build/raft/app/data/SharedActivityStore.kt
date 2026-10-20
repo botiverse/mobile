@@ -5,6 +5,7 @@ import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
@@ -690,7 +691,9 @@ class SharedActivityStore internal constructor(
                 }
             else -> Unit
         }
-        if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated) {
+        // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
+        // a brand-new DM row can only arrive through the canonical projection.
+        if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated || event is DirectMessageCreated) {
             // Only All has stable membership under a message-only payload. Unread
             // and Mentions depend on receiver-specific read/mention facts that are
             // not fully carried by every realtime frame; patching those filters
