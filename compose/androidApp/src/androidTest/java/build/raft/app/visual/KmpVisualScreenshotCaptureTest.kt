@@ -205,17 +205,39 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureActivityTabSegments() {
-        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the three segments
-        // (All / Unread / Mentions) and the 5-tab bar with the Activity badge.
-        listOf("all", "unread", "mentions").forEach { segment ->
-            captureKmpComponentCase(
-                caseId = "screens.activity-tab.$segment",
-                pageName = "compose_activity_tab_visual",
-                pageData = JSONObject().put("segment", segment),
-                crop = FULL_VIEWPORT_CROP
-            )
-        }
+    fun captureActivityTabAll() {
+        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the segment
+        // strip (All / Unread / Mentions) and the bottom bar with the Activity badge.
+        captureKmpComponentCase(
+            caseId = "screens.activity-tab.all",
+            pageName = "compose_activity_tab_visual",
+            pageData = JSONObject().put("segment", "all"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureActivityTabUnread() {
+        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the segment
+        // strip (All / Unread / Mentions) and the bottom bar with the Activity badge.
+        captureKmpComponentCase(
+            caseId = "screens.activity-tab.unread",
+            pageName = "compose_activity_tab_visual",
+            pageData = JSONObject().put("segment", "unread"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureActivityTabMentions() {
+        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the segment
+        // strip (All / Unread / Mentions) and the bottom bar with the Activity badge.
+        captureKmpComponentCase(
+            caseId = "screens.activity-tab.mentions",
+            pageName = "compose_activity_tab_visual",
+            pageData = JSONObject().put("segment", "mentions"),
+            crop = FULL_VIEWPORT_CROP
+        )
     }
 
     @Test
