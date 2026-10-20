@@ -8455,7 +8455,7 @@ internal fun attachmentDownloadFailurePayload(
         failure: AttachmentDownloadFailedException
 ): Map<String, Any> {
     val storageFailure =
-            failure.errorKind in setOf("storage_write", "storage_prepare", "storage_publish")
+            failure.errorKind in setOf("storage_failed", "storage_write", "storage_prepare", "storage_publish")
     return mapOf(
             "status" to if (storageFailure) "storage_failed" else "download_failed",
             "cached" to false,

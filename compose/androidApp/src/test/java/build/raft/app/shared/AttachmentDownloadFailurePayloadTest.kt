@@ -6,7 +6,7 @@ import org.junit.Test
 class AttachmentDownloadFailurePayloadTest {
     @Test
     fun storageFailureKindsMapToStorageFailed() {
-        for (errorKind in listOf("storage_write", "storage_prepare", "storage_publish")) {
+        for (errorKind in listOf("storage_failed", "storage_write", "storage_prepare", "storage_publish")) {
             val payload =
                 attachmentDownloadFailurePayload(
                     AttachmentDownloadFailedException(errorKind, "Unable to write download staging file")

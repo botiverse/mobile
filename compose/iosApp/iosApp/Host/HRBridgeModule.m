@@ -5181,6 +5181,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         if (![result.status isEqualToString:@"complete"]) {
             NSString *errorKind = result.errorKind ?: @"";
             BOOL storageFailure =
+                [errorKind isEqualToString:@"storage_failed"] ||
                 [errorKind isEqualToString:@"storage_write"] ||
                 [errorKind isEqualToString:@"storage_prepare"] ||
                 [errorKind isEqualToString:@"storage_publish"];
