@@ -97,15 +97,37 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
     }
 
     @Test
-    fun newerPrewarmPageReplacesTheStoredWindow() = withFreshDatabase { database ->
-        // Twin of the race above: identical stored window, but the prewarm page has a newer reply (80).
+    fun newerPrewarmPageOverlappingTheStoredWindowExtendsItAndKeepsEveryStoredFact() = withFreshDatabase { database ->
+        // A long-read thread: the enter stored 150 replies (seq 1..150, it reaches the first reply). Two new
+        // replies later, the prewarm's 30-reply page (seq 123..152) shares 28 replies with the window.
+        val rig = Rig(database, enterPage = replyPage(*(1L..150L).map { replyNode(it) }.toTypedArray()))
+        runBlocking {
+            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+            rig.prewarm(replyPageArray(*(123L..152L).toList().toLongArray()), limit = 30)
+            assertTrue(rig.logs.any { committed("window_extended", 30) in it }, rig.logs.toString())
+            val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
+            assertEquals((1L..152L).toList(), thread.envelopes.map { it.fact.seq }, "no stored reply is dropped")
+            assertEquals(1L, thread.cursor.oldestLoadedSeq)
+            assertTrue(thread.cursor.hasLoadedOldest, "the window still reaches the first reply")
+            assertEquals(152L, thread.cursor.newestLoadedSeq, "the newest edge comes from the page")
+            assertEquals(152L, thread.cursor.latestSeq)
+            assertEquals(Triple("channel", "channel-1", "m30"), Triple(thread.cursor.parentScopeKind, thread.cursor.parentScopeId, thread.cursor.rootMessageId))
+        }
+    }
+
+    @Test
+    fun newerPrewarmPageWithAGapReplacesTheStoredWindow() = withFreshDatabase { database ->
+        // Twin of the extend above: stored window 50..70, but the page (80, 90) shares no reply with it, so
+        // nothing proves page ∪ window contiguous. Same as the gap catch-up's `window_replaced`: the page
+        // becomes the window and the dropped history comes back through older paging.
         val rig = Rig(database)
         runBlocking {
             rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
-            rig.prewarm(replyPageArray(70, 80), limit = 2)
+            rig.prewarm(replyPageArray(80, 90), limit = 2)
             assertTrue(rig.logs.any { committed("window_replaced", 2) in it }, rig.logs.toString())
             val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
-            assertEquals(listOf(70L, 80L), thread.envelopes.map { it.fact.seq })
+            assertEquals(listOf(80L, 90L), thread.envelopes.map { it.fact.seq })
+            assertEquals(80L, thread.cursor.oldestLoadedSeq)
             assertFalse(thread.cursor.hasLoadedOldest, "a full page (2 = limit) says nothing about older replies")
         }
     }
@@ -145,6 +167,7 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
         database: RaftSqlDatabase,
         flagOn: Boolean = true,
         threadParentMessageId: String = "m30",
+        enterPage: String = replyPage(replyNode(50), replyNode(60), replyNode(70)),
     ) {
         val logs = mutableListOf<String>()
         val network = PathNetworkClient(
@@ -152,7 +175,7 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
                 "channels/channel-1" to """{"id":"channel-1","type":"channel"}""",
                 "channels/thread-1" to
                     """{"id":"thread-1","type":"thread","parentChannelId":"channel-1","parentMessageId":"$threadParentMessageId"}""",
-                "messages/channel/thread-1" to replyPage(replyNode(50), replyNode(60), replyNode(70)),
+                "messages/channel/thread-1" to enterPage,
             ),
         )
         private val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })

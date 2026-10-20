@@ -23,6 +23,7 @@ import build.raft.app.network.sync.CanonicalMessageV2SnapshotFrame
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotLoadResult
 import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.PersistedCursor
+import build.raft.app.network.sync.RestoredCanonicalMessageV2Scope
 import build.raft.app.network.sync.ProductionFace
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeId
@@ -494,6 +495,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
      * `false` (treated as a member: auto-joined at connect, like #2994's leave rule).
      */
     private val isKnownNonMember: (serverId: String, channelId: String) -> Boolean = { _, _ -> false },
+    /** Task #14b, the prewarm's extend: must equal the store's [CanonicalMessageV2RetentionPolicy.maxFactsPerScope]. */
+    private val maxFactsPerScope: Int = CanonicalMessageV2RetentionPolicy().maxFactsPerScope,
 ) : ThreadEnteredScopeSnapshotLoader {
     private val inFlightMutex = Mutex()
     private val inFlight = mutableSetOf<Pair<DurablePartitionKey, SyncScopeId>>()
@@ -625,7 +628,11 @@ internal class CanonicalMessageV2EnteredScopeLoader(
      *    rechecked; race guard — a stored window whose parent differs, or whose newest edge is at or past
      *    the page's newest reply, is kept (`stored_not_older`): an enter that committed first, or a newer
      *    prewarm, is never regressed by an older page;
-     * 6. `applySnapshot` bound to the partition generation captured before step 3. After a commit the canary
+     * 6. a strictly newer page is written exactly like the gap catch-up's latest page
+     *    ([latestPageJoinedCursorOrNull]): joined to the stored window → `applyIncremental` with the union
+     *    cursor (`window_extended`, every stored fact kept); a real gap → `applySnapshot` (`window_replaced`);
+     *    no window → `applySnapshot` (`window_created`). Each bound to the partition generation captured
+     *    before step 3. After a commit the canary
      *    is told [CanonicalMessageV2ProductionCanary.onExternalCommit] (no baseline: the thread window stays
      *    display only for realtime replies, `thread_delivery_unconfirmed` is untouched).
      */
@@ -683,21 +690,44 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             generationEngine.withScopeWriter(scope) {
                 if (!stillCurrent()) return@withScopeWriter skip("identity_changed")
                 if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
-                val current = generationEngine.storedCursor(scope)
-                if (current != null) {
-                    if (storedReplyParentOrNull(current, replyParent) != parent) {
-                        return@withScopeWriter skip("parent_mismatch")
-                    }
-                    val pageNewest = frame.cursor.newestLoadedSeq
-                    val storedNewest = current.newestLoadedSeq
-                    if (pageNewest == null || (storedNewest != null && pageNewest <= storedNewest)) {
-                        return@withScopeWriter skip("stored_not_older")
-                    }
-                }
                 try {
-                    when (val result = generationEngine.applySnapshot(frame, expectedGeneration)) {
+                    // `restore` re-reads the committed cursor + facts and (re)marks the scope baselined in this
+                    // process, which the extend's `applyIncremental` requires. It only republishes what is on disk.
+                    val restored = generationEngine.restore(scope)
+                    val current = restored.cursor
+                    // Extending keeps every stored fact (the window grows); replacing is only for a real gap.
+                    var joinedCursor: PersistedCursor? = null
+                    if (current != null) {
+                        if (storedReplyParentOrNull(current, replyParent) != parent) {
+                            return@withScopeWriter skip("parent_mismatch")
+                        }
+                        val pageNewest = frame.cursor.newestLoadedSeq
+                        val storedNewest = current.newestLoadedSeq
+                        if (pageNewest == null || (storedNewest != null && pageNewest <= storedNewest)) {
+                            return@withScopeWriter skip("stored_not_older")
+                        }
+                        joinedCursor = latestPageJoinedCursorOrNull(
+                            restored,
+                            current,
+                            frame.envelopes,
+                            reachedEnd = frame.envelopes.size < requestedLimit,
+                            maxFactsPerScope = maxFactsPerScope,
+                        )
+                    }
+                    val (reason, result) = when {
+                        current == null -> "window_created" to generationEngine.applySnapshot(frame, expectedGeneration)
+                        joinedCursor != null -> "window_extended" to generationEngine.applyIncremental(
+                            CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = frame.envelopes, cursor = joinedCursor),
+                            expectedGeneration,
+                        )
+                        // Not joined: the gap was wider than the page (or the window is an empty baseline). Same as
+                        // the gap catch-up's `window_replaced`: the page becomes the window; the dropped history
+                        // comes back through older paging.
+                        else -> "window_replaced" to generationEngine.applySnapshot(frame, expectedGeneration)
+                    }
+                    when (result) {
                         CanonicalMessageV2CommitResult.Committed -> {
-                            log("committed", if (current == null) "window_created" else "window_replaced", frame.envelopes.size)
+                            log("committed", reason, frame.envelopes.size)
                             canary.onExternalCommit(frame.scope)
                         }
                         else -> skip(result.wireOutcome(frame.envelopes.size))
@@ -1029,7 +1059,6 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         }
         if (foreign) return log("foreign_scope")
         if (envelopes.map { it.fact.id }.distinct().size != envelopes.size) return log("duplicate_fact")
-        val pageIds = envelopes.mapTo(mutableSetOf()) { it.fact.id }
         val pageSeqs = envelopes.map { it.fact.seq }
         val pageMin = pageSeqs.min()
         val pageMax = pageSeqs.max()
@@ -1046,35 +1075,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 }
                 val storedOldest = stored.oldestLoadedSeq
                 val storedNewest = stored.newestLoadedSeq
-                val joined =
-                    storedOldest != null && storedNewest != null &&
-                        restored.envelopes.any { fact -> fact.fact.id in pageIds && fact.fact.seq in storedOldest..storedNewest }
+                val joinedCursor = latestPageJoinedCursorOrNull(restored, stored, envelopes, reachedEnd, maxFactsPerScope)
                 var committedFrame: CanonicalMessageV2SnapshotFrame? = null
-                val (outcome, result) = if (joined) {
-                    checkNotNull(storedOldest)
-                    checkNotNull(storedNewest)
-                    val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
-                    val addedSeqs = envelopes.filter { it.fact.id !in storedIds }.map { it.fact.seq }
-                    val union = stored.copy(
-                        latestSeq = maxOf(stored.latestSeq ?: pageMax, pageMax),
-                        oldestLoadedSeq = minOf(storedOldest, pageMin),
-                        newestLoadedSeq = maxOf(storedNewest, pageMax),
-                        hasLoadedOldest = if (pageMin < storedOldest) reachedEnd else stored.hasLoadedOldest,
-                        hasLoadedNewest = true,
-                    )
-                    val cursor = if (restored.envelopes.size + addedSeqs.size > maxFactsPerScope) {
-                        val survivingOldest = (restored.envelopes.map { it.fact.seq } + addedSeqs)
-                            .sortedDescending()
-                            .take(maxFactsPerScope)
-                            .min()
-                        if (survivingOldest > checkNotNull(union.oldestLoadedSeq)) {
-                            union.copy(oldestLoadedSeq = survivingOldest, hasLoadedOldest = false)
-                        } else {
-                            union
-                        }
-                    } else {
-                        union
-                    }
+                val (outcome, result) = if (joinedCursor != null) {
+                    val cursor: PersistedCursor = joinedCursor
                     val result = generationEngine.applyIncremental(
                         CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = envelopes, cursor = cursor),
                         expectedGeneration,
@@ -1118,6 +1122,51 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                 log("poisoned fact=${poisoned.factId.orEmpty()}")
             }
         }
+    }
+}
+
+/**
+ * The gap catch-up's join FACT and union cursor (task #168 step 1), shared with the Activity prewarm
+ * writer (task #14b): the latest page [envelopes] joins the stored window iff a fact stored INSIDE the
+ * window (`oldestLoadedSeq..newestLoadedSeq`, on disk) is one of the page's ids — both blocks are
+ * contiguous, so sharing one message means page ∪ window is contiguous. Returns the union cursor (newest
+ * edge = the page's newest, `hasLoadedNewest`; oldest edge moves only when the page reaches below it; the
+ * retention cap moves the oldest edge exactly like a newer adjacent page), or `null` when not joined (the
+ * caller then replaces the window with the page). [envelopes] must be non-empty.
+ */
+private fun latestPageJoinedCursorOrNull(
+    restored: RestoredCanonicalMessageV2Scope,
+    stored: PersistedCursor,
+    envelopes: List<CanonicalMessageEnvelopeV2>,
+    reachedEnd: Boolean,
+    maxFactsPerScope: Int,
+): PersistedCursor? {
+    val storedOldest = stored.oldestLoadedSeq ?: return null
+    val storedNewest = stored.newestLoadedSeq ?: return null
+    val pageIds = envelopes.mapTo(mutableSetOf()) { it.fact.id }
+    val joined = restored.envelopes.any { fact -> fact.fact.id in pageIds && fact.fact.seq in storedOldest..storedNewest }
+    if (!joined) return null
+    val pageSeqs = envelopes.map { it.fact.seq }
+    val pageMin = pageSeqs.min()
+    val pageMax = pageSeqs.max()
+    val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
+    val addedSeqs = envelopes.filter { it.fact.id !in storedIds }.map { it.fact.seq }
+    val union = stored.copy(
+        latestSeq = maxOf(stored.latestSeq ?: pageMax, pageMax),
+        oldestLoadedSeq = minOf(storedOldest, pageMin),
+        newestLoadedSeq = maxOf(storedNewest, pageMax),
+        hasLoadedOldest = if (pageMin < storedOldest) reachedEnd else stored.hasLoadedOldest,
+        hasLoadedNewest = true,
+    )
+    if (restored.envelopes.size + addedSeqs.size <= maxFactsPerScope) return union
+    val survivingOldest = (restored.envelopes.map { it.fact.seq } + addedSeqs)
+        .sortedDescending()
+        .take(maxFactsPerScope)
+        .min()
+    return if (survivingOldest > checkNotNull(union.oldestLoadedSeq)) {
+        union.copy(oldestLoadedSeq = survivingOldest, hasLoadedOldest = false)
+    } else {
+        union
     }
 }
 
