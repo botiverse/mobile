@@ -360,6 +360,17 @@ class DisplayComponentScreenshotTest {
                     RaftBadge("Online", variant = RaftBadgeVariant.Success)
                     RaftBadge("API_KEY", appearance = RaftBadgeAppearance.Outline)
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Narrower than its label: ends in an ellipsis, never a half glyph.
+                    Caption("Truncated", Modifier.width(96.dp))
+                    RaftBadge(
+                        "Thinking about the release notes",
+                        modifier = Modifier.width(120.dp),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Primary,
+                    )
+                    RaftBadge("OPENAI_API_KEY=••••••••", modifier = Modifier.width(110.dp), appearance = RaftBadgeAppearance.Outline)
+                }
             }
         }
 
@@ -464,6 +475,16 @@ class DisplayComponentScreenshotTest {
                 RaftPanelNotice(
                     "Wug couldn't start: the runtime is missing.",
                     actions = { RaftButton("View Logs", onClick = {}, variant = RaftButtonVariant.Ghost) },
+                )
+                Caption("Panel notice, stacked actions")
+                RaftPanelNotice(
+                    "Wug couldn't start: the runtime exited with code 1 after loading the workspace. Check the computer's log for the missing dependency and restart the agent.",
+                    maxLines = 4,
+                    stackActions = true,
+                    actions = {
+                        RaftButton("Copy Info", onClick = {}, variant = RaftButtonVariant.Ghost)
+                        RaftButton("View Logs", onClick = {}, variant = RaftButtonVariant.Ghost)
+                    },
                 )
             }
         }

@@ -164,7 +164,8 @@ class SharedServerFeatureFlagsTest {
         // activity_conversation_list_v0 is the web key verbatim (slock serverFeatureFlags.ts
         // ACTIVITY_CONVERSATION_LIST_FLAG_KEY; drizzle 0362 seeds it server-randomized, default off).
         assertEquals("activity_conversation_list_v0", ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)
-        for (key in listOf(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY, ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)) {
+        assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
+        for (key in listOf(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY, ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY, ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)
             val enabled = SharedServerFeatureFlags(
                 FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":true,"reason":"server_rule"}]}"""))

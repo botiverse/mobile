@@ -157,7 +157,7 @@ internal fun raftBadgeLook(
 
 /**
  * raft-ui 0.8.0 Badge. Shared chrome: `inline-flex items-center gap-1 px-1.5`, 22dp
- * tall, chip radius, `text-caption` semibold Space Grotesk, one line, clipped.
+ * tall, chip radius, `text-caption` semibold Space Grotesk, one line, truncated with an ellipsis.
  *
  * - [RaftBadgeAppearance.Solid] (default): a 20dp sticker (min 20dp wide, centred),
  *   sticker radius, bold tabular ink type, a 1.5dp sticker-ink edge and, in dark, a
@@ -210,8 +210,9 @@ fun RaftBadge(
                 style = textStyle,
                 color = look.ink,
                 maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip,
+                // web `truncate`: a badge narrower than its label ends in an ellipsis
+                // instead of cutting a glyph in half.
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

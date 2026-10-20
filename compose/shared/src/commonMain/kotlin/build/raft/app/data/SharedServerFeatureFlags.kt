@@ -115,6 +115,13 @@ private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
 const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
 /**
+ * Agent Activity tab per-turn Overview (slock task #17). The same key the web reads (slock
+ * `ACTIVITY_OVERVIEW_WEB_FLAG_KEY`), so one switch turns the overview on for every client.
+ * Off (or unresolved), the Activity tab is the raw log only, as before.
+ */
+const val ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY: String = "activity_overview_web_v0"
+
+/**
  * Activity as a conversation list: one row per conversation with an avatar, a one-line preview and the
  * unread count, sidebar-pinned conversations first. The same per-server key the web reads (slock
  * `ACTIVITY_CONVERSATION_LIST_FLAG_KEY`, drizzle 0362: `randomization_unit = 'server'`, default off).
@@ -140,6 +147,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
+    ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
 )
 
