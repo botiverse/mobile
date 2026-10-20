@@ -578,12 +578,13 @@ class InteractiveComponentScreenshotTest {
         capture("menu") {
             Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
                 Column(Modifier.width(260.dp).padding(bottom = 24.dp)) {
-                    Caption("Menu: highlighted (pressed), focused, disabled", Modifier.padding(bottom = 8.dp))
+                    Caption("Menu: highlighted (pressed), focused, disabled, divider", Modifier.padding(bottom = 8.dp))
                     RaftMenuSurface(Modifier.fillMaxWidth()) {
                         RaftMenuItem("Open Channel", {}, shortcut = "⌘K", leadingIcon = { RaftGlyphIcon(RaftGlyph.ChevronRight) })
                         StateCell(pressed = true) { RaftMenuItem("Mark as Read", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Check) }) }
                         StateCell(focused = true) { RaftMenuItem("Copy Link", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Copy) }) }
                         RaftMenuItem("Archive Channel", {}, enabled = false)
+                        RaftMenuItem("Delete Message", {}, divider = true)
                         RaftMenuSeparator()
                         RaftMenuLabel("Sort by")
                         RaftMenuItem("Recent Activity", {}, checked = true)

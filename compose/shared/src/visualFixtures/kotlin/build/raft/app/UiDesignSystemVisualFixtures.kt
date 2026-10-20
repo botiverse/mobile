@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,8 @@ import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftFonts
@@ -196,5 +199,28 @@ private fun UiCheckboxLabelRow(label: String, checked: Boolean, enabled: Boolean
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         RaftCheckbox(checked = checked, onCheckedChange = {}, enabled = enabled)
         RaftText(label, style = UiCalloutBold, color = RaftTheme.colors.foreground, maxLines = 1)
+    }
+}
+
+@Composable
+internal fun UiMenuItemVisualContent() {
+    // web `ui-menu-item`: four 36dp menu rows (px-2.5, callout medium, mono hint shortcut)
+    // flush inside a `rounded-container border border-line-seam bg-layer-popover
+    // shadow-float` card, no popup inset. The last row carries its own `border-t
+    // border-line-hairline` inside its 36dp box, so its text centres 0.5dp lower:
+    // RaftMenuItem(divider = true). 342 x 178dp = 16 + 1 + 4 x 36 + 1 + 16.
+    UiDesignSystemFrame(height = 178.dp) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .raftLookOverlaySurface()
+                    .padding(RaftStroke.Hairline)
+        ) {
+            RaftMenuItem("Open Channel", onClick = {}, shortcut = "⌘K")
+            RaftMenuItem("Mark as Read", onClick = {})
+            RaftMenuItem("Archive unavailable", onClick = {}, enabled = false)
+            RaftMenuItem("Delete Message", onClick = {}, divider = true)
+        }
     }
 }
