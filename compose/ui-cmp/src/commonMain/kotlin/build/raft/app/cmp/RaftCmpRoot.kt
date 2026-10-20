@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpHost
@@ -26,13 +27,17 @@ import build.raft.designsystem.tokens.RaftSpacing
  * Root of every CMP page, on both hosts: provides the Raft theme, the route ([LocalRaftPageArgs])
  * and the native host ([LocalRaftHost]), paints the canvas edge to edge and renders the page
  * registered for [args]'s page name. Pages own their insets (`WindowInsets.safeDrawing`).
- * [onDarkThemeResolved] reports the resolved appearance after each change (system bar icons).
+ * [onDarkThemeResolved] reports the resolved appearance after each change (system bar icons);
+ * [onCanvasColorResolved] reports the canvas colour painted behind the page after each change, so
+ * a host can give its native container the same colour (whatever Compose does not draw, e.g. the
+ * area a keyboard offset uncovers, then shows the app surface instead of a platform default).
  */
 @Composable
 fun RaftCmpRoot(
     args: RaftCmpPageArgs,
     host: RaftCmpHost,
     onDarkThemeResolved: ((Boolean) -> Unit)? = null,
+    onCanvasColorResolved: ((Color) -> Unit)? = null,
 ) {
     CompositionLocalProvider(
         LocalRaftHost provides host,
@@ -43,10 +48,14 @@ fun RaftCmpRoot(
             if (onDarkThemeResolved != null) {
                 LaunchedEffect(dark) { onDarkThemeResolved(dark) }
             }
+            val canvas = RaftTheme.colors.layerCanvas
+            if (onCanvasColorResolved != null) {
+                LaunchedEffect(canvas) { onCanvasColorResolved(canvas) }
+            }
             val pressWash = RaftTheme.colors.fillPressed
             val indication = remember(pressWash) { RaftPressIndication(pressWash) }
             CompositionLocalProvider(LocalIndication provides indication) {
-                Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+                Box(Modifier.fillMaxSize().background(canvas)) {
                     val content = RaftCmpRouter.content(args.pageName)
                     if (content != null) content() else UnknownCmpPage(args.pageName)
                 }
