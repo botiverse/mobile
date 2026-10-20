@@ -27,6 +27,8 @@ import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -107,7 +109,6 @@ internal object RaftSidebarItemMetrics {
  * `not-data-active:data-popup-open:bg-fill-pressed`, so not on the selected row). Both need
  * [onClick].
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RaftSidebarItem(
     title: String,
@@ -123,6 +124,83 @@ fun RaftSidebarItem(
     onLongClickLabel: String? = null,
     menuOpen: Boolean = false,
     titleTrailing: (@Composable () -> Unit)? = null,
+) {
+    RaftSidebarItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(title, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        subtitle = subtitle,
+        leading = leading,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+    )
+}
+
+/**
+ * [RaftSidebarItem] with a styled [title]: its spans and their `localeList`
+ * (`SpanStyle(localeList = LocaleList("ja"))`) are kept, so a CJK name keeps the glyph forms
+ * of its language. The row's type, weight and ink sit under the spans.
+ */
+@Composable
+fun RaftSidebarItem(
+    title: AnnotatedString,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    tone: RaftRowTone = RaftRowTone.Default,
+    subtitle: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
+) {
+    RaftSidebarItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(title, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        subtitle = subtitle,
+        leading = leading,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+    )
+}
+
+/** [RaftSidebarItem]'s layout; [titleText] draws the one-line name in the given style and ink. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RaftSidebarItemLayout(
+    titleText: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    modifier: Modifier,
+    onClick: (() -> Unit)?,
+    selected: Boolean,
+    tone: RaftRowTone,
+    subtitle: String?,
+    leading: (@Composable () -> Unit)?,
+    trailing: (@Composable RowScope.() -> Unit)?,
+    interactionSource: MutableInteractionSource?,
+    onLongClick: (() -> Unit)?,
+    onLongClickLabel: String?,
+    menuOpen: Boolean,
+    titleTrailing: (@Composable () -> Unit)?,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -197,14 +275,7 @@ fun RaftSidebarItem(
                 val titleModifier = if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline()
                 val titleStyle = typography.body.copy(fontWeight = titleWeight)
                 if (titleTrailing == null) {
-                    RaftText(
-                        title,
-                        modifier = titleModifier,
-                        style = titleStyle,
-                        color = look.ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    titleText(titleModifier, titleStyle, look.ink)
                 } else {
                     // The name and its slot as one piece (it keeps the name's baseline for the
                     // subtitle): the slot is measured first, so only the name truncates.
@@ -213,14 +284,7 @@ fun RaftSidebarItem(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RaftText(
-                            title,
-                            modifier = Modifier.weight(1f, fill = false),
-                            style = titleStyle,
-                            color = look.ink,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        titleText(Modifier.weight(1f, fill = false), titleStyle, look.ink)
                         Box(contentAlignment = Alignment.Center) { titleTrailing() }
                     }
                 }
@@ -283,6 +347,89 @@ fun RaftSidebarChannelItem(
     menuOpen: Boolean = false,
     titleTrailing: (@Composable () -> Unit)? = null,
 ) {
+    RaftSidebarChannelItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(name, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        isPrivate = isPrivate,
+        unreadCount = unreadCount,
+        threadCount = threadCount,
+        mentioned = mentioned,
+        subtitle = subtitle,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+    )
+}
+
+/** [RaftSidebarChannelItem] with a styled [name] (spans and their `localeList` kept). */
+@Composable
+fun RaftSidebarChannelItem(
+    name: AnnotatedString,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    tone: RaftRowTone = RaftRowTone.Default,
+    isPrivate: Boolean = false,
+    unreadCount: Int = 0,
+    threadCount: Int = 0,
+    mentioned: Boolean = false,
+    subtitle: String? = null,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
+) {
+    RaftSidebarChannelItemLayout(
+        titleText = { textModifier, style, ink ->
+            RaftText(name, modifier = textModifier, style = style, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        tone = tone,
+        isPrivate = isPrivate,
+        unreadCount = unreadCount,
+        threadCount = threadCount,
+        mentioned = mentioned,
+        subtitle = subtitle,
+        trailing = trailing,
+        interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
+    )
+}
+
+@Composable
+private fun RaftSidebarChannelItemLayout(
+    titleText: @Composable (modifier: Modifier, style: TextStyle, ink: Color) -> Unit,
+    modifier: Modifier,
+    onClick: (() -> Unit)?,
+    selected: Boolean,
+    tone: RaftRowTone,
+    isPrivate: Boolean,
+    unreadCount: Int,
+    threadCount: Int,
+    mentioned: Boolean,
+    subtitle: String?,
+    trailing: (@Composable RowScope.() -> Unit)?,
+    interactionSource: MutableInteractionSource?,
+    onLongClick: (() -> Unit)?,
+    onLongClickLabel: String?,
+    menuOpen: Boolean,
+    titleTrailing: (@Composable () -> Unit)?,
+) {
     val waiting = unreadCount > 0 || threadCount > 0 || mentioned
     val resolvedTone = if (tone == RaftRowTone.Default && waiting) RaftRowTone.Unread else tone
     val aside: @Composable RowScope.() -> Unit = {
@@ -294,8 +441,8 @@ fun RaftSidebarChannelItem(
             muted = tone == RaftRowTone.Muted,
         )
     }
-    RaftSidebarItem(
-        title = name,
+    RaftSidebarItemLayout(
+        titleText = titleText,
         modifier = modifier,
         onClick = onClick,
         selected = selected,

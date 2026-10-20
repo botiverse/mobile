@@ -25,6 +25,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.intl.LocaleList
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -61,6 +65,7 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftPulseClock
 import build.raft.designsystem.components.RaftSidebarChannelItem
+import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
@@ -173,6 +178,17 @@ class RaftDisplaySemanticsTest {
             val mark = onNodeWithTag("mark", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             assertEquals(16f, mark.width / density.density, 0.5f)
             assertTrue(mark.right / density.density < 240f, "mark ends at ${mark.right / density.density}dp")
+        }
+
+    /** A styled name keeps its spans: a Japanese name keeps `ja` for its glyph forms. */
+    @Test
+    fun aSidebarRowKeepsTheLocaleOfAStyledTitle() =
+        runComposeUiTest {
+            val ja = LocaleList("ja")
+            val name = buildAnnotatedString { withStyle(SpanStyle(localeList = ja)) { append("直子") } }
+            setContent(themed { RaftSidebarItem(name, onClick = {}) })
+            val text = onNodeWithText("直子").fetchSemanticsNode().config[SemanticsProperties.Text].single()
+            assertTrue(text.spanStyles.any { it.item.localeList == ja }, "spans: ${text.spanStyles}")
         }
 
     @Test
