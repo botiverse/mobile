@@ -131,6 +131,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
@@ -7253,8 +7255,10 @@ internal fun RaftAppAvatar(
     }
     // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
     // never circles; brutal keeps square corners.
-    val frameModifier =
-        if (raftActive()) modifier.clip(RoundedCornerShape(RaftAppRadius.Sticker)) else modifier
+    // The border follows the same shape as the clip: a rectangular border under a rounded clip
+    // loses its corner strokes and reads as a square-cornered tile (Hands dd79da45 follow-up).
+    val frameShape = if (raftActive()) RoundedCornerShape(RaftAppRadius.Sticker) else RectangleShape
+    val frameModifier = modifier.clip(frameShape)
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
@@ -7262,8 +7266,8 @@ internal fun RaftAppAvatar(
         httpAvatarSource != null -> Box(
             modifier = frameModifier
                 .size(width = avatarSize, height = avatarSize)
-                .background(RaftColor.AccentLavender)
-                .border(borderWidth, RaftColor.BorderBlack),
+                .background(RaftColor.AccentLavender, frameShape)
+                .border(borderWidth, RaftColor.BorderBlack, frameShape),
             contentAlignment = Alignment.Center
         ) {
             // task #343: an uploaded avatar must not flash the generic icon while its cached
@@ -7282,7 +7286,7 @@ internal fun RaftAppAvatar(
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            DefaultUserAvatar(frameModifier, avatarSize, borderWidth)
+            DefaultUserAvatar(frameModifier, avatarSize, borderWidth, frameShape)
         }
     }
 }
@@ -7291,9 +7295,10 @@ internal fun RaftAppAvatar(
 private fun DefaultUserAvatar(
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = RaftAppStroke.Thin
+    borderWidth: Dp = RaftAppStroke.Thin,
+    shape: Shape = RectangleShape
 ) {
-    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender).border(borderWidth, RaftColor.BorderBlack), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender, shape).border(borderWidth, RaftColor.BorderBlack, shape), contentAlignment = Alignment.Center) {
         DefaultUserAvatarIcon(avatarSize)
     }
 }
