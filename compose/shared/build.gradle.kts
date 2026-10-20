@@ -168,10 +168,12 @@ kotlin {
                 // through NetworkKMM behind the RaftHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
                 // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
-                // by the commonMain Compose Canvas renderer (RaftMermaidCanvas); mermaid-kuikly is gone.
-                implementation("build.raft.mermaid:mermaid-core:0.1.12")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.12")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.12")
+                // by the library's Compose Multiplatform renderer (mermaid-compose, built against
+                // CMP 1.8; the app's newer CMP wins resolution) inside RaftMermaidViewport.
+                implementation("build.raft.mermaid:mermaid-core:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.14")
+                implementation("build.raft.mermaid:mermaid-compose:0.1.14")
             }
         }
         val commonTest by getting {
@@ -211,9 +213,9 @@ kotlin {
                 // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
                 implementation(libs.androidx.recyclerview)
                 implementation(libs.androidx.core.ktx)
-                implementation("build.raft.mermaid:mermaid-core:0.1.12")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.12")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.12")
+                implementation("build.raft.mermaid:mermaid-core:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.14")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.14")
             }
         }
         val androidInstrumentedTest by getting {

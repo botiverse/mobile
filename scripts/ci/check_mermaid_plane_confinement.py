@@ -5,7 +5,7 @@ Incident-born gate (task #373 / PR #2497). Under Kuikly the mermaid renderer
 was copied per platform (RaftMermaidDiagramBlock.{android,ios}.kt) and one
 plane silently drifted. The Compose Multiplatform switch replaced those
 actuals with a single commonMain implementation: RaftMermaidDiagramBlock.kt
-(parse + layout) and RaftMermaidCanvas.kt (Compose Canvas drawing). This gate
+(parse + layout) and RaftMermaidCanvas.kt (drawing through mermaid-compose). This gate
 keeps that shape:
 
 Assertions:
