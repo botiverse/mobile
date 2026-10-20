@@ -58,7 +58,7 @@ on:
         type: boolean
         default: false
       testflight_what_to_test:
-        description: "What to Test text (zh-Hans) for the internal TestFlight build; empty uses the commit subject"
+        description: "What to Test text (zh-Hans) for the internal TestFlight build; empty uses the build number and commit"
         required: false
         type: string
         default: ""
@@ -603,26 +603,32 @@ jobs:
           # Match version code AND source commit: a stale build with the same
           # code (e.g. an earlier dispatch) must never be distributed.
           hands --json builds list raft-ios > builds.json
-          BUILD_ID="$(python3 - <<'PY'
+          read -r BUILD_ID APP_ID <<<"$(python3 - <<'PY'
           import json, os
           d = json.load(open("builds.json"))
           vc = os.environ["RAFT_IOS_VERSION_CODE"]
           sha = os.environ["GITHUB_SHA"]
           for b in d.get("builds", []):
-              m = json.loads(b.get("build_metadata_json") or "{}")
+              v = b.get("build_metadata_json")
+              try:
+                  m = v if isinstance(v, dict) else json.loads(v or "{}")
+              except ValueError:
+                  continue
               if str(b.get("version_code")) == vc and m.get("source_commit") == sha:
-                  print(b["id"]); break
+                  print(b["id"], b["app_id"]); break
           PY
-          )"
-          if [ -z "${BUILD_ID}" ]; then
+          )" || true
+          if [ -z "${BUILD_ID:-}" ]; then
             echo "No Hands build with version_code=${RAFT_IOS_VERSION_CODE} source_commit=${GITHUB_SHA}" >&2
             exit 1
           fi
-          APP_ID="$(python3 -c "import json;d=json.load(open('builds.json'));print(next(b['app_id'] for b in d['builds'] if b['id']=='${BUILD_ID}'))")"
           echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
           echo "app_id=${APP_ID}" >> "$GITHUB_OUTPUT"
           echo "Hands build ${BUILD_ID}"
 
+      # Not idempotent: re-running only this job after a successful upload makes
+      # App Store Connect reject the duplicate CFBundleVersion. Re-dispatch with a
+      # new version_build instead.
       - name: Upload to App Store Connect
         id: upload
         shell: bash
@@ -639,7 +645,7 @@ jobs:
           GROUP_ID="$(hands --json builds testflight-groups raft-ios "${{ steps.build.outputs.build_id }}" \
             | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(g['id'] for g in d['groups'] if g['is_internal'] and g['name']=='Botiverse'))")"
           if [ -z "${WHAT_TO_TEST}" ]; then
-            WHAT_TO_TEST="$(git log -1 --pretty=%s 2>/dev/null || echo "Internal build ${RAFT_IOS_VERSION_CODE}")"
+            WHAT_TO_TEST="内部测试包 ${RAFT_IOS_VERSION_CODE}（${GITHUB_SHA:0:9}）"
           fi
           printf '%s\n' "${WHAT_TO_TEST}" > wtt.txt
           hands builds testflight-publish raft-ios "${{ steps.build.outputs.build_id }}" \
