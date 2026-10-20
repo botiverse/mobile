@@ -7550,6 +7550,9 @@ private fun AppShellServerDrawerHost(
                 drawerWidth = drawerWidth
             )
         val scrimWidth = (maxWidth - drawerWidth * drawerState.progress).coerceAtLeast(0.dp)
+        // The drawer slides the shell (and its Compose bar) aside; the iOS system tab bar stays
+        // put above the page, so it hides while any of the drawer shows.
+        RaftNativeTabBarCover(active = drawerState.progress > 0.01f)
         var commandState by remember(drawerState) { mutableStateOf(HomeServerDrawerCommandState()) }
         val pointerPolicy = commandState.pointerPolicy(projection.commandIntent)
         val openGestureAdmission =
