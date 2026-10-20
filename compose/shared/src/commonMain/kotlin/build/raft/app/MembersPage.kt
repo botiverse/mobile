@@ -7151,7 +7151,6 @@ private fun MembersDetailSummary(
         MembersAvatar(
             member = member,
             avatarSize = 58.dp,
-            statusSize = 12.dp,
             statusDisplayState =
                 agentStatusIndicatorState?.toMembersAgentStatusDisplayState()
                     ?: unknownMembersAgentStatusIndicatorState().toMembersAgentStatusDisplayState(),
@@ -8424,12 +8423,13 @@ private fun MembersStickerAvatar(
         image = {
             RaftAppAvatar(
                 avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
-                label = member.avatarLabel,
+                label = member.raftAvatarName(),
                 // The face fills the inside of the sticker's two 1.5dp edges.
                 avatarSize = size.edge - RaftAppStroke.Control * 2,
                 borderWidth = 0.dp,
                 cacheSubject = member.raftAvatarCacheSubject(),
-                cacheServerId = member.serverId?.value
+                cacheServerId = member.serverId?.value,
+                fallbackFill = raftAvatarFallbackFill(member.kind)
             )
         }
     )
@@ -9079,11 +9079,13 @@ private fun MembersAgentAvatarChoiceGrid(
             if (activeCustomAvatar) {
                 RaftAppAvatar(
                     avatarWireValue = member.avatarUrl,
-                    label = stringResource(MR.strings.member_label_custom_avatar),
+                    // An upload that fails to load shows the agent placeholder, not initials of "Custom avatar".
+                    label = "",
                     avatarSize = MembersAgentAvatarPickerAvatarSize,
                     borderWidth = 0.dp,
                     cacheSubject = member.raftAvatarCacheSubject(),
-                    cacheServerId = member.serverId?.value
+                    cacheServerId = member.serverId?.value,
+                    fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
                 )
             } else {
                 RaftLucideIcon(
@@ -12759,11 +12761,9 @@ private fun MembersAgentDmRow(
     serverMembersState: SharedServerMembersState,
     divider: Boolean = false
 ) {
-    val avatarCacheIdentity =
+    val peerProfile =
         remember(row.peerId, currentServerId, serverMembersState) {
-            serverMembersState
-                .membersAgentDmPeerProfile(row, currentServerId)
-                ?.raftAvatarCacheIdentity(currentServerId)
+            serverMembersState.membersAgentDmPeerProfile(row, currentServerId)
         }
     // raft-ui AvatarListRow: the 35dp peer avatar, name, "Agent DM · @handle" in Space Mono,
     // the last message as the preview (up to 3 lines) with an Activity only tag, the time on
@@ -14329,7 +14329,6 @@ private fun MembersListRow(
 private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MembersListAvatarSize,
-    statusSize: Dp = MemberStatusDotSize,
     statusDisplayState: MembersAgentStatusDisplayState = MembersUnknownAgentStatusDisplayState,
     statusIndicatorState: RaftAgentStatusIndicatorState? = null,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -14350,15 +14349,15 @@ private fun MembersAvatar(
                 null
             },
         avatarSize = avatarSize,
-        statusSize = statusSize,
         statusPulsing = statusIndicatorState?.pulsing ?: statusDisplayState.pulsing
     ) {
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
-            label = member.avatarLabel,
+            label = member.raftAvatarName(),
             avatarSize = avatarSize,
             cacheSubject = member.raftAvatarCacheSubject(),
-            cacheServerId = member.serverId?.value
+            cacheServerId = member.serverId?.value,
+            fallbackFill = raftAvatarFallbackFill(member.kind)
         )
     }
 }
@@ -14592,7 +14591,7 @@ internal fun AgentCreatorSummary.toStrictMemberProfile(
         kind = kind,
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = display.take(1).uppercase()
+        avatarLabel = display.toRaftAvatarLabel()
     )
 }
 
@@ -14612,7 +14611,7 @@ private fun AgentCreatedSummary.toStaticMembersProfile(): MemberProfile {
         kind = MemberKind.Agent,
         avatarUrl = avatarWireValue,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
-        avatarLabel = display.take(1).uppercase(),
+        avatarLabel = (displayName?.takeIf { it.isNotBlank() } ?: name).toRaftAvatarLabel(),
         roleDescription = runtime,
         isExternal = isExternal
     )
@@ -14748,7 +14747,7 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         serverRole = summary?.serverRole?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
         agentStatus = null,
         // Detail summaries carry the runtime sentinel only (no projected boolean).

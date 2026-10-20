@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.RaftThreadAttachmentItem
 import build.raft.app.RaftThreadMessageCommentHostSource
 import build.raft.app.RaftThreadMessageCommentRef
@@ -313,7 +314,7 @@ private fun WireMessage.toMessageItem(
                 ?: senderDescription?.takeIf { it.isNotBlank() },
         authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && senderId == currentUserId,
-        avatarLabel = resolvedName.take(1).uppercase(),
+        avatarLabel = resolvedName.toRaftAvatarLabel(),
         avatarWireValue = resolvedExternalAuthor?.avatarUrl,
         externalAuthor = resolvedExternalAuthor,
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },

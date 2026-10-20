@@ -1035,7 +1035,7 @@ internal data class RaftComposerMemberItem(
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,
     val avatarWireValue: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase(),
+    val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val memberId: String? = null
 )
 
@@ -1706,8 +1706,7 @@ private fun threadComposerVisualFixture(
                             inMentionChannel = true,
                             kind = MemberKind.Agent,
                             description = "Suggestion row $index",
-                            avatarWireValue = "pixel:robot",
-                            avatarLabel = index.toString()
+                            avatarWireValue = "pixel:robot"
                         )
                     }
             )
@@ -3295,8 +3294,12 @@ internal fun RaftPendingMentionActionItem.targetLabel(): String {
     }
 }
 
-private fun RaftPendingMentionActionItem.targetInitial(): String =
-    targetLabel().removePrefix("@").trim().take(1).ifBlank { "?" }.uppercase()
+// The target's handle for the avatar's initials; no handle shows the placeholder icon
+// (never "?" or the target type).
+private fun RaftPendingMentionActionItem.targetAvatarName(): String = targetHandle.trim()
+
+private fun RaftPendingMentionActionItem.targetAvatarFill(suggestion: RaftComposerMemberItem?): Color =
+    raftAvatarFallbackFill(suggestion?.kind ?: if (targetType == "agent") MemberKind.Agent else MemberKind.Human)
 
 internal fun RaftPendingMentionActionItem.targetAvatarWireValue(): String? =
     targetAvatarUrl?.takeIf { it.isNotBlank() }
@@ -3673,9 +3676,9 @@ private fun ComposerMemberSuggestionRow(
         ) {
             RaftAppAvatar(
                 avatarWireValue = member.avatarWireValue,
-                label = member.avatarLabel.ifBlank { member.displayName },
+                label = member.displayName.ifBlank { member.avatarLabel },
                 avatarSize = ComposerMemberSuggestionAvatarSize,
-                borderWidth = RaftAppStroke.Thin,
+                fallbackFill = raftAvatarFallbackFill(member.kind),
                 cacheSubject = raftMemberAvatarCacheSubject(member.kind, member.memberId),
                 cacheServerId = member.sourceServerId
             )
@@ -4037,9 +4040,12 @@ private fun PendingMentionActionAvatarStack(
             val suggestion = action.matchingTargetSuggestion(memberSuggestions)
             RaftAppAvatar(
                 avatarWireValue = action.targetAvatarWireValue() ?: suggestion?.avatarWireValue,
-                label = suggestion?.avatarLabel?.takeIf(String::isNotBlank) ?: action.targetInitial(),
+                label =
+                    suggestion?.displayName?.takeIf(String::isNotBlank)
+                        ?: suggestion?.avatarLabel?.takeIf(String::isNotBlank)
+                        ?: action.targetAvatarName(),
                 avatarSize = 24.dp,
-                borderWidth = RaftAppStroke.Default
+                fallbackFill = action.targetAvatarFill(suggestion),
             )
         }
         val overflowCount = (actions.size - 2).coerceAtLeast(0)
@@ -4200,11 +4206,11 @@ private fun PendingMentionActionCompactRow(
     onDismiss: () -> Unit
 ) {
     val targetAvatarLabel =
-        targetSuggestion?.avatarLabel
+        targetSuggestion?.displayName
             ?.takeIf { it.isNotBlank() }
-            ?: targetSuggestion?.displayName
+            ?: targetSuggestion?.avatarLabel
                 ?.takeIf { it.isNotBlank() }
-            ?: action.targetInitial()
+            ?: action.targetAvatarName()
     val canInvite = action.supportsMentionAction("invite") && localState == null
     val canNotify = action.supportsMentionAction("notify") && localState == null
     val contentAlpha = if (removing) 0.45f else 1f
@@ -4221,7 +4227,7 @@ private fun PendingMentionActionCompactRow(
             avatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue,
             label = targetAvatarLabel,
             avatarSize = 28.dp,
-            borderWidth = RaftAppStroke.Default
+            fallbackFill = action.targetAvatarFill(targetSuggestion),
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
@@ -4320,11 +4326,11 @@ private fun PendingMentionActionRow(
 ) {
     val targetLabel = action.targetLabel()
     val targetAvatarLabel =
-        targetSuggestion?.avatarLabel
+        targetSuggestion?.displayName
             ?.takeIf { it.isNotBlank() }
-            ?: targetSuggestion?.displayName
+            ?: targetSuggestion?.avatarLabel
                 ?.takeIf { it.isNotBlank() }
-            ?: action.targetInitial()
+            ?: action.targetAvatarName()
     val targetAvatarWireValue = action.targetAvatarWireValue() ?: targetSuggestion?.avatarWireValue
     val canInvite = action.supportsMentionAction("invite") && localState == null
     val canNotify = action.supportsMentionAction("notify") && localState == null
@@ -4353,7 +4359,7 @@ private fun PendingMentionActionRow(
                 avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
-                borderWidth = RaftAppStroke.Default
+                fallbackFill = action.targetAvatarFill(targetSuggestion),
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

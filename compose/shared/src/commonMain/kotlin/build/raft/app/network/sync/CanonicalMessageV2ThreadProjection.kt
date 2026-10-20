@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.RaftThreadAttachmentItem
 import build.raft.app.RaftThreadMessageItem
 import build.raft.app.RaftThreadReactionItem
@@ -62,7 +63,7 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
         authorDescription = fact.senderDescription?.takeIf { it.isNotBlank() },
         authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && fact.senderId == currentUserId,
-        avatarLabel = resolvedName.take(1).uppercase(),
+        avatarLabel = resolvedName.toRaftAvatarLabel(),
         avatarWireValue = null,
         senderMembershipStatus = fact.senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = fact.createdAt,

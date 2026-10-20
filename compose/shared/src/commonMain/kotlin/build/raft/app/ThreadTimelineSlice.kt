@@ -368,7 +368,7 @@ private fun RaftThreadMessageItem.toThreadAuthorProfile(): MemberProfile? {
         handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
         kind = kind,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
-        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() }
+        avatarLabel = avatarLabel.ifBlank { authorName.toRaftAvatarLabel() }
     )
 }
 

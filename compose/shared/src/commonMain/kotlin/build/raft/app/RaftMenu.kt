@@ -452,7 +452,8 @@ internal fun RaftTaskAssigneeMenuOverlay(
                                     ?.takeIf { it.isNotBlank() }
                                     ?: "${member.kind.name.lowercase()} · @${member.handle}",
                                 avatarWireValue = member.avatarWireValueForAvatarSlot(),
-                                avatarLabel = member.avatarLabel.ifBlank { member.displayName },
+                                avatarLabel = member.raftAvatarName(),
+                                avatarFill = raftAvatarFallbackFill(member.kind),
                                 statusColor = statusIndicatorState?.color,
                                 statusPulsing = statusIndicatorState?.pulsing == true,
                                 avatarSize = 26.dp,

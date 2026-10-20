@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
@@ -676,7 +677,7 @@ private fun WireChannelExternalMember.toModel(): ChannelExternalMemberProfile {
         handles = handles.filter { it.isNotBlank() },
         actorKind = actorKind?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
     )
 }
@@ -751,7 +752,7 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
         joinedAt = joinedAt,
         membershipStatus = membershipStatus?.takeIf { it.isNotBlank() }
@@ -780,7 +781,7 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
         gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
     )
 }
@@ -806,7 +807,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         canChangeChannelRole = canChangeChannelRole,
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence =
             if (deletedAt.isNullOrBlank()) {
                 agentStatus?.presence ?: Presence.Offline
@@ -862,7 +863,7 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         roleDescription = runtime,
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = agentStatus?.presence ?: Presence.Offline,
         agentStatus = agentStatus,
         statusLabel = agentStatus?.label,

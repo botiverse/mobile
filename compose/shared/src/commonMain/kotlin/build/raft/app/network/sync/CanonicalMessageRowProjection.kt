@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
@@ -73,7 +74,7 @@ fun CanonicalMessageRow.toAppMessage(
         handle = senderName.ifBlank { senderId },
         kind = authorKind,
         description = senderDescription,
-        avatarLabel = senderName.ifBlank { senderId }.take(1).uppercase(),
+        avatarLabel = senderName.ifBlank { senderId }.toRaftAvatarLabel(),
         presence = Presence.Offline,
     )
     val action = actionMetadata.toAppActionProjection()

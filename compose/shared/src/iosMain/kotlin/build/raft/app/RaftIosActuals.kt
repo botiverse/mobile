@@ -6,8 +6,6 @@ internal actual fun logPixelAvatarDrawCache(message: String) {
     // Keep iOS quiet; counters still update in common state.
 }
 
-internal actual fun isRaftNativePixelAvatarViewSupported(): Boolean = false
-
 internal actual fun raftPlatformLog(
     level: RaftLogLevel,
     tag: String,

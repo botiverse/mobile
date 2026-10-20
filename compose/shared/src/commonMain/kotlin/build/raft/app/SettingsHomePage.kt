@@ -899,7 +899,6 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                 RaftAvatarWithStatus(
                     statusColor = status?.color,
                     avatarSize = RaftSearchMetrics.EntityLeading,
-                    statusSize = 9.dp,
                     statusPulsing = status?.pulsing == true
                 ) {
                     RaftAppAvatar(
@@ -19360,7 +19359,7 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
         roleDescription = profile.string("roleDescription", "role") ?: string("roleDescription", "role"),
         avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
         avatar = AvatarReference.fromWireValue(avatarWireValue),
-        avatarLabel = displayName.take(1).uppercase(),
+        avatarLabel = displayName.toRaftAvatarLabel(),
         presence = (profile.string("presence", "availability") ?: string("presence", "availability")).toSharedPresence(),
         agentStatus = agentStatus,
         isExternal =
@@ -20539,15 +20538,15 @@ private fun SharedCreateChannelMemberRow(
         RaftAvatarWithStatus(
             statusColor = statusIndicatorState?.color,
             avatarSize = 28.dp,
-            statusSize = 7.dp,
             statusPulsing = statusIndicatorState?.pulsing == true
         ) {
             RaftAppAvatar(
                 avatarWireValue = avatarWireValue,
-                label = member.avatarLabel.ifBlank { member.displayName },
+                label = member.raftAvatarName(),
                 avatarSize = 28.dp,
                 cacheSubject = member.raftAvatarCacheSubject(),
-                cacheServerId = member.serverId?.value
+                cacheServerId = member.serverId?.value,
+                fallbackFill = raftAvatarFallbackFill(member.kind)
             )
         }
         Column(

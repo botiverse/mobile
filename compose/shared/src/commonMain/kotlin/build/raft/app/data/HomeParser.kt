@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictProjectionDiagnosticsLogger
@@ -498,7 +499,7 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(
         description = peerDescription?.takeIf { it.isNotBlank() },
         avatarUrl = directAvatarUrl,
         avatar = directAvatarUrl?.let { AvatarReference.fromWireValue(it) },
-        avatarLabel = displayName.take(1).uppercase(),
+        avatarLabel = displayName.toRaftAvatarLabel(),
         serverId = serverId
     )
 }

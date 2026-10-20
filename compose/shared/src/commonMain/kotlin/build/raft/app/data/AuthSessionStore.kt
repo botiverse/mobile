@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -547,7 +548,7 @@ data class StoredAuthUser(
             description = description,
             avatarUrl = avatarUrl,
             avatar = avatarUrl?.let(AvatarReference::fromWireValue),
-            avatarLabel = bestDisplayName.take(1).uppercase(),
+            avatarLabel = bestDisplayName.toRaftAvatarLabel(),
             presence = Presence.Active
         )
 }

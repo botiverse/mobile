@@ -807,6 +807,8 @@ internal fun RaftModalCompactMemberRow(
     channelPageStyle: Boolean = false,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     cacheServerId: String? = null,
+    // raft-ui Avatar `type`: [raftAvatarFallbackFill] of the member's kind.
+    avatarFill: Color = RaftColor.AccentLavender,
     onClick: () -> Unit = {}
 ) {
     val rowBackground =
@@ -848,7 +850,8 @@ internal fun RaftModalCompactMemberRow(
             roleBadgeLabel = roleBadgeLabel,
             channelPageStyle = channelPageStyle,
             cacheSubject = cacheSubject,
-            cacheServerId = cacheServerId
+            cacheServerId = cacheServerId,
+            avatarFill = avatarFill
         )
     }
 }
@@ -878,12 +881,12 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     roleBadgeLabel: String? = null,
     channelPageStyle: Boolean = false,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject?,
-    cacheServerId: String?
+    cacheServerId: String?,
+    avatarFill: Color = RaftColor.AccentLavender
 ) {
     RaftAvatarWithStatus(
         statusColor = statusColor,
             avatarSize = avatarSize,
-            statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp,
             statusPulsing = statusPulsing
         ) {
             RaftAppAvatar(
@@ -891,7 +894,8 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 label = avatarLabel,
                 avatarSize = avatarSize,
                 cacheSubject = cacheSubject,
-                cacheServerId = cacheServerId
+                cacheServerId = cacheServerId,
+                fallbackFill = avatarFill
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

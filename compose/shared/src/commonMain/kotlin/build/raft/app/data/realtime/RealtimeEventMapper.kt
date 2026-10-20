@@ -1,5 +1,6 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -721,7 +722,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         kind = authorKind,
         description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
         avatarUrl = resolvedExternalAuthor?.avatarUrl,
-        avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName ?: authorId).take(1).uppercase(),
+        avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName ?: authorId).toRaftAvatarLabel(),
         presence = Presence.Offline,
     )
     val channelIdValue = channelId
@@ -1564,7 +1565,7 @@ private fun memberFrom(
         displayName = label,
         handle = label,
         kind = kind,
-        avatarLabel = label.take(1).uppercase(),
+        avatarLabel = label.toRaftAvatarLabel(),
         presence = Presence.Offline,
     )
 }

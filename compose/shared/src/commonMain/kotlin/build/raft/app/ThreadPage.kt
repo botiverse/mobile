@@ -325,6 +325,7 @@ import build.raft.app.compat.ui.imageResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -2723,7 +2724,7 @@ private fun RaftThreadMemberItem.toMemberProfile(): MemberProfile? {
         kind = identity.kind,
         description = roleLabel.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
-        avatarLabel = avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } }.take(1).uppercase() },
+        avatarLabel = avatarLabel.ifBlank { displayName.ifBlank { handle }.toRaftAvatarLabel() },
         serverId = identity.sourceServerId,
         serverName = sourceServerLabel?.takeIf { it.isNotBlank() }
     )
@@ -2737,7 +2738,7 @@ private fun RaftThreadMessageItem.toMemberProfile(): MemberProfile? {
         handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
         kind = identity.kind,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
-        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
+        avatarLabel = avatarLabel.ifBlank { authorName.toRaftAvatarLabel() },
         presence = Presence.Offline
     )
 }
@@ -2933,7 +2934,7 @@ private fun buildThreadPendingSendMessage(
         authorHandle = user?.name ?: user?.email ?: authorName,
         authorKind = "human",
         isOwn = true,
-        avatarLabel = authorName.take(1).uppercase(),
+        avatarLabel = authorName.toRaftAvatarLabel(),
         avatarWireValue = user?.avatarUrl,
         timestampLabel = timestampLabel,
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(timestampLabel),
@@ -3226,7 +3227,7 @@ internal data class RaftThreadMemberItem(
     val roleLabel: String = "",
     val description: String = "",
     val avatarUrl: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase(),
+    val avatarLabel: String = displayName.toRaftAvatarLabel(),
     val kind: String = "human",
     val sourceServerId: String? = null,
     val sourceServerLabel: String? = null,
@@ -5754,7 +5755,8 @@ private fun ThreadMessageVisualCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 ThreadMessageStaticAvatar(
-                    avatarLabel = message.avatarLabel,
+                    avatarLabel = message.threadAvatarName(),
+                    avatarFill = message.threadAvatarFill(),
                     avatarWireValue =
                         if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                     status = null,
@@ -16226,7 +16228,9 @@ internal fun ThreadPageHeader(
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
-                    avatarLabel = headerDisplay.dmPeerAvatarLabel,
+                    // The peer's name (the header title): initials come from its words.
+                    avatarLabel = headerDisplay.title.ifBlank { headerDisplay.dmPeerAvatarLabel },
+                    fallbackFill = raftAvatarFallbackFill(headerDisplay.dmPeerIdentity?.kind),
                     cacheSubject =
                         headerDisplay.dmPeerIdentity?.let { identity ->
                             raftMemberAvatarCacheSubject(identity.kind, identity.memberId.value)
@@ -16447,6 +16451,7 @@ internal fun String?.threadChannelHeaderIcon(): RaftLucideIconName =
 private fun ThreadDmPeerAvatarTile(
     avatarWireValue: String?,
     avatarLabel: String,
+    fallbackFill: Color,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     cacheServerId: String? = null,
     onClick: (() -> Unit)? = null
@@ -16461,9 +16466,9 @@ private fun ThreadDmPeerAvatarTile(
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
             avatarSize = ThreadHeaderChannelTileSize,
-            borderWidth = RaftAppStroke.Default,
             cacheSubject = cacheSubject,
-            cacheServerId = cacheServerId
+            cacheServerId = cacheServerId,
+            fallbackFill = fallbackFill
         )
     }
 }
@@ -24849,7 +24854,8 @@ private fun ThreadMessageCardContent(
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopStart,
                         timestampTextAlign = TextAlign.Start,
-                        avatarLabel = message.avatarLabel,
+                        avatarLabel = message.threadAvatarName(),
+                        avatarFill = message.threadAvatarFill(),
                         avatarWireValue =
                             if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
@@ -25220,7 +25226,8 @@ private fun ThreadMessageCardContent(
                         timestampLabel = compactTimestampLabel,
                         timestampAlignment = Alignment.TopEnd,
                         timestampTextAlign = TextAlign.End,
-                        avatarLabel = message.avatarLabel,
+                        avatarLabel = message.threadAvatarName(),
+                        avatarFill = message.threadAvatarFill(),
                         avatarWireValue =
                             if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
@@ -27558,6 +27565,14 @@ private fun RaftThreadMessageItem.isRemovedThreadHuman(): Boolean =
 private fun RaftThreadMessageItem.isThreadAgentAuthor(): Boolean =
     authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
 
+/** The author's name for the avatar's initials; never the author id (no name shows the icon). */
+private fun RaftThreadMessageItem.threadAvatarName(): String =
+    authorName.trim().takeUnless { it.isEmpty() || it == authorId } ?: avatarLabel
+
+/** raft-ui Avatar `type`: an agent author without a face sits on `inactive`. */
+private fun RaftThreadMessageItem.threadAvatarFill(): Color =
+    raftAvatarFallbackFill(if (isThreadAgentAuthor()) MemberKind.Agent else MemberKind.Human)
+
 internal fun shouldSuppressCompactThreadAuthor(
     previous: RaftThreadMessageItem?,
     next: RaftThreadMessageItem,
@@ -27822,6 +27837,8 @@ private fun ThreadInlineRepliesSurface(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 6.dp)
+                // raft-ui MessageReplies: `rounded-container` face.
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
                 .hoverable(hoverInteractionSource)
                 .background(threadNeutralMessageSurfaceColor(emphasized = isHovered))
                 .clickable(onClick = onOpenThread)
@@ -27885,16 +27902,14 @@ private fun ThreadInlineReplyRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        val senderKind = participant?.kind?.parsedMemberKindOrNull()
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
-            label = displayName.take(1).uppercase(),
+            // The name, never the sender id: no name shows the placeholder icon.
+            label = if (displayName == reply.senderId) "" else displayName,
             avatarSize = 20.dp,
-            borderWidth = RaftAppStroke.Thin,
-            cacheSubject =
-                raftMemberAvatarCacheSubject(
-                    participant?.kind?.parsedMemberKindOrNull(),
-                    reply.senderId
-                ),
+            cacheSubject = raftMemberAvatarCacheSubject(senderKind, reply.senderId),
+            fallbackFill = raftAvatarFallbackFill(senderKind),
         )
         Text(
             text = displayName,
@@ -29535,6 +29550,7 @@ private fun ThreadMessageAvatarSlot(
     timestampAlignment: Alignment,
     timestampTextAlign: TextAlign,
     avatarLabel: String,
+    avatarFill: Color,
     avatarWireValue: String?,
     avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
@@ -29558,6 +29574,7 @@ private fun ThreadMessageAvatarSlot(
                     ThreadMessageAvatar(
                         interactionIdentity = interactionIdentity,
                         avatarLabel = avatarLabel,
+                        avatarFill = avatarFill,
                         avatarWireValue = avatarWireValue,
                         avatarDiagnostics = avatarDiagnostics,
                         cacheSubject = cacheSubject,
@@ -29596,6 +29613,7 @@ private fun ThreadMessageAvatarSlot(
 private fun ThreadMessageAvatar(
     interactionIdentity: String,
     avatarLabel: String,
+    avatarFill: Color,
     avatarWireValue: String?,
     avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
@@ -29640,9 +29658,6 @@ private fun ThreadMessageAvatar(
         RaftAvatarWithStatus(
             statusColor = if (muted) null else status?.color,
             avatarSize = 36.dp,
-            // #90 React parity: bump chat thread avatar overlay status dot
-            // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
-            statusSize = 11.dp,
             statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -29655,8 +29670,8 @@ private fun ThreadMessageAvatar(
                     diagnostics = avatarDiagnostics,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 36.dp,
-                    borderWidth = RaftAppStroke.Default,
-                    cacheSubject = cacheSubject
+                    cacheSubject = cacheSubject,
+                    fallbackFill = avatarFill
                 )
                 }
                 if (muted) {
@@ -29664,7 +29679,7 @@ private fun ThreadMessageAvatar(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f))
+                                .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f), RoundedCornerShape(RaftAppRadius.Sticker))
                     )
                 }
             }
@@ -29675,16 +29690,18 @@ private fun ThreadMessageAvatar(
 /** Distinct fallback for external (Slack-bridge) authors with no avatar on the wire. */
 @Composable
 private fun ThreadExternalAuthorAvatarFallback(muted: Boolean) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(RaftColor.AccentCyan)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .alpha(if (muted) 0.62f else 1f),
-        contentAlignment = Alignment.Center
+    // The same sticker frame as the member avatars (ink edge, dark-mode sticker-edge ring) on cyan.
+    RaftAppAvatarFrame(
+        modifier = Modifier,
+        avatarSize = 36.dp,
+        borderWidth = RaftAppStroke.Default,
+        fill = RaftColor.AccentCyan
     ) {
-        RaftLucideIcon(RaftLucideIconName.Link, modifier = Modifier.size(20.dp), color = RaftColor.TextBlackArgb)
+        RaftLucideIcon(
+            RaftLucideIconName.Link,
+            modifier = Modifier.size(20.dp).alpha(if (muted) 0.62f else 1f),
+            color = RaftColor.TextBlackArgb
+        )
     }
 }
 
@@ -29696,6 +29713,7 @@ private data class ThreadMessageAvatarGestureCallbacks(
 @Composable
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
+    avatarFill: Color,
     avatarWireValue: String?,
     status: RaftAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
@@ -29712,17 +29730,14 @@ private fun ThreadMessageStaticAvatar(
         RaftAvatarWithStatus(
             statusColor = status?.color,
             avatarSize = 36.dp,
-            // #90 React parity: bump chat thread avatar overlay status dot
-            // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
-            statusSize = 11.dp,
             statusPulsing = status?.pulsing == true && statusPulsing
         ) {
             RaftAppAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 36.dp,
-                borderWidth = RaftAppStroke.Default,
-                cacheSubject = cacheSubject
+                cacheSubject = cacheSubject,
+                fallbackFill = avatarFill
             )
         }
     }
@@ -31760,7 +31775,7 @@ private fun ForwardMessageItem.toThreadMessageItemForBundlePage(): RaftThreadMes
         authorId = authorId,
         authorName = authorName,
         authorKind = authorKind,
-        avatarLabel = avatarLabel.ifBlank { authorName.take(1) },
+        avatarLabel = avatarLabel.ifBlank { authorName.toRaftAvatarLabel() },
         avatarWireValue = avatarWireValue,
         timestampLabel = timestampLabel,
         body = body
@@ -32209,15 +32224,15 @@ private fun <T> ThreadForwardTargetRow(
                 RaftForwardTargetVisualKind.DirectMessage ->
                     RaftAppAvatar(
                         avatarWireValue = target.avatarWireValue,
-                        label = target.avatarLabel,
+                        label = target.title.ifBlank { target.avatarLabel },
                         avatarSize = 38.dp,
-                        borderWidth = RaftAppStroke.Default,
                         cacheSubject =
                             raftMemberAvatarCacheSubject(
                                 target.cacheMemberKind,
                                 target.cacheMemberId
                             ),
-                        cacheServerId = target.cacheServerId
+                        cacheServerId = target.cacheServerId,
+                        fallbackFill = raftAvatarFallbackFill(target.cacheMemberKind)
                     )
                 RaftForwardTargetVisualKind.PublicChannel,
                 RaftForwardTargetVisualKind.PrivateChannel,
@@ -32575,6 +32590,7 @@ private fun ThreadMembersPagerRow(
         avatarLabel = member.modalAvatarLabel(),
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
+        avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
         statusColor = status?.color,
         statusPulsing = status?.pulsing == true,
         enabled = !removing,
@@ -32715,6 +32731,7 @@ private fun ThreadAddMemberModal(
                                 avatarLabel = member.modalAvatarLabel(),
                                 cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
                                 cacheServerId = member.sourceServerId,
+                                avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = interaction.selected,
@@ -32759,6 +32776,7 @@ private fun ThreadAddMemberModal(
                                 avatarLabel = member.modalAvatarLabel(),
                                 cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
                                 cacheServerId = member.sourceServerId,
+                                avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
                                 statusColor = status?.color,
                                 statusPulsing = status?.pulsing == true,
                                 selected = interaction.selected,
@@ -32979,8 +32997,9 @@ private fun RaftThreadMemberItem.modalAvatarWireValue(): String? =
     avatarUrl?.takeIf { it.isNotBlank() }
         ?: "pixel:robot".takeIf { kind.equals("agent", ignoreCase = true) }
 
+// The name the initials come from; never the member id (no name shows the placeholder icon).
 private fun RaftThreadMemberItem.modalAvatarLabel(): String =
-    avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
+    listOf(displayName, handle).map(String::trim).firstOrNull { it.isNotEmpty() && it != id } ?: avatarLabel
 
 internal fun threadMembersRosterSubtitle(
     memberKind: String,

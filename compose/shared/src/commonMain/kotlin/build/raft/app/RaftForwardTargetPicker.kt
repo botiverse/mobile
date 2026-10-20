@@ -28,7 +28,7 @@ data class RaftForwardTargetPickerItem<T>(
     val subtitle: String,
     val visualKind: RaftForwardTargetVisualKind,
     val avatarWireValue: String? = null,
-    val avatarLabel: String = title.take(1).uppercase(),
+    val avatarLabel: String = title.toRaftAvatarLabel(),
     val payload: T,
     val cacheMemberKind: build.raft.app.model.MemberKind? = null,
     val cacheMemberId: String? = null,

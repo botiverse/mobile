@@ -550,7 +550,7 @@ internal fun raftForegroundMessageBannerProjectionResult(
                 avatarLabel =
                     projection.resolveForegroundBannerSenderAvatarLabel(message)
                         ?: message.author.avatarLabel.takeIf { it.isNotBlank() }
-                        ?: sender.take(2).uppercase()
+                        ?: sender
             ),
         sharedProjection = projection
     )
@@ -591,18 +591,14 @@ private fun RaftForegroundBannerAvatar(
         }
     val profile by profileFlow.collectAsState(null)
     val memberAvatarWireValue = profile?.explicitForegroundBannerAvatarWireValue()
-    val avatarLabel =
-        profile
-            ?.avatarLabel
-            ?.takeIf { it.isNotBlank() }
-            ?: banner.avatarLabel
+    val avatarLabel = profile?.raftAvatarName()?.takeIf { it.isNotBlank() } ?: banner.avatarLabel
     RaftAppAvatar(
         avatarWireValue = memberAvatarWireValue ?: banner.avatarWireValue,
         label = avatarLabel,
         avatarSize = ForegroundBannerAvatarSize,
-        borderWidth = RaftAppStroke.Default,
         cacheSubject = profile?.raftAvatarCacheSubject(),
-        cacheServerId = profile?.serverId?.value ?: currentServerId?.value
+        cacheServerId = profile?.serverId?.value ?: currentServerId?.value,
+        fallbackFill = raftAvatarFallbackFill(profile?.kind)
     )
 }
 
