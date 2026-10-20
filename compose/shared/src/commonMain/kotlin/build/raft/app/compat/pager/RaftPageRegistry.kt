@@ -83,46 +83,50 @@ fun RaftPagerHost(
     val host = LocalRaftHost.current
     // The Raft Coil loader must be the singleton before any page asks Coil for an image.
     remember { raftInstallImageLoader() }
+    val density = LocalDensity.current
+    val statusBars = WindowInsets.statusBars
+    val navigationBars = WindowInsets.navigationBars
+    val safeDrawing = WindowInsets.safeDrawing
+    val windowSize = LocalWindowInfo.current.containerSize
+    val metrics =
+        with(density) {
+            val width = windowSize.width.toDp().value
+            val height = windowSize.height.toDp().value
+            RaftPageWindowMetrics(
+                density = density.density,
+                statusBarHeight = statusBars.getTop(this).toDp().value,
+                navigationBarHeight = navigationBars.getBottom(this).toDp().value,
+                safeAreaInsets =
+                    EdgeInsets(
+                        top = safeDrawing.getTop(this).toDp().value,
+                        left = safeDrawing.getLeft(this, LayoutDirection.Ltr).toDp().value,
+                        bottom = safeDrawing.getBottom(this).toDp().value,
+                        right = safeDrawing.getRight(this, LayoutDirection.Ltr).toDp().value,
+                    ),
+                width = width,
+                height = height,
+            )
+        }
     val pager =
         remember(args) {
             factory().also { pager ->
                 pager.pagerId = "raft-${pagerIdSequence.incrementAndGet()}"
                 pager.pageData = PageData(args.pageData.toKuiklyJson())
+                // Window facts before willInit/first composition: Kuikly's native host injected
+                // them before the page's first render.
+                pager.pageData.applyRaftWindowMetrics(metrics)
                 pager.host = host
                 PagerManager.register(pager)
                 pager.willInit()
                 pager.created()
             }
         }
-
-    val density = LocalDensity.current
-    val statusBars = WindowInsets.statusBars
-    val navigationBars = WindowInsets.navigationBars
-    val safeDrawing = WindowInsets.safeDrawing
-    val windowSize = LocalWindowInfo.current.containerSize
-    SideEffect {
-        with(density) {
-            val pageData = pager.pageData
-            pageData.density = density.density
-            pageData.statusBarHeight = statusBars.getTop(this).toDp().value
-            pageData.androidBottomBavBarHeight = navigationBars.getBottom(this).toDp().value
-            pageData.safeAreaInsets =
-                EdgeInsets(
-                    top = safeDrawing.getTop(this).toDp().value,
-                    left = safeDrawing.getLeft(this, LayoutDirection.Ltr).toDp().value,
-                    bottom = safeDrawing.getBottom(this).toDp().value,
-                    right = safeDrawing.getRight(this, LayoutDirection.Ltr).toDp().value,
-                )
-            val width = windowSize.width.toDp().value
-            val height = windowSize.height.toDp().value
-            pageData.pageViewWidth = width
-            pageData.pageViewHeight = height
-            pageData.deviceWidth = width
-            pageData.deviceHeight = height
-            pageData.activityWidth = width
-            pageData.activityHeight = height
-        }
-    }
+    // Applied during composition, ahead of the page content that reads them. Applying them in a
+    // SideEffect (after composition) gave every newly opened page one frame laid out with a zero
+    // status bar / safe area / page size, after which its content jumped down by the status bar
+    // height: a pushed page (e.g. Activity) looked like it slid down from the top, and a newly
+    // mounted app-shell tab flickered. Same-value writes do not invalidate anything.
+    pager.pageData.applyRaftWindowMetrics(metrics)
 
     val lifecycleOwner = LocalLifecycleOwner.current
     var resumed by remember(lifecycleOwner) {
@@ -171,4 +175,27 @@ fun RaftPagerHost(
             (pager as? ComposeContainer)?.composedContent?.invoke()
         }
     }
+}
+
+/** Window facts a page host reports into [PageData] (dp). */
+internal data class RaftPageWindowMetrics(
+    val density: Float,
+    val statusBarHeight: Float,
+    val navigationBarHeight: Float,
+    val safeAreaInsets: EdgeInsets,
+    val width: Float,
+    val height: Float,
+)
+
+internal fun PageData.applyRaftWindowMetrics(metrics: RaftPageWindowMetrics) {
+    density = metrics.density
+    statusBarHeight = metrics.statusBarHeight
+    androidBottomBavBarHeight = metrics.navigationBarHeight
+    safeAreaInsets = metrics.safeAreaInsets
+    pageViewWidth = metrics.width
+    pageViewHeight = metrics.height
+    deviceWidth = metrics.width
+    deviceHeight = metrics.height
+    activityWidth = metrics.width
+    activityHeight = metrics.height
 }
