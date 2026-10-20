@@ -2981,6 +2981,8 @@ private fun RaftStructuralHomeShellContent(
                 if (serverDrawerEnabled) {
                     // The opt-in drawer owns the full screen so its scrim and native
                     // dispatch barrier also cover the shell bottom surface.
+                    // The iOS system tab bar is drawn above the page: hide it under the drawer.
+                    RaftNativeTabBarCover()
                     RaftFloatingOverlayHost(
                         onDismiss = onServerSwitcherDismiss,
                         dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis

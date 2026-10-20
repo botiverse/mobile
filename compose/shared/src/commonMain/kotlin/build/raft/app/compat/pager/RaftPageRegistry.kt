@@ -28,6 +28,9 @@ import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs
+import build.raft.app.LocalRaftNativeTabBarBridge
+import build.raft.app.RaftNativeTabBarHostIdPageDataKey
+import build.raft.app.RaftNativeTabBarRegistry
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.image.raftInstallImageLoader
 import build.raft.app.toKuiklyJson
@@ -175,6 +178,11 @@ fun RaftPagerHost(
     CompositionLocalProvider(
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalRaftPageArgs provides args,
+        // The host-drawn tab bar registered for this page (iOS app shell), if any.
+        LocalRaftNativeTabBarBridge provides
+            remember(pager) {
+                RaftNativeTabBarRegistry.bridgeFor(pager.pageData.params.optString(RaftNativeTabBarHostIdPageDataKey))
+            },
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {

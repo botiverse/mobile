@@ -5,8 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import build.raft.app.compat.pager.LocalActivity
-import build.raft.app.compat.pager.Pager
+import androidx.compose.runtime.staticCompositionLocalOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +24,12 @@ import kotlinx.coroutines.flow.asStateFlow
  * A host opts in per page: it registers a bridge in [RaftNativeTabBarRegistry] and passes the
  * id in the page's pageData under [RaftNativeTabBarHostIdPageDataKey] (identity only). Pages
  * without a registered bridge — Android, visual fixtures, smoke pages — keep the Compose bar.
+ *
+ * The host draws the bar above the whole Compose page and does not move with it, so a
+ * full-height panel the page draws itself (the server drawer, which slides the shell and its
+ * Compose bar aside) would sit under it; such a panel hides the bar through
+ * [RaftNativeTabBarCover]. Compose `Dialog`s need nothing: CMP puts their layers above the whole
+ * window hierarchy, bar included.
  *
  * Main thread only: the shell composes on the main thread and the iOS host calls in from UIKit.
  */
@@ -75,6 +80,8 @@ interface RaftNativeTabBarListener {
  */
 class RaftNativeTabBarBridge {
     private val mutableState = MutableStateFlow(RaftNativeTabBarState.Hidden)
+    private var shellState = RaftNativeTabBarState.Hidden
+    private val covers = mutableSetOf<Any>()
     private val mutableBottomInsetPoints = MutableStateFlow(0.0)
     private var listener: RaftNativeTabBarListener? = null
     private var publisherToken: Any? = null
@@ -125,7 +132,8 @@ class RaftNativeTabBarBridge {
     internal fun publish(token: Any, state: RaftNativeTabBarState, onSelect: (String) -> Unit) {
         publisherToken = token
         this.onSelect = onSelect
-        emit(state)
+        shellState = state
+        emit()
     }
 
     /** Hides the bar when [token] is still the active publisher; keeps the items for re-show. */
@@ -133,10 +141,21 @@ class RaftNativeTabBarBridge {
         if (publisherToken !== token) return
         publisherToken = null
         onSelect = null
-        emit(mutableState.value.copy(visible = false))
+        shellState = shellState.copy(visible = false)
+        emit()
     }
 
-    private fun emit(state: RaftNativeTabBarState) {
+    /** A full-height panel drawn in the page covers the bar's place while [token] holds it. */
+    internal fun cover(token: Any) {
+        if (covers.add(token)) emit()
+    }
+
+    internal fun uncover(token: Any) {
+        if (covers.remove(token)) emit()
+    }
+
+    private fun emit() {
+        val state = if (covers.isEmpty()) shellState else shellState.copy(visible = false)
         if (mutableState.value == state) return
         mutableState.value = state
         listener?.onNativeTabBarStateChanged(state)
@@ -161,12 +180,31 @@ object RaftNativeTabBarRegistry {
         hostId?.takeIf { it.isNotBlank() }?.let { bridges[it] }
 }
 
-/** The native tab bar bridge the host registered for the current page, if any. */
+/**
+ * The native tab bar bridge the host registered for the current page, if any. Provided by the
+ * page host from the page's [RaftNativeTabBarHostIdPageDataKey]; null outside a hosting page
+ * (Android, visual fixtures, previews), where every caller keeps its Compose behaviour.
+ */
+internal val LocalRaftNativeTabBarBridge = staticCompositionLocalOf<RaftNativeTabBarBridge?> { null }
+
 @Composable
-internal fun raftNativeTabBarBridge(): RaftNativeTabBarBridge? {
-    val params = (LocalActivity.current.getPager() as Pager).pageData.params
-    val hostId = params.optString(RaftNativeTabBarHostIdPageDataKey)
-    return remember(hostId) { RaftNativeTabBarRegistry.bridgeFor(hostId) }
+internal fun raftNativeTabBarBridge(): RaftNativeTabBarBridge? = LocalRaftNativeTabBarBridge.current
+
+/**
+ * Hides the host-drawn bar while this call is composed and [active]: the page is drawing a
+ * full-height panel where the bar sits. A no-op without a host-drawn bar.
+ */
+@Composable
+internal fun RaftNativeTabBarCover(active: Boolean = true) {
+    val bridge = raftNativeTabBarBridge() ?: return
+    val token = remember(bridge) { Any() }
+    DisposableEffect(bridge, active) {
+        if (active) bridge.cover(token) else bridge.uncover(token)
+        onDispose { }
+    }
+    DisposableEffect(bridge) {
+        onDispose { bridge.uncover(token) }
+    }
 }
 
 /**
