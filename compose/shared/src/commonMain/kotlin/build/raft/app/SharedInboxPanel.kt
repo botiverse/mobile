@@ -752,6 +752,12 @@ private fun SharedActivityPanelContent(
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
             mainTab = tabChrome != null,
+            onMarkAllRead =
+                if (tabChrome?.notificationsSelected == false) {
+                    { onIntent(SharedActivityIntent.MarkAllRead) }
+                } else {
+                    null
+                },
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
             onTitleClick = {
@@ -968,7 +974,9 @@ private fun SharedActivityHeader(
     topSafeAreaPadding: Dp,
     refreshing: Boolean,
     onTitleClick: (() -> Unit)? = null,
-    mainTab: Boolean = false
+    mainTab: Boolean = false,
+    // Tab head only: Mark all read, shown while there is unread and a filter page is selected.
+    onMarkAllRead: (() -> Unit)? = null
 ) {
     if (mainTab) {
         // App-shell tab head (like Tasks / Members): the frame-layer header with the Activity
@@ -982,6 +990,10 @@ private fun SharedActivityHeader(
             titleStyle = RaftMainTabHeaderTitleStyle,
             refreshing = refreshing,
             onTitleClick = onTitleClick,
+            trailingContent =
+                onMarkAllRead?.takeIf { totalUnreadCount > 0 }?.let { markAllRead ->
+                    { SharedActivityMarkAllReadButton(onClick = markAllRead) }
+                },
             showBodyTopBanner = false,
         )
         return
@@ -1000,6 +1012,19 @@ private fun SharedActivityHeader(
             },
         onTitleClick = onTitleClick,
         showBodyTopBanner = false,
+    )
+}
+
+@Composable
+private fun SharedActivityMarkAllReadButton(onClick: () -> Unit) {
+    RaftBrutalActionButton(
+        label = stringResource(MR.strings.inbox_action_mark_all_read),
+        minHeight = 28.dp,
+        minWidth = 0.dp,
+        shadowOffset = 2.dp,
+        backgroundColor = RaftColor.SurfaceWhite,
+        textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+        onClick = onClick
     )
 }
 
@@ -1055,16 +1080,10 @@ private fun SharedActivityFilterBar(
                 },
                 modifier = Modifier.weight(1f)
             )
-            if (totalUnreadCount > 0 && !notificationsSelected) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.inbox_action_mark_all_read),
-                    minHeight = 28.dp,
-                    minWidth = 0.dp,
-                    shadowOffset = 2.dp,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    onClick = onMarkAllRead
-                )
+            // As an app-shell tab the four segments need the full row; Mark all read moves to
+            // the tab head (SharedActivityHeader).
+            if (totalUnreadCount > 0 && tabChrome == null) {
+                SharedActivityMarkAllReadButton(onClick = onMarkAllRead)
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
