@@ -115,9 +115,6 @@ interface SettingsServerActionRepository {
             ServerPushMode.Mentions ->
                 DataResult.Error(ScreenError("settings_server_mentions_only_unavailable", retryable = false))
         }
-
-    suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> =
-        DataResult.Error(ScreenError("settings_push_preview_mode_unavailable", retryable = false))
 }
 
 interface SettingsServerManagementRepository {

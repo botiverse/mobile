@@ -36,6 +36,7 @@ import build.raft.app.data.raftChatLayoutPreferenceRepository
 import build.raft.app.data.raftNotificationPreferenceRepository
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
@@ -167,6 +168,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                 http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore),
                 onHttp3UserChoiceChanged = { currentRaftNetworkTransportController()?.onHttp3UserChoiceChanged() },
                 threadReverseLayoutPreferenceStore = KeyValueThreadReverseLayoutPreferenceStore(sharedPreferenceStore),
+                pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore),
                 threadReverseLayoutDefault = {
                     authStore.readSession()?.let { session ->
                         session.currentServerId?.let { serverId ->

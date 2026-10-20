@@ -605,6 +605,13 @@ class SharedSettingsDataSource(
     private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
+    /**
+     * The per-device push preview choice. This store is the only place the choice lives: the settings
+     * row reads it, the push registration reads it, and the Android notification poster reads it.
+     */
+    private val pushPreviewModePreferenceStore: PushPreviewModePreferenceStore? = null,
+    /** Re-sends the push registration so the server learns the new previewMode. */
+    private val onPushPreviewModeChanged: () -> Unit = { RaftPushRegistrationLifecycle.onPreviewModeChanged() },
     private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
@@ -1082,19 +1089,31 @@ class SharedSettingsDataSource(
         }
     }
 
-    suspend fun setPushPreviewMode(mode: String): DataResult<SettingsMobileSnapshot> {
+    /**
+     * Writes the per-device preview choice to [pushPreviewModePreferenceStore] and re-sends the push
+     * registration. Returns the row as read back from the store, so the UI shows what was persisted.
+     */
+    suspend fun setPushPreviewMode(mode: String): DataResult<SettingsMobileSelectionSnapshot> {
         val selectedMode =
             PushPreviewMode.fromWire(mode)
                 ?: return DataResult.Error(ScreenError("settings_push_preview_mode_unknown", retryable = false))
-        val repository =
-            settingsRepository as? SettingsServerActionRepository
-                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return when (val result = repository.setPushPreviewMode(selectedMode)) {
-            is DataResult.Content -> DataResult.Content(result.data.withLocalMobilePreferences())
-            is DataResult.Empty -> result
-            is DataResult.Error -> result
-            is DataResult.NoPermission -> result
-        }
+        val store =
+            pushPreviewModePreferenceStore
+                ?: return DataResult.Error(ScreenError("settings_push_preview_mode_unavailable", retryable = false))
+        store.savePushPreviewMode(selectedMode.wireName)
+        diagnosticsLogger?.invoke("push_preview_mode_user_choice mode=${selectedMode.wireName}")
+        onPushPreviewModeChanged()
+        return DataResult.Content(store.pushPreviewModeSnapshot())
+    }
+
+    private fun PushPreviewModePreferenceStore.pushPreviewModeSnapshot(): SettingsMobileSelectionSnapshot =
+        (PushPreviewMode.fromWire(readPushPreviewModeSync()) ?: PushPreviewMode.Full)
+            .toSettingsMobileSelectionSnapshot(available = true)
+
+    /** The preview row always shows the device-local choice; without a store it stays unavailable. */
+    private fun SettingsMobileSnapshot.withPushPreviewModePreference(): SettingsMobileSnapshot {
+        val store = pushPreviewModePreferenceStore ?: return this
+        return copy(pushPreviewMode = store.pushPreviewModeSnapshot())
     }
 
     suspend fun setLocale(localeTag: String): DataResult<SettingsMobileSnapshot> {
@@ -1732,7 +1751,10 @@ class SharedSettingsDataSource(
                         statusLabel = "Unsupported",
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
-        ).withRealtimeCurlSocketIoPreference().withHttp3Preference().withThreadReverseLayoutPreference()
+        ).withRealtimeCurlSocketIoPreference()
+            .withHttp3Preference()
+            .withThreadReverseLayoutPreference()
+            .withPushPreviewModePreference()
     }
 
     private fun SettingsMobileSnapshot.withSystemNotificationPermission(
@@ -2418,7 +2440,18 @@ class SharedSettingsStore(
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_PUSH_PREVIEW_MODE, inProgress = true)
                     )
-                dataSource.setPushPreviewMode(intent.mode).applyMobileActionResult(MOBILE_ACTION_PUSH_PREVIEW_MODE)
+                val nextMobile: DataResult<SettingsMobileSnapshot> =
+                    when (val result = dataSource.setPushPreviewMode(intent.mode)) {
+                        // Only the preview row changes; the rest of the visible snapshot stays as loaded.
+                        is DataResult.Content ->
+                            (_state.value.mobile as? ScreenLoadState.Content)?.data
+                                ?.let { visible -> DataResult.Content(visible.copy(pushPreviewMode = result.data)) }
+                                ?: dataSource.loadMobilePreferences()
+                        is DataResult.Empty -> DataResult.Empty(result.reason)
+                        is DataResult.Error -> DataResult.Error(result.error)
+                        is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+                    }
+                nextMobile.applyMobileActionResult(MOBILE_ACTION_PUSH_PREVIEW_MODE)
             }
             is SharedSettingsIntent.SetLanguageRegionServerTranslation -> {
                 runAction(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION) {

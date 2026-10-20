@@ -40,7 +40,9 @@ internal actual fun raftPlatformSupportsVideoAttachmentContainer(
         container = container
     )
 
-internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
+// Android reports previewMode in its FCM registration and redacts in AndroidUnreadNotificationPoster,
+// which also covers the no-GMS realtime path.
+internal actual fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean = true
 
 internal actual fun raftPlatformSupportsSaveImageToPhotos(): Boolean = true
 

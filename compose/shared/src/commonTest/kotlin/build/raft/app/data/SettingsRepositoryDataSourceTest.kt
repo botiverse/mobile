@@ -704,41 +704,19 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun iosPushPreviewModeUsesCanonicalIndependentPatch() = runBlocking {
+    fun repositoryDoesNotSourceThePushPreviewMode() = runBlocking {
+        // The per-device PushPreviewModePreferenceStore is the only owner of the choice; a server value in
+        // the notification-settings response must not reach the settings row through the repository.
         val network =
             FakeSettingsNetworkClient(
                 notificationSettingsJson =
-                    """{"serverPushMuted":false,"serverPushMentionsOnly":false,"serverPushMode":"all","pushPreviewMode":"full"}"""
+                    """{"serverPushMuted":false,"serverPushMentionsOnly":false,"serverPushMode":"all","pushPreviewMode":"hidden"}"""
             )
         val repository = RealSettingsRepository(sampleStore(), network)
 
         val initial = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
         assertEquals(PushPreviewMode.Full.wireName, initial.pushPreviewMode.selectedKey)
-        assertTrue(initial.pushPreviewMode.available)
-
-        val updated = assertIs<DataResult.Content<SettingsMobileSnapshot>>(
-            repository.setPushPreviewMode(PushPreviewMode.Hidden)
-        ).data
-
-        assertEquals(PushPreviewMode.Hidden.wireName, updated.pushPreviewMode.selectedKey)
-        assertTrue(updated.pushPreviewMode.available)
-        assertEquals(ServerPushMode.All.wireName, updated.serverNotificationMode.selectedKey)
-        // Only the canonical wire names may be written; the retired "private" value must never be sent.
-        assertEquals("""{"pushPreviewMode":"hidden"}""", network.notificationSettingsBodies.single())
-    }
-
-    @Test
-    fun legacyServerDoesNotAdvertisePushPreviewPrivacy() = runBlocking {
-        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false}""")
-        val repository = RealSettingsRepository(sampleStore(), network)
-
-        val initial = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
-        assertEquals(PushPreviewMode.Full.wireName, initial.pushPreviewMode.selectedKey)
         assertFalse(initial.pushPreviewMode.available)
-
-        val unsupported = repository.setPushPreviewMode(PushPreviewMode.Hidden)
-        assertIs<DataResult.Error>(unsupported)
-        assertEquals("settings_push_preview_mode_unsupported", unsupported.error.code)
         assertTrue(network.notificationSettingsBodies.isEmpty())
     }
 

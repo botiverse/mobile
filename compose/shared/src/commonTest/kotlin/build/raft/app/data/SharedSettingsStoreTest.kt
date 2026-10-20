@@ -1077,9 +1077,12 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mobilePushPreviewModeIntentUsesSettingsRepository() = runBlocking {
+    fun mobilePushPreviewModeIntentWritesThePreferenceStoreAndReRegisters() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val preferences = MapSharedPreferenceStore()
+        val previewStore = KeyValuePushPreviewModePreferenceStore(preferences)
+        var reRegistrations = 0
         val store =
             SharedSettingsStore(
                 dataSource =
@@ -1088,21 +1091,47 @@ class SharedSettingsStoreTest {
                         settingsRepository = repository,
                         notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
                         localeRepository = FakeLocaleRepository(),
-                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
+                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository(),
+                        pushPreviewModePreferenceStore = previewStore,
+                        onPushPreviewModeChanged = { reRegistrations += 1 }
                     ),
                 scope = scope
             )
 
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Notifications))
+        val loaded = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        // The row reads the device store (absent = full) and is available on every server.
+        assertEquals(PushPreviewMode.Full.wireName, loaded.pushPreviewMode.selectedKey)
+        assertTrue(loaded.pushPreviewMode.available)
         repository.calls.clear()
+
         store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Hidden.wireName))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals("hidden", preferences.getString(PUSH_PREVIEW_MODE_PREFERENCE_KEY))
+        assertEquals("hidden", previewStore.readPushPreviewModeSync())
         assertEquals(PushPreviewMode.Hidden.wireName, mobile.pushPreviewMode.selectedKey)
-        assertEquals(listOf("setPushPreviewMode:hidden"), repository.calls)
+        // The rest of the visible snapshot is kept, and no repository call is involved.
+        assertEquals(loaded.copy(pushPreviewMode = mobile.pushPreviewMode), mobile)
+        assertTrue(repository.calls.isEmpty())
+        assertEquals(1, reRegistrations)
         assertEquals(MOBILE_ACTION_PUSH_PREVIEW_MODE, store.state.value.actionState?.action)
         assertFalse(store.state.value.actionState?.inProgress == true)
+
+        store.accept(SharedSettingsIntent.SetPushPreviewMode("private"))
+        assertEquals("hidden", previewStore.readPushPreviewModeSync())
+        assertEquals(1, reRegistrations)
         scope.cancel()
+    }
+
+    private class MapSharedPreferenceStore : SharedPreferenceStore {
+        private val values = mutableMapOf<String, String>()
+
+        override fun getString(key: String): String? = values[key]
+
+        override fun putString(key: String, value: String?) {
+            if (value == null) values.remove(key) else values[key] = value
+        }
     }
 
     @Test
@@ -3548,18 +3577,6 @@ class SharedSettingsStoreTest {
                                 statusLabel = if (mode == ServerPushMode.None) "Muted" else "Not muted"
                             ),
                         serverNotificationMode = mode.toSettingsMobileSelectionSnapshot()
-                    )
-                )
-            return mobileResult
-        }
-
-        override suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> {
-            calls += "setPushPreviewMode:${mode.wireName}"
-            val current = (mobileResult as? DataResult.Content)?.data ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            mobileResult =
-                DataResult.Content(
-                    current.copy(
-                        pushPreviewMode = mode.toSettingsMobileSelectionSnapshot(available = true)
                     )
                 )
             return mobileResult

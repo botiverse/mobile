@@ -1439,8 +1439,8 @@ private fun NotificationPrefsUpdatedDto.toDomain(
     if (serverMode != null) {
         val previewMode =
             prefs.pushPreviewMode?.let { raw ->
-                // Delegates to the enum so the legacy "private" value keeps meaning Hidden; an
-                // unrecognized value is still rejected rather than silently defaulted.
+                // Only the three canonical wire values are accepted (the retired "private" included
+                // among the rejected); an unrecognized value is rejected rather than silently defaulted.
                 PushPreviewMode.fromWire(raw)
                     ?: run {
                         diagnostics(

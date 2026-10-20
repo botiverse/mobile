@@ -292,13 +292,6 @@ class RealSettingsRepository(
     private val warningLogger: (String) -> Unit = {},
     private val channelRepository: ChannelRepository? = null,
     private val onAppearanceSnapshot: suspend (ownerId: String, snapshot: SettingsAppearanceSnapshot) -> Unit = { _, _ -> },
-    /**
-     * Per-device preview preference, optional so existing construction sites need no change. Only the
-     * settings screen passes it, because only there is the choice written. Everything that *reads* it
-     * (push registration, notification poster, no-GMS path) reads the store directly instead of going
-     * through this repository, so a null here is never observed as "the user chose full".
-     */
-    private val pushPreviewModeStore: PushPreviewModePreferenceStore? = null,
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
 
@@ -1294,8 +1287,6 @@ class RealSettingsRepository(
             } ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val serverNotificationMode =
             (serverNotificationPreferences as? DataResult.Content)?.data?.mode ?: ServerPushMode.All
-        val pushPreviewMode =
-            (serverNotificationPreferences as? DataResult.Content)?.data?.pushPreviewMode ?: PushPreviewMode.Full
         return DataResult.Content(
             SettingsMobileSnapshot(
                 pushNotifications = SettingsMobileToggleSnapshot(
@@ -1331,11 +1322,6 @@ class RealSettingsRepository(
                                 ?.canonicalModeSupported == true,
                         detail = "Choose all messages, only direct mentions, or no push notifications for this workspace."
                     ),
-                pushPreviewMode =
-                    // Per-device setting stored locally, so it is always available; the server
-                    // notification-settings response no longer gates it.
-                    (pushPreviewMode ?: PushPreviewMode.Full)
-                        .toSettingsMobileSelectionSnapshot(available = true),
                 sendTestEnabled = true
             )
         )
@@ -1450,14 +1436,6 @@ class RealSettingsRepository(
 
     override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> =
         setServerNotificationMode(if (enabled) ServerPushMode.None else ServerPushMode.All)
-
-    override suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> {
-        // Per-device choice: stored locally, then reported through the push registration's
-        // previewMode field. It deliberately does not touch the server notification-settings route.
-        pushPreviewModeStore?.savePushPreviewMode(mode.wireName)
-        selectedServerId() ?: return serverRequired()
-        return getMobileSettings()
-    }
 
     private suspend fun settingsComputers(
         serverId: String,
