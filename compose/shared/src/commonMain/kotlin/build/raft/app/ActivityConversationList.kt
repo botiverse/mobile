@@ -36,6 +36,7 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ConversationKind
@@ -131,6 +132,36 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
             },
     )
 }
+
+/**
+ * The list context the layout may paint with, from the Home content of the shell, or null while it is
+ * still pending (the Activity panel keeps its loading state rather than painting unpinned rows and then
+ * jumping them into "Pinned" a moment later):
+ *
+ * - Home Content for [activityServerId]: its pins, mutes and DM peers.
+ * - Home Loading, or Content of another server (a server switch in flight): pending, unless a context was
+ *   already resolved ([previous]), which stays — rows never fall back to a spinner once painted.
+ * - Home Error / Empty, or no Home store at all ([homeContent] null): no Home facts will come. A context
+ *   already resolved stays; otherwise the unpinned list without section labels, which a later Home
+ *   Content may still enrich.
+ */
+internal fun nextActivityConversationListContext(
+    previous: ActivityConversationListContext?,
+    homeContent: SharedHomeContentState?,
+    activityServerId: String,
+): ActivityConversationListContext? =
+    when (homeContent) {
+        is SharedHomeContentState.Content ->
+            if (activityServerId.isNotBlank() && homeContent.snapshot.server.id.value == activityServerId) {
+                homeContent.snapshot.toActivityConversationListContext(activityServerId)
+            } else {
+                previous
+            }
+        is SharedHomeContentState.Loading -> previous
+        is SharedHomeContentState.Error,
+        is SharedHomeContentState.Empty,
+        null -> previous ?: ActivityConversationListContext.Empty
+    }
 
 /** web `item.kind === "dm" || (item.kind === "mention_action" && item.channelType === "dm")`. */
 internal fun InboxItem.isActivityDirectMessageConversation(): Boolean =

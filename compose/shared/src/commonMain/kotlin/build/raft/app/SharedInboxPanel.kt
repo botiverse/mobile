@@ -27,7 +27,6 @@ import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
-import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealChannelRepository
@@ -123,8 +122,10 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
 
@@ -336,31 +337,69 @@ internal fun SharedHomeActivityScreen(
                     ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
                 )
         }
-    // Selector over the Home snapshot: only the pins, mutes and DM peers of this server reach the list.
-    val conversationListContextFlow =
-        remember(sharedHomeStore, conversationListEnabled, activitySummaryServerId) {
-            if (!conversationListEnabled || sharedHomeStore == null) {
-                flowOf(ActivityConversationListContext.Empty)
-            } else {
-                sharedHomeStore.state
-                    .map { homeState ->
-                        (homeState.content as? SharedHomeContentState.Content)
-                            ?.snapshot
-                            .toActivityConversationListContext(activitySummaryServerId.value)
-                    }
-                    .distinctUntilChanged()
+    // Cold start: until this server's flag has a decision (an evaluation of this process, or the value
+    // remembered from the last session), Activity keeps its loading state instead of painting card rows
+    // and switching to the list when the evaluation lands. A failed evaluation ends the wait (flag off).
+    val conversationListFlagPending =
+        remember(activitySummaryServerId, featureFlagRevision) {
+            activitySummaryServerId.value.isNotBlank() &&
+                sharedStores.serverFeatureFlags.isDecisionPending(
+                    activitySummaryServerId,
+                    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
+                )
+        }
+    LaunchedEffect(sharedStores.serverFeatureFlags, activitySummaryServerId, conversationListFlagPending) {
+        if (conversationListFlagPending) {
+            // Joins the selected-server evaluation when one is in flight; otherwise starts the one the
+            // wait is bounded by.
+            try {
+                sharedStores.serverFeatureFlags.prefetch(activitySummaryServerId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                bridge.logWarn(
+                    "activity_conversation_list_flag_prefetch_failed reason=${error::class.simpleName ?: "unknown"}"
+                )
             }
         }
-    val conversationListContext by conversationListContextFlow.collectAsState(ActivityConversationListContext.Empty)
+    }
+    // Selector over the Home content: only the pins, mutes and DM peers of this server reach the list.
+    // Null while Home has not produced them yet (see nextActivityConversationListContext): pins and
+    // section labels never apply after the rows have painted.
+    val conversationListContextSource =
+        remember(sharedHomeStore, conversationListEnabled, activitySummaryServerId) {
+            val serverId = activitySummaryServerId.value
+            if (!conversationListEnabled) {
+                ActivityConversationListContext.Empty to flowOf(ActivityConversationListContext.Empty)
+            } else if (sharedHomeStore == null) {
+                val unavailable = nextActivityConversationListContext(null, null, serverId)
+                unavailable to flowOf(unavailable)
+            } else {
+                val initial = nextActivityConversationListContext(null, sharedHomeStore.state.value.content, serverId)
+                initial to
+                    sharedHomeStore.state
+                        .map { homeState -> homeState.content }
+                        .distinctUntilChanged()
+                        .runningFold(initial) { previous, content ->
+                            nextActivityConversationListContext(previous, content, serverId)
+                        }
+                        .distinctUntilChanged()
+            }
+        }
+    val conversationListContext by
+        conversationListContextSource.second.collectAsState(conversationListContextSource.first)
+    val conversationListPending =
+        conversationListFlagPending || (conversationListEnabled && conversationListContext == null)
     val conversationListAgentStatusResolver =
         remember(sharedStores.serverMembersStore, activitySummaryServerId) {
             raftScopedAgentStatusResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
         }
     val conversationList =
         remember(conversationListEnabled, conversationListContext, conversationListAgentStatusResolver) {
-            if (conversationListEnabled) {
+            val context = conversationListContext
+            if (conversationListEnabled && context != null) {
                 ActivityConversationListPresentation(
-                    context = conversationListContext,
+                    context = context,
                     agentStatusResolver = conversationListAgentStatusResolver
                 )
             } else {
@@ -487,6 +526,7 @@ internal fun SharedHomeActivityScreen(
         externalSelectedThreadId = externalSelectedThreadId,
         mainTab = mainTab,
         conversationList = conversationList,
+        conversationListPending = conversationListPending,
         modifier = modifier
     )
 }
@@ -781,7 +821,9 @@ private fun SharedActivityPanelContent(
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
     mainTab: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null
+    conversationList: ActivityConversationListPresentation? = null,
+    /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
+    conversationListPending: Boolean = false
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     // task #232 (#2224 review blocker 1): the panel owns per-page scroll
@@ -848,7 +890,7 @@ private fun SharedActivityPanelContent(
         ) { page, active ->
             val pageFilter = filters[page]
             val pageState = projectActivityStateForFilterPage(state, pageFilter)
-            if (pageState.snapshot != null) {
+            if (pageState.snapshot != null && !conversationListPending) {
                 SharedActivityBodyContent(
                     active = active,
                     state = pageState,

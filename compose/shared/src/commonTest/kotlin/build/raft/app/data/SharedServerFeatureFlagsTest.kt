@@ -192,7 +192,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun snapshotRevisionAdvancesOnlyWhenAnEvaluationIsAccepted() = runTest {
+    fun snapshotRevisionAdvancesOnAcceptedEvaluationsAndOnTheFirstSettledFailure() = runTest {
         val accepted = SharedServerFeatureFlags(
             FakeApi(ok("""{"evaluations":[{"key":"$ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY","enabled":true}]}"""))
         )
@@ -202,12 +202,57 @@ class SharedServerFeatureFlagsTest {
         accepted.prefetch(server, forceRefresh = true)
         assertEquals(2L, accepted.snapshotRevision.value)
 
-        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 503, bodyText = null)))
-        failed.prefetch(server)
-        assertEquals(0L, failed.snapshotRevision.value)
-        val malformed = SharedServerFeatureFlags(FakeApi(ok("not json")))
-        malformed.prefetch(server)
-        assertEquals(0L, malformed.snapshotRevision.value)
+        // A failure only advances the revision once, when it ends the decision wait; values never change.
+        for (response in listOf(HomeNetworkResponse(code = 503, bodyText = null), ok("not json"))) {
+            val failed = SharedServerFeatureFlags(FakeApi(response))
+            failed.prefetch(server)
+            assertEquals(1L, failed.snapshotRevision.value, "$response")
+            failed.prefetch(server, forceRefresh = true)
+            assertEquals(1L, failed.snapshotRevision.value, "$response")
+            assertFalse(failed.isEnabled(server, ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY), "$response")
+        }
+    }
+
+    @Test
+    fun decisionStaysPendingUntilAnEvaluationSettlesOrALastKnownValueExists() = runTest {
+        val key = ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
+        assertTrue(key in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS, "the layout flag must survive a cold start")
+        class ThrowingApi : RaftFeatureFlagsApi {
+            override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                throw IllegalStateException("offline")
+        }
+        data class Case(val name: String, val api: RaftFeatureFlagsApi, val enabledAfter: Boolean)
+        val cases =
+            listOf(
+                Case("accepted on", FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":true}]}""")), enabledAfter = true),
+                Case("accepted off", FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":false}]}""")), enabledAfter = false),
+                Case("http failure", FakeApi(HomeNetworkResponse(code = 500, bodyText = null)), enabledAfter = false),
+                Case("malformed", FakeApi(ok("not json")), enabledAfter = false),
+                Case("transport throws", ThrowingApi(), enabledAfter = false),
+            )
+        for (case in cases) {
+            val flags = SharedServerFeatureFlags(case.api)
+            assertTrue(flags.isDecisionPending(server, key), case.name)
+            runCatching { flags.prefetch(server) }
+            assertFalse(flags.isDecisionPending(server, key), case.name)
+            assertEquals(case.enabledAfter, flags.isEnabled(server, key), case.name)
+            // Per server: another server still waits for its own evaluation.
+            assertTrue(flags.isDecisionPending(ServerId("s2"), key), case.name)
+        }
+        assertFalse(SharedServerFeatureFlags(FakeApi(ok("{}"))).isDecisionPending(ServerId(""), key))
+
+        // Cold start: the value remembered from the last online session decides before any evaluation.
+        val disk = InMemoryRaftKeyValueStore()
+        val binding = ServerFeatureFlagLastKnownBinding("https://api.example", "user-a")
+        fun process(api: RaftFeatureFlagsApi) =
+            SharedServerFeatureFlags(
+                api = api,
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+            )
+        process(FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":true}]}"""))).prefetch(server)
+        val coldStart = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))
+        assertFalse(coldStart.isDecisionPending(server, key))
+        assertTrue(coldStart.isEnabled(server, key))
     }
 
     @Test

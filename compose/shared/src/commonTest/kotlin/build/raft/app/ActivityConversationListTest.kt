@@ -7,6 +7,8 @@ import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.session
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -297,46 +299,48 @@ class ActivityConversationListTest {
         }
     }
 
+    private fun homeSnapshot(serverId: String = "server-1"): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId(serverId), name = "Raft"),
+            currentMember =
+                MemberProfile(
+                    id = MemberId("me"),
+                    displayName = "Me",
+                    handle = "me",
+                    kind = MemberKind.Human,
+                    presence = Presence.Active,
+                ),
+            channels =
+                listOf(
+                    HomeChannelRow(
+                        threadId = ThreadId("random"),
+                        channelId = ChannelId("random"),
+                        name = "random",
+                        activityNotificationPreference = ChannelActivityNotificationPreference(activityMuted = true),
+                    ),
+                    HomeChannelRow(threadId = ThreadId("android"), channelId = ChannelId("android"), name = "android"),
+                ),
+            directMessages =
+                listOf(
+                    HomeDirectMessageRow(
+                        threadId = ThreadId("dm-fable"),
+                        channelId = ChannelId("dm-fable"),
+                        name = "Fable",
+                        directMessagePeerType = "agent",
+                        directMessagePeerAvatarWireValue = "pixel:robot",
+                        presenceMemberId = MemberId("agent-fable"),
+                    ),
+                ),
+            unreadTotal = 0,
+            sidebarOrder =
+                SettingsServerSidebarOrderSnapshot(
+                    pinned = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-fable")),
+                ),
+        )
+
     @Test
     fun homeSnapshotProjectsPinsMutesAndDmPeersForTheSameServerOnly() {
-        val snapshot =
-            HomeSnapshot(
-                server = ServerSummary(id = ServerId("server-1"), name = "Raft"),
-                currentMember =
-                    MemberProfile(
-                        id = MemberId("me"),
-                        displayName = "Me",
-                        handle = "me",
-                        kind = MemberKind.Human,
-                        presence = Presence.Active,
-                    ),
-                channels =
-                    listOf(
-                        HomeChannelRow(
-                            threadId = ThreadId("random"),
-                            channelId = ChannelId("random"),
-                            name = "random",
-                            activityNotificationPreference = ChannelActivityNotificationPreference(activityMuted = true),
-                        ),
-                        HomeChannelRow(threadId = ThreadId("android"), channelId = ChannelId("android"), name = "android"),
-                    ),
-                directMessages =
-                    listOf(
-                        HomeDirectMessageRow(
-                            threadId = ThreadId("dm-fable"),
-                            channelId = ChannelId("dm-fable"),
-                            name = "Fable",
-                            directMessagePeerType = "agent",
-                            directMessagePeerAvatarWireValue = "pixel:robot",
-                            presenceMemberId = MemberId("agent-fable"),
-                        ),
-                    ),
-                unreadTotal = 0,
-                sidebarOrder =
-                    SettingsServerSidebarOrderSnapshot(
-                        pinned = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-fable")),
-                    ),
-            )
+        val snapshot = homeSnapshot()
         val projected = snapshot.toActivityConversationListContext("server-1")
         assertEquals(listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-fable")), projected.pinnedRefs)
         assertEquals(setOf("random"), projected.mutedChannelIds)
@@ -359,5 +363,47 @@ class ActivityConversationListTest {
         // Another server's Home snapshot is never a candidate for this Activity.
         assertEquals(ActivityConversationListContext.Empty, snapshot.toActivityConversationListContext("server-2"))
         assertEquals(ActivityConversationListContext.Empty, (null as HomeSnapshot?).toActivityConversationListContext("server-1"))
+    }
+
+    @Test
+    fun pinsAndSectionsWaitForHomeContentOfThisServer() {
+        val ready = homeSnapshot().toActivityConversationListContext("server-1")
+        val content = SharedHomeContentState.Content(snapshot = homeSnapshot(), session = session())
+        val otherServer = SharedHomeContentState.Content(snapshot = homeSnapshot("server-2"), session = session())
+        data class Case(
+            val name: String,
+            val previous: ActivityConversationListContext?,
+            val home: SharedHomeContentState?,
+            val expected: ActivityConversationListContext?,
+        )
+        val cases =
+            listOf(
+                // Pending (null): the panel keeps its loading state instead of painting unpinned rows.
+                Case("home loading", previous = null, home = SharedHomeContentState.Loading(), expected = null),
+                Case("another server's home", previous = null, home = otherServer, expected = null),
+                Case("home content", previous = null, home = content, expected = ready),
+                // Once painted, a Home reload or failure never moves the rows again.
+                Case("reload after content", previous = ready, home = SharedHomeContentState.Loading(), expected = ready),
+                Case("error after content", previous = ready, home = SharedHomeContentState.Error("boom"), expected = ready),
+                // No Home facts will come: the unpinned list, no section labels.
+                Case("home error", previous = null, home = SharedHomeContentState.Error("boom"), expected = ActivityConversationListContext.Empty),
+                Case("home empty", previous = null, home = SharedHomeContentState.Empty(session()), expected = ActivityConversationListContext.Empty),
+                Case("no home store", previous = null, home = null, expected = ActivityConversationListContext.Empty),
+                Case("content after error", previous = ActivityConversationListContext.Empty, home = content, expected = ready),
+            )
+        val items = listOf(channel("channel:random", "random"), dm("dm:fable", "dm-fable", senderId = "agent-fable"))
+        for (case in cases) {
+            val next = nextActivityConversationListContext(case.previous, case.home, "server-1")
+            assertEquals(case.expected, next, case.name)
+            if (next == ActivityConversationListContext.Empty) {
+                // Error / no Home: loaded order, no "Pinned" / "All conversations" labels.
+                assertEquals(listOf("channel:random", "dm:fable"), activityConversationListEntries(items, next).map { it.key }, case.name)
+            }
+        }
+        // With Home content the pinned DM peer floats under "Pinned".
+        assertEquals(
+            listOf("activity-list-section:Pinned", "dm:fable", "activity-list-section:AllConversations", "channel:random"),
+            activityConversationListEntries(items, ready).map { it.key },
+        )
     }
 }

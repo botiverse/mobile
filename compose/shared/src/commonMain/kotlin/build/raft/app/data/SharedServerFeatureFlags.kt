@@ -283,10 +283,37 @@ class SharedServerFeatureFlags(
     private val snapshotRevisionState = MutableStateFlow(0L)
 
     /**
-     * Bumped every time an evaluation is accepted into the per-server snapshots. UI that must follow a flag
-     * live (web `useServerFeatureFlag` re-renders when the snapshot lands) keys its [isEnabled] read on this.
+     * Bumped every time an evaluation is accepted into the per-server snapshots, and once when the first
+     * evaluation attempt of a server without a snapshot settles as a failure (that ends
+     * [isDecisionPending]). UI that must follow a flag live (web `useServerFeatureFlag` re-renders when the
+     * snapshot lands) keys its [isEnabled] / [isDecisionPending] reads on this.
      */
     val snapshotRevision: StateFlow<Long> = snapshotRevisionState.asStateFlow()
+
+    /** Servers whose evaluation attempt settled without a snapshot (failed / malformed). Under [stateLock]. */
+    private val settledWithoutSnapshot = mutableSetOf<String>()
+
+    /**
+     * True while [isEnabled] for [key] on [serverId] is only the before-evaluation default: no online
+     * evaluation in this process, no stored last-known value, and no evaluation attempt has settled yet.
+     * A layout that must not paint one way and then switch (Activity's conversation list) waits on this;
+     * a failed attempt ends the wait (the flag then reads its default, off), so the wait is bounded by
+     * one evaluation request.
+     */
+    fun isDecisionPending(serverId: ServerId, key: String): Boolean {
+        if (serverId.value.isBlank()) return false
+        if (snapshots[serverId.value] != null) return false
+        if (lastKnown?.read(serverId, key) != null) return false
+        return synchronized(stateLock) { serverId.value !in settledWithoutSnapshot }
+    }
+
+    private fun markAttemptSettledWithoutSnapshot(serverId: ServerId) {
+        val changed =
+            synchronized(stateLock) {
+                snapshots[serverId.value] == null && settledWithoutSnapshot.add(serverId.value)
+            }
+        if (changed) snapshotRevisionState.value += 1
+    }
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
@@ -435,17 +462,27 @@ class SharedServerFeatureFlags(
                 nextRequestGenerationByServer[serverId.value] = generation
             }
         }
-        val response = api.evaluate(serverId, keys)
+        val response =
+            try {
+                api.evaluate(serverId, keys)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                markAttemptSettledWithoutSnapshot(serverId)
+                throw error
+            }
         currentCoroutineContext().ensureActive()
         val body = response.bodyText
         if (!response.isSuccessful || body == null) {
             diagnosticsLogger?.invoke("feature_flags evaluate failed server=${serverId.value} code=${response.code}")
+            markAttemptSettledWithoutSnapshot(serverId)
             return snapshotFor(serverId)
         }
         val decoded = try {
             featureFlagsJson.decodeFromString<FeatureFlagEvaluateResponseBody>(body)
         } catch (_: SerializationException) {
             diagnosticsLogger?.invoke("feature_flags evaluate malformed body server=${serverId.value}")
+            markAttemptSettledWithoutSnapshot(serverId)
             return snapshotFor(serverId)
         }
         val values = keys.associateWith { it in clientDefaultOnKeys }.toMutableMap()
