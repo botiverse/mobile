@@ -1555,6 +1555,51 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun loadPageContentWithItemIdLoadsTheComputerDetailOfThatMachine() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, " machine-42 "))
+
+        val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
+        assertEquals("machine-42", detail.computer.id)
+        assertEquals(listOf("computerDetail:machine-42"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun loadPageContentWithoutItemIdFailsTheComputerDetailClosed() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "  "))
+
+        val error = assertIs<ScreenLoadState.Error>(store.state.value.computerDetail).error
+        assertEquals("settings_computer_required", error.code)
+        assertEquals(emptyList(), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun scanComputerWorkspacesUpdatesOnlyTheWorkspaceSection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =

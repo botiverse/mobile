@@ -353,8 +353,14 @@ private data class ServerNotificationModeMutation(
 
 sealed interface SharedSettingsIntent {
     data object Start : SharedSettingsIntent
-    /** Loads content for the Pager that already owns this store; it never performs navigation. */
-    data class LoadPageContent(val page: SharedSettingsDestination) : SharedSettingsIntent
+    /**
+     * Loads content for the Pager that already owns this store; it never performs navigation.
+     * [itemId] names the item of an item page (the machine of [SharedSettingsDestination.ComputerDetail]).
+     */
+    data class LoadPageContent(
+        val page: SharedSettingsDestination,
+        val itemId: String? = null
+    ) : SharedSettingsIntent
     data class OpenComputer(val machineId: String) : SharedSettingsIntent
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
@@ -2015,7 +2021,11 @@ class SharedSettingsStore(
                 if (intent.page != SharedSettingsDestination.Notifications) {
                     retireServerNotificationModeMutation()
                 }
-                _state.value = _state.value.copy(route = SharedSettingsRoute(intent.page), routeErrorCode = null)
+                _state.value =
+                    _state.value.copy(
+                        route = SharedSettingsRoute(intent.page, intent.itemId?.trim()?.takeIf { it.isNotBlank() }),
+                        routeErrorCode = null
+                    )
                 loadCurrentRoute()
             }
             is SharedSettingsIntent.OpenComputer -> {
