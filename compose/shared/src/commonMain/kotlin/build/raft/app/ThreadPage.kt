@@ -278,6 +278,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.foundation.gestures.scrollBy
+import com.tencent.kuikly.compose.foundation.gestures.stopScroll
 import com.tencent.kuikly.compose.foundation.hoverable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
 import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
@@ -21607,6 +21608,11 @@ private fun ThreadMessagesListContent(
                     )
                     coroutineScope.launch {
                         try {
+                            // Stop the native fling first (Hands 06569f0c): scrollToItem
+                            // only moves Compose, so a still-running RecyclerView fling
+                            // kept feeding deltas and dragged the list back off the
+                            // bottom. stopScroll() aborts the native scroller too.
+                            listState.raw.stopScroll()
                             val clickUserScrollGeneration = userScrollGeneration.value
                             val canonicalTailLoaded = onJumpToLatest()
                             if (
