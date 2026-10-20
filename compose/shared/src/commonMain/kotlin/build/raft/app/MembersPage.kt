@@ -12531,12 +12531,13 @@ private fun MembersAgentWorkspaceTab(
         modifier = modifier,
         framed = false,
         trailingContent = {
-            RaftBrutalIconButton(
-                iconName = RaftLucideIconName.RefreshCw,
+            RaftIconButton(
                 onClick = onRefresh,
-                size = 30.dp,
-                shadowOffset = 2.dp
-            )
+                contentDescription = stringResource(MR.strings.common_retry),
+                variant = RaftButtonVariant.Ghost
+            ) {
+                RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp)
+            }
         }
     ) {
         when (treeState) {
@@ -12595,11 +12596,14 @@ private fun MembersWorkspaceTreeView(
         MembersDetailField(stringResource(MR.strings.member_section_workspace), stringResource(MR.strings.member_state_no_files))
         return
     }
+    // The tree sits in one raft-ui Card, its rows flush inside it.
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 280.dp, max = 560.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .heightIn(min = 280.dp, max = 560.dp)
+            .membersRaftCard(),
+        contentPadding = PaddingValues(vertical = RaftAppSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         items(rows.size, key = { "workspace-${rows[it].node.path}" }) { index ->
             val row = rows[index]
@@ -12625,11 +12629,16 @@ private fun MembersWorkspaceNodeRow(
     onSelectFile: (String) -> Unit
 ) {
     val node = row.node
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val muted = raftArgbHex(colors.foregroundMuted)
+    // A tree row: 32dp, 12dp sides, 16dp per level; chevron in hint ink, the type icon in
+    // muted ink, the name in callout, sizes in Space Mono hint (raft-ui files row type).
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 30.dp)
+                .heightIn(min = 32.dp)
                 .clickable {
                     if (node.kind == RaftWorkspaceFileKind.Folder) {
                         onToggleDirectory(node.path)
@@ -12637,11 +12646,11 @@ private fun MembersWorkspaceNodeRow(
                         onSelectFile(node.path)
                     }
                 }
-                .padding(vertical = 4.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Spacer(Modifier.width((row.depth * 14).dp))
+            Spacer(Modifier.width((row.depth * 16).dp))
             if (node.kind == RaftWorkspaceFileKind.Folder) {
                 if (loading) {
                     // #70: replace the chevron with a rotating Loader spinner
@@ -12650,49 +12659,51 @@ private fun MembersWorkspaceNodeRow(
                     // per @artin's 06-23 20:51 directive shows the spinner
                     // inline as the chevron substitute instead of alongside
                     // a "Loading..." text label).
-                    RaftSpinnerIcon(size = 13.dp)
+                    RaftSpinnerIcon(size = 14.dp)
                 } else {
                     RaftLucideIcon(
                         if (expanded) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
-                        Modifier.size(13.dp),
+                        Modifier.size(14.dp),
+                        color = raftArgbHex(colors.foregroundHint)
                     )
                 }
             } else {
-                Spacer(Modifier.width(13.dp))
+                Spacer(Modifier.width(14.dp))
             }
-            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(14.dp))
-            Text(
+            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(16.dp), color = muted)
+            RaftText(
                 text = node.name.ifBlank { node.path },
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withRaftFontWeight(if (node.name == "memory.md") FontWeight.Bold else FontWeight.Normal),
-                color = RaftColor.TextBlack,
+                style = typography.callout.copy(
+                    fontWeight = if (node.name == "memory.md") FontWeight.SemiBold else FontWeight.Normal
+                ),
+                color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             node.meta?.takeIf { it.isNotBlank() }?.let { meta ->
-                Text(
+                RaftText(
                     text = meta,
-                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
-                    color = RaftColor.TextMutedGray,
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
                     maxLines = 1
                 )
             }
             if (loading) {
-                Text(
+                RaftText(
                     text = stringResource(MR.strings.common_loading),
-                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
-                    color = RaftColor.TextMutedGray,
+                    style = typography.caption,
+                    color = colors.foregroundHint,
                     maxLines = 1
                 )
             }
         }
         errorMessage?.let {
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.member_error_workspace_child_load, it),
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = RaftColor.AccentOrange,
-                modifier = Modifier.padding(start = ((row.depth + 1) * 14).dp)
+                style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.dangerStrong,
+                modifier = Modifier.padding(start = (12 + (row.depth + 1) * 16).dp, end = 12.dp, bottom = 6.dp)
             )
         }
     }
@@ -12701,24 +12712,24 @@ private fun MembersWorkspaceNodeRow(
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField(stringResource(MR.strings.member_label_files), message)
-    RaftBrutalActionButton(
-        label = stringResource(MR.strings.common_retry),
-        leadingIcon = RaftLucideIconName.RefreshCw,
-        enabled = true,
+    RaftButton(
+        text = stringResource(MR.strings.common_retry),
+        onClick = onRefresh,
         modifier = Modifier.fillMaxWidth(),
-        onClick = onRefresh
+        size = RaftButtonSize.Lg,
+        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp) }
     )
 }
 
 @Composable
 private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
     MembersDetailField(stringResource(MR.strings.member_label_state), message)
-    RaftBrutalActionButton(
-        label = stringResource(MR.strings.common_retry),
-        leadingIcon = RaftLucideIconName.RefreshCw,
-        enabled = true,
+    RaftButton(
+        text = stringResource(MR.strings.common_retry),
+        onClick = onRefresh,
         modifier = Modifier.fillMaxWidth(),
-        onClick = onRefresh
+        size = RaftButtonSize.Lg,
+        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp) }
     )
 }
 
