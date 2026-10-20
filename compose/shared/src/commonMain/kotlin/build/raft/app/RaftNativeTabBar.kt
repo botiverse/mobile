@@ -1,0 +1,241 @@
+package build.raft.app
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Pager
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/*
+ * Host-drawn app-shell tab bar (iOS: a system UITabBarController, Liquid Glass on iOS 26+).
+ *
+ * The shared shell stays the single source of truth for the tabs: the same
+ * [RaftBottomTabItemPayload] list that feeds the Compose bar (order, keys, localized labels,
+ * icons, badges, selection) and the same visibility rule (`showBottomTabs`) are published
+ * through a [RaftNativeTabBarBridge]. The host only renders that state and reports taps back
+ * through [RaftNativeTabBarBridge.selectTab], which runs the shell's ordinary tab handler
+ * (select, re-tap scroll-to-top, More menu, ...). Programmatic navigation (deep links,
+ * notification opens) changes the shell's selected tab and therefore the published state.
+ *
+ * A host opts in per page: it registers a bridge in [RaftNativeTabBarRegistry] and passes the
+ * id in the page's pageData under [RaftNativeTabBarHostIdPageDataKey] (identity only). Pages
+ * without a registered bridge — Android, visual fixtures, smoke pages — keep the Compose bar.
+ *
+ * Main thread only: the shell composes on the main thread and the iOS host calls in from UIKit.
+ */
+
+/** pageData key carrying the id of the host's registered [RaftNativeTabBarBridge]. */
+const val RaftNativeTabBarHostIdPageDataKey = "slockNativeTabBarHostId"
+
+/** One tab as the host renders it. Exported to Swift. */
+data class RaftNativeTabBarItem(
+    /** Stable shell tab key ("home", "activity", "tasks", ...); returned by [RaftNativeTabBarBridge.selectTab]. */
+    val key: String,
+    /** Localized label; also the accessibility label. */
+    val title: String,
+    /** SF Symbol for the unselected state. */
+    val systemImageName: String,
+    /** SF Symbol for the selected state (the host falls back to [systemImageName]). */
+    val selectedSystemImageName: String,
+    /** Raw badge count from the shell (0 = no badge). */
+    val badgeCount: Int,
+    /** Display badge text, already capped like the rest of the app ("99+"); null = no badge. */
+    val badgeValue: String?,
+    val enabled: Boolean,
+)
+
+/** Everything the host needs to render the bar. Exported to Swift. */
+data class RaftNativeTabBarState(
+    /** Tabs in display order. */
+    val items: List<RaftNativeTabBarItem>,
+    /** Key of the selected tab, or null when none of [items] is selected. */
+    val selectedKey: String?,
+    /** False while the shell hides its bottom bar (pushed home destinations, nav rail, ...). */
+    val visible: Boolean,
+) {
+    companion object {
+        val Hidden = RaftNativeTabBarState(items = emptyList(), selectedKey = null, visible = false)
+    }
+}
+
+/** Implemented by the host (Swift `RaftIosTabBarController`). Called on the main thread. */
+interface RaftNativeTabBarListener {
+    fun onNativeTabBarStateChanged(state: RaftNativeTabBarState)
+}
+
+/**
+ * Per-page channel between the shared app shell and the host's native tab bar. Created and
+ * registered by the host before the page is created; the shell publishes into it while its
+ * bottom bar is composed.
+ */
+class RaftNativeTabBarBridge {
+    private val mutableState = MutableStateFlow(RaftNativeTabBarState.Hidden)
+    private val mutableBottomInsetPoints = MutableStateFlow(0.0)
+    private var listener: RaftNativeTabBarListener? = null
+    private var publisherToken: Any? = null
+    private var onSelect: ((String) -> Unit)? = null
+
+    /** The published tab bar state (single source of truth for the host). */
+    val state: StateFlow<RaftNativeTabBarState> = mutableState.asStateFlow()
+
+    /** Swift convenience: the current value of [state]. */
+    val currentState: RaftNativeTabBarState
+        get() = mutableState.value
+
+    /**
+     * Height (points == dp on iOS) of the band the native bar covers at the bottom of the page,
+     * measured from the bar's top edge to the page bottom (includes the home-indicator area).
+     * 0 until the host has laid the bar out.
+     */
+    internal val bottomInsetPoints: StateFlow<Double> = mutableBottomInsetPoints.asStateFlow()
+
+    /** Sets the single host listener and replays the current state to it. */
+    fun attachListener(listener: RaftNativeTabBarListener) {
+        this.listener = listener
+        listener.onNativeTabBarStateChanged(mutableState.value)
+    }
+
+    fun detachListener() {
+        listener = null
+    }
+
+    /**
+     * Host -> shell: the user tapped the tab [key] (including a re-tap of the selected tab).
+     * Runs the shell's tab handler; the resulting selection comes back through [state].
+     * Returns false when no shell is currently publishing (the host must not change selection).
+     */
+    fun selectTab(key: String): Boolean {
+        val handler = onSelect ?: return false
+        if (mutableState.value.items.none { it.key == key && it.enabled }) return false
+        handler(key)
+        return true
+    }
+
+    /** Host -> shell: see [bottomInsetPoints]. Non-finite or negative values are ignored. */
+    fun updateBottomInset(points: Double) {
+        if (!points.isFinite() || points < 0.0) return
+        mutableBottomInsetPoints.value = points
+    }
+
+    internal fun publish(token: Any, state: RaftNativeTabBarState, onSelect: (String) -> Unit) {
+        publisherToken = token
+        this.onSelect = onSelect
+        emit(state)
+    }
+
+    /** Hides the bar when [token] is still the active publisher; keeps the items for re-show. */
+    internal fun retract(token: Any) {
+        if (publisherToken !== token) return
+        publisherToken = null
+        onSelect = null
+        emit(mutableState.value.copy(visible = false))
+    }
+
+    private fun emit(state: RaftNativeTabBarState) {
+        if (mutableState.value == state) return
+        mutableState.value = state
+        listener?.onNativeTabBarStateChanged(state)
+    }
+}
+
+/** Host-owned bridges by host id. Exported to Swift as `RaftNativeTabBarRegistry.shared`. */
+object RaftNativeTabBarRegistry {
+    private val bridges = mutableMapOf<String, RaftNativeTabBarBridge>()
+
+    fun register(hostId: String, bridge: RaftNativeTabBarBridge) {
+        if (hostId.isBlank()) return
+        bridges[hostId] = bridge
+    }
+
+    /** Removes [hostId] only while it still maps to [bridge]. */
+    fun unregister(hostId: String, bridge: RaftNativeTabBarBridge) {
+        if (bridges[hostId] === bridge) bridges.remove(hostId)
+    }
+
+    internal fun bridgeFor(hostId: String?): RaftNativeTabBarBridge? =
+        hostId?.takeIf { it.isNotBlank() }?.let { bridges[it] }
+}
+
+/** The native tab bar bridge the host registered for the current page, if any. */
+@Composable
+internal fun raftNativeTabBarBridge(): RaftNativeTabBarBridge? {
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    val hostId = params.optString(RaftNativeTabBarHostIdPageDataKey)
+    return remember(hostId) { RaftNativeTabBarRegistry.bridgeFor(hostId) }
+}
+
+/**
+ * Publishes the shell's bottom tabs to the host while this call is composed; leaving
+ * composition (the shell hid its bottom bar) hides the native bar.
+ */
+@Composable
+internal fun RaftNativeTabBarPublisher(
+    bridge: RaftNativeTabBarBridge,
+    items: List<RaftBottomTabItemPayload>,
+    onSelect: (String) -> Unit,
+) {
+    val token = remember(bridge) { Any() }
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val selectHandler = remember(bridge) { { key: String -> currentOnSelect(key) } }
+    val state = remember(items) { raftNativeTabBarState(items, visible = true) }
+    DisposableEffect(bridge, state) {
+        bridge.publish(token, state, selectHandler)
+        onDispose { }
+    }
+    DisposableEffect(bridge, token) {
+        onDispose { bridge.retract(token) }
+    }
+}
+
+internal fun raftNativeTabBarState(
+    items: List<RaftBottomTabItemPayload>,
+    visible: Boolean,
+): RaftNativeTabBarState =
+    RaftNativeTabBarState(
+        items = items.map(::raftNativeTabBarItem),
+        selectedKey = items.firstOrNull { it.selected }?.key,
+        visible = visible,
+    )
+
+internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTabBarItem {
+    val symbol = raftNativeTabBarSymbol(item.iconName)
+    val badgeCount = item.badgeCount.coerceAtLeast(0)
+    return RaftNativeTabBarItem(
+        key = item.key,
+        title = item.label,
+        systemImageName = symbol.name,
+        selectedSystemImageName = symbol.selectedName,
+        badgeCount = badgeCount,
+        badgeValue = raftNativeTabBarBadgeValue(badgeCount),
+        enabled = item.enabled,
+    )
+}
+
+/** Same cap as the Home sidebar badges: null at 0, "99+" from 100. */
+internal fun raftNativeTabBarBadgeValue(count: Int): String? = formatHomeSidebarBadgeCount(count)
+
+internal data class RaftNativeTabBarSymbol(val name: String, val selectedName: String)
+
+/**
+ * Lucide tab icon -> SF Symbol. Every icon `appShellTabIcon` can return has an explicit
+ * mapping; anything else falls back to a circle so a new tab still renders.
+ */
+internal fun raftNativeTabBarSymbol(icon: RaftLucideIconName): RaftNativeTabBarSymbol =
+    when (icon) {
+        RaftLucideIconName.House -> RaftNativeTabBarSymbol("house", "house.fill")
+        RaftLucideIconName.MessageCircle -> RaftNativeTabBarSymbol("message", "message.fill")
+        RaftLucideIconName.Bell -> RaftNativeTabBarSymbol("bell", "bell.fill")
+        RaftLucideIconName.Ellipsis -> RaftNativeTabBarSymbol("ellipsis", "ellipsis")
+        RaftLucideIconName.SquareCheckBig -> RaftNativeTabBarSymbol("checkmark.square", "checkmark.square.fill")
+        RaftLucideIconName.Users -> RaftNativeTabBarSymbol("person.2", "person.2.fill")
+        RaftLucideIconName.Settings -> RaftNativeTabBarSymbol("gearshape", "gearshape.fill")
+        RaftLucideIconName.Search -> RaftNativeTabBarSymbol("magnifyingglass", "magnifyingglass")
+        RaftLucideIconName.Inbox -> RaftNativeTabBarSymbol("tray", "tray.fill")
+        RaftLucideIconName.Bookmark -> RaftNativeTabBarSymbol("bookmark", "bookmark.fill")
+        else -> RaftNativeTabBarSymbol("circle", "circle.fill")
+    }
