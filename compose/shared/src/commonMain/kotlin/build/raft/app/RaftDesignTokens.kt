@@ -311,6 +311,35 @@ private fun fontFamilyFor(role: String, preference: FontPreference, fontWeight: 
 internal fun raftFontFamilyForWeight(fontWeight: FontWeight?): FontFamily =
     fontFamilyFor("sans", RaftFontFaceState.preference, fontWeight ?: FontWeight.Normal)
 
+private val raftMultiWeightFamilyCache = mutableMapOf<Pair<String, FontPreference>, FontFamily>()
+
+/**
+ * One family holding every bundled weight of the active face for [role] ("sans" or "mono").
+ * The per-weight families above encode the weight in the face name; the designsystem
+ * module's type tokens pick a weight with `copy(fontWeight = …)` the way CSS does, which
+ * needs every weight in one family. Space Mono / Geist Mono ship only Regular and Bold.
+ */
+internal fun raftMultiWeightFontFamily(role: String, preference: FontPreference = RaftFontFaceState.preference): FontFamily {
+    val base = if (role == "mono") preference.monoFamily else preference.sansFamily
+    if (base == null) return if (role == "mono") FontFamily.Monospace else FontFamily.Default
+    return raftMultiWeightFamilyCache.getOrPut(role to preference) {
+        val display = base.split('_').joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } }
+        val faces =
+            if (role == "mono") {
+                listOf(FontWeight.Normal to "Regular", FontWeight.Bold to "Bold")
+            } else {
+                listOf(
+                    FontWeight.Light to "Light",
+                    FontWeight.Normal to "Regular",
+                    FontWeight.Medium to "Medium",
+                    FontWeight.SemiBold to "SemiBold",
+                    FontWeight.Bold to "Bold"
+                )
+            }
+        FontFamily(faces.map { (weight, suffix) -> KuiklyFont("$display-$suffix", weight, FontStyle.Normal) })
+    }
+}
+
 private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
     when (this) {
         SpaceGroteskBold -> FontWeight.Bold
