@@ -532,29 +532,32 @@ or helper scripts as a workaround for branch protection.
 
 ## Shared UI Component Discipline
 
-- Product/page code must prefer the existing shared brutal components for
-  common controls: `RaftBrutalActionButton`, `RaftBrutalIconButton`,
-  `RaftBrutalTextField`, `RaftBrutalSearchField`, section labels, chips, and
-  modal/action helpers. Do not hand-roll local back buttons, icon buttons,
-  primary/secondary buttons, text fields, or search controls with ad hoc
-  `Box`/`Row`/`clickable` styling when a shared component already covers the
-  behavior.
-- Local wrappers are acceptable only as semantic adapters, and should preserve
-  shared component defaults for border, hard shadow, padding, typography,
-  disabled behavior, and icon treatment unless the product spec explicitly
-  calls out a variant. If a repeated variant is needed, promote it to a shared
-  component instead of copying per-page styling.
-- Iron rule: when React parity or Product feedback identifies a reusable
-  control pattern (select/dropdown, textarea counter, clear action, refresh
-  affordance, section label accessory, etc.), first add or extend a shared
-  component under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
-  and then wire pages to that component. Do not fix the same visual primitive
-  separately inside each page; page-local UI is only allowed for one-off layout
-  composition around shared controls.
-- Members/detail pages in particular should use the shared brutal buttons for
-  top-left back navigation and all action buttons. Do not reintroduce bespoke
-  members-only button metrics such as custom 30dp icon buttons, 1dp shadows, or
-  caption-sized action text for ordinary page actions.
+- Product/page code uses the raft-ui components from `compose/designsystem`
+  (package `build.raft.designsystem`: `RaftButton`, `RaftIconButton`,
+  `RaftTextField`, `RaftField`, `RaftSelectTrigger`, `RaftDropdownMenu`, `RaftTabs`,
+  `RaftListRow`, `RaftCard`, `RaftBadge`, `RaftDialog`, `RaftBanner`, ...) and
+  its tokens/typography for every common control. Do not hand-roll back
+  buttons, icon buttons, primary/secondary buttons, text fields, search
+  controls, menu rows or tabs with ad hoc `Box`/`Row`/`clickable` styling.
+- The source of truth is raft-ui (raft-design / the web). When a page needs a
+  control or variant `compose/designsystem` does not have yet, first add it to
+  `compose/designsystem`, aligned with the raft-ui recipe (sizes, radii,
+  strokes, states, type), with screenshot tests, then use it. Do not fix the
+  same visual primitive separately inside each page; page-local UI is only for
+  one-off layout composition around design-system controls.
+- The older `RaftBrutal*` components (`RaftBrutalActionButton`,
+  `RaftBrutalIconButton`, `RaftBrutalTextField`, `RaftBrutalSearchField`, ...)
+  and the helpers under `compose/shared/src/commonMain/kotlin/build/raft/app/components/`
+  are pending migration: add no new usages, and replace them with the
+  design-system component when you touch that UI.
+- Local wrappers are acceptable only as semantic adapters and keep the
+  design-system defaults (stroke, radius, padding, type, disabled and focus
+  states, icon treatment) unless the raft-ui spec defines a variant. A repeated
+  variant belongs in `compose/designsystem`, not in per-page styling.
+- Metrics come from the design system, not from page code: control heights,
+  icon-button sizes (44dp touch target), menu-row heights, radii and stroke
+  widths use `compose/designsystem` tokens. raft-ui controls cast no shadow;
+  only stickers keep the hard offset.
 
 ## Kuikly Status
 
