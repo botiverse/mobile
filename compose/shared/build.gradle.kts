@@ -162,7 +162,7 @@ kotlin {
                 // Common platform-safe monitor used by the synchronous shell-store cache.
                 implementation(libs.atomicfu)
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.5")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.6")
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the RaftHttpExecutor seam.
@@ -183,7 +183,7 @@ kotlin {
             }
             dependencies {
                 implementation(kotlin("test"))
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.5")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.6")
                 // Virtual-time coroutine testing (runTest/advanceTimeBy) — the
                 // required default for new async tests; see AGENTS.md unit-test
                 // rules (task #18). Version tracks kotlinx-coroutines-core above.

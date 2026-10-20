@@ -11,7 +11,7 @@ plugins {
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.sqldelight) apply false
     alias(libs.plugins.google.services) apply false
-    id("com.tencent.kuiklybase.resource.generator").version("0.1.0-raft.5").apply(false)
+    id("com.tencent.kuiklybase.resource.generator").version("0.1.0-raft.6").apply(false)
 }
 
 configurations.configureEach {
