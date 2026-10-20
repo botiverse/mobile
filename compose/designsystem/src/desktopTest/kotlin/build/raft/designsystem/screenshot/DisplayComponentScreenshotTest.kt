@@ -214,7 +214,7 @@ class DisplayComponentScreenshotTest {
     fun iconButton() =
         capture("icon_button") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Caption("Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
+                Caption("Xs (24), Sm (28), Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
                 RaftButtonVariant.entries.forEach { variant ->
                     val onFrame = variant == RaftButtonVariant.OnFrame
                     Row(
@@ -232,7 +232,16 @@ class DisplayComponentScreenshotTest {
                                         variant = variant,
                                         size = size,
                                         enabled = state != "Disabled",
-                                    ) { Glyph(RaftGlyph.Plus, if (size == RaftIconButtonSize.Lg) 22.dp else 18.dp) }
+                                    ) {
+                                        Glyph(
+                                            RaftGlyph.Plus,
+                                            when (size) {
+                                                RaftIconButtonSize.Lg -> 22.dp
+                                                RaftIconButtonSize.Md -> 18.dp
+                                                else -> 16.dp
+                                            },
+                                        )
+                                    }
                                 }
                             }
                             Box(Modifier.width(12.dp))

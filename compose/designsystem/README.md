@@ -156,7 +156,7 @@ Other checks:
 | `RaftBadge` | Badge | Done | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not clickable |
 | `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+, read as "N unread" with the full number), with a thread segment (`RaftUnreadCount(count, threadCount)`: `5 · [thread] 2`, raft-ui `SidebarItemThreadCount`), @ marker, gray muted count, `agent` tag, agent state chips |
 | `RaftSpinner` | Spinner | Done | Pixel spinner, xs–lg, inverse, `stillStep` for stills and reduced motion |
-| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed and mouse hover (the press overlay, as the web's `hover:`; no ripple), focus ring, disabled (no overlay), busy (focusable, semantics disabled, taps ignored). No underlined-text variant: that is `RaftTextLink`. `RaftIconButton(onClick, tooltip, …)`: `tooltip` is required, names the action in Title Case, is the content description, and is shown as a `RaftTooltip` on a long press or mouse hover (a long press that opens it does not click). The tooltip adds no screen-reader stop: the button is the one node |
+| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon xs (24) / sm (28) / md / lg; pressed and mouse hover (the press overlay, as the web's `hover:`; no ripple), focus ring, disabled (no overlay), busy (focusable, semantics disabled, taps ignored). No underlined-text variant: that is `RaftTextLink`. `RaftIconButton(onClick, tooltip, …)`: `tooltip` names the action in Title Case, is the content description, and is shown as a `RaftTooltip` on a long press or mouse hover (a long press that opens it does not click). The tooltip adds no screen-reader stop: the button is the one node. `tooltip = null` shows none and names the button by `contentDescription`; `onLongClick` (named `longClickLabel`) takes the long press, leaving the tooltip to the mouse; `Xs` / `Sm` widen their touch target to 44dp |
 | `RaftTooltip` | Tooltip | Done | The dark HUD bubble (`layer-hud`, `foreground-on-hud`, `radius-chip`, 10 x 4dp padding, footnote 13/18 medium, `shadow-float`) with a 10 x 5.25dp caret, 8dp above the anchor (below when there is no room). A mouse / trackpad hover keeps it open until the pointer leaves; a long press opens it for 1.5s (and does not click). Not focusable, no semantics node of its own. Material3 `TooltipBox` + `PlainTooltip` (positioning and popup; the gestures are the module's), so its width caps at 200dp (raft-ui: 320dp) |
 | `RaftTextLink`, `appendRaftTextLink` | TextLink | Done | Muted (default, on its own) and strong (ink 600, inside a sentence); no height, padding or border, takes the text's size; 1.5dp underline 3dp under the baseline; pressed (the web's hover look), focus ring on a 2dp radius, disabled. Inside a sentence: `appendRaftTextLink` in the `AnnotatedString` of a `RaftText` (or a `RaftBanner` description) |
 | `RaftCard`, `RaftCardSection` | Card | Done | Default, inset, option; header (leading / trailing), body, footer. An option card with `onClick` is one target: press, focus ring, radio / checkbox role and `selected` |
@@ -320,10 +320,16 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   `RaftTextLink` has no fill to lay an overlay on, so pressed takes its hover look (muted
   turns ink; strong's underline turns pink).
 - **Tooltip on a long press.** The web opens an icon button's tooltip on hover; touch
-  opens it on a long press for 1.5s (a mouse still on hover, open until it leaves). The
-  label is required on `RaftIconButton` (mobile DRI), so every icon-only action has a name
-  and a tooltip. That includes the dialog's close button, which shows a "Close" tooltip;
-  the web dialog's close button has none.
+  opens it on a long press for 1.5s (a mouse still on hover, open until it leaves). Every
+  icon-only action has a name: the tooltip, or `contentDescription` when `tooltip = null`.
+  The dialog's close button shows a "Close" tooltip; the web dialog's close button has
+  none. An icon button with `onLongClick` gives the long press to that action and opens its
+  tooltip only on hover.
+- **Small icon buttons.** raft-ui 0.10.3 renders `icon-xs` / `icon-sm` as `icon-md` (32dp)
+  and its Button doc lists no smaller size. `RaftIconButtonSize.Sm` (28dp, 16dp icon) and
+  `Xs` (24dp, 16dp icon) are the square buttons raft-ui draws inside components
+  (MessageItemToolbarButton `size-7`, MessageAttachmentAction `size-6`), with the Button
+  variants' looks and a 44dp touch target.
 - **TextLink inside a sentence** is a span of the sentence's text (`appendRaftTextLink`),
   with a click target over its words on each line it takes (one node for focus and
   screen readers, on its first line), and its underline and focus ring drawn under the
