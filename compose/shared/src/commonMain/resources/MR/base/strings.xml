@@ -2237,6 +2237,11 @@
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_notifications_show_previews_title">Show message previews</string>
     <string name="settings_notifications_show_previews_detail">Include message details in iOS push notifications. Turn this off for private alerts.</string>
+    <string name="settings_notifications_preview_mode_title">Message previews in notifications</string>
+    <string name="settings_notifications_preview_mode_detail">Choose what appears in push notifications on this device. Hiding text keeps message content on our servers only.</string>
+    <string name="settings_notifications_preview_mode_full">Show all</string>
+    <string name="settings_notifications_preview_mode_sender_only">Sender only</string>
+    <string name="settings_notifications_preview_mode_hidden">Hide all</string>
     <string name="settings_mobile_new_design_settings">New design settings</string>
     <string name="settings_mobile_new_design_settings_detail">Open the new standalone channel settings page. When off, keep the current Thread settings dialog.</string>
     <string name="home_adaptive_select_conversation">Select a conversation</string>

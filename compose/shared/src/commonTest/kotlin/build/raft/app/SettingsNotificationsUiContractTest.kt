@@ -50,8 +50,24 @@ class SettingsNotificationsUiContractTest {
     }
 
     @Test
-    fun previewToggleMapsToCanonicalServerModes() {
-        assertEquals(PushPreviewMode.Full, pushPreviewModeForEnabled(true))
-        assertEquals(PushPreviewMode.Private, pushPreviewModeForEnabled(false))
+    fun previewModeExposesExactlyTheThreeCanonicalWireValues() {
+        // The settings control renders one option per enum entry, so the enum *is* the user-facing
+        // choice list: it must stay at three and must never resurface the retired "private" value.
+        assertEquals(
+            listOf("full", "sender_only", "hidden"),
+            PushPreviewMode.entries.map { it.wireName }
+        )
+    }
+
+    @Test
+    fun previewModeEachEntryHasDistinctIconAndLabel() {
+        assertEquals(
+            PushPreviewMode.entries.size,
+            PushPreviewMode.entries.map { it.settingsPreviewModeIcon() }.toSet().size
+        )
+        assertEquals(
+            PushPreviewMode.entries.size,
+            PushPreviewMode.entries.map { it.settingsPreviewModeLabel() }.toSet().size
+        )
     }
 }

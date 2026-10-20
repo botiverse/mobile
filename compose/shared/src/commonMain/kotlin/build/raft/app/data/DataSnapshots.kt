@@ -1586,13 +1586,13 @@ data class SettingsMobileSnapshot(
     val muteServer: SettingsMobileToggleSnapshot,
     val serverNotificationMode: SettingsMobileSelectionSnapshot =
         ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false),
-    val pushMessagePreviews: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = true,
-            available = false,
-            statusLabel = "Unsupported",
-            detail = "Message preview privacy is not available on this server."
-        ),
+    /**
+     * Message-preview choice for push notifications on this device. Kept as the three-state enum
+     * rather than a toggle so the UI can render one choice per mode; availability is separate so an
+     * unsupported build still shows the current selection as read-only.
+     */
+    val pushPreviewMode: SettingsMobileSelectionSnapshot =
+        PushPreviewMode.Full.toSettingsMobileSelectionSnapshot(available = false),
     val sendTestEnabled: Boolean = false,
     val notificationPermission: SettingsMobileActionSnapshot =
         SettingsMobileActionSnapshot(
@@ -1794,12 +1794,37 @@ enum class ServerPushMode(val wireName: String) {
 
 enum class PushPreviewMode(val wireName: String) {
     Full("full"),
-    Private("private");
+    SenderOnly("sender_only"),
+    Hidden("hidden");
 
     companion object {
-        fun fromWire(value: String?): PushPreviewMode? = entries.firstOrNull { it.wireName == value }
+        /** Wire values persisted by builds before the three-state enum. Read-only: never written. */
+        private const val LegacyPrivateWireName = "private"
+
+        fun fromWire(value: String?): PushPreviewMode? {
+            val normalized = value?.trim()?.lowercase().orEmpty()
+            // A build before the three-state enum could persist "private". Map it onto Hidden so an
+            // existing choice keeps meaning "don't show the message", and stop writing it from here on.
+            if (normalized == LegacyPrivateWireName) return Hidden
+            return entries.firstOrNull { it.wireName == normalized }
+        }
     }
 }
+
+fun PushPreviewMode.toSettingsMobileSelectionSnapshot(
+    available: Boolean = true
+): SettingsMobileSelectionSnapshot =
+    SettingsMobileSelectionSnapshot(
+        selectedKey = wireName,
+        selectedLabel = wireName,
+        statusLabel = wireName,
+        detail = "",
+        options =
+            entries.map { mode ->
+                SettingsMobileSelectionOptionSnapshot(key = mode.wireName, label = mode.wireName)
+            },
+        available = available
+    )
 
 fun ServerPushMode.toSettingsMobileSelectionSnapshot(
     available: Boolean = true,
