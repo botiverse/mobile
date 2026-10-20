@@ -971,6 +971,7 @@ internal fun threadVisualFixture(
             )
         // web ThreadMessageShareSelectionVisualCaseView (SHARE_SELECTION_MESSAGES): Cindy's
         // threadDefault message with a 👍 2 the owner joined, then the owner's composerSeed.
+        // The web case's channel store has no #product, so the ref stays plain text.
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION ->
             RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
@@ -988,8 +989,7 @@ internal fun threadVisualFixture(
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
-                knownMarkdownChannelNames = listOf("product"),
-                messages =
+                                messages =
                     listOf(
                         RaftThreadMessageItem(
                             id = "msg-share-selection-1",

@@ -541,7 +541,11 @@ internal fun ThreadMessageVisualScreenContent() {
                 onForward = {},
                 onExportImage = {},
                 onCopyLinks = {},
-                onCopyMarkdown = {}
+                onCopyMarkdown = {},
+                // The React case renders in a browser page with no bottom safe area
+                // (`safe-bottom-action-bar` resolves to 0); the emulator's navigation bar is a
+                // device inset, not part of the toolbar.
+                bottomSafeArea = 0.dp
             )
         }
         return

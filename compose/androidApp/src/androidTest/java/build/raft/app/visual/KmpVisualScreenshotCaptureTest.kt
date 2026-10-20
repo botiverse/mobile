@@ -2353,10 +2353,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-share-selection")
-                    .put("visualFixture", "share_selection")
-                    // The React case renders in a browser with no bottom safe area, so the
-                    // select-mode bar sits flush; reserve no navigation-bar inset here.
-                    .put("slockHostExcludesNavigationBar", true),
+                    .put("visualFixture", "share_selection"),
             crop = FULL_VIEWPORT_CROP
         )
     }

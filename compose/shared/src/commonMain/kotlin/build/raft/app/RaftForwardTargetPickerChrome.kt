@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,7 +47,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 // trailing actions sit 3dp from the screen edges, `main p-3` around the search InputGroup,
 // a `mb-1 h-6 px-1` SectionEyebrow, then `stack-y-0.5` ListRows.
 private val ForwardPickerHeaderEdgeInset = 3.dp
-private val ForwardPickerHeaderContentSpacing = 6.dp
+private val ForwardPickerHeaderContentSpacing = 8.dp
 internal val ForwardPickerBodyPadding = 12.dp
 private val ForwardPickerEyebrowHeight = 24.dp
 private val ForwardPickerRowGap = 2.dp
@@ -173,6 +175,7 @@ internal fun <T> RaftForwardPickerTargetRow(
             RaftForwardTargetVisualKind.DirectMessage ->
                 if (target.avatarWireValue.isNullOrBlank()) {
                     // AvatarSlot `humanPlaceholder`: no photo is the person glyph, not initials.
+                    // web AvatarSlot `humanPlaceholder`: lucide User inside the lavender sticker.
                     RaftAvatar(
                         type =
                             if (target.cacheMemberKind == build.raft.app.model.MemberKind.Agent) {
@@ -180,7 +183,16 @@ internal fun <T> RaftForwardPickerTargetRow(
                             } else {
                                 RaftAvatarType.Human
                             },
-                        size = RaftAvatarSize.Sm
+                        size = RaftAvatarSize.Sm,
+                        image = {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                RaftLucideIcon(
+                                    RaftLucideIconName.User,
+                                    modifier = Modifier.size(RaftAvatarSize.Sm.iconSize),
+                                    color = raftArgbHex(RaftColor.StickerInk)
+                                )
+                            }
+                        }
                     )
                 } else RaftAppAvatar(
                     avatarWireValue = target.avatarWireValue,

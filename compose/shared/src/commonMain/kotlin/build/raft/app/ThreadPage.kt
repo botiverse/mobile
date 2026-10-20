@@ -32330,10 +32330,10 @@ internal fun ThreadShareSelectionToolbar(
     forwardEnabled: Boolean = true,
     onExportImage: () -> Unit,
     onCopyLinks: () -> Unit,
-    onCopyMarkdown: (() -> Unit)? = null
+    onCopyMarkdown: (() -> Unit)? = null,
+    bottomSafeArea: Dp = raftBottomSafeAreaPadding()
 ) {
     val hasSelection = selectedCount > 0
-    val bottomSafeArea = raftBottomSafeAreaPadding()
     var moreMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     val moreAnchor = remember { RaftLiveRootAnchorRef(identity = "thread_share_selection_more") }
     val moreItems =
