@@ -1877,6 +1877,10 @@
     <string name="settings_computers_online_count">%2$d 台中 %1$d 台がオンライン</string>
     <string name="settings_computers_workspace_status_active">アクティブ</string>
     <string name="settings_computers_workspace_status_orphan">孤立</string>
+    <string name="settings_computers_cannot_delete_message_one">このコンピューターには %1$d 件のエージェントが割り当てられています。コンピューターを削除する前に、すべてのエージェントを削除してください。</string>
+    <string name="settings_computers_cannot_delete_message_many">このコンピューターには %1$d 件のエージェントが割り当てられています。コンピューターを削除する前に、すべてのエージェントを削除してください。</string>
+    <string name="settings_computers_error_refresh_title">更新できませんでした</string>
+    <string name="settings_computers_rotate_key_web_hint">このコンピューターの API キーの再発行はウェブで行ってください。</string>
     <string name="settings_connected_apps_loading">連携、マーケットプレイスアプリ、OAuth クライアントを読み込んでいます。</string>
     <string name="settings_connected_apps_empty">連携アプリはありません</string>
     <string name="settings_connected_apps_error">連携アプリのエラー</string>

@@ -6,13 +6,18 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
+import build.raft.app.data.SettingsSectionErrorSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -70,7 +75,14 @@ class RaftSettingsComputersModelTest {
                         SettingsComputersSnapshot(
                             computers =
                                 listOf(
-                                    computer("m-1", online = false, daemonVersion = "0.40.0", lastHeartbeat = "2026-10-19T10:00:00Z"),
+                                    // A daemon never shows an update, even if a stale flag came along.
+                                    computer(
+                                        "m-1",
+                                        online = false,
+                                        daemonVersion = "0.40.0",
+                                        lastHeartbeat = "2026-10-19T10:00:00Z",
+                                        upgradeAvailable = true,
+                                    ),
                                     computer(
                                         "m-2",
                                         online = true,
@@ -96,7 +108,7 @@ class RaftSettingsComputersModelTest {
         val daemon = model.rows[0]
         assertEquals(RaftComputerKind.Daemon, daemon.kind)
         assertEquals("0.40.0", daemon.version)
-        assertTrue(daemon.updateAvailable)
+        assertFalse(daemon.updateAvailable)
         assertNull(daemon.hostDetail)
         assertEquals("2026-10-19T10:00:00Z", daemon.lastSeenAt)
 
@@ -110,18 +122,75 @@ class RaftSettingsComputersModelTest {
     }
 
     @Test
-    fun versionComparisonOnlyFlagsAParsableOlderRelease() {
-        assertTrue(raftComputerVersionIsOlder("0.40.9", "0.41.0"))
-        assertTrue(raftComputerVersionIsOlder("v1.2", "1.2.1"))
-        assertTrue(raftComputerVersionIsOlder("1.9.0", "1.10.0"))
-        assertFalse(raftComputerVersionIsOlder("1.10.0", "1.9.0"))
-        assertFalse(raftComputerVersionIsOlder("1.2.0", "1.2.0"))
-        assertFalse(raftComputerVersionIsOlder("1.2.0-beta.1", "1.2.0"))
-        assertFalse(raftComputerVersionIsOlder("1.2.0+abc", "v1.2"))
-        assertFalse(raftComputerVersionIsOlder(null, "1.0.0"))
-        assertFalse(raftComputerVersionIsOlder("1.0.0", null))
-        assertFalse(raftComputerVersionIsOlder("dev", "1.0.0"))
-        assertFalse(raftComputerVersionIsOlder("1.0.0", "latest"))
+    fun updateAvailableFollowsTheServerPolicyFlagForComputersOnly() {
+        // Version strings no longer matter: an older Computer without the flag is not flagged,
+        // and the list row and the detail header read the same flag.
+        val cases =
+            listOf(
+                Triple(computer("c-flag", isComputer = true, computerVersion = "1.0.0", upgradeAvailable = true), true, "flagged computer"),
+                Triple(computer("c-none", isComputer = true, computerVersion = "0.1.0"), false, "unflagged old computer"),
+                Triple(computer("d-flag", daemonVersion = "0.1.0", upgradeAvailable = true), false, "daemon"),
+            )
+        cases.forEach { (snapshot, expected, label) ->
+            assertEquals(expected, snapshot.toRaftComputerRow().updateAvailable, label)
+            val detail =
+                assertIs<RaftComputerDetailModel.Content>(
+                    raftComputerDetailModel(
+                        ScreenLoadState.Content(detail(snapshot.id).copy(computer = snapshot)),
+                        machineId = snapshot.id,
+                        targetServerId = null,
+                        currentServerId = "server-1",
+                    )
+                )
+            assertEquals(expected, detail.computer.updateAvailable, "$label (detail)")
+        }
+    }
+
+    @Test
+    fun assignedAgentCountUsesTheLoadedAgentsAndFallsBackToTheServerCount() {
+        val agent = SettingsComputerAgentSnapshot(id = "a-1", name = "Jony")
+        val withAgents = detail("m-1").copy(agents = listOf(agent), computer = computer("m-1", agentCount = 3))
+        assertEquals(1, raftComputerAssignedAgentCount(withAgents))
+        assertEquals(
+            3,
+            raftComputerAssignedAgentCount(withAgents.copy(agents = emptyList(), agentsError = SettingsSectionErrorSnapshot("http_500"))),
+        )
+        assertEquals(0, raftComputerAssignedAgentCount(detail("m-1")))
+    }
+
+    @Test
+    fun refreshErrorShowsOnlyOverSettledContent() {
+        assertEquals("server_unavailable", raftComputersRefreshErrorCode(hasContent = true, routeErrorCode = "server_unavailable", refreshing = false))
+        assertNull(raftComputersRefreshErrorCode(hasContent = false, routeErrorCode = "server_unavailable", refreshing = false))
+        assertNull(raftComputersRefreshErrorCode(hasContent = true, routeErrorCode = "server_unavailable", refreshing = true))
+        assertNull(raftComputersRefreshErrorCode(hasContent = true, routeErrorCode = " ", refreshing = false))
+    }
+
+    @Test
+    fun editableTextKeepsUnsavedEditsAcrossABackgroundReload() {
+        assertEquals("Renamed", raftComputerEditableTextAfterReload(current = "Studio", baseline = "Studio", incoming = "Renamed"))
+        assertEquals("My draft", raftComputerEditableTextAfterReload(current = "My draft", baseline = "Studio", incoming = "Renamed"))
+    }
+
+    @Test
+    fun realtimeFilterAdmitsOnlyMachineEventsOfTheCurrentServer() {
+        fun machines(serverId: String?, subjectId: String? = "m-1") =
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.Machines,
+                reason = "machine:status",
+                serverId = serverId?.let(::ServerId),
+                subjectId = subjectId,
+            )
+        assertTrue(raftComputersRealtimeEventApplies(machines("server-1"), "server-1"))
+        assertTrue(raftComputersRealtimeEventApplies(machines(null), "server-1"))
+        assertFalse(raftComputersRealtimeEventApplies(machines("server-2"), "server-1"))
+        assertFalse(raftComputersRealtimeEventApplies(machines("server-1", subjectId = " "), "server-1"))
+        assertFalse(
+            raftComputersRealtimeEventApplies(
+                RealtimeRefreshRequired(RealtimeRefreshScope.Agents, "agent:created", ServerId("server-1"), subjectId = "a-1"),
+                "server-1",
+            )
+        )
     }
 
     @Test
@@ -254,6 +323,8 @@ class RaftSettingsComputersModelTest {
         platform: String? = null,
         runtimes: List<String> = emptyList(),
         lastHeartbeat: String? = null,
+        upgradeAvailable: Boolean = false,
+        agentCount: Int = 0,
     ) = SettingsComputerSnapshot(
         id = id,
         name = name,
@@ -266,6 +337,8 @@ class RaftSettingsComputersModelTest {
         runtimes = runtimes,
         createdAt = "2026-01-02T03:04:05Z",
         lastHeartbeat = lastHeartbeat,
+        upgradeAvailable = upgradeAvailable,
+        agentCount = agentCount,
     )
 
     private fun detail(id: String) =

@@ -128,7 +128,10 @@ private fun visualComputers() =
                 SettingsComputerSnapshot(
                     id = "machine-laptop",
                     name = "Travel laptop",
-                    daemonVersion = "0.65.0",
+                    daemonVersion = "",
+                    computerVersion = "1.3.0",
+                    isComputer = true,
+                    upgradeAvailable = true,
                     online = false,
                     lastHeartbeat = "2026-10-18T12:00:00Z",
                 ),
@@ -183,4 +186,6 @@ private fun visualComputerDetail() =
         sections = emptyList(),
         workspacesScanned = true,
         canManageMachines = true,
+        canEditMachine = true,
+        canRemoveMachine = true,
     )

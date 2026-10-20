@@ -13,13 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +41,12 @@ import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.COMPUTER_ACTION_DESCRIPTION
 import build.raft.app.data.COMPUTER_ACTION_RENAME
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
+import build.raft.app.data.RaftAuthSessionEventSource
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RealtimeGuardedActiveThreadSink
+import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDescriptionUpdateRequest
 import build.raft.app.data.SettingsComputerDetailSnapshot
@@ -49,6 +58,7 @@ import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.isRefreshing
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
@@ -102,12 +112,12 @@ const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
 internal class RaftSettingsComputersPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsComputers) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { RaftSettingsComputersRoute() }
+        setAuthenticatedContent { RaftSettingsComputersRoute(raftPageVisibleResumeTick, raftPageVisible) }
     }
 }
 
 @Composable
-internal fun RaftSettingsComputersRoute() {
+internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisible: Boolean = true) {
     val pager = LocalActivity.current.getPager() as Pager
     val target =
         remember(pager.pageData.params.toString()) {
@@ -119,9 +129,9 @@ internal fun RaftSettingsComputersRoute() {
             }
         }
     if (target == null) {
-        RaftSettingsComputersScreen(pager)
+        RaftSettingsComputersScreen(pager, pageVisibleResumeTick, pageVisible)
     } else {
-        RaftSettingsComputerDetailScreen(pager, target)
+        RaftSettingsComputerDetailScreen(pager, target, pageVisible)
     }
 }
 
@@ -133,10 +143,61 @@ private sealed interface RaftComputersSessionRead {
     data class Read(val currentServerId: String?) : RaftComputersSessionRead
 }
 
+/**
+ * The shell's current server, read reactively: re-read on every auth-session event (server switch,
+ * sign-out) and emitted only when it actually changes.
+ */
+@Composable
+private fun rememberRaftComputersSession(authStore: RaftAuthSessionStore): State<RaftComputersSessionRead> =
+    produceState<RaftComputersSessionRead>(RaftComputersSessionRead.Pending, authStore) {
+        suspend fun read() =
+            RaftComputersSessionRead.Read(
+                runCatchingPreservingCancellation { authStore.readSession()?.currentServerId }.getOrNull()
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+            )
+        value = read()
+        val events = (authStore as? RaftAuthSessionEventSource)?.authSessionEvents ?: return@produceState
+        events.collect {
+            val next = read()
+            if (next != value) value = next
+        }
+    }
+
+/**
+ * Routes Machines-scope realtime events of [serverId] into the page's settings store while the page
+ * is visible: status dots, renames, deletes and upgrade flags follow the server without a manual
+ * refresh. The store coalesces bursts into one in-flight reload.
+ */
+@Composable
+private fun RaftComputersRealtimeEffect(
+    pager: Pager,
+    storeScope: RaftShellStoreScope,
+    serverId: String?,
+    visible: Boolean,
+    dispatch: (SharedSettingsIntent) -> Unit,
+) {
+    val bridge = Utils.bridgeModule(pager.pagerId)
+    val owner = remember(bridge, storeScope) { RaftSharedStoreRegistry.get(bridge).realtimeDomainEventOwner(storeScope) }
+    val latestDispatch by rememberUpdatedState(dispatch)
+    val subscribedServerId = serverId?.takeIf { visible }
+    DisposableEffect(owner, subscribedServerId) {
+        if (subscribedServerId == null) return@DisposableEffect onDispose {}
+        val sink =
+            RealtimeGuardedActiveThreadSink { eventServerId, event ->
+                if (eventServerId == subscribedServerId && raftComputersRealtimeEventApplies(event, subscribedServerId)) {
+                    latestDispatch(SharedSettingsIntent.ApplyRealtimeEvent(subscribedServerId, event))
+                }
+            }
+        owner.registerGuardedActiveThreadSink(sink)
+        onDispose { owner.unregisterGuardedActiveThreadSink(sink) }
+    }
+}
+
 // region List
 
 @Composable
-private fun RaftSettingsComputersScreen(pager: Pager) {
+private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int, pageVisible: Boolean) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val settingsViewModel: SharedSettingsViewModel =
@@ -149,6 +210,16 @@ private fun RaftSettingsComputersScreen(pager: Pager) {
         bridge.log("settings_computers_open target=list")
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
     }
+    // The detail page runs its own store; coming back from it (delete, rename) reloads the list.
+    LaunchedEffect(pageVisibleResumeTick) {
+        if (pageVisibleResumeTick > 0) {
+            bridge.log("settings_computers_resume_refresh tick=$pageVisibleResumeTick")
+            settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
+        }
+    }
+    val session by rememberRaftComputersSession(environment.authStore)
+    val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
+    RaftComputersRealtimeEffect(pager, environment.storeScope, currentServerId, pageVisible, settingsViewModel::dispatch)
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     LaunchedEffect(settingsState.effect) {
         // A finished Add Computer dialog lands on the new machine, as the web dialog does.
@@ -158,6 +229,12 @@ private fun RaftSettingsComputersScreen(pager: Pager) {
     }
     val model = raftComputersListModel(settingsState.computers)
     val refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers)
+    val refreshErrorCode =
+        raftComputersRefreshErrorCode(
+            hasContent = settingsState.computers is ScreenLoadState.Content,
+            routeErrorCode = settingsState.routeErrorCode,
+            refreshing = refreshing,
+        )
     fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
     SettingsDetailShell(
         title = stringResource(MR.strings.settings_computers_title),
@@ -168,13 +245,13 @@ private fun RaftSettingsComputersScreen(pager: Pager) {
         RaftComputersTheme {
             RaftSettingsComputersContent(
                 model = model,
+                refreshErrorCode = refreshErrorCode,
                 bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
                 onRetry = ::refresh,
                 onAddComputer = { settingsViewModel.dispatch(SharedSettingsIntent.ShowAddComputerDialog) },
                 onOpenComputer = { machineId ->
                     navigationScope.launch {
-                        val serverId = environment.authStore.readSession()?.currentServerId
-                        val identity = settingsComputerRouteIdentity(serverId, machineId)
+                        val identity = settingsComputerRouteIdentity(currentServerId, machineId)
                         if (identity == null) {
                             bridge.log("settings_computers_open_detail_skip reason=no_server")
                         } else {
@@ -193,6 +270,7 @@ private fun RaftSettingsComputersScreen(pager: Pager) {
 @Composable
 internal fun RaftSettingsComputersContent(
     model: RaftComputersListModel,
+    refreshErrorCode: String? = null,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onRetry: () -> Unit,
     onAddComputer: () -> Unit,
@@ -233,6 +311,7 @@ internal fun RaftSettingsComputersContent(
                 )
             is RaftComputersListModel.Content ->
                 LazyColumn(Modifier.fillMaxSize()) {
+                    refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
                     item(key = "summary") {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 12.dp),
@@ -295,7 +374,7 @@ private fun RaftComputerListRow(row: RaftComputerRowModel, divider: Boolean, onC
 // region Detail
 
 @Composable
-private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerPageTarget) {
+private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerPageTarget, pageVisible: Boolean) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val settingsViewModel: SharedSettingsViewModel =
@@ -318,10 +397,8 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             closePage()
         }
     }
-    // The session is read once per page: the target server is checked against its current server.
-    val session by produceState<RaftComputersSessionRead>(RaftComputersSessionRead.Pending, environment.authStore) {
-        value = RaftComputersSessionRead.Read(environment.authStore.readSession()?.currentServerId)
-    }
+    // The target server is checked against the shell's current server, which may change while open.
+    val session by rememberRaftComputersSession(environment.authStore)
     val model =
         when (val read = session) {
             RaftComputersSessionRead.Pending -> RaftComputerDetailModel.Loading
@@ -334,7 +411,21 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 )
         }
     val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
+    RaftComputersRealtimeEffect(
+        pager = pager,
+        storeScope = environment.storeScope,
+        // Only the machine's own server: a target on another server renders Unavailable anyway.
+        serverId = currentServerId?.takeIf { target.serverId == null || target.serverId == it },
+        visible = pageVisible,
+        dispatch = settingsViewModel::dispatch,
+    )
     val refreshing = settingsState.isRefreshing(SharedSettingsDestination.ComputerDetail)
+    val refreshErrorCode =
+        raftComputersRefreshErrorCode(
+            hasContent = model is RaftComputerDetailModel.Content,
+            routeErrorCode = settingsState.routeErrorCode,
+            refreshing = refreshing,
+        )
     fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
     SettingsDetailShell(
         title = (model as? RaftComputerDetailModel.Content)?.computer?.name
@@ -347,6 +438,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             RaftSettingsComputerDetailContent(
                 model = model,
                 actionState = settingsState.actionState,
+                refreshErrorCode = refreshErrorCode,
                 bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
                 onRetry = ::refresh,
                 onIntent = settingsViewModel::dispatch,
@@ -376,6 +468,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
 internal fun RaftSettingsComputerDetailContent(
     model: RaftComputerDetailModel,
     actionState: SharedSettingsActionState?,
+    refreshErrorCode: String? = null,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onRetry: () -> Unit,
     onIntent: (SharedSettingsIntent) -> Unit,
@@ -407,7 +500,7 @@ internal fun RaftSettingsComputerDetailContent(
                     )
                 }
             is RaftComputerDetailModel.Content ->
-                RaftComputerDetailBody(model, actionState, bottomContentPadding, onIntent, onOpenAgent)
+                RaftComputerDetailBody(model, actionState, refreshErrorCode, bottomContentPadding, onIntent, onOpenAgent)
         }
     }
 }
@@ -416,6 +509,7 @@ internal fun RaftSettingsComputerDetailContent(
 private fun RaftComputerDetailBody(
     model: RaftComputerDetailModel.Content,
     actionState: SharedSettingsActionState?,
+    refreshErrorCode: String?,
     bottomContentPadding: Dp,
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
@@ -423,11 +517,13 @@ private fun RaftComputerDetailBody(
     val computer = model.computer
     val snapshot = model.snapshot
     val machineId = computer.id
-    val canManage = snapshot.canManageMachines
+    val canEdit = model.canEdit
+    val canRemove = model.canRemove
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "header") { RaftComputerDetailHeader(computer) }
+        refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
         currentAction
             ?.takeIf { !it.inProgress && it.hasComputerActionError() }
             ?.let { failed ->
@@ -459,7 +555,7 @@ private fun RaftComputerDetailBody(
         }
         item(key = "name") {
             RaftSection(title = stringResource(MR.strings.settings_computers_section_name)) {
-                if (canManage) {
+                if (canEdit) {
                     RaftComputerEditableText(
                         key = machineId,
                         initial = computer.name,
@@ -477,7 +573,7 @@ private fun RaftComputerDetailBody(
         }
         item(key = "description") {
             RaftSection(title = stringResource(MR.strings.settings_computers_section_description)) {
-                if (canManage) {
+                if (canEdit) {
                     RaftComputerEditableText(
                         key = machineId,
                         initial = computer.description.orEmpty(),
@@ -485,6 +581,7 @@ private fun RaftComputerDetailBody(
                         placeholder = stringResource(MR.strings.settings_computers_placeholder_description),
                         multiline = true,
                         allowBlank = true,
+                        maxLength = RAFT_COMPUTER_DESCRIPTION_MAX_LENGTH,
                         saving =
                             actionState?.let { it.action == COMPUTER_ACTION_DESCRIPTION && it.itemId == machineId && it.inProgress } == true,
                         onSave = {
@@ -511,36 +608,67 @@ private fun RaftComputerDetailBody(
                 onScan = { onIntent(SharedSettingsIntent.ScanComputerWorkspaces(machineId)) },
             )
         }
-        if (canManage) {
+        if (canEdit || canRemove) {
             item(key = "actions") {
                 RaftSection(title = stringResource(MR.strings.settings_computers_section_actions)) {
                     val deleting = actionState?.let { it.action == COMPUTER_ACTION_DELETE && it.itemId == machineId && it.inProgress } == true
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RaftText(
-                            stringResource(MR.strings.settings_computers_delete_title),
-                            style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
-                            color = RaftTheme.colors.foreground,
+                        // Key rotation stays on the web: a hint row, never a call to the rotate endpoint.
+                        RaftComputersInlineNotice(
+                            title = stringResource(MR.strings.settings_computers_rotate_key_title),
+                            detail = stringResource(MR.strings.settings_computers_rotate_key_web_hint),
                         )
-                        RaftText(
-                            stringResource(MR.strings.settings_computers_delete_detail),
-                            style = RaftTheme.typography.footnote,
-                            color = RaftTheme.colors.foregroundMuted,
-                        )
-                        RaftButton(
-                            text = stringResource(MR.strings.settings_computers_delete_action),
-                            onClick = { confirmDelete = true },
-                            variant = RaftButtonVariant.Danger,
-                            loading = deleting,
-                            loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
-                            leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
-                        )
+                    }
+                    if (canRemove) {
+                        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            RaftText(
+                                stringResource(MR.strings.settings_computers_delete_title),
+                                style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+                                color = RaftTheme.colors.foreground,
+                            )
+                            RaftText(
+                                stringResource(MR.strings.settings_computers_delete_detail),
+                                style = RaftTheme.typography.footnote,
+                                color = RaftTheme.colors.foregroundMuted,
+                            )
+                            RaftButton(
+                                text = stringResource(MR.strings.settings_computers_delete_action),
+                                onClick = { confirmDelete = true },
+                                variant = RaftButtonVariant.Danger,
+                                loading = deleting,
+                                loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
+                                leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
+                            )
+                        }
                     }
                 }
             }
         }
         item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
     }
-    if (confirmDelete) {
+    if (confirmDelete && model.assignedAgentCount > 0) {
+        // Web MachineDetailPanel: a machine with agents gets a notice, not a destructive confirm.
+        val count = model.assignedAgentCount
+        RaftDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = stringResource(MR.strings.settings_computers_error_title_cannot_delete),
+            description =
+                if (count == 1) {
+                    stringResource(MR.strings.settings_computers_cannot_delete_message_one, count)
+                } else {
+                    stringResource(MR.strings.settings_computers_cannot_delete_message_many, count)
+                },
+            closeLabel = stringResource(MR.strings.common_close),
+            footer = {
+                RaftButton(
+                    text = stringResource(MR.strings.common_ok),
+                    onClick = { confirmDelete = false },
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                )
+            },
+        )
+    } else if (confirmDelete) {
         RaftDialog(
             onDismissRequest = { confirmDelete = false },
             title = stringResource(MR.strings.settings_computers_delete_title),
@@ -607,24 +735,47 @@ private fun RaftComputerEditableText(
     multiline: Boolean,
     allowBlank: Boolean,
     saving: Boolean,
+    maxLength: Int? = null,
     onSave: (String) -> Unit,
 ) {
-    var value by remember(key, initial) { mutableStateOf(initial) }
+    var value by remember(key) { mutableStateOf(initial) }
+    // The saved value the field last adopted. A background reload (realtime, refresh) moves
+    // [initial]; the field follows it only while the user has no unsaved edits.
+    var baseline by remember(key) { mutableStateOf(initial) }
+    LaunchedEffect(key, initial) {
+        if (initial != baseline) {
+            val next = raftComputerEditableTextAfterReload(current = value, baseline = baseline, incoming = initial)
+            if (next != value) value = next
+            baseline = initial
+        }
+    }
     val trimmed = value.trim()
     val changed = trimmed != initial.trim()
+    val tooLong = maxLength != null && trimmed.length > maxLength
+    val onValueChange: (String) -> Unit = { next -> value = if (maxLength != null) next.take(maxLength) else next }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RaftField(label = label) {
             if (multiline) {
-                RaftTextarea(value = value, onValueChange = { value = it }, placeholder = placeholder, enabled = !saving)
+                RaftTextarea(value = value, onValueChange = onValueChange, placeholder = placeholder, enabled = !saving)
             } else {
-                RaftTextField(value = value, onValueChange = { value = it }, placeholder = placeholder, enabled = !saving)
+                RaftTextField(value = value, onValueChange = onValueChange, placeholder = placeholder, enabled = !saving)
             }
+        }
+        if (maxLength != null) {
+            // The web editor's `n/500` counter.
+            RaftText(
+                "${value.length}/$maxLength",
+                modifier = Modifier.fillMaxWidth(),
+                style = RaftTheme.typography.monoMeta,
+                color = if (tooLong) RaftTheme.colors.dangerStrong else RaftTheme.colors.foregroundHint,
+                textAlign = TextAlign.End,
+            )
         }
         if (changed || saving) {
             RaftButton(
                 text = stringResource(MR.strings.common_save),
                 onClick = { onSave(trimmed) },
-                enabled = allowBlank || trimmed.isNotBlank(),
+                enabled = (allowBlank || trimmed.isNotBlank()) && !tooLong,
                 loading = saving,
                 loadingLabel = stringResource(MR.strings.settings_computers_action_saving),
             )
@@ -825,8 +976,9 @@ private fun RaftComputerUpdateBadge() {
 
 @Composable
 internal fun RaftComputersRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
-    Box(modifier = Modifier.size(30.dp)) {
-        RaftPanelAction(onClick = { if (!refreshing) onRefresh() }, modifier = Modifier.size(28.dp)) {
+    // 44dp: the minimum touch target; the glyph stays 16dp.
+    RaftPanelAction(onClick = { if (!refreshing) onRefresh() }, modifier = Modifier.size(44.dp)) {
+        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
             RaftLucideIcon(
                 RaftLucideIconName.RefreshCw,
                 modifier = Modifier.size(16.dp),
@@ -835,6 +987,17 @@ internal fun RaftComputersRefreshAction(refreshing: Boolean, onRefresh: () -> Un
             )
         }
     }
+}
+
+/** A refresh that failed while the page still shows its last content. */
+@Composable
+private fun RaftComputersRefreshErrorBanner(code: String) {
+    RaftBanner(
+        description = raftComputerErrorCodeMessage(code, null, null),
+        status = RaftBannerStatus.Warning,
+        title = stringResource(MR.strings.settings_computers_error_refresh_title),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 /** The centred loading / empty / error block of a page with nothing else to show. */

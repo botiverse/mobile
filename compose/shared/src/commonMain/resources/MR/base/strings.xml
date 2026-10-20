@@ -1877,6 +1877,10 @@
     <string name="settings_computers_online_count">%1$d of %2$d online</string>
     <string name="settings_computers_workspace_status_active">Active</string>
     <string name="settings_computers_workspace_status_orphan">Orphaned</string>
+    <string name="settings_computers_cannot_delete_message_one">This computer has %1$d agent assigned. Remove all agents before deleting the computer.</string>
+    <string name="settings_computers_cannot_delete_message_many">This computer has %1$d agents assigned. Remove all agents before deleting the computer.</string>
+    <string name="settings_computers_error_refresh_title">Couldn\'t refresh</string>
+    <string name="settings_computers_rotate_key_web_hint">Rotate this computer\'s API key on the web.</string>
     <string name="settings_connected_apps_loading">Loading integrations, marketplace apps, and OAuth clients.</string>
     <string name="settings_connected_apps_empty">No Connected Apps</string>
     <string name="settings_connected_apps_error">Connected Apps Error</string>
