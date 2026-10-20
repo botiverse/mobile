@@ -49,6 +49,7 @@ above and update the inventory when they establish a new ownership pattern.
 | Thread local-send bottom session | explicit local send | anchor identity + user-scroll generation; compliant |
 | Thread focused-message session | route `(messageId, nonce)` | consumed/interrupted identity, generation, active-scroll fence, bounded cap; compliant |
 | Thread initial/keyboard bottom placement | initial route or parked layout intent | drag/focus yield for initial placement; parked-tail gate for keyboard; compliant |
+| Thread forward-layout tail anchor (IME resize / realtime append) | parked bottom feed: `FollowingLatest` and the tail flush with the viewport end in the previous layout | applied inside the measure pass that sees the shrink/append (`requestScrollToItem`), so no delayed job exists; active scroll, leaving the tail, newer pagination, prepend and list replacement excluded; reverse layout never needs it; `RaftThreadImeLayoutTest` |
 
 Framework-internal Kuikly corrections and test/probe pages are not app-level inventory entries. Framework corrections still must preserve the same user-override invariant at their own ownership boundary.
 
