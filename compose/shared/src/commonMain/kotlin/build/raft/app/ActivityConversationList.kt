@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -57,6 +59,7 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftMentionMarker
+import build.raft.designsystem.components.RaftTouchTargetSize
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
@@ -476,8 +479,8 @@ internal fun ActivityConversationListRow(
                             true
                         }
                     }
-                    // With Done, its 48dp touch slot supplies the 8dp gap that used to be padding here.
-                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = if (showDoneAction) 0.dp else 16.dp),
+                    // With Done, its 44dp touch slot supplies 6dp of the 8dp gap that used to be padding here.
+                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = if (showDoneAction) 2.dp else 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -554,14 +557,17 @@ internal fun ActivityConversationListRow(
             ActivityConversationTrailing(item, model, timeContext)
         }
         if (showDoneAction) {
-            RaftIconButton(
-                onClick = onDone,
-                tooltip = stringResource(MR.strings.thread_action_mark_done),
-                // The 32dp button keeps its look inside a 48dp touch target; the 8dp of the slot on each
-                // side replaces 8dp of the old row padding, so nothing moves.
-                modifier = Modifier.padding(end = 8.dp).minimumInteractiveComponentSize(),
-            ) {
-                RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
+            // Rule L (touch): the row's primary action is always on screen, never hover-only, with a
+            // 44dp end touch target (raft-ui's `::after`). The 32dp button keeps its look inside that
+            // slot; its 6dp on each side plus 2dp / 10dp of padding keep the button where it was.
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides RaftTouchTargetSize) {
+                RaftIconButton(
+                    onClick = onDone,
+                    tooltip = stringResource(MR.strings.thread_action_mark_done),
+                    modifier = Modifier.padding(end = 10.dp).minimumInteractiveComponentSize(),
+                ) {
+                    RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
+                }
             }
         }
     }
