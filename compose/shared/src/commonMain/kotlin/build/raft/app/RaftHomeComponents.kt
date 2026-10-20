@@ -43,12 +43,8 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.RaftAvatarCacheSubject
-import build.raft.app.data.RaftAvatarCommitIdentity
-import build.raft.app.data.RaftAvatarMountedBinding
-import build.raft.app.data.RaftAvatarMountedHandle
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
-import build.raft.app.data.parseRaftAvatarMountedRenderModel
 import build.raft.app.data.parseRaftHome
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
@@ -59,7 +55,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
-import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -78,8 +73,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
 import build.raft.app.compat.ui.scrollToTop
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.alpha
@@ -138,6 +131,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
@@ -7329,8 +7324,10 @@ internal fun RaftAppAvatar(
     }
     // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
     // never circles; brutal keeps square corners.
-    val frameModifier =
-        if (raftActive()) modifier.clip(RoundedCornerShape(RaftAppRadius.Sticker)) else modifier
+    // The border follows the same shape as the clip: a rectangular border under a rounded clip
+    // loses its corner strokes and reads as a square-cornered tile (Hands dd79da45 follow-up).
+    val frameShape = if (raftActive()) RoundedCornerShape(RaftAppRadius.Sticker) else RectangleShape
+    val frameModifier = modifier.clip(frameShape)
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
@@ -7338,8 +7335,8 @@ internal fun RaftAppAvatar(
         httpAvatarSource != null -> Box(
             modifier = frameModifier
                 .size(width = avatarSize, height = avatarSize)
-                .background(RaftColor.AccentLavender)
-                .border(borderWidth, RaftColor.BorderBlack),
+                .background(RaftColor.AccentLavender, frameShape)
+                .border(borderWidth, RaftColor.BorderBlack, frameShape),
             contentAlignment = Alignment.Center
         ) {
             // task #343: an uploaded avatar must not flash the generic icon while its cached
@@ -7358,447 +7355,19 @@ internal fun RaftAppAvatar(
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            DefaultUserAvatar(frameModifier, avatarSize, borderWidth)
+            DefaultUserAvatar(frameModifier, avatarSize, borderWidth, frameShape)
         }
     }
 }
-
-@Composable
-internal fun RaftAvatarHttpImage(
-    source: String,
-    modifier: Modifier = Modifier,
-    diagnostics: RaftAvatarRowDiagnostics? = null,
-    cacheSubject: RaftAvatarCacheSubject? = null,
-    cacheServerId: String? = null,
-    fallback: @Composable () -> Unit = {},
-    serverDiagnosticsId: String? = null,
-    // "visible" or "prewarm" in server avatar logs, so a stuck flight can be traced to its owner.
-    diagnosticsRole: String = "visible",
-    // Shown until the image has actually loaded, so a slow or withheld load shows a placeholder
-    // (the server tile passes its initial) instead of the bare tile background.
-    placeholder: @Composable () -> Unit = {}
-) {
-    val apiBaseUrl =
-        RaftSharedStoreRegistry.currentOrNull()
-            ?.apiEnvironmentStore
-            ?.current()
-            ?.apiBaseUrl
-            ?.trimEnd('/')
-    val fallbackSource =
-        remember(source, apiBaseUrl) {
-            source.appAvatarApiFallbackUrl(apiBaseUrl)?.takeUnless { it == source }
-        }
-    val loadKey =
-        remember(source, fallbackSource, apiBaseUrl) {
-            RaftAvatarHttpLoadKey(
-                primarySource = source,
-                primaryEndpoint =
-                    if (apiBaseUrl != null && source.startsWith("$apiBaseUrl/")) {
-                        RaftAvatarHttpEndpoint.Api
-                    } else {
-                        RaftAvatarHttpEndpoint.Cdn
-                    },
-                apiFallbackSource = fallbackSource
-            )
-        }
-    val loadStateFlow = remember(loadKey) { raftAvatarHttpLoadCoordinator.stateFlow(loadKey) }
-    val loadState by loadStateFlow.collectAsState()
-    if (raftAvatarHttpShowsFallback(loadState)) fallback()
-    var lease by remember(loadKey) { mutableStateOf<RaftAvatarHttpLoadLease?>(null) }
-    val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
-    val avatarMountedBinding = RaftSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
-    val initialManagedModel =
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            if (avatarMountedBinding == null || cacheSubject == null) {
-                null
-            } else {
-                avatarMountedBinding.peekInitialManagedModel(
-                    subject = cacheSubject,
-                    remoteUrl = activeSource,
-                    serverId = cacheServerId
-                )
-            }
-        }
-    var mountedHandle by
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            mutableStateOf<RaftAvatarMountedHandle?>(null)
-        }
-
-    // Durable bytes are an owner-scoped render source, not a process-session HTTP result. Inspect
-    // them before the HTTP painter gate so a restarted process can render an already committed
-    // avatar without first exposing the default icon. Cache misses and unsupported providers still
-    // return no managed model here and remain subject to the coordinator below.
-    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-        mountedHandle =
-            if (avatarMountedBinding == null || cacheSubject == null) {
-                null
-            } else {
-                avatarMountedBinding.mount(
-                    subject = cacheSubject,
-                    remoteUrl = activeSource,
-                    serverId = cacheServerId
-                )
-            }
-    }
-    DisposableEffect(avatarMountedBinding, mountedHandle) {
-        val ownedHandle = mountedHandle
-        onDispose {
-            if (ownedHandle != null) avatarMountedBinding?.dispose(ownedHandle)
-        }
-    }
-    val ownsCurrentRequest =
-        loadState.cache == RaftAvatarHttpCacheState.InFlight &&
-            lease?.generation == loadState.generation &&
-            lease?.ownerToken == loadState.ownerToken
-    val refreshEffectKey =
-        raftAvatarHttpRefreshEffectKey(
-            activeSource = activeSource,
-            loadState = loadState,
-            ownsCurrentRequest = ownsCurrentRequest
-        )
-    LaunchedEffect(
-        avatarMountedBinding,
-        mountedHandle,
-        refreshEffectKey
-    ) {
-        val binding = avatarMountedBinding ?: return@LaunchedEffect
-        val handle = mountedHandle ?: return@LaunchedEffect
-        if (!refreshEffectKey.refreshAdmitted) return@LaunchedEffect
-        binding.refreshWhenHttpLoadAdmitted(
-            handle = handle,
-            loadState = loadState,
-            ownsCurrentRequest = ownsCurrentRequest
-        )
-    }
-
-    DisposableEffect(loadKey, lease?.ownerToken) {
-        val ownedLease = lease
-        raftAvatarHttpLoadCoordinator.retain(loadKey)
-        onDispose {
-            ownedLease?.let { raftAvatarHttpLoadCoordinator.releaseOwner(loadKey, it) }
-            raftAvatarHttpLoadCoordinator.release(loadKey)
-        }
-    }
-
-    // ownerToken is part of the key so that an owner departing (ownerToken -> null while the
-    // flight stays InFlight) re-fires this effect and lets a surviving/new row adopt the orphan.
-    LaunchedEffect(loadKey, loadState.cache, loadState.ownerToken, loadState.retryAtMillis, loadState.generation) {
-        val retryDelayMillis = raftAvatarHttpLoadCoordinator.retryDelayMillis(loadState)
-        if (retryDelayMillis > 0L) delay(retryDelayMillis)
-        when (raftAvatarHttpAcquireAttempt(loadState, ownsCurrentRequest)) {
-            RaftAvatarHttpAcquireAttempt.Now ->
-                lease = raftAvatarHttpLoadCoordinator.tryAcquire(loadKey)
-            RaftAvatarHttpAcquireAttempt.AfterStuckOwnerTimeout -> {
-                // Another row owns the flight. If it goes silent, tryAcquire adopts it after the
-                // stuck-owner timeout; keep checking until then. Any progress that changes the
-                // keys (ready, failure, new owner) cancels this loop.
-                while (true) {
-                    delay(raftAvatarHttpLoadCoordinator.stuckOwnerRecheckDelayMillis)
-                    val adopted = raftAvatarHttpLoadCoordinator.tryAcquire(loadKey) ?: continue
-                    if (serverDiagnosticsId != null) {
-                        raftLogInfo(
-                            "SlockServerAvatar",
-                            "server_avatar_stuck_owner_adopted serverHash=${serverDiagnosticsId.raftAvatarDiagnosticsHash()} " +
-                                "role=${diagnosticsRole} generation=${adopted.generation}"
-                        )
-                    }
-                    lease = adopted
-                    break
-                }
-            }
-            RaftAvatarHttpAcquireAttempt.None -> Unit
-        }
-    }
-
-    val candidateImageModel =
-        if (avatarMountedBinding == null || cacheSubject == null) {
-            activeSource
-        } else {
-            // Cold cache: the durable bytes haven't landed yet, so imageModel is still null. Fall
-            // back to an already-committed managed model from this session, or the ordinary HTTP source
-            // so the painter isn't starved while the mounted download is still in flight; once bytes
-            // commit, imageModel takes over rendering.
-            val handle = mountedHandle
-            handle?.imageModel?.collectAsState()?.value
-                ?: initialManagedModel
-                ?: activeSource
-        }
-    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
-        val row = diagnostics ?: return@LaunchedEffect
-        row.logger(
-            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
-                "source=${loadKey.diagnosticsSource} ${activeSource.raftAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
-                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
-                "model=${if (parseRaftAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
-                "painter=${loadState.painter.diagnosticsName()} " +
-                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
-        )
-    }
-    LaunchedEffect(serverDiagnosticsId, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
-        val serverId = serverDiagnosticsId ?: return@LaunchedEffect
-        raftLogInfo(
-            "SlockServerAvatar",
-            "server_avatar_painter serverHash=${serverId.raftAvatarDiagnosticsHash()} " +
-                "role=$diagnosticsRole " +
-                "source=${loadKey.diagnosticsSource} ${activeSource.raftAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
-                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
-                "model=${if (parseRaftAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
-                "painter=${loadState.painter.diagnosticsName()} " +
-                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
-        )
-    }
-    val admittedImageModel =
-        raftAvatarHttpAdmittedImageModel(
-            candidateImageModel = candidateImageModel,
-            loadState = loadState,
-            ownsCurrentRequest = ownsCurrentRequest
-        )
-    // Sticky render source: once a model has reached painter Success, keep it while the pending
-    // candidate is only a different encoding of the same bytes (URL -> managed at the pinned
-    // commit, or managed at the same commit). Switching the painter model mid-display rebuilds the
-    // painter and drops the frame back to the placeholder for a frame or two — the visible
-    // "flash" of task #402. The managed first-frame value (cold start renders durable bytes
-    // without a fetch) is unaffected: stickiness only arms after a Success is already on screen.
-    var lastRenderedFrame by
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            mutableStateOf<RaftAvatarRenderedFrame?>(null)
-        }
-    val stickyImageModel =
-        raftAvatarStickyImageModel(
-            candidateImageModel = admittedImageModel,
-            lastRenderedFrame = lastRenderedFrame
-        )
-    if (stickyImageModel != admittedImageModel) {
-        LaunchedEffect(stickyImageModel, admittedImageModel) {
-            raftLogDebug(
-                "SlockAvatar",
-                "avatar_model_sticky source=${activeSource.raftAvatarDiagnosticsHash()} " +
-                    "rendered=${if (parseRaftAvatarMountedRenderModel(stickyImageModel.orEmpty()) != null) "managed" else "url"} " +
-                    "candidate=${if (parseRaftAvatarMountedRenderModel(admittedImageModel.orEmpty()) != null) "managed" else "url"}"
-            )
-        }
-    }
-    if (stickyImageModel == null) {
-        if (!raftAvatarHttpShowsFallback(loadState)) placeholder()
-        return
-    }
-    // The endpoint whose URL this painter renders; every report carries it so a late result for a
-    // URL the flight has moved off is ignored.
-    val renderedEndpoint = loadState.endpoint
-    val painter = rememberAsyncImagePainter(model = stickyImageModel)
-    val imageState by painter.state.collectAsState()
-    // Record the rendered frame inside an effect — writing state mid-composition can skip
-    // dependents and re-runs anyway. A fresh Success becomes the new baseline and clears the
-    // URL pin; for a URL frame the pin is the managed commit admitted at this instant (usually
-    // none yet — the first later managed candidate arms it below).
-    LaunchedEffect(imageState, stickyImageModel, admittedImageModel) {
-        if (imageState is AsyncImagePainter.State.Success) {
-            lastRenderedFrame =
-                RaftAvatarRenderedFrame(
-                    model = stickyImageModel,
-                    urlBaselineCommit =
-                        parseRaftAvatarMountedRenderModel(admittedImageModel.orEmpty())
-                            ?.commitIdentity
-                )
-        }
-    }
-    // Arm the URL pin lazily: the mount's imageModel can emit after the URL frame is already on
-    // screen, in which case the first managed candidate seen belongs to this frame and becomes the
-    // bound. Any commit that supersedes it ends the stickiness.
-    LaunchedEffect(admittedImageModel, lastRenderedFrame) {
-        val frame = lastRenderedFrame ?: return@LaunchedEffect
-        if (parseRaftAvatarMountedRenderModel(frame.model) != null) return@LaunchedEffect
-        if (frame.urlBaselineCommit != null) return@LaunchedEffect
-        val candidateCommit =
-            parseRaftAvatarMountedRenderModel(admittedImageModel.orEmpty())?.commitIdentity
-                ?: return@LaunchedEffect
-        lastRenderedFrame = frame.copy(urlBaselineCommit = candidateCommit)
-    }
-    if (imageState !is AsyncImagePainter.State.Success && !raftAvatarHttpShowsFallback(loadState)) {
-        placeholder()
-    }
-    LaunchedEffect(imageState, stickyImageModel, loadState.generation, lease?.ownerToken) {
-        val phase = imageState.toRaftAvatarHttpPainterPhase()
-        if (ownsCurrentRequest) {
-            lease?.let { currentLease ->
-                raftAvatarHttpLoadCoordinator.reportPainterPhase(loadKey, currentLease, phase, renderedEndpoint)
-            }
-        } else if (loadState.cache == RaftAvatarHttpCacheState.InFlight) {
-            raftAvatarHttpLoadCoordinator.reportObserverPhase(
-                loadKey,
-                loadState.generation,
-                renderedEndpoint,
-                phase
-            )
-        } else if (phase == RaftAvatarHttpPainterPhase.Error) {
-            raftAvatarHttpLoadCoordinator.reportReadyConsumerError(loadKey, loadState.generation, renderedEndpoint)
-        }
-    }
-    Image(
-        painter = painter,
-        contentDescription = null,
-        modifier = modifier,
-        contentScale = ContentScale.FillBounds
-    )
-}
-
-/**
- * task #343: the generic avatar icon is a failure affordance, not a loading placeholder. It is
- * shown only once the HTTP load has settled on failure (cooldown), or a ready generation failed to
- * render. Idle / in-flight loads keep the neutral background so a cold start goes straight from
- * blank to the real avatar instead of flashing the default icon first.
- */
-internal fun raftAvatarHttpShowsFallback(loadState: RaftAvatarHttpLoadSnapshot): Boolean =
-    loadState.cache == RaftAvatarHttpCacheState.Cooldown ||
-        (loadState.cache == RaftAvatarHttpCacheState.Ready &&
-            loadState.painter == RaftAvatarHttpPainterPhase.Error)
-
-/**
- * The model the avatar painter last reached Success with, plus the bound for URL-frame stickiness.
- *
- * `urlBaselineCommit` is meaningful only while [model] is a plain URL: it pins the URL -> managed
- * stickiness to a single managed commit. It is recorded when the URL frame succeeds (the admitted
- * candidate at that instant) or, if no managed model had been emitted yet, armed by the first
- * managed candidate observed afterwards. A later managed model carrying a different commitIdentity
- * is a real avatar change and is admitted, so a stable (non content-addressed) URL cannot pin the
- * old frame forever. Own-CDN avatar URLs are content-addressed (`/avatars/<ns>/<hash>.webp`, see
- * AppAvatarCdnPath), so the common change path already resets this frame via `activeSource`.
- */
-internal data class RaftAvatarRenderedFrame(
-    val model: String,
-    val urlBaselineCommit: RaftAvatarCommitIdentity? = null
-)
-
-/**
- * task #402: pick the render model once a frame has succeeded. `candidateImageModel` is the
- * currently admitted model; `lastRenderedFrame` is the model the painter last reached Success
- * with. Returns the model to feed `rememberAsyncImagePainter`.
- *
- * Rules:
- * - No candidate or no rendered success yet → the candidate decides (cold start, first frame).
- * - Candidate is not a managed descriptor (a URL, including a reverted/cleared mount) → the
- *   candidate decides; stickiness only suppresses managed-model handoffs, never a real source change.
- * - Rendered model is a URL and candidate is managed → keep the URL while the candidate is the
- *   commit this URL frame belongs to (baseline unset = the first managed candidate seen, which is
- *   then armed as the baseline). The managed bytes for that commit are fetched from the same
- *   activeSource, so re-rendering would re-decode the identical image through a placeholder gap.
- *   A superseding commitIdentity re-renders — the stickiness window is bounded to one commit.
- * - Both managed → keep the rendered model only while slot and commitIdentity match (same bytes,
- *   newer modelRevision). A different commitIdentity is a real avatar change and must re-render.
- */
-internal fun raftAvatarStickyImageModel(
-    candidateImageModel: String?,
-    lastRenderedFrame: RaftAvatarRenderedFrame?
-): String? {
-    val candidate = candidateImageModel ?: return null
-    val frame = lastRenderedFrame ?: return candidate
-    val rendered = frame.model
-    if (rendered == candidate) return rendered
-    val candidateManaged = parseRaftAvatarMountedRenderModel(candidate) ?: return candidate
-    val renderedManaged = parseRaftAvatarMountedRenderModel(rendered)
-    if (renderedManaged == null) {
-        val baseline = frame.urlBaselineCommit
-        return if (baseline == null || candidateManaged.commitIdentity == baseline) {
-            rendered
-        } else {
-            candidate
-        }
-    }
-    return if (
-        renderedManaged.slot == candidateManaged.slot &&
-        renderedManaged.commitIdentity == candidateManaged.commitIdentity
-    ) {
-        rendered
-    } else {
-        candidate
-    }
-}
-
-/**
- * A committed mounted descriptor is already fenced by environment/account/server/subject/content
- * identity, so it may render before the process-local HTTP painter coordinator is warm. Ordinary
- * URLs (including the unsupported-provider fallback) keep the existing single-flight gate.
- */
-internal fun raftAvatarHttpAdmittedImageModel(
-    candidateImageModel: String,
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): String? {
-    if (parseRaftAvatarMountedRenderModel(candidateImageModel) != null) return candidateImageModel
-    return candidateImageModel.takeIf { raftAvatarHttpRenderIsAdmitted(loadState, ownsCurrentRequest) }
-}
-
-/**
- * Which rows may render the shared URL. Every row renders an in-flight or ready generation and
- * reports its own result (see RaftAvatarHttpLoadCoordinator.reportObserverPhase); only Idle and
- * Cooldown withhold it. Rendering used to be owner-only, which tied every row to the owner being
- * drawn: a composed-but-undrawn owner left all other rows blank (HarmonyOS 1.13.0 black server
- * avatars). The durable refresh below keeps the owner-only gate so it still downloads once.
- */
-internal fun raftAvatarHttpRenderIsAdmitted(
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): Boolean =
-    ownsCurrentRequest ||
-        loadState.cache == RaftAvatarHttpCacheState.Ready ||
-        loadState.cache == RaftAvatarHttpCacheState.InFlight
-
-/**
- * Durable mounted bytes may bypass this gate for rendering only. Any refresh or ordinary URL load
- * still requires the current coordinator lease, or reuse of an already-ready HTTP generation.
- */
-internal fun raftAvatarHttpLoadIsAdmitted(
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): Boolean = ownsCurrentRequest || loadState.cache == RaftAvatarHttpCacheState.Ready
-
-/**
- * Stable render-axis identity for the mounted refresh effect. A successful managed first frame
- * changes cache/ownership, but not the admitted generation; keeping those transient fields out of
- * the key lets the original refresh finish instead of cancelling and restarting its transport.
- */
-internal data class RaftAvatarHttpRefreshEffectKey(
-    val activeSource: String,
-    val generation: Long,
-    val refreshAdmitted: Boolean
-)
-
-internal fun raftAvatarHttpRefreshEffectKey(
-    activeSource: String,
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): RaftAvatarHttpRefreshEffectKey =
-    RaftAvatarHttpRefreshEffectKey(
-        activeSource = activeSource,
-        generation = loadState.generation,
-        refreshAdmitted = raftAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)
-    )
-
-internal suspend fun RaftAvatarMountedBinding.refreshWhenHttpLoadAdmitted(
-    handle: RaftAvatarMountedHandle,
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): Boolean {
-    if (!raftAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)) return false
-    refresh(handle)
-    return true
-}
-
-private fun AsyncImagePainter.State.toRaftAvatarHttpPainterPhase(): RaftAvatarHttpPainterPhase =
-    when (this) {
-        is AsyncImagePainter.State.Empty -> RaftAvatarHttpPainterPhase.Empty
-        is AsyncImagePainter.State.Loading -> RaftAvatarHttpPainterPhase.Loading
-        is AsyncImagePainter.State.Success -> RaftAvatarHttpPainterPhase.Success
-        is AsyncImagePainter.State.Error -> RaftAvatarHttpPainterPhase.Error
-    }
 
 @Composable
 private fun DefaultUserAvatar(
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = RaftAppStroke.Thin
+    borderWidth: Dp = RaftAppStroke.Thin,
+    shape: Shape = RectangleShape
 ) {
-    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender).border(borderWidth, RaftColor.BorderBlack), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender, shape).border(borderWidth, RaftColor.BorderBlack, shape), contentAlignment = Alignment.Center) {
         DefaultUserAvatarIcon(avatarSize)
     }
 }

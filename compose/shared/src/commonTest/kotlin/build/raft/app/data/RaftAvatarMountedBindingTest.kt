@@ -1,10 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.RaftAvatarHttpCacheState
-import build.raft.app.RaftAvatarHttpLoadSnapshot
-import build.raft.app.refreshWhenHttpLoadAdmitted
-import build.raft.app.raftAvatarHttpAdmittedImageModel
-import build.raft.app.raftAvatarHttpRefreshEffectKey
 import build.raft.app.model.MemberKind
 import build.raft.app.network.SharedBinaryConditionalDownloadResult
 import build.raft.app.network.SharedBinaryConditionalHttpException
@@ -103,24 +98,6 @@ class RaftAvatarMountedBindingTest {
     }
 
     @Test
-    fun freshDurableModelIsAdmittedBeforeProcessHttpCoordinatorWarms() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
-        val binding = binding(store, FakeNativeProvider(), RecordingDownloader())
-
-        val managedModel = assertNotNull(binding.mount(subject(), RemoteUrl).imageModel.value)
-
-        assertNotNull(parseRaftAvatarMountedRenderModel(managedModel))
-        assertEquals(
-            managedModel,
-            raftAvatarHttpAdmittedImageModel(
-                candidateImageModel = managedModel,
-                loadState = RaftAvatarHttpLoadSnapshot(cache = RaftAvatarHttpCacheState.Idle),
-                ownsCurrentRequest = false
-            )
-        )
-    }
-
-    @Test
     fun anotherAccountDurableEntryCannotReachEarlyRenderAdmission() = runBlocking {
         val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
         val otherAccountOwner = owner(accountId = "account-b")
@@ -132,124 +109,6 @@ class RaftAvatarMountedBindingTest {
         val handle = binding.mount(subject(), RemoteUrl, serverId = otherAccountOwner.serverId)
 
         assertNull(handle.imageModel.value)
-    }
-
-    @Test
-    fun mountedMissAndStaleRefreshRequireHttpLeaseOrReadyGeneration() = runBlocking {
-        val missDownloader = RecordingDownloader.modified(byteArrayOf(1, 2))
-        val missBinding = binding(FakeMetadataStore(), FakeNativeProvider(), missDownloader)
-        val missHandle = missBinding.mount(subject(), RemoteUrl)
-
-        assertFalse(
-            missBinding.refreshWhenHttpLoadAdmitted(
-                handle = missHandle,
-                loadState = RaftAvatarHttpLoadSnapshot(cache = RaftAvatarHttpCacheState.Idle),
-                ownsCurrentRequest = false
-            )
-        )
-        assertEquals(0, missDownloader.calls, "an idle cache miss must not bypass the HTTP lease")
-
-        val staleStore = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
-        val staleDownloader = RecordingDownloader.modified(byteArrayOf(3, 4))
-        val staleBinding = binding(staleStore, FakeNativeProvider(), staleDownloader)
-        val staleHandle = staleBinding.mount(subject(), RemoteUrl)
-        assertNotNull(staleHandle.imageModel.value, "stale durable bytes remain renderable")
-
-        assertFalse(
-            staleBinding.refreshWhenHttpLoadAdmitted(
-                handle = staleHandle,
-                loadState =
-                    RaftAvatarHttpLoadSnapshot(
-                        cache = RaftAvatarHttpCacheState.Cooldown,
-                        generation = 1L,
-                        retryAtMillis = 1_000L
-                    ),
-                ownsCurrentRequest = false
-            )
-        )
-        assertEquals(0, staleDownloader.calls, "cooldown without a lease must suppress revalidation")
-
-        assertTrue(
-            staleBinding.refreshWhenHttpLoadAdmitted(
-                handle = staleHandle,
-                loadState =
-                    RaftAvatarHttpLoadSnapshot(
-                        cache = RaftAvatarHttpCacheState.InFlight,
-                        generation = 2L,
-                        ownerToken = 7L
-                    ),
-                ownsCurrentRequest = true
-            )
-        )
-        assertEquals(1, staleDownloader.calls, "the current in-flight owner may revalidate")
-    }
-
-    @Test
-    fun staleFirstFrameSuccessKeepsOneAdmittedRefreshAndLetsItComplete() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val downloader = RecordingDownloader.modified(byteArrayOf(5, 6), gate)
-        val binding = binding(store, FakeNativeProvider(), downloader)
-        val handle = binding.mount(subject(), RemoteUrl)
-        val staleModel = handle.imageModel.value
-        val inFlight =
-            RaftAvatarHttpLoadSnapshot(
-                cache = RaftAvatarHttpCacheState.InFlight,
-                generation = 1L,
-                ownerToken = 7L
-            )
-        val readyAfterManagedFirstFrame =
-            RaftAvatarHttpLoadSnapshot(
-                cache = RaftAvatarHttpCacheState.Ready,
-                generation = 1L
-            )
-
-        val inFlightKey = raftAvatarHttpRefreshEffectKey(RemoteUrl, inFlight, ownsCurrentRequest = true)
-        val firstFrameSuccessKey =
-            raftAvatarHttpRefreshEffectKey(
-                RemoteUrl,
-                readyAfterManagedFirstFrame,
-                ownsCurrentRequest = false
-            )
-        assertEquals(
-            inFlightKey,
-            firstFrameSuccessKey,
-            "managed first-frame success must not restart the same admitted generation"
-        )
-        assertNotEquals(
-            inFlightKey,
-            raftAvatarHttpRefreshEffectKey(
-                "https://cdn.example/avatar-v2.webp",
-                inFlight,
-                ownsCurrentRequest = true
-            )
-        )
-        assertNotEquals(
-            inFlightKey,
-            raftAvatarHttpRefreshEffectKey(
-                RemoteUrl,
-                inFlight.copy(generation = 2L),
-                ownsCurrentRequest = true
-            )
-        )
-
-        val refresh =
-            async {
-                binding.refreshWhenHttpLoadAdmitted(
-                    handle = handle,
-                    loadState = inFlight,
-                    ownsCurrentRequest = true
-                )
-            }
-        yield()
-        assertEquals(1, downloader.calls, "the original refresh must own the suspended download")
-
-        // Compose keeps the running LaunchedEffect because the two production keys are equal.
-        // Release the native/download gate and require that same refresh to publish its reload.
-        gate.complete(Unit)
-        assertTrue(refresh.await())
-        assertEquals(1, downloader.calls)
-        assertNotEquals(staleModel, handle.imageModel.value)
     }
 
     @Test
