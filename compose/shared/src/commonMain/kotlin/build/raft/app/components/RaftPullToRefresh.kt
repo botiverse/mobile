@@ -9,7 +9,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.pullToRefreshIndicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
@@ -188,7 +187,7 @@ private fun RaftMaterialPullToRefreshContainer(
 }
 
 /**
- * The M3 pull-to-refresh container (`pullToRefreshIndicator`: 40dp circle, translation, clip,
+ * The M3 pull-to-refresh container (`PullToRefreshDefaults.IndicatorBox`: 40dp circle, translation, clip,
  * elevation) in Raft tokens: `--layer-popover` fill with a `--line-hairline` edge, and the raft-ui
  * pixel [RaftSpinner] instead of the M3 arc. While pulling, the spinner fades in and its lit pixel
  * walks clockwise with the pull ([raftPullToRefreshIndicatorStep]); while refreshing it animates.
@@ -201,19 +200,20 @@ internal fun RaftPullToRefreshIndicator(
     modifier: Modifier = Modifier,
 ) {
     val colors = RaftTheme.colors
-    Box(
-        modifier =
-            modifier
-                .pullToRefreshIndicator(
-                    state = state,
-                    isRefreshing = isRefreshing,
-                    shape = CircleShape,
-                    containerColor = colors.layerPopover,
-                    elevation = PullToRefreshDefaults.Elevation,
-                )
-                .border(1.dp, colors.lineHairline, CircleShape),
-        contentAlignment = Alignment.Center,
+    // Material3 1.4 (CMP 1.12) replaced `Modifier.pullToRefreshIndicator` with
+    // `PullToRefreshDefaults.IndicatorBox` (same 40dp box, clip, translation, elevation and
+    // `maxDistance` = the old `threshold` default). The hairline edge used to be a `.border`
+    // chained after the indicator modifier, i.e. inside the translated layer; it is now drawn
+    // by a full-size box in the content, which sits in that same layer.
+    PullToRefreshDefaults.IndicatorBox(
+        state = state,
+        isRefreshing = isRefreshing,
+        modifier = modifier,
+        shape = CircleShape,
+        containerColor = colors.layerPopover,
+        elevation = PullToRefreshDefaults.Elevation,
     ) {
+        Box(Modifier.matchParentSize().border(1.dp, colors.lineHairline, CircleShape))
         if (isRefreshing) {
             RaftSpinner(size = RaftSpinnerSize.Md, color = colors.foreground)
         } else {
