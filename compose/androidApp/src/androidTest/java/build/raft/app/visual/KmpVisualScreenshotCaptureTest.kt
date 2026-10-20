@@ -3793,11 +3793,40 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpSettingsPageCase("screens.settings.server-danger-modal", "server-danger-modal")
     }
 
-    // NOTE (task #498): the native Settings Computers list/detail routes were
-    // removed by #920 (settings now embeds the canonical web surface), so the
-    // former screens.settings.computers{,.loading} / computer-detail cases were
-    // deleted — they only captured the Kuikly route-error page on Android and
-    // timed out the iOS leg awaiting a route that no longer exists.
+    // Settings > Computers is native again (RaftSettingsComputersPage). These
+    // cases render its production content from seeded store snapshots through
+    // the compose_settings_computers_visual fixture (no network, pinned clock).
+    // Ids reuse the retired React/Android pair ids (slock #5009:
+    // screens.settings.computers, screens.settings.computer-detail).
+    @Test
+    fun captureSettingsComputersList() {
+        captureSettingsComputersCase("screens.settings.computers", "list")
+    }
+
+    @Test
+    fun captureSettingsComputersEmpty() {
+        captureSettingsComputersCase("screens.settings.computers.empty", "empty")
+    }
+
+    @Test
+    fun captureSettingsComputersError() {
+        captureSettingsComputersCase("screens.settings.computers.error", "error")
+    }
+
+    @Test
+    fun captureSettingsComputerDetail() {
+        captureSettingsComputersCase("screens.settings.computer-detail", "detail")
+    }
+
+    private fun captureSettingsComputersCase(caseId: String, fixtureKey: String) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_settings_computers_visual",
+            pageData = JSONObject().put("fixtureKey", fixtureKey),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
 
     // Full-route Settings captures (task #398 / #388). These drive the real
     // Settings destination switch (SettingsAppShellContent) through the

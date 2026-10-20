@@ -778,7 +778,7 @@ private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapsho
 
 /** Hosts the raft-ui design system on the app's resolved light/dark appearance. */
 @Composable
-private fun RaftComputersTheme(content: @Composable () -> Unit) {
+internal fun RaftComputersTheme(content: @Composable () -> Unit) {
     RaftTheme(appearance = if (RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light, content = content)
 }
 
@@ -824,7 +824,7 @@ private fun RaftComputerUpdateBadge() {
 }
 
 @Composable
-private fun RaftComputersRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
+internal fun RaftComputersRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
     Box(modifier = Modifier.size(30.dp)) {
         RaftPanelAction(onClick = { if (!refreshing) onRefresh() }, modifier = Modifier.size(28.dp)) {
             RaftLucideIcon(
