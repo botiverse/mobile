@@ -22219,7 +22219,8 @@ private fun SharedHomeSavedResultCard(
             Column(modifier = Modifier.weight(1f)) {
                 // Meta line: `text-caption`, 8dp gaps: place, Thread, sender (14dp avatar), time.
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    // One 16dp caption line (web `items-center text-caption`), 4dp above the preview.
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).height(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
