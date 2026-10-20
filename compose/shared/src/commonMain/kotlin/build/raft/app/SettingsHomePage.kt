@@ -5969,10 +5969,61 @@ private fun RaftAppShellReadyContent(
     // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
     // notification center keeps its own Bell dot in the Home head (task #18).
     val activityTabUnreadCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
-    // Rows inside More with something new (Settings: app update; Computers: offline/outdated
-    // machine); they dot the More tab and their own row on the More page.
-    val moreAttentionRows = remember(homeState.notifications) {
-        raftMoreAttentionRows(homeState.notifications.map { it.id })
+    // Computers attention (raft-design #620 "Attention dots"): the dot marks a (computer, state)
+    // you have not seen; opening Computers sees it. Seen pairs persist per user + server.
+    val computerAttentionSeenStore = remember {
+        runCatching {
+            build.raft.app.data.KeyValueRaftComputerAttentionSeenStore(build.raft.app.data.raftSharedPreferenceStore())
+        }.getOrNull()
+    }
+    val computerAttentionUserId = readySession?.user?.id?.trim()?.takeIf(String::isNotEmpty)
+    val computerAttentionServerId = readyServerId
+    val currentComputerAttention = remember(homeState.notifications) {
+        build.raft.app.data.raftComputerAttentionPairs(homeState.notifications.map { it.id })
+    }
+    var computerAttentionSeen by remember(computerAttentionSeenStore, computerAttentionUserId, computerAttentionServerId) {
+        mutableStateOf(
+            if (computerAttentionUserId != null && computerAttentionServerId != null) {
+                computerAttentionSeenStore?.read(computerAttentionUserId, computerAttentionServerId).orEmpty()
+            } else {
+                emptySet()
+            }
+        )
+    }
+    val writeComputerAttentionSeen: (Set<String>) -> Unit = { next ->
+        if (next != computerAttentionSeen) {
+            computerAttentionSeen = next
+            if (computerAttentionUserId != null && computerAttentionServerId != null) {
+                computerAttentionSeenStore?.write(computerAttentionUserId, computerAttentionServerId, next)
+            }
+        }
+    }
+    // A computer observed leaving a state forgets it was seen there, so re-entering lights again.
+    val previousComputerAttention = remember(computerAttentionUserId, computerAttentionServerId) {
+        mutableStateOf<Set<String>?>(null)
+    }
+    LaunchedEffect(currentComputerAttention, computerAttentionUserId, computerAttentionServerId) {
+        writeComputerAttentionSeen(
+            build.raft.app.data.raftComputerAttentionObserve(
+                seen = computerAttentionSeen,
+                previous = previousComputerAttention.value,
+                current = currentComputerAttention,
+            )
+        )
+        previousComputerAttention.value = currentComputerAttention
+    }
+    // Every way into Computers (More row, Settings > Computers on the wide rail, a Home notice).
+    val openComputersPage: () -> Unit = {
+        writeComputerAttentionSeen(
+            build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
+        )
+        pager.openSettingsComputersPage(storeScope)
+    }
+    // Rows inside More with something new (Settings: app update; Computers: an offline/outdated
+    // machine not yet seen); they dot the More tab and their own row on the More page from this
+    // one set, so tab and row light and clear together.
+    val moreAttentionRows = remember(homeState.notifications, computerAttentionSeen) {
+        raftMoreAttentionRows(homeState.notifications.map { it.id }, computerAttentionSeen)
     }
     val appShellBottomTabItems = remember(
         selectedTab,
@@ -7036,7 +7087,7 @@ private fun RaftAppShellReadyContent(
                                 onOpenComputers = {
                                     selectAppShellTab("settings")
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
-                                    pager.openSettingsComputersPage(storeScope)
+                                    openComputersPage()
                                 },
                                 onOpenUrl = settingsCapabilities::openUrl,
                                 onOpenServerSelection = {
@@ -7216,7 +7267,7 @@ private fun RaftAppShellReadyContent(
                                     SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
                                     SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
                                     SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
-                                    SettingsDestinationComputers -> pager.openSettingsComputersPage(storeScope)
+                                    SettingsDestinationComputers -> openComputersPage()
                                     SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
                                     SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
                                     SettingsDestinationHandsFeedback ->
@@ -7249,7 +7300,7 @@ private fun RaftAppShellReadyContent(
                                         selectAppShellTab(row.key, directChildSwitch = true)
                                         retainedAppShellTabs = retainedAppShellTabs + row.key
                                     }
-                                    RaftMoreRow.Computers -> pager.openSettingsComputersPage(storeScope)
+                                    RaftMoreRow.Computers -> openComputersPage()
                                 }
                             }
                         )
