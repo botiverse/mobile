@@ -11238,18 +11238,12 @@ private fun SettingsNotificationActionRow(
 
 /**
  * Battery-optimization row for the Android no-Play-services background connection. The exemption is only
- * ever requested from a tap here or on the switch above; the status is re-read while the row is shown
- * because the system prompt returns without a callback.
+ * ever requested from a tap here or on the switch above; the host re-reads the status when the app resumes
+ * (the system prompt returns without a callback), so nothing polls here.
  */
 @Composable
 private fun RaftBackgroundConnectionBatteryRow(controls: RaftBackgroundConnectionControls) {
-    var exempt by remember { mutableStateOf(controls.isBatteryOptimizationExempt()) }
-    LaunchedEffect(controls) {
-        while (true) {
-            exempt = controls.isBatteryOptimizationExempt()
-            delay(1_500L)
-        }
-    }
+    val exempt by controls.batteryOptimizationExemptState.collectAsState()
     SettingsNotificationActionRow(
         title = stringResource(MR.strings.settings_notifications_battery_optimization_title),
         detail = stringResource(MR.strings.settings_notifications_battery_optimization_detail),

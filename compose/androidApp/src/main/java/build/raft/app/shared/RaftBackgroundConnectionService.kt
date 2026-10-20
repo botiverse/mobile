@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import build.raft.app.R
 import build.raft.app.core.data.diagnostics.SlockAppLog
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Foreground service for Android devices without Google Play services (no FCM): it only keeps the process
@@ -34,38 +35,44 @@ class RaftBackgroundConnectionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val systemRestart = intent == null
+        if (intent != null && intent.action != ACTION_STOP) {
+            // This command answers one startForegroundService request.
+            pendingStarts.updateAndGet { (it - 1).coerceAtLeast(0) }
+        }
         val hasSession = AndroidAppScopeRealtimeOwner.hasRealtimeOwnerSession()
-        if (!RaftBackgroundConnectionPolicy.shouldKeepRunningAfterServiceStart(systemRestart, hasSession)) {
+        val decision =
+            runCatching { AndroidRealtimeKeepAliveController.currentBackgroundConnectionDecision(applicationContext) }
+                .getOrElse { RaftBackgroundConnectionPolicy.Decision.Stop("decision_failed") }
+        val outcome =
+            RaftBackgroundConnectionPolicy.startCommandOutcome(
+                isSystemRestart = systemRestart,
+                hasRealtimeSession = hasSession,
+                stopRequested = intent?.action == ACTION_STOP,
+                decision = decision,
+            )
+        if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.StopWithoutForeground) {
             // A sticky restart lands in a fresh process: only the UI opens the realtime connection, so there is
             // nothing to keep alive. Stop before startForeground (a restart is not a foreground-service start).
-            SlockAppLog.w(LOG_TAG, "background_connection_service_restart_stop reason=no_realtime_session")
+            SlockAppLog.w(
+                LOG_TAG,
+                "background_connection_service_restart_stop has_session=$hasSession decision=$decision"
+            )
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        val started =
-            runCatching {
-                ensureChannel(this)
-                val notification = buildNotification(this)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
-                    )
-                } else {
-                    startForeground(NOTIFICATION_ID, notification)
-                }
-            }.onFailure { error ->
-                // ForegroundServiceStartNotAllowedException (background start without an exemption) or a
-                // missing permission: give up quietly, the next foreground resume retries.
-                SlockAppLog.w(
-                    LOG_TAG,
-                    "background_connection_service_start_failed errorType=${error::class.simpleName ?: "unknown"} " +
-                        "message=${error.message.orEmpty()}"
-                )
-            }.isSuccess
-        if (!started) {
+        // A startForegroundService start is pending: startForeground must come first, before anything that
+        // could decide to stop, or Android kills the app ("did not then call Service.startForeground()").
+        if (!promoteToForeground()) {
+            // Residual risk: if startForeground itself threw, the system may still raise the foreground
+            // timeout crash for this start; nothing else can satisfy it.
             stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.PromoteThenStop) {
+            SlockAppLog.i(LOG_TAG, "background_connection_service_start_then_stop reason=${outcome.reason}")
+            if (stopSelfResult(startId)) {
+                running = false
+            }
             return START_NOT_STICKY
         }
         running = true
@@ -81,8 +88,48 @@ class RaftBackgroundConnectionService : Service() {
         return START_STICKY
     }
 
+    /** Posts the foreground notification. Never throws; false when the service could not be promoted. */
+    private fun promoteToForeground(): Boolean {
+        val notification =
+            runCatching {
+                ensureChannel(this)
+                buildNotification(this)
+            }.getOrElse { error ->
+                SlockAppLog.w(
+                    LOG_TAG,
+                    "background_connection_service_notification_failed " +
+                        "errorType=${error::class.simpleName ?: "unknown"}"
+                )
+                // Minimal notification so startForeground can still be called.
+                NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setOngoing(true)
+                    .setSilent(true)
+                    .build()
+            }
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            true
+        } catch (error: Exception) {
+            // ForegroundServiceStartNotAllowedException (background start without an exemption) or a
+            // SecurityException (missing FOREGROUND_SERVICE_* permission): give up, the next resume retries.
+            SlockAppLog.w(
+                LOG_TAG,
+                "background_connection_service_start_failed errorType=${error::class.simpleName ?: "unknown"} " +
+                    "message=${error.message.orEmpty()}"
+            )
+            false
+        }
+    }
+
     override fun onDestroy() {
         running = false
+        pendingStarts.set(0)
+        stopQueued = false
         SlockAppLog.i(LOG_TAG, "background_connection_service_destroyed")
         super.onDestroy()
     }
@@ -92,10 +139,29 @@ class RaftBackgroundConnectionService : Service() {
         internal const val CHANNEL_ID = "raft-background-connection-v1"
         private const val NOTIFICATION_ID = 0x52414654 // "RAFT"
         private const val EXTRA_SOURCE = "source"
+        private const val ACTION_STOP = "build.raft.app.action.STOP_BACKGROUND_CONNECTION"
 
         @Volatile
         internal var running: Boolean = false
             private set
+
+        /**
+         * A `startForegroundService` was issued and `onStartCommand` has not run yet. While true the service
+         * must not be stopped with `stopService` (Android would crash the app); a stop action is sent instead.
+         */
+        private val pendingStarts = AtomicInteger(0)
+
+        internal val startPending: Boolean
+            get() = pendingStarts.get() > 0
+
+        /** A stop action was queued behind a pending start; a later start request supersedes it. */
+        @Volatile
+        internal var stopQueued: Boolean = false
+            private set
+
+        /** Running, or about to run: a start request is still waiting for `onStartCommand`. */
+        internal val active: Boolean
+            get() = running || startPending
 
         @Volatile
         private var declared: Boolean? = null
@@ -114,6 +180,8 @@ class RaftBackgroundConnectionService : Service() {
         /** Must be called while the app is visible: background starts are refused on Android 12+. */
         internal fun start(context: Context, source: String) {
             val appContext = context.applicationContext
+            pendingStarts.incrementAndGet()
+            stopQueued = false
             runCatching {
                 ContextCompat.startForegroundService(
                     appContext,
@@ -121,6 +189,7 @@ class RaftBackgroundConnectionService : Service() {
                         .putExtra(EXTRA_SOURCE, source)
                 )
             }.onFailure { error ->
+                pendingStarts.updateAndGet { (it - 1).coerceAtLeast(0) }
                 SlockAppLog.w(
                     LOG_TAG,
                     "background_connection_service_start_request_failed source=$source " +
@@ -132,6 +201,30 @@ class RaftBackgroundConnectionService : Service() {
         internal fun stop(context: Context, reason: String) {
             val appContext = context.applicationContext
             val wasRunning = running
+            if (startPending) {
+                stopQueued = true
+                // stopService now would destroy the service before it called startForeground, which crashes
+                // the app. Queue a stop action behind the pending start instead: onStartCommand promotes to
+                // the foreground first and then stops. (startService is allowed from the background here
+                // because the service already has a start requested.)
+                val requested =
+                    runCatching {
+                        appContext.startService(
+                            Intent(appContext, RaftBackgroundConnectionService::class.java)
+                                .setAction(ACTION_STOP)
+                                .putExtra(EXTRA_SOURCE, reason)
+                        )
+                    }.onFailure { error ->
+                        // The pending onStartCommand still re-evaluates the policy and stops when it says so.
+                        SlockAppLog.w(
+                            LOG_TAG,
+                            "background_connection_service_stop_request_failed reason=$reason " +
+                                "errorType=${error::class.simpleName ?: "unknown"}"
+                        )
+                    }.isSuccess
+                SlockAppLog.i(LOG_TAG, "background_connection_service_stop_pending reason=$reason requested=$requested")
+                return
+            }
             runCatching {
                 appContext.stopService(Intent(appContext, RaftBackgroundConnectionService::class.java))
             }

@@ -51,48 +51,88 @@ internal object AndroidRealtimeKeepAliveController {
             return
         }
         AndroidAppScopeRealtimeOwner.install(appContext)
-        AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(
-            context = appContext,
-            source = source
-        )
-        syncBackgroundConnectionService(
-            context = appContext,
-            fcmUnavailable = fcmUnavailable,
-            keepAlivePreferenceEnabled = true,
-            signedIn = true,
-            source = source
-        )
+        val decision =
+            backgroundConnectionDecision(
+                context = appContext,
+                fcmUnavailable = fcmUnavailable,
+                keepAlivePreferenceEnabled = true,
+                signedIn = true,
+            )
+        if (RaftBackgroundConnectionPolicy.shouldEnableBackgroundKeepAlive(fcmUnavailable, decision)) {
+            AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(
+                context = appContext,
+                source = source
+            )
+        } else {
+            // No Play services and the service cannot run (e.g. no notification permission): a seeded
+            // preference alone must not hold a background connection the OS will freeze anyway.
+            AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(
+                (decision as? RaftBackgroundConnectionPolicy.Decision.Stop)?.reason ?: "background_connection_stopped"
+            )
+        }
+        applyBackgroundConnectionDecision(appContext, decision, source)
     }
 
     fun stop(context: Context, reason: String = "unknown") {
         AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(reason)
-        // Transient disconnects (server switch, page release) leave the service up: the owner re-enables
-        // background keep-alive on hide while the service runs. Session ends and opt-outs stop it now.
+        // Transient disconnects (server switch, page release) leave the service up; see
+        // [restoreBackgroundKeepAliveAfterDisconnect]. Session ends and opt-outs stop it now.
         if (RaftBackgroundConnectionPolicy.isTerminalStopReason(reason)) {
             RaftBackgroundConnectionService.stop(context.applicationContext, reason)
         }
     }
 
-    /** Re-evaluates the service after an input changed in the app (e.g. the message notification switch). */
-    fun refreshBackgroundConnectionService(context: Context, source: String) {
+    /**
+     * Call after a realtime disconnect has been fully applied (both [stop] and the owner's disconnect, which
+     * each clear background keep-alive). While the background connection service runs or is starting, a
+     * non-terminal disconnect must leave background reconnects allowed, otherwise the "receiving messages"
+     * notification stays up with reconnect suspended until the next foreground.
+     */
+    fun restoreBackgroundKeepAliveAfterDisconnect(context: Context, reason: String) {
+        if (!RaftBackgroundConnectionPolicy.shouldRestoreBackgroundKeepAliveAfterDisconnect(
+                reason = reason,
+                serviceActive = RaftBackgroundConnectionService.active
+            )
+        ) {
+            return
+        }
+        AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(
+            context = context.applicationContext,
+            source = "background_connection_service_after_disconnect_$reason"
+        )
+    }
+
+    /** Called from activity resume: re-reads inputs that can change while the app was away. */
+    fun onHostResumed(context: Context) {
         val appContext = context.applicationContext
-        syncBackgroundConnectionService(
+        RaftPlayServicesAvailability.refresh(appContext)
+        (RaftBackgroundConnectionControlsRegistry.controls as? RaftAndroidBackgroundConnectionControls)
+            ?.refreshBatteryOptimizationStatus()
+    }
+
+    /** The policy decision from the current stored inputs (used by the service when its command runs). */
+    fun currentBackgroundConnectionDecision(context: Context): RaftBackgroundConnectionPolicy.Decision {
+        val appContext = context.applicationContext
+        return backgroundConnectionDecision(
             context = appContext,
             fcmUnavailable = noPlayServicesFallbackApplies(appContext),
             keepAlivePreferenceEnabled = isForegroundKeepAliveEnabled(appContext),
             signedIn = AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(appContext),
-            source = source
         )
     }
 
-    private fun syncBackgroundConnectionService(
+    /** Re-evaluates the service after an input changed in the app (e.g. the message notification switch). */
+    fun refreshBackgroundConnectionService(context: Context, source: String) {
+        val appContext = context.applicationContext
+        applyBackgroundConnectionDecision(appContext, currentBackgroundConnectionDecision(appContext), source)
+    }
+
+    private fun backgroundConnectionDecision(
         context: Context,
         fcmUnavailable: Boolean,
         keepAlivePreferenceEnabled: Boolean,
         signedIn: Boolean,
-        source: String,
-    ) {
-        val decision =
+    ): RaftBackgroundConnectionPolicy.Decision =
             RaftBackgroundConnectionPolicy.decide(
                 RaftBackgroundConnectionPolicy.Inputs(
                     fcmUnavailable = fcmUnavailable,
@@ -102,9 +142,15 @@ internal object AndroidRealtimeKeepAliveController {
                     systemNotificationsAllowed = systemNotificationsAllowed(context),
                 )
             )
+
+    private fun applyBackgroundConnectionDecision(
+        context: Context,
+        decision: RaftBackgroundConnectionPolicy.Decision,
+        source: String,
+    ) {
         when (decision) {
             RaftBackgroundConnectionPolicy.Decision.Run -> {
-                if (RaftBackgroundConnectionService.running) return
+                if (RaftBackgroundConnectionService.active && !RaftBackgroundConnectionService.stopQueued) return
                 SlockAppLog.i(LOG_TAG, "background_connection_service_request source=$source")
                 RaftBackgroundConnectionService.start(context, source)
             }

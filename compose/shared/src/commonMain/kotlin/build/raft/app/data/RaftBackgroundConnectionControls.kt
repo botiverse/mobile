@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Host controls for the "keep connection in background" fallback.
@@ -16,6 +17,12 @@ interface RaftBackgroundConnectionControls {
 
     /** True when the OS already exempts the app from battery optimization (or has no such setting). */
     fun isBatteryOptimizationExempt(): Boolean
+
+    /**
+     * [isBatteryOptimizationExempt] as state, re-read by the host when the app resumes (the system prompt
+     * returns without a callback), so Settings never has to poll.
+     */
+    val batteryOptimizationExemptState: StateFlow<Boolean>
 
     /** Opens the system prompt that exempts the app from battery optimization. Only call on a user action. */
     fun requestBatteryOptimizationExemption()

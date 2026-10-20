@@ -28,7 +28,17 @@ internal object RaftPlayServicesAvailability {
     @Volatile
     private var lastLoggedCode: Int? = null
 
-    fun isFcmUnavailable(context: Context): Boolean {
+    /** Per-process cache; [refresh] re-checks on app resume (Play services can be enabled meanwhile). */
+    @Volatile
+    private var cachedUnavailable: Boolean? = null
+
+    fun isFcmUnavailable(context: Context): Boolean =
+        cachedUnavailable ?: check(context).also { cachedUnavailable = it }
+
+    /** Re-runs the check (activity resume) and returns the fresh result. */
+    fun refresh(context: Context): Boolean = check(context).also { cachedUnavailable = it }
+
+    private fun check(context: Context): Boolean {
         val appContext = context.applicationContext
         if (BuildConfig.DEBUG && File(appContext.filesDir, DEBUG_FORCE_NO_GMS_FILE).exists()) {
             logOnce(code = -1, message = "play_services_check forced_unavailable=true source=debug_override")

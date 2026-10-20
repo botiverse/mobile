@@ -242,7 +242,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val multiSessionEnabled = multiServerRealtimeEnabled()
         appVisibility = AppVisibility.Background
         lastHiddenAtMillis = System.currentTimeMillis()
-        if (!backgroundKeepAliveEnabled && RaftBackgroundConnectionService.running) {
+        if (!backgroundKeepAliveEnabled && RaftBackgroundConnectionService.active) {
             // The no-Play-services background connection service is up: it exists to keep this connection
             // alive, so a keep-alive dropped by a transient disconnect (server switch, page release) while
             // visible must not suspend reconnects now that the app is hidden.

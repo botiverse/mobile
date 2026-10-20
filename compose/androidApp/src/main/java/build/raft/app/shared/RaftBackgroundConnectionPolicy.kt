@@ -61,6 +61,55 @@ internal object RaftBackgroundConnectionPolicy {
     fun shouldKeepRunningAfterServiceStart(isSystemRestart: Boolean, hasRealtimeSession: Boolean): Boolean =
         !isSystemRestart || hasRealtimeSession
 
+    internal sealed interface StartCommandOutcome {
+        /** Sticky restart (no foreground-service start pending): stop without ever posting the notification. */
+        data object StopWithoutForeground : StartCommandOutcome
+
+        /**
+         * A `startForegroundService` start is pending: Android crashes the app unless `startForeground` is
+         * called, even when the service is about to stop. Promote first, then stop.
+         */
+        data class PromoteThenStop(val reason: String) : StartCommandOutcome
+
+        data object PromoteAndRun : StartCommandOutcome
+    }
+
+    /**
+     * What `onStartCommand` must do. [isSystemRestart] is a sticky restart (null intent); [stopRequested] is
+     * the explicit stop action sent while a start was still pending; [decision] is the policy evaluated now,
+     * since inputs can change between the start request and the (possibly late, cold-start) command.
+     */
+    fun startCommandOutcome(
+        isSystemRestart: Boolean,
+        hasRealtimeSession: Boolean,
+        stopRequested: Boolean,
+        decision: Decision,
+    ): StartCommandOutcome =
+        when {
+            isSystemRestart && !shouldKeepRunningAfterServiceStart(true, hasRealtimeSession) ->
+                StartCommandOutcome.StopWithoutForeground
+            isSystemRestart && decision is Decision.Stop -> StartCommandOutcome.StopWithoutForeground
+            stopRequested -> StartCommandOutcome.PromoteThenStop("stop_requested")
+            decision is Decision.Stop -> StartCommandOutcome.PromoteThenStop(decision.reason)
+            else -> StartCommandOutcome.PromoteAndRun
+        }
+
+    /**
+     * After a realtime disconnect: while the background connection service is running (or its start is
+     * pending) a non-terminal disconnect (server switch, page release, ...) must not leave reconnects
+     * suspended in the background, or the "receiving messages" notification would lie.
+     */
+    fun shouldRestoreBackgroundKeepAliveAfterDisconnect(reason: String, serviceActive: Boolean): Boolean =
+        serviceActive && !isTerminalStopReason(reason)
+
+    /**
+     * On a no-Play-services device the keep-alive preference is seeded on by default, so it alone must not
+     * keep a background connection: without the service (e.g. no notification permission) the process gets
+     * frozen anyway and nothing could be shown. Play services devices keep the plain preference behaviour.
+     */
+    fun shouldEnableBackgroundKeepAlive(fallbackApplies: Boolean, decision: Decision): Boolean =
+        !fallbackApplies || decision == Decision.Run
+
     private val TerminalStopReasons =
         setOf(
             "logout",

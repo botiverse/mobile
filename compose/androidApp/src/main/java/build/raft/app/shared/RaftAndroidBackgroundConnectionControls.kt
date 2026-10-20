@@ -8,6 +8,9 @@ import android.os.PowerManager
 import android.provider.Settings
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.data.RaftBackgroundConnectionControls
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** Settings controls for the no-Play-services background connection (see [RaftBackgroundConnectionService]). */
 internal class RaftAndroidBackgroundConnectionControls(context: Context) : RaftBackgroundConnectionControls {
@@ -20,6 +23,15 @@ internal class RaftAndroidBackgroundConnectionControls(context: Context) : RaftB
             val powerManager = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
             powerManager.isIgnoringBatteryOptimizations(appContext.packageName)
         }.getOrDefault(false)
+
+    private val exemptState = MutableStateFlow(isBatteryOptimizationExempt())
+
+    override val batteryOptimizationExemptState: StateFlow<Boolean> = exemptState.asStateFlow()
+
+    /** Called on activity resume. */
+    fun refreshBatteryOptimizationStatus() {
+        exemptState.value = isBatteryOptimizationExempt()
+    }
 
     /**
      * User-initiated only (the Settings switch or the battery row). Falls back to the system list of
