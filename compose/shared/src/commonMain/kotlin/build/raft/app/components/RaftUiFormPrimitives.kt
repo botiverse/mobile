@@ -38,11 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 
-internal enum class RaftFormFieldLabelStyle {
-    Uppercase,
-    Plain
-}
-
 internal enum class RaftFormFieldSize {
     Default,
     Compact
@@ -57,95 +52,6 @@ internal val RaftSlugInputPrefixBackground =
 // REPLACE bug: disabled rendered MORE saturated than enabled's 0.30.)
 internal val RaftSlugInputDisabledPrefixBackground: Color
     get() = if (RaftAppThemeState.isDark) RaftColor.BrandSoft else Color(0xFFFFF7DD) // raft-color: light legacy flattened yellow tile
-
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftFormField(
-    label: String,
-    modifier: Modifier = Modifier,
-    required: Boolean = false,
-    optional: Boolean = false,
-    hint: String? = null,
-    error: String? = null,
-    showLabel: Boolean = true,
-    labelStyle: RaftFormFieldLabelStyle = RaftFormFieldLabelStyle.Uppercase,
-    size: RaftFormFieldSize = RaftFormFieldSize.Default,
-    labelAccessory: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit
-) {
-    // raft-ui Field: label -> control -> help on a 6dp rhythm; sentence-case label
-    // (13/18 semibold muted, 12/16 compact), help 12/16 hint ink, error 12/16 semibold
-    // `--danger-strong`. [labelStyle] is ignored: raft never sets labels in ALL CAPS.
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (showLabel) {
-            RaftLookFieldLabel(
-                label = label,
-                required = required,
-                optional = optional,
-                compact = size == RaftFormFieldSize.Compact,
-                accessory = labelAccessory
-            )
-        }
-        content()
-        RaftFieldMessage(error = error, hint = hint)
-    }
-}
-
-/**
- * raft-ui `FieldLabel`: 13/18 (`md`) or 12/16 (`sm`) semibold `--foreground-muted`,
- * sentence case; required `*` and the optional suffix follow in hint ink.
- */
-@Composable
-internal fun RaftLookFieldLabel(
-    label: String,
-    required: Boolean,
-    optional: Boolean,
-    compact: Boolean,
-    modifier: Modifier = Modifier,
-    disabled: Boolean = false,
-    accessory: (@Composable () -> Unit)? = null
-) {
-    val fontSize = if (compact) 12.sp else 13.sp
-    val lineHeight = if (compact) 16.sp else 18.sp
-    val labelInk = if (disabled) RaftColor.ForegroundDisabled else RaftColor.TextMuted
-    val subInk = if (disabled) RaftColor.ForegroundDisabled else RaftColor.ForegroundHint
-    Row(
-        modifier = if (accessory != null) modifier.fillMaxWidth() else modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style =
-                RaftType.Body
-                    .copy(fontSize = fontSize, lineHeight = lineHeight, letterSpacing = 0.sp)
-                    .withRaftFontWeight(FontWeight.SemiBold),
-            color = labelInk,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (required) {
-            Text(
-                text = "*",
-                style = RaftType.Body.copy(fontSize = fontSize, lineHeight = lineHeight).withRaftFontWeight(FontWeight.SemiBold),
-                color = subInk,
-                maxLines = 1
-            )
-        }
-        if (optional) {
-            Text(
-                text = stringResource(MR.strings.common_optional_suffix),
-                style = RaftType.Body.copy(fontSize = fontSize, lineHeight = lineHeight),
-                color = subInk,
-                maxLines = 1
-            )
-        }
-        if (accessory != null) {
-            Spacer(modifier = Modifier.weight(1f))
-            accessory()
-        }
-    }
-}
 
 /** raft-ui `FieldError` (12/16 semibold `--danger-strong`) or `FieldDescription` (12/16 hint). */
 @Composable

@@ -8,7 +8,6 @@ import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSelectField
 import build.raft.app.components.RaftBrutalSelectOption
-import build.raft.app.components.RaftBrutalSectionLabel
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftUiBanner
@@ -2630,8 +2629,8 @@ internal fun EnvVarsEditor(
     required: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBrutalSectionLabel(
-            label = label ?: stringResource(MR.strings.agent_create_label_environment_variables),
+        RaftFieldLabel(
+            text = label ?: stringResource(MR.strings.agent_create_label_environment_variables),
             required = required,
             optional = !required
         )

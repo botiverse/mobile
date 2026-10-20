@@ -26,6 +26,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.components.RaftFieldLabelSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -147,13 +150,13 @@ internal fun RaftUiLabel(
     small: Boolean = false,
     disabled: Boolean = false
 ) {
-    RaftLookFieldLabel(
-        label = text,
-        required = required,
-        optional = optional,
-        compact = small,
+    RaftFieldLabel(
+        text = text,
         modifier = modifier,
-        disabled = disabled
+        size = if (small) RaftFieldLabelSize.Sm else RaftFieldLabelSize.Md,
+        enabled = !disabled,
+        optional = optional && !required,
+        required = required
     )
 }
 
@@ -476,16 +479,14 @@ internal fun RaftUiField(
     error: String? = null,
     content: @Composable () -> Unit
 ) {
-    RaftFormField(
-        label = label,
-        modifier = modifier,
+    RaftField(
+        label = label.takeIf { it.isNotBlank() },
+        modifier = modifier.fillMaxWidth(),
+        description = description?.takeIf { it.isNotBlank() },
+        error = error?.takeIf { it.isNotBlank() },
         required = required,
-        hint = description,
-        error = error,
-        labelStyle = RaftFormFieldLabelStyle.Plain
-    ) {
-        content()
-    }
+        content = content
+    )
 }
 
 @Composable

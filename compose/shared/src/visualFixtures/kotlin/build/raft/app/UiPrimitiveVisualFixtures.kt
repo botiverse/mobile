@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -9,9 +11,6 @@ import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
 import build.raft.app.components.RaftAttentionDot
-import build.raft.app.components.RaftFormField
-import build.raft.app.components.RaftFormFieldLabelStyle
-import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.components.RaftProgressBar
 import build.raft.app.components.RaftProgressBarTone
 import build.raft.app.components.RaftSectionHeader
@@ -183,10 +182,9 @@ internal fun UiFormFieldVisualContent() {
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftFormField(
+            RaftField(
                 label = "Email",
-                required = true,
-                labelStyle = RaftFormFieldLabelStyle.Plain
+                required = true
             ) {
                 RaftBrutalInputField(
                     value = "cindy@slock.ai",
@@ -196,10 +194,10 @@ internal fun UiFormFieldVisualContent() {
                     fieldMinHeight = 42.dp
                 )
             }
-            RaftFormField(
+            RaftField(
                 label = "Description",
                 optional = true,
-                hint = "Shown in channel discovery."
+                description = "Shown in channel discovery."
             ) {
                 RaftBrutalInputField(
                     value = "Visual parity fixture",
@@ -209,9 +207,9 @@ internal fun UiFormFieldVisualContent() {
                     fieldMinHeight = 42.dp
                 )
             }
-            RaftFormField(
+            RaftField(
                 label = "Server Name",
-                size = RaftFormFieldSize.Compact,
+                labelSize = RaftFieldLabelSize.Sm,
                 error = "Name is required"
             ) {
                 RaftBrutalInputField(

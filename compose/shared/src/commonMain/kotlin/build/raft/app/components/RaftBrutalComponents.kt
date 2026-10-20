@@ -99,8 +99,8 @@ import kotlinx.coroutines.delay
  * | RaftBrutalInputField (20)                    | RaftTextField (single line, default chrome)                |
  * | RaftBrutalSearchField (5)                    | RaftTextField with a leading search addon                  |
  * | RaftBrutalSelectField (16)                   | RaftSelectTrigger + RaftDropdownMenu / RaftMenuItem        |
- * | RaftBrutalSectionLabel (21)                  | RaftFieldLabel                                             |
- * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField                           |
+ * | RaftBrutalSectionLabel (21)                  | removed: RaftFieldLabel at the call sites                  |
+ * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField (multi-line); ValueField removed |
  * | RaftBrutalCard (12)                          | RaftCard                                                   |
  * | RaftBrutalListRow (2)                        | RaftListRowGroup + RaftListRow                             |
  * | RaftBrutalBadge (3)                          | RaftBadge (soft); RaftBrutalBadgeButton (0) removed        |
@@ -320,37 +320,6 @@ internal fun RaftAnchoredMetaChip(
                 )
             }
         }
-    }
-}
-
-/**
- * Legacy-named field label; renders the design-system [RaftFieldLabel] (`sm` for
- * [RaftFormFieldSize.Compact]). An optional label keeps [RaftLookFieldLabel]: the
- * design-system label's "(optional)" suffix is not localised yet.
- */
-@Composable
-internal fun RaftBrutalSectionLabel(
-    label: String,
-    required: Boolean = false,
-    optional: Boolean = false,
-    size: RaftFormFieldSize = RaftFormFieldSize.Default,
-    modifier: Modifier = Modifier
-) {
-    if (optional && !required) {
-        RaftLookFieldLabel(
-            label = label,
-            required = false,
-            optional = true,
-            compact = size == RaftFormFieldSize.Compact,
-            modifier = modifier
-        )
-    } else {
-        RaftFieldLabel(
-            text = label,
-            modifier = modifier,
-            size = size.raftFieldLabelSize,
-            required = required
-        )
     }
 }
 
@@ -647,9 +616,8 @@ internal fun RaftBrutalTextField(
 
 /**
  * The label / control / help column of a legacy form field: the design-system [RaftField]
- * (label, required mark, help or error line, field state for the control). A label
- * accessory or an optional label keeps [RaftFormField]: [RaftField] has no accessory slot
- * and its "(optional)" suffix is not localised yet.
+ * (label with its required mark or localised optional marker, the [labelAccessory] at the end
+ * of the label row, help or error line, field state for the control).
  */
 @Composable
 internal fun RaftBrutalFieldFrame(
@@ -664,28 +632,16 @@ internal fun RaftBrutalFieldFrame(
     labelAccessory: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    if (labelAccessory != null || (optional && !required)) {
-        RaftFormField(
-            label = label,
-            modifier = modifier,
-            required = required,
-            optional = optional,
-            hint = hint,
-            error = error,
-            size = labelSize,
-            labelAccessory = labelAccessory,
-            content = content
-        )
-        return
-    }
     RaftField(
         label = label.takeIf { it.isNotBlank() },
         modifier = modifier.fillMaxWidth(),
         description = hint?.takeIf { it.isNotBlank() },
         error = error?.takeIf { it.isNotBlank() },
         enabled = enabled,
+        optional = optional && !required,
         required = required,
         labelSize = labelSize.raftFieldLabelSize,
+        labelTrailing = labelAccessory,
         content = content
     )
 }
@@ -1247,6 +1203,12 @@ internal fun raftBrutalInputFocusPolicy(
     )
 }
 
+/**
+ * Legacy-named read-only field: the design-system [RaftField] (`sm` label) round a
+ * [RaftReadOnlyField] that wraps up to [maxLines] lines. The type / colour / padding
+ * parameters of the retired box are ignored.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalReadOnlyField(
     label: String,
@@ -1259,76 +1221,9 @@ internal fun RaftBrutalReadOnlyField(
     textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
     textColor: Color = RaftColor.TextMutedGray
 ) {
-    if (maxLines <= 1) {
-        // raft-ui: the disabled-field value under a `sm` label (CopyableCode / read-only Input).
-        RaftField(label = label.takeIf { it.isNotBlank() }, modifier = modifier.fillMaxWidth(), labelSize = RaftFieldLabelSize.Sm) {
-            RaftReadOnlyField(text = value)
-        }
-        return
-    }
-    // RaftReadOnlyField is one line; a wrapping value keeps the legacy box.
-    RaftFormField(label = label, modifier = modifier, size = RaftFormFieldSize.Compact) {
-        RaftBrutalReadOnlyValueField(
-            value = value,
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = maxLines,
-            fieldMinHeight = fieldMinHeight,
-            horizontalPadding = horizontalPadding,
-            verticalPadding = verticalPadding,
-            textStyle = textStyle,
-            textColor = textColor
-        )
-    }
-}
-
-// Brutal read-only fill (Tailwind gray-50).
-internal val RaftReadOnlyFieldLegacyBackground = Color(0xFFF9FAFB) // raft-color: default-value sentinel, painted as FillMuted
-
-@Composable
-internal fun RaftBrutalReadOnlyValueField(
-    value: String,
-    modifier: Modifier = Modifier,
-    maxLines: Int = 1,
-    fieldMinHeight: Dp = 42.dp,
-    horizontalPadding: Dp = 12.dp,
-    verticalPadding: Dp = 8.dp,
-    backgroundColor: Color = RaftReadOnlyFieldLegacyBackground,
-    borderColor: Color = RaftColor.BorderBlack.copy(alpha = 0.30f),
-    textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
-    textColor: Color = RaftColor.TextMutedGray
-) {
-    if (
-        maxLines <= 1 &&
-        (fieldMinHeight == RaftMetrics.LegacyFieldHeight || fieldMinHeight == RaftMetrics.FieldHeight) &&
-        backgroundColor == RaftReadOnlyFieldLegacyBackground &&
-        borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)
-    ) {
-        RaftReadOnlyField(text = value, modifier = modifier)
-        return
-    }
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    // raft: a non-editable value is the disabled field pair (`--fill-muted` fill,
-    // 1.5dp `--line-hairline` edge, muted ink) at the 44dp field height.
-    val resolvedBackground = if (backgroundColor == RaftReadOnlyFieldLegacyBackground) RaftColor.FillMuted else backgroundColor
-    val resolvedBorder = if (borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)) RaftColor.BorderHairline else borderColor
-    val resolvedTextColor = if (textColor == RaftColor.TextMutedGray) RaftColor.TextMuted else textColor
-    Box(
-        modifier =
-            modifier
-                .heightIn(min = raftFieldHeight(fieldMinHeight))
-                .background(resolvedBackground, shape)
-                .border(RaftAppStroke.Default, resolvedBorder, shape)
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = value,
-            style = textStyle.copy(color = resolvedTextColor),
-            color = resolvedTextColor,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth()
-        )
+    // raft-ui: the disabled-field value under a `sm` label (CopyableCode / read-only Input).
+    RaftField(label = label.takeIf { it.isNotBlank() }, modifier = modifier.fillMaxWidth(), labelSize = RaftFieldLabelSize.Sm) {
+        RaftReadOnlyField(text = value, maxLines = maxLines)
     }
 }
 
