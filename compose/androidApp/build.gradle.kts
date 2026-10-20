@@ -28,7 +28,8 @@ import org.w3c.dom.Element
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // AGP 9 built-in Kotlin replaces org.jetbrains.kotlin.android.
+    alias(libs.plugins.android.builtin.kotlin)
     alias(libs.plugins.kotlin.compose)
 }
 
