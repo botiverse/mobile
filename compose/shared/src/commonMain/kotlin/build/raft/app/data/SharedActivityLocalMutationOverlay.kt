@@ -60,7 +60,15 @@ internal data class ActivityOverlayMarker(
     val seq: String?,
     val anchor: MessageId?,
     val replyCount: Int = 0,
-    val isThread: Boolean = false
+    val isThread: Boolean = false,
+    /**
+     * The row carried a storage Done frontier (`doneFrontierSeq`). Realtime
+     * patches never move [seq] on such rows, and a Done covers only that
+     * served seq, so a strictly newer served seq alone is uncovered activity
+     * (web `inboxMarkerIsNewer` is seq-only); the reply-count guard below is
+     * for rows whose seq a patch may have left behind its reply count.
+     */
+    val storageFrontier: Boolean = false
 ) {
     /** No frontier and no anchor: nothing to compare against, so no hold (web parity). */
     val hasFrontier: Boolean get() = seq != null || anchor != null
@@ -71,7 +79,8 @@ internal fun InboxItem.activityOverlayMarker(): ActivityOverlayMarker =
         seq = readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         anchor = latestActivityMessageId ?: lastMessageId ?: parentMessageId,
         replyCount = replyCount,
-        isThread = kind == InboxItemKind.Thread
+        isThread = kind == InboxItemKind.Thread,
+        storageFrontier = doneFrontierSeqPresent
     )
 
 /**
@@ -87,7 +96,7 @@ internal fun InboxItem.activityOverlayMarker(): ActivityOverlayMarker =
 internal fun ActivityOverlayMarker.isNewerThan(held: ActivityOverlayMarker): Boolean {
     val threadAdvanced = !held.isThread || replyCount > held.replyCount
     if (held.seq != null && seq != null) {
-        return compareActivitySeq(seq, held.seq) > 0 && threadAdvanced
+        return compareActivitySeq(seq, held.seq) > 0 && (threadAdvanced || held.storageFrontier)
     }
     // Without a frontier on both sides (old server, or a held seq the served row
     // no longer carries), message ids carry no order: fall back to anchor + reply

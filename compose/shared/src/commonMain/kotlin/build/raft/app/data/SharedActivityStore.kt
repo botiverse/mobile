@@ -1024,7 +1024,9 @@ class SharedActivityStore internal constructor(
                 frontier != null && compareActivitySeq(readSeq, frontier) >= 0
             }
         if (covered.isNotEmpty()) {
-            rememberUnreadCleared(overlayOwner(current), covered, confirmed = true)
+            // The read is already persisted server-side: start the hold now.
+            val remoteReadOwner = overlayOwner(current)
+            readOverlay.confirmAll(remoteReadOwner, rememberUnreadCleared(remoteReadOwner, covered))
             val coveredKeys = covered.mapTo(mutableSetOf(), InboxItem::key)
             val keepsRows = current.selectedFilter.keepsReadActivityRows()
             val items =
