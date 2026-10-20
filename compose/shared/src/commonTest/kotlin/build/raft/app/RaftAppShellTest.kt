@@ -1000,6 +1000,25 @@ class RaftAppShellTest {
     }
 
     @Test
+    fun appShellChildTabContentActiveFollowsPagerPlacementNotLaggingSelection() {
+        // Switch frame: the pager already places the new tab while the registry entry still
+        // holds the previous selection. Content activity must follow the placement.
+        val laggingSelection = "home"
+        assertFalse(appShellChildTabIsActive(parentVisible = true, selectedTab = laggingSelection, tab = "members"))
+        assertTrue(appShellChildTabContentActive(parentVisible = true, placedActive = true))
+        assertFalse(appShellChildTabContentActive(parentVisible = true, placedActive = false))
+        // A covered shell keeps the selected tab placed but its content inactive.
+        assertFalse(appShellChildTabContentActive(parentVisible = false, placedActive = true))
+        // A newly placed tab renders content on its first frame even before it is retained.
+        assertTrue(
+            appShellChildPageRendersContent(
+                active = appShellChildTabContentActive(parentVisible = true, placedActive = true),
+                retained = false
+            )
+        )
+    }
+
+    @Test
     fun appShellChildPagePrewarmPolicyLimitsCanaryToOneController() {
         assertEquals(
             0,

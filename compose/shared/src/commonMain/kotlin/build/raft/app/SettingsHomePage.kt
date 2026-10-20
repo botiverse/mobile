@@ -1458,6 +1458,14 @@ internal fun appShellChildPagePrewarmOrder(
 internal fun appShellChildPageRendersContent(active: Boolean, retained: Boolean): Boolean =
     active || retained
 
+/**
+ * Whether an app-shell child tab's content runs as active. [placedActive] is the tab pager's
+ * own placement decision (the child page's `LocalRaftPageActive`), which is synchronous with the
+ * selection; the selection mirrored into [AppShellChildTabEntry] trails it by a frame.
+ */
+internal fun appShellChildTabContentActive(parentVisible: Boolean, placedActive: Boolean): Boolean =
+    parentVisible && placedActive
+
 internal fun appShellChildTabIsActive(
     parentVisible: Boolean,
     selectedTab: String,

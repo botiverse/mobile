@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.ui.LocalRaftPageActive
 
 @Page(RAFT_APP_SHELL_CHILD_TAB_PAGE, supportInLocal = true)
 internal class ComposeRaftAppShellChildTabPage : build.raft.app.base.BasePager() {
@@ -39,7 +40,16 @@ private fun RaftAppShellChildTabPageContent() {
         )
         return
     }
-    val active = appShellChildTabIsActive(entry.parentVisible, entry.selectedTab, tab)
+    // The tab pager places this child in the same frame the selection changes and provides that
+    // placement through LocalRaftPageActive. The registry entry is only refreshed in the shell's
+    // SideEffect (after composition), so reading the selection from it lagged one frame: the
+    // newly placed tab composed as inactive (or, on its first visit, as an empty placeholder
+    // because the retained set lagged too) and the shell flashed a blank / half-rendered frame.
+    val active =
+        appShellChildTabContentActive(
+            parentVisible = entry.parentVisible,
+            placedActive = LocalRaftPageActive.current
+        )
     val retained = tab in entry.retainedTabs
     LaunchedEffect(shellId, tab, entry.debugId) {
         bridge.log(
