@@ -28,7 +28,6 @@ class RaftTabBarStyleTest {
         assertEquals(9.dp, spec.PillRadius)
         assertEquals(2.dp, spec.PillBorder)
         assertEquals(23.dp, spec.IconSize)
-        assertEquals(7.dp, spec.TopPadding)
         assertEquals(4.dp, spec.LabelGap)
         assertEquals(11.5.sp, spec.LabelFontSize)
         assertEquals(FontWeight.Bold, raftBottomTabLabelWeight(selected = true))
@@ -55,10 +54,26 @@ class RaftTabBarStyleTest {
         // The badge's bottom edge stays in the icon's top band, leaving the icon readable.
         assertTrue(spec.BadgeOffsetY + spec.BadgeHeight < iconTop + spec.IconSize / 2)
         assertTrue(iconRight < spec.PillWidth)
-        // Bar fits pill + gap + one label line under the seam.
-        assertEquals(
-            spec.BarHeight,
-            RaftAppStroke.Thin + spec.TopPadding + spec.PillHeight + spec.LabelGap + spec.LabelLineHeight.value.dp
+        // The tab cell (sticker slot + gap + one label line) fits inside the pill's border.
+        assertTrue(
+            spec.PillHeight + spec.LabelGap + spec.LabelLineHeight.value.dp <= spec.BarHeight - spec.ContainerBorder * 2
         )
+    }
+
+    @Test
+    fun phoneBarFollowsJasperSizes() {
+        // Jasper 2026-10-20: pill and Search 56dp tall, tabs >= 44dp, 8dp gap, 16dp margins.
+        val spec = RaftBottomTabBarSpec
+        assertEquals(56.dp, spec.BarHeight)
+        assertEquals(56.dp, spec.AccessorySize)
+        assertEquals(44.dp, spec.MinTabTarget)
+        assertEquals(8.dp, spec.SearchGap)
+        assertEquals(16.dp, spec.SideMargin)
+        // Four tabs keep a >= 44dp target on a 320dp phone.
+        val pillWidth = 320.dp - spec.SideMargin * 2 - spec.SearchGap - spec.AccessorySize
+        val tabWidth = (pillWidth - spec.PillInnerPadding * 2) / AppShellPhoneBottomTabKeys.size
+        assertTrue(tabWidth >= spec.MinTabTarget, "tab width $tabWidth")
+        // The tab cell fills the pill's height, so its hit area is >= 44dp tall too.
+        assertTrue(spec.BarHeight >= spec.MinTabTarget)
     }
 }

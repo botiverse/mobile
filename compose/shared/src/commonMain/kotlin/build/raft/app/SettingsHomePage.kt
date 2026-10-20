@@ -1236,12 +1236,14 @@ internal fun appShellPhoneBottomTabs(
     activityLabel: String,
     tasksLabel: String,
     moreLabel: String,
-    activityUnreadCount: Int = 0
+    activityUnreadCount: Int = 0,
+    moreAttentionRows: Set<RaftMoreRow> = emptySet(),
 ): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
         selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab),
         orderedTabKeys = AppShellPhoneBottomTabKeys,
         activityUnreadCount = activityUnreadCount,
+        moreAttentionRows = moreAttentionRows,
         labelFor = { key ->
             when (key) {
                 "home" -> homeLabel
@@ -1269,12 +1271,14 @@ internal fun appShellSearchAction(label: String): RaftBottomTabItemPayload =
  * This list is the single source of truth for every bottom-bar renderer, including the
  * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
  * appears there with its label and icon. Activity unread is an attention dot, hidden while
- * Activity is the selected tab ([appShellActivityTabShowsDot]); tabs carry no numbers.
+ * Activity is the selected tab ([appShellActivityTabShowsDot]); More wears the same dot when a
+ * row inside it has something new ([appShellMoreTabShowsDot]); tabs carry no numbers.
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
     orderedTabKeys: List<String>,
     activityUnreadCount: Int = 0,
+    moreAttentionRows: Set<RaftMoreRow> = emptySet(),
     labelFor: (String) -> String
 ): List<RaftBottomTabItemPayload> =
     orderedTabKeys.map { key ->
@@ -1284,7 +1288,12 @@ internal fun appShellBottomTabs(
             label = labelFor(key),
             iconName = appShellTabIcon(key),
             selected = selected,
-            attentionDot = key == "activity" && appShellActivityTabShowsDot(activityUnreadCount, selected)
+            attentionDot =
+                when (key) {
+                    "activity" -> appShellActivityTabShowsDot(activityUnreadCount, selected)
+                    "more" -> appShellMoreTabShowsDot(moreAttentionRows, selected)
+                    else -> false
+                }
         )
     }
 
@@ -5961,13 +5970,19 @@ private fun RaftAppShellReadyContent(
     // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
     // notification center keeps its own Bell dot in the Home head (task #18).
     val activityTabUnreadCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
+    // Rows inside More with something new (Settings: app update; Computers: offline/outdated
+    // machine); they dot the More tab and their own row on the More page.
+    val moreAttentionRows = remember(homeState.notifications) {
+        raftMoreAttentionRows(homeState.notifications.map { it.id })
+    }
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
         tasksTabLabel,
         activityTabLabel,
         moreTabLabel,
-        activityTabUnreadCount
+        activityTabUnreadCount,
+        moreAttentionRows
     ) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTab,
@@ -5975,7 +5990,8 @@ private fun RaftAppShellReadyContent(
             activityLabel = activityTabLabel,
             tasksLabel = tasksTabLabel,
             moreLabel = moreTabLabel,
-            activityUnreadCount = activityTabUnreadCount
+            activityUnreadCount = activityTabUnreadCount,
+            moreAttentionRows = moreAttentionRows
         )
     }
     val appShellSearchActionItem = remember(searchTabLabel) { appShellSearchAction(searchTabLabel) }
@@ -6944,6 +6960,8 @@ private fun RaftAppShellReadyContent(
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
                                 homeServerAvatarEnabled = homeServerAvatarEnabled,
+                                // The phone bar (not the wide rail) carries Search and Activity.
+                                searchAndActivityInBottomBar = !navRailActive,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -7223,6 +7241,7 @@ private fun RaftAppShellReadyContent(
                         PerformanceSceneEffect(bridge, "kuikly_more", active = active)
                         RaftMorePage(
                             bottomContentPadding = appShellBottomContentInset,
+                            attentionRows = moreAttentionRows,
                             onSelect = { row ->
                                 prewarmAdmissionGate.invalidate("more_open:${row.key}")
                                 bridge.log("app_shell_more_open row=${row.key} from=$selectedTab")
@@ -19423,6 +19442,8 @@ private fun SharedHomeScreen(
     prefersChineseCommunity: Boolean = false,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
+    /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
+    searchAndActivityInBottomBar: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -19511,6 +19532,7 @@ private fun SharedHomeScreen(
             if (session != null) {
                 SharedHomeSessionShell(
                     session = session,
+                    searchAndActivityInBottomBar = searchAndActivityInBottomBar,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
@@ -19549,6 +19571,7 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Empty ->
             SharedHomeSessionShell(
                 session = current.session,
+                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
                 scrollToTopRequest = scrollToTopRequest,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
@@ -19583,6 +19606,7 @@ private fun SharedHomeScreen(
             if (current.session != null) {
                 SharedHomeSessionShell(
                     session = current.session,
+                    searchAndActivityInBottomBar = searchAndActivityInBottomBar,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
@@ -19815,6 +19839,7 @@ private fun SharedHomeScreen(
                 hideEmptySections = hideEmptySections,
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
+                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
@@ -23798,6 +23823,7 @@ private fun SharedHomeSessionShell(
     // skeleton rows under the CHANNELS / DIRECT MESSAGES headers so the
     // post-sign-in transition matches the React app instead of a bare shell.
     loadingSkeletons: Boolean = false,
+    searchAndActivityInBottomBar: Boolean = false,
     inlineError: RaftHomeInlineError? = null,
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
@@ -23836,6 +23862,7 @@ private fun SharedHomeSessionShell(
         prefersChineseCommunity = prefersChineseCommunity,
         topSafeAreaOverride = topSafeAreaOverride,
         showBottomBar = false,
+        searchAndActivityInBottomBar = searchAndActivityInBottomBar,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
         labels = RaftHomeShellLabels.localized(),
@@ -25099,6 +25126,9 @@ private fun AppShellCachedHomePreviewContent(
             sessionReady = false,
             serverDrawerEnabled = false,
             homeServerAvatarEnabled = false,
+            // Match the list the restored shell will show (desktop mode defaults on, so the wide
+            // dual-pane layout uses the rail and keeps the rows).
+            searchAndActivityInBottomBar = shellScope.adaptivePane.layout != RaftAdaptivePaneLayout.DualPane,
             onIntent = {},
             onNotificationDismiss = {},
             onOpenSearch = {},

@@ -178,7 +178,9 @@ class KmmResourceI18nTest {
             MR.strings.tab_settings,
             MR.strings.tab_activity,
             MR.strings.tab_more,
-            MR.strings.tab_activity_unread_dot
+            MR.strings.tab_activity_unread_dot,
+            MR.strings.tab_more_attention_dot,
+            MR.strings.more_row_attention_dot
         )
 
         tabResources.forEach { resource ->

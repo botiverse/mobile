@@ -12,6 +12,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -133,6 +135,9 @@ internal fun RaftAppShellSurface(
     content: @Composable () -> Unit
 ) {
     val ownedModalHostState = rememberRaftUnifiedDialogHostState()
+    // Jasper 2026-10-20: the bottom bar steps aside while the keyboard is open (it would ride
+    // on top of the keyboard or cover the focused field otherwise).
+    val bottomTabsShown = raftAppShellBottomTabsShown(showBottomTabs, raftImeVisible())
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
     val bodyTopBanner: (@Composable () -> Unit)? =
         if (networkStatus == RaftAppShellNetworkStatus.Offline) {
@@ -165,7 +170,7 @@ internal fun RaftAppShellSurface(
                             .then(drawerGestureModifier)
                             .zIndex(RaftAppContentHostZIndex)
                             .fillMaxSize()
-                            .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
+                            .padding(bottom = shellScope.bottomTabBarHostInset(bottomTabsShown))
                             .then(
                                 if (interactionLocked) {
                                     Modifier.clearAndSetSemantics { invisibleToUser() }
@@ -187,7 +192,7 @@ internal fun RaftAppShellSurface(
                         }
                     }
                 }
-                if (showBottomTabs) {
+                if (bottomTabsShown) {
                     RaftAppBottomTabBarHost(
                         items = bottomTabs,
                         onSelect = onBottomTabSelected,
@@ -213,12 +218,20 @@ internal fun RaftAppShellSurface(
                 RaftUnifiedDialogHost(
                     state = effectiveModalHostState,
                     modifier = Modifier.fillMaxSize(),
-                    bottomInset = shellScope.globalDialogBottomInset(showBottomTabs)
+                    bottomInset = shellScope.globalDialogBottomInset(bottomTabsShown)
                 )
             }
         }
     }
 }
+
+/** The shell's bottom bar is drawn only when the page wants it and no keyboard is open. */
+internal fun raftAppShellBottomTabsShown(showBottomTabs: Boolean, imeVisible: Boolean): Boolean =
+    showBottomTabs && !imeVisible
+
+/** True while a software keyboard covers part of the window (`WindowInsets.ime`). */
+@Composable
+internal fun raftImeVisible(): Boolean = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
 // task #23/#45: the left navigation rail owns tab selection whenever the user's
 // desktop-mode setting is on and the window is in the dual-pane (flat, >=840dp)

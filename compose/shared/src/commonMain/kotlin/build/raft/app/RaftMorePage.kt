@@ -13,7 +13,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import build.raft.app.components.RaftAttentionDot
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.isAppUpdateHomeNotificationId
+import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
@@ -46,12 +51,27 @@ internal enum class RaftMoreRow(
 /** Rows in display order. */
 internal val RaftMoreRows: List<RaftMoreRow> = RaftMoreRow.entries
 
+/**
+ * Rows that have something new (Jasper 2026-10-20): each dots its own row on the More page and
+ * the More tab. Driven by the Home notices the shell already loads (they clear when dismissed):
+ * - Settings: the app-update notice (an update is available; Settings > About checks/installs).
+ * - Computers: the offline-computer or outdated-daemon notice.
+ * Members has no unread signal today.
+ */
+internal fun raftMoreAttentionRows(homeNotificationIds: List<String>): Set<RaftMoreRow> =
+    buildSet {
+        if (homeNotificationIds.any { it.isAppUpdateHomeNotificationId() }) add(RaftMoreRow.Settings)
+        if (homeNotificationIds.any { it.isMachineHomeNotificationId() }) add(RaftMoreRow.Computers)
+    }
+
 @Composable
 internal fun RaftMorePage(
     bottomContentPadding: Dp,
     onSelect: (RaftMoreRow) -> Unit,
     rows: List<RaftMoreRow> = RaftMoreRows,
+    attentionRows: Set<RaftMoreRow> = emptySet(),
 ) {
+    val attentionDescription = stringResource(MR.strings.more_row_attention_dot)
     RaftDesignSystemTheme {
         Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
             RaftMainTabPageHeader(
@@ -69,7 +89,14 @@ internal fun RaftMorePage(
                                 onClick = { onSelect(row) },
                                 divider = index > 0,
                                 leading = { RaftMoreRowIcon(row.iconName) },
-                                trailing = { RaftListRowChevron() },
+                                trailing = {
+                                    if (row in attentionRows) {
+                                        RaftAttentionDot(
+                                            modifier = Modifier.semantics { contentDescription = attentionDescription }
+                                        )
+                                    }
+                                    RaftListRowChevron()
+                                },
                             )
                         }
                     }

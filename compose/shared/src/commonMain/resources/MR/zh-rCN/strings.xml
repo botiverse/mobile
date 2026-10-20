@@ -36,6 +36,8 @@
     <string name="tab_activity">动态</string>
     <string name="tab_more">更多</string>
     <string name="tab_activity_unread_dot">未读动态</string>
+    <string name="tab_more_attention_dot">更多中有新内容</string>
+    <string name="more_row_attention_dot">需要关注</string>
     <string name="more_hub_tasks_subtitle">查看与跟踪任务</string>
     <string name="more_hub_members_subtitle">浏览人类成员与 Agent</string>
     <string name="more_hub_settings_subtitle">偏好设置与账号</string>

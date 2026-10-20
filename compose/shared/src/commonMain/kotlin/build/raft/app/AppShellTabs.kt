@@ -56,6 +56,13 @@ internal fun appShellMoreChildBackTarget(selectedTab: String, navRailActive: Boo
 internal fun appShellActivityTabShowsDot(unreadCount: Int, selected: Boolean): Boolean =
     unreadCount > 0 && !selected
 
+/**
+ * Jasper 2026-10-20: the More tab wears the same dot when a row inside More has something new
+ * ([raftMoreAttentionRows]); like Activity, never while More is the selected tab.
+ */
+internal fun appShellMoreTabShowsDot(attentionRows: Set<RaftMoreRow>, selected: Boolean): Boolean =
+    attentionRows.isNotEmpty() && !selected
+
 /** Wide-rail tab entries (web LeftRail): Settings is pinned to the rail bottom separately. */
 internal val AppShellRailTabKeys: List<String> = listOf("home", "activity", "tasks", "members")
 
