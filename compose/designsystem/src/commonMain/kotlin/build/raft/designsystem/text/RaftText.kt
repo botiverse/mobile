@@ -1,6 +1,7 @@
 package build.raft.designsystem.text
 
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -62,6 +63,8 @@ fun RaftText(
     overflow: TextOverflow = TextOverflow.Clip,
     softWrap: Boolean = true,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null,
+    /** Placeholders for `appendInlineContent` ranges (e.g. a face inside a one-line preview). */
+    inlineContent: Map<String, InlineTextContent> = emptyMap(),
 ) {
     val links = remember(text) { raftTextLinks(text) }
     if (links.isNotEmpty()) {
@@ -76,6 +79,7 @@ fun RaftText(
         overflow = overflow,
         softWrap = softWrap,
         maxLines = maxLines,
+        inlineContent = inlineContent,
     )
 }
 

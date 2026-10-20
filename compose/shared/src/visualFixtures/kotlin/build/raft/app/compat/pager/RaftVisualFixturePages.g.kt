@@ -32,6 +32,8 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_foreground_banner_visual" to { build.raft.app.ComposeForegroundBannerVisualPage() },
         "compose_home_activity_avatar_off_visual" to { build.raft.app.ComposeHomeActivityAvatarOffVisualPage() },
         "compose_home_activity_avatar_visual" to { build.raft.app.ComposeHomeActivityAvatarVisualPage() },
+        "compose_home_activity_conversation_list_unpinned_visual" to { build.raft.app.ComposeHomeActivityConversationListUnpinnedVisualPage() },
+        "compose_home_activity_conversation_list_visual" to { build.raft.app.ComposeHomeActivityConversationListVisualPage() },
         "compose_home_activity_hit_target_visual" to { build.raft.app.ComposeHomeActivityHitTargetVisualPage() },
         "compose_home_activity_visual" to { build.raft.app.ComposeHomeActivityVisualPage() },
         "compose_home_app_update_banner_visual" to { build.raft.app.ComposeHomeAppUpdateBannerVisualPage() },

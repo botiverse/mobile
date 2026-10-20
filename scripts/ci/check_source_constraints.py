@@ -133,7 +133,7 @@ GESTURE_OWNER_REGIONS = (
         "home-direct-message-row",
     ),
     (SHARED_TASKS_PAGE, "private fun SharedTaskCard(", "internal fun tasksStatusChipClickIdentity(", "tasks-card"),
-    (SHARED_INBOX_PANEL, "private fun Modifier.activityRowGestures(", "internal fun InboxItem.inboxItemOpenGestureKey(", "activity-row"),
+    (SHARED_INBOX_PANEL, "internal fun Modifier.activityRowGestures(", "internal fun InboxItem.inboxItemOpenGestureKey(", "activity-row"),
     (SETTINGS_HOME_PAGE, "private fun SharedSettingsRow(", "internal fun SharedSettingsAboutContent(", "settings-row"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSavedResultCard(", "private fun SharedHomeSavedUnsaveButton(", "home-saved-result"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),

@@ -658,6 +658,24 @@ internal class ComposeHomeActivityAvatarOffVisualPage : BasePager() {
     }
 }
 
+// activity_conversation_list_v0: Activity as the web ThreadsInbox list layout (flag on), with and
+// without sidebar pins (the Pinned / All conversations sections only appear with pins).
+@Page("compose_home_activity_conversation_list_visual", supportInLocal = true)
+internal class ComposeHomeActivityConversationListVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityConversationListVisualContent(withPins = true) }
+    }
+}
+
+@Page("compose_home_activity_conversation_list_unpinned_visual", supportInLocal = true)
+internal class ComposeHomeActivityConversationListUnpinnedVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityConversationListVisualContent(withPins = false) }
+    }
+}
+
 @Page("compose_home_create_channel_dialog_visual", supportInLocal = true)
 internal class ComposeHomeCreateChannelDialogVisualPage : BasePager() {
     override fun willInit() {
