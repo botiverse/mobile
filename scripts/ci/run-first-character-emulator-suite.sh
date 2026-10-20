@@ -42,6 +42,7 @@ DECLARED_TEST_IDS=(
   "composer-session-retirement"
   "thread-composer-suggestion-interaction"
   "multiline-text-field-value"
+  "composer-text-selection"
   "attachment-private-file-provider"
   "attachment-atomic-sink"
   "attachment-download-runtime"
@@ -111,6 +112,12 @@ init_test_metadata() {
   TEST_RETRIES["multiline-text-field-value"]=1
   TEST_OUTPUT["multiline-text-field-value"]="multiline-text-field-value-instrumentation.txt"
   TEST_CONDITION["multiline-text-field-value"]="always"
+
+  TEST_CLASS["composer-text-selection"]="build.raft.app.shared.ThreadComposerTextSelectionConnectedTest"
+  TEST_RUNNER["composer-text-selection"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["composer-text-selection"]=1
+  TEST_OUTPUT["composer-text-selection"]="composer-text-selection-instrumentation.txt"
+  TEST_CONDITION["composer-text-selection"]="always"
 
   TEST_CLASS["attachment-private-file-provider"]="build.raft.app.shared.AndroidAttachmentPrivateFileProviderConnectedTest"
   TEST_RUNNER["attachment-private-file-provider"]="$RUNNER_CONNECTED"

@@ -688,6 +688,7 @@ jobs:
             composer-session-retirement-logcat.txt
             thread-composer-suggestion-interaction-*
             multiline-text-field-value-instrumentation.txt
+            composer-text-selection-instrumentation.txt
             attachment-private-file-provider-instrumentation.txt
             attachment-private-file-provider-logcat.txt
             attachment-atomic-sink-instrumentation.txt
