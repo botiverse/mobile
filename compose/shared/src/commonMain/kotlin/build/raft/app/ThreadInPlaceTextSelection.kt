@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -54,28 +55,98 @@ import kotlinx.coroutines.awaitCancellation
  * context menu ([LocalTextContextMenuToolbarProvider], on by default there) and the legacy
  * [LocalTextToolbar] that skiko/iOS still uses.
  */
+/** What the host needs from a message's selection; [ThreadInPlaceSelectionController] in production. */
+internal interface ThreadInPlaceSelectionTarget {
+    val messageId: String
+    val hasSelection: Boolean
+
+    fun clear()
+}
+
 internal class ThreadInPlaceTextSelectionHost(
     val enabled: Boolean,
     val copyText: (String) -> Unit,
 ) {
-    private var active: ThreadInPlaceSelectionController? = null
+    private var active: ThreadInPlaceSelectionTarget? = null
 
-    internal fun activate(controller: ThreadInPlaceSelectionController) {
+    internal fun activate(target: ThreadInPlaceSelectionTarget) {
         val previous = active
-        if (previous != null && previous !== controller) previous.clear()
-        active = controller
+        if (previous != null && previous !== target) previous.clear()
+        active = target
     }
 
-    internal fun release(controller: ThreadInPlaceSelectionController) {
-        if (active === controller) active = null
+    internal fun release(target: ThreadInPlaceSelectionTarget) {
+        if (active === target) active = null
     }
 
-    /** A pointer went down on a message row; clear a selection the press is not inside. */
-    internal fun onRowPointerDown(messageId: String, insideBody: Boolean) {
-        val current = active ?: return
-        if (current.messageId == messageId && insideBody) return
-        if (current.hasSelection) current.clear()
+    /**
+     * A pointer went down on a message row. Returns true when a selection was showing anywhere:
+     * that gesture is a dismissal and its tap must not also run the row action (open thread).
+     * A press inside the selected body is left to Compose (handles, adjusting the selection).
+     */
+    internal fun onRowPointerDown(messageId: String, insideBody: Boolean): Boolean {
+        val current = active ?: return false
+        if (!current.hasSelection) return false
+        if (current.messageId == messageId && insideBody) return true
+        current.clear()
+        return true
     }
+}
+
+internal enum class ThreadInPlaceSelectionTapDecision {
+    RunRowAction,
+    DismissSelectionOnly
+}
+
+/** The row tap of a gesture that started while a selection was showing only dismisses it. */
+internal fun threadInPlaceSelectionTapDecision(selectionShowingAtDown: Boolean): ThreadInPlaceSelectionTapDecision =
+    if (selectionShowingAtDown) {
+        ThreadInPlaceSelectionTapDecision.DismissSelectionOnly
+    } else {
+        ThreadInPlaceSelectionTapDecision.RunRowAction
+    }
+
+internal enum class ThreadMessageLongPressRoute {
+    MessageMenu,
+    InPlaceSelection
+}
+
+/** Toggle off (or a press off the body) keeps today's long-press → message menu. */
+internal fun threadMessageLongPressRoute(
+    inPlaceSelectionEnabled: Boolean,
+    pressOnSelectableBody: Boolean,
+): ThreadMessageLongPressRoute =
+    if (inPlaceSelectionEnabled && pressOnSelectableBody) {
+        ThreadMessageLongPressRoute.InPlaceSelection
+    } else {
+        ThreadMessageLongPressRoute.MessageMenu
+    }
+
+internal enum class ThreadInPlaceSelectionBackOwner {
+    None,
+    MessageMenu,
+    Selection
+}
+
+/** Back priority: an open message menu/popover first, then the in-place selection, then the page. */
+internal fun threadInPlaceSelectionBackOwner(
+    hasSelection: Boolean,
+    messageMenuOpen: Boolean,
+): ThreadInPlaceSelectionBackOwner =
+    when {
+        messageMenuOpen -> ThreadInPlaceSelectionBackOwner.MessageMenu
+        hasSelection -> ThreadInPlaceSelectionBackOwner.Selection
+        else -> ThreadInPlaceSelectionBackOwner.None
+    }
+
+/**
+ * Bar anchor for this frame: the selection rect while it is still visible inside the (clipped)
+ * body bounds, else null so the bar hides instead of floating over the composer or top bar.
+ */
+internal fun threadInPlaceSelectionVisibleAnchor(selectionInWindow: Rect?, visibleBodyInWindow: Rect?): Rect? {
+    if (selectionInWindow == null || visibleBodyInWindow == null) return null
+    if (visibleBodyInWindow.width <= 0f || visibleBodyInWindow.height <= 0f) return null
+    return selectionInWindow.takeIf { it.overlaps(visibleBodyInWindow) }
 }
 
 internal val LocalThreadInPlaceTextSelectionHost =
@@ -131,25 +202,57 @@ internal val ThreadInPlaceSelectionBarActions =
 
 @Stable
 internal class ThreadInPlaceSelectionController(
-    val messageId: String,
+    override val messageId: String,
     private val host: ThreadInPlaceTextSelectionHost,
-) {
+) : ThreadInPlaceSelectionTarget {
     val selectionState = SelectionState()
-    var menuRectInWindow by mutableStateOf<Rect?>(null)
-        private set
+
+    // The toolbar request, kept relative to the body so the bar follows scroll, new messages and
+    // keyboard insets: the legacy path's rect in body-local space, or the live context-menu data.
+    private var menuRectInBody by mutableStateOf<Rect?>(null)
+    private var menuDataProvider by mutableStateOf<TextContextMenuDataProvider?>(null)
+
+    // Bumped from onGloballyPositioned only while a menu is requested, so idle rows never
+    // recompose on scroll.
+    private var bodyLayoutTick by mutableStateOf(0)
     internal var bodyCoordinates: LayoutCoordinates? = null
+        private set
     internal var rowCoordinates: LayoutCoordinates? = null
 
-    val hasSelection: Boolean
+    /** Set at pointer DOWN: this gesture started while a selection was showing. */
+    internal var dismissalGestureInFlight = false
+
+    val menuRequested: Boolean
+        get() = menuRectInBody != null || menuDataProvider != null
+
+    override val hasSelection: Boolean
         get() = selectionState.selectedTexts.any { it.isNotEmpty() }
+
+    internal fun onBodyPositioned(coordinates: LayoutCoordinates) {
+        bodyCoordinates = coordinates
+        if (menuRequested) bodyLayoutTick++
+    }
+
+    /** Window-space bar anchor for the current frame (snapshot reads keep it live), or null to hide. */
+    fun currentMenuAnchorInWindow(): Rect? {
+        @Suppress("UNUSED_VARIABLE")
+        val tick = bodyLayoutTick
+        val body = bodyCoordinates?.takeIf { it.isAttached } ?: return null
+        val local =
+            menuDataProvider?.contentBounds(body)
+                ?: menuRectInBody
+                ?: return null
+        val selection = Rect(body.localToWindow(local.topLeft), local.size)
+        return threadInPlaceSelectionVisibleAnchor(selection, body.boundsInWindow())
+    }
 
     fun selectedTexts(): List<String> = selectionState.selectedTexts.map { it.text }
 
     fun selectableTexts(): List<String> = selectionState.getSelectableTexts().map { it.text }
 
-    fun clear() {
+    override fun clear() {
         selectionState.clear()
-        menuRectInWindow = null
+        hideMenu()
     }
 
     fun selectAll() {
@@ -167,28 +270,27 @@ internal class ThreadInPlaceSelectionController(
     fun rowLocalOffsetOf(windowOffset: Offset): Offset? =
         rowCoordinates?.takeIf { it.isAttached }?.windowToLocal(windowOffset)
 
+    /** Legacy TextToolbar path: [rootRect] is in root coordinates; store it body-relative. */
     internal fun showMenuAtRootRect(rootRect: Rect) {
-        val body = bodyCoordinates?.takeIf { it.isAttached }
-        val root = body?.findRootCoordinates()
-        menuRectInWindow =
-            if (root != null) {
-                Rect(root.localToWindow(rootRect.topLeft), rootRect.size)
-            } else {
-                rootRect
-            }
+        val body = bodyCoordinates?.takeIf { it.isAttached } ?: return
+        val topLeft = body.localPositionOf(body.findRootCoordinates(), rootRect.topLeft)
+        menuDataProvider = null
+        menuRectInBody = Rect(topLeft, rootRect.size)
         host.activate(this)
     }
 
+    /** New context-menu path (Android default): keep the live provider and re-query each frame. */
     internal fun showMenuFromProvider(dataProvider: TextContextMenuDataProvider): Boolean {
-        val body = bodyCoordinates?.takeIf { it.isAttached } ?: return false
-        val local = dataProvider.contentBounds(body)
-        menuRectInWindow = Rect(body.localToWindow(local.topLeft), local.size)
+        if (bodyCoordinates?.isAttached != true) return false
+        menuRectInBody = null
+        menuDataProvider = dataProvider
         host.activate(this)
         return true
     }
 
     internal fun hideMenu() {
-        menuRectInWindow = null
+        menuRectInBody = null
+        menuDataProvider = null
     }
 
     internal fun dispose() {
@@ -251,6 +353,7 @@ internal fun rememberThreadInPlaceSelectionController(
 internal fun ThreadInPlaceSelectableBody(
     controller: ThreadInPlaceSelectionController?,
     fullMessageText: String?,
+    messageMenuOpen: Boolean,
     diagnosticsLogger: (String) -> Unit,
     onShowMessageMenu: (rowLocalOffset: Offset?) -> Unit,
     content: @Composable () -> Unit,
@@ -268,15 +371,26 @@ internal fun ThreadInPlaceSelectableBody(
     ) {
         SelectionContainer(
             controller.selectionState,
-            Modifier.onGloballyPositioned { controller.bodyCoordinates = it },
+            Modifier.onGloballyPositioned(controller::onBodyPositioned),
         ) {
             content()
         }
     }
-    val menuRect = controller.menuRectInWindow
-    if (menuRect != null && controller.hasSelection) {
-        ThreadInPlaceSelectionBar(
-            anchorInWindow = menuRect,
+    val backOwner =
+        threadInPlaceSelectionBackOwner(
+            hasSelection = controller.hasSelection,
+            messageMenuOpen = messageMenuOpen
+        )
+    RaftBackHandler(
+        enabled = backOwner == ThreadInPlaceSelectionBackOwner.Selection,
+        label = "thread_in_place_selection"
+    ) {
+        diagnosticsLogger("thread_in_place_selection_back_clear messageId=${controller.messageId}")
+        controller.clear()
+    }
+    if (controller.menuRequested && controller.hasSelection) {
+        ThreadInPlaceSelectionBarHost(
+            controller = controller,
             onAction = { action ->
                 when (action) {
                     ThreadInPlaceSelectionBarAction.Copy -> {
@@ -297,7 +411,8 @@ internal fun ThreadInPlaceSelectableBody(
                     }
                     ThreadInPlaceSelectionBarAction.More -> {
                         diagnosticsLogger("thread_in_place_selection_more messageId=${controller.messageId}")
-                        val rowLocal = controller.rowLocalOffsetOf(menuRect.bottomCenter)
+                        val rowLocal =
+                            controller.currentMenuAnchorInWindow()?.let { controller.rowLocalOffsetOf(it.bottomCenter) }
                         controller.clear()
                         onShowMessageMenu(rowLocal)
                     }
@@ -305,6 +420,16 @@ internal fun ThreadInPlaceSelectableBody(
             }
         )
     }
+}
+
+/** Separate scope: only the bar recomposes as the body moves; hidden while the selection is off-screen. */
+@Composable
+private fun ThreadInPlaceSelectionBarHost(
+    controller: ThreadInPlaceSelectionController,
+    onAction: (ThreadInPlaceSelectionBarAction) -> Unit,
+) {
+    val anchor = controller.currentMenuAnchorInWindow() ?: return
+    ThreadInPlaceSelectionBar(anchorInWindow = anchor, onAction = onAction)
 }
 
 @Composable

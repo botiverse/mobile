@@ -24865,17 +24865,21 @@ private fun ThreadMessageCardContent(
         } else {
             null
         }
-    // A tap while this message has an in-place selection only dismisses the selection.
+    // A tap whose gesture started while a selection was showing (here or on another row) only
+    // dismisses it. The flag is captured at DOWN because the selection is already gone by onTap.
     val rowTapAction =
         if (inPlaceSelection == null || baseRowTapAction == null) {
             baseRowTapAction
         } else {
             {
-                if (inPlaceSelection.hasSelection) {
-                    diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
-                    inPlaceSelection.clear()
-                } else {
-                    baseRowTapAction()
+                val selectionShowingAtDown = inPlaceSelection.dismissalGestureInFlight
+                inPlaceSelection.dismissalGestureInFlight = false
+                when (threadInPlaceSelectionTapDecision(selectionShowingAtDown)) {
+                    ThreadInPlaceSelectionTapDecision.DismissSelectionOnly -> {
+                        diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
+                        inPlaceSelection.clear()
+                    }
+                    ThreadInPlaceSelectionTapDecision.RunRowAction -> baseRowTapAction()
                 }
             }
         }
@@ -24917,10 +24921,11 @@ private fun ThreadMessageCardContent(
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
                                     { offset ->
-                                        inPlaceSelectionHost?.onRowPointerDown(
-                                            messageId = message.id,
-                                            insideBody = selection.bodyContainsRowOffset(offset)
-                                        )
+                                        selection.dismissalGestureInFlight =
+                                            inPlaceSelectionHost?.onRowPointerDown(
+                                                messageId = message.id,
+                                                insideBody = selection.bodyContainsRowOffset(offset)
+                                            ) == true
                                     }
                                 }
                         )
@@ -25166,6 +25171,7 @@ private fun ThreadMessageCardContent(
                                         ) {
                                             ThreadInPlaceSelectableBody(
                                                 controller = inPlaceSelection,
+                                                messageMenuOpen = popupOpen,
                                                 fullMessageText =
                                                     if (bodyForRender == message.body) {
                                                         threadMessageSelectionSourceText(message)
@@ -27175,7 +27181,12 @@ internal fun Modifier.threadMessageLongPressActions(
                                 )
                                 return@detectTapGestures
                             }
-                    if (callbacks.deferLongPressAt?.invoke(localOffset) == true) {
+                    val longPressRoute =
+                        threadMessageLongPressRoute(
+                            inPlaceSelectionEnabled = callbacks.deferLongPressAt != null,
+                            pressOnSelectableBody = callbacks.deferLongPressAt?.invoke(localOffset) == true
+                        )
+                    if (longPressRoute == ThreadMessageLongPressRoute.InPlaceSelection) {
                         callbacks.diagnosticsLogger(
                             "thread_message_long_press_deferred_to_selection messageId=$messageId"
                         )
