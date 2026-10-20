@@ -207,7 +207,7 @@ kotlin {
         val androidUnitTest by getting {
             dependencies {
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
-                implementation("org.robolectric:robolectric:4.14.1")
+                implementation(libs.robolectric)
                 // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
                 implementation(libs.androidx.recyclerview)
                 implementation(libs.androidx.core.ktx)

@@ -857,8 +857,8 @@ dependencies {
     implementation(libs.firebase.installations)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
-    // Same version as :shared's androidUnitTest; builds real notifications in JVM unit tests.
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    // Builds real notifications in JVM unit tests.
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
