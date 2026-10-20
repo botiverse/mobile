@@ -661,6 +661,72 @@ class PushRegistrationTest {
     }
 
     @Test
+    fun aLoginBeforeTheAuthRuntimeIsReadyStillForcesTheNextUpsert() = runBlocking {
+        var authReady = true
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            SlockPushRegistrationCoordinator(
+                store = InMemorySlockKeyValueStore(),
+                spec = SlockPushProviderSpec.Fcm,
+                currentSession = { storedSession("user-1") },
+                authRuntimeReady = { authReady },
+                apiProvider = { api },
+                scope = CoroutineScope(SupervisorJob()),
+                remoteNotificationsController = RecordingRemoteNotificationsController(),
+                clockMillis = { 0L }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertEquals(1, api.calls.size)
+
+        // The Authenticated event arrives while the auth runtime is not ready: nothing flushes yet...
+        authReady = false
+        assertFalse(coordinator.handleSessionSaved(forceUpsert = true))
+        assertEquals(1, api.calls.size)
+
+        // ...but the force survives the early return and the next plain trigger re-upserts once.
+        authReady = true
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size, "the forced upsert is not lost until the 24h expiry")
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size)
+    }
+
+    @Test
+    fun aSameBindingRefreshKeepsTheStoredDeliveryStatus() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+        val stored = coordinator.storedDeliveryStatus()
+        val posts = { api.calls.count { it.startsWith("POST ") } }
+        assertEquals(1, posts())
+        // Later status requests fail, so only the coordinator itself could drop the stored answer.
+        api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
+
+        // New session family: same token, user and environment, re-upserted.
+        assertTrue(coordinator.handleSessionSaved(forceUpsert = true))
+        assertEquals(2, posts())
+        assertEquals(stored, coordinator.storedDeliveryStatus(), "FCM still delivers; the answer stays")
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now), "no local double alert")
+
+        // Confirmation expiry: same binding, re-upserted after 24h.
+        clock.now += PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(3, posts())
+        assertEquals(stored, coordinator.storedDeliveryStatus())
+
+        // A new token is a different registration: its answer is cleared.
+        assertTrue(coordinator.registerFcm(token = "dY0-BcD_eFgHiJkLmNoPqR"))
+        assertEquals(4, posts())
+        assertEquals(null, coordinator.storedDeliveryStatus())
+    }
+
+    @Test
     fun anEnvironmentChangeRebindsTheRegistration() = runBlocking {
         val clock = TestClock()
         var environment = "https://api.example/"

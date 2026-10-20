@@ -419,7 +419,6 @@ internal class SlockPushRegistrationCoordinator(
     }
 
     override fun onSessionAuthenticated() {
-        if (unbindInProgress) return
         scope.launch {
             handleSessionSaved(forceUpsert = true)
         }
@@ -432,6 +431,11 @@ internal class SlockPushRegistrationCoordinator(
     }
 
     internal suspend fun handleSessionSaved(forceUpsert: Boolean = false): Boolean {
+        if (forceUpsert) {
+            // Recorded before any early return (logout in progress, auth runtime not ready, no session yet),
+            // so the new session family is re-upserted by the next flush instead of after the 24h expiry.
+            mutex.withLock { forceNextUpsert = true }
+        }
         if (unbindInProgress) return false
         if (providerUnavailableReason != null) return false
         if (!authRuntimeReady()) {
@@ -445,7 +449,6 @@ internal class SlockPushRegistrationCoordinator(
         }
         val registered = mutex.withLock {
             registrationSuspended = false
-            if (forceUpsert) forceNextUpsert = true
             setRemoteNotificationsEnabledLocked(true, reason = "authenticated_session")
             flushPendingLocked(session = session, reason = "session_saved")
         }
@@ -731,8 +734,13 @@ internal class SlockPushRegistrationCoordinator(
                 infoLogger("registration_deferred reason=shared_runtime_unavailable trigger=$reason")
                 return false
             }
-            // New token, topic or user: the stored answer described the previous registration.
-            clearDeliveryStatus(reason = "registration_changed")
+            if (!sameBinding) {
+                // New token, topic, user or environment: the stored answer described the previous
+                // registration. A same-binding refresh (confirmation expiry, new session family) keeps it:
+                // FCM keeps delivering meanwhile, and dropping the answer would make the realtime path
+                // post the same notification locally as well.
+                clearDeliveryStatus(reason = "registration_changed")
+            }
             val response = api.upsert(pendingPayload)
             if (!response.isSuccessful) {
                 warningLogger("registration_result result=failure code=${response.code} trigger=$reason")
