@@ -99,6 +99,8 @@ internal data class ActivityConversationListContext(
     val mutedChannelIds: Set<String> = emptySet(),
     /** Home DM rows keyed by their DM channel id; web `dmChannels`. */
     val dmPeersByChannelId: Map<String, ActivityConversationDmPeer> = emptyMap(),
+    /** The signed-in member; their own last message reads "You: ..." instead of their name. */
+    val currentMemberId: String? = null,
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -140,6 +142,7 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
                         activityMuted = dm.activityMuted,
                     )
             },
+        currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
     )
 }
 
@@ -259,6 +262,9 @@ internal sealed interface ActivityConversationSender {
     /** A system row: the localized "System" label, never the raw wire name. */
     data object System : ActivityConversationSender
 
+    /** The signed-in member: the localized "You" instead of their own name, with their face as [Named]. */
+    data class Self(val avatar: ActivitySenderAvatarIdentity?) : ActivityConversationSender
+
     data class Named(
         val name: String,
         /** The 19dp face before the name; null for DM rows (they already lead with the peer). */
@@ -328,20 +334,29 @@ internal fun InboxItem.activityConversationRowModel(
         }
     val systemSender = hasActivitySystemSender()
     val senderName = senderDisplayName(senderProfiles)?.takeIf { it.isNotBlank() }
-    val senderId = if (kind == InboxItemKind.Thread) latestActivitySenderId else lastMessageSenderId
+    // The same precedence as senderDisplayName, so the id belongs to the name shown.
+    val senderId =
+        if (kind == InboxItemKind.Thread) {
+            latestActivitySenderId ?: lastMessageSenderId
+        } else {
+            lastMessageSenderId ?: latestActivitySenderId
+        }
+    val self = context.currentMemberId != null && senderId == context.currentMemberId
     val sender =
         when {
             systemSender -> ActivityConversationSender.System
             // web: a DM whose last message came from the peer shows the preview alone.
             dmPeer != null && dmPeer.peerId != null && senderId == dmPeer.peerId -> null
-            senderName == null -> null
+            !self && senderName == null -> null
             else -> {
                 val identity = activitySenderAvatarIdentity(senderProfiles)
                 val faced = identity.senderKind == MemberKind.Agent || identity.senderKind == MemberKind.Human
-                ActivityConversationSender.Named(
-                    name = senderName,
-                    avatar = identity.takeIf { faced && leadingKind != ActivityConversationLeadingKind.DirectMessage },
-                )
+                val avatar = identity.takeIf { faced && leadingKind != ActivityConversationLeadingKind.DirectMessage }
+                if (self) {
+                    ActivityConversationSender.Self(avatar)
+                } else {
+                    ActivityConversationSender.Named(name = senderName.orEmpty(), avatar = avatar)
+                }
             }
         }
     val preview =
@@ -443,6 +458,7 @@ internal fun ActivityConversationListRow(
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     val systemLabel = stringResource(MR.strings.activity_list_system_sender)
+    val selfLabel = stringResource(MR.strings.activity_list_self_sender)
     val openLabel = stringResource(MR.strings.common_open)
     val threadChannelText = model.threadChannelLabel?.let { stringResource(MR.strings.activity_list_thread_channel, it) }
     val fallback =
@@ -517,7 +533,12 @@ internal fun ActivityConversationListRow(
                     // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
                     // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
                     // starving the preview to zero width. The sender face rides inline as a placeholder.
-                    val senderAvatar = (model.sender as? ActivityConversationSender.Named)?.avatar
+                    val senderAvatar =
+                        when (val sender = model.sender) {
+                            is ActivityConversationSender.Named -> sender.avatar
+                            is ActivityConversationSender.Self -> sender.avatar
+                            else -> null
+                        }
                     val density = LocalDensity.current
                     val inlineContent =
                         remember(senderAvatar, density) {
@@ -548,6 +569,7 @@ internal fun ActivityConversationListRow(
                                 sender =
                                     when (val sender = model.sender) {
                                         ActivityConversationSender.System -> systemLabel
+                                        is ActivityConversationSender.Self -> selfLabel
                                         is ActivityConversationSender.Named -> sender.name
                                         null -> null
                                     },
@@ -557,7 +579,7 @@ internal fun ActivityConversationListRow(
                             ),
                         style = typography.callout,
                         color = bodyColor,
-                        maxLines = 1,
+                        maxLines = ActivityConversationPreviewMaxLines,
                         overflow = TextOverflow.Ellipsis,
                         inlineContent = inlineContent,
                     )
@@ -582,12 +604,15 @@ internal fun ActivityConversationListRow(
     }
 }
 
+/** The body wraps to a second line before it ellipsizes; a one-line body keeps the row height. */
+internal const val ActivityConversationPreviewMaxLines = 2
+
 internal const val ActivityConversationSenderAvatarInlineId = "activity-conversation-sender-avatar"
 
 /**
- * The one-line body: "#channel · " (thread rows), the sender's face (inline placeholder
- * [ActivityConversationSenderAvatarInlineId]), "Sender: " in semibold `foreground` (raft-ui
- * `InboxItemSender`), then the preview. One string, so the whole line ellipsizes together.
+ * The body, up to [ActivityConversationPreviewMaxLines] lines: "#channel · " (thread rows), the sender's
+ * face (inline placeholder [ActivityConversationSenderAvatarInlineId]), "Sender: " in semibold
+ * `foreground` (raft-ui `InboxItemSender`), then the preview. One string, so it wraps and ellipsizes together.
  */
 internal fun activityConversationBodyText(
     sender: String?,
