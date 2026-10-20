@@ -798,6 +798,7 @@
     <string name="activity_filter_all">All</string>
     <string name="activity_filter_unread">Unread</string>
     <string name="activity_filter_mentions">Mentions</string>
+    <string name="activity_filter_notifications">Notifications</string>
     <string name="activity_updates_one">↑ %1$d new update</string>
     <string name="activity_updates_many">↑ %1$d new updates</string>
     <string name="activity_replies_one">%1$d reply</string>

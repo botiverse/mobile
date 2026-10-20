@@ -147,6 +147,8 @@ internal fun SharedHomeActivityScreen(
     // selection identity (threadId) is the source of truth for the row
     // highlight; a stale checkpoint key must not resurface.
     externalSelectedThreadId: String? = null,
+    // Activity hosted as an app-shell bottom tab: main-tab header and the 通知 segment.
+    tabChrome: RaftActivityTabChrome? = null,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -432,6 +434,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
         externalSelectedThreadId = externalSelectedThreadId,
+        tabChrome = tabChrome,
         modifier = modifier
     )
 }
@@ -612,7 +615,8 @@ internal fun SharedHomeActivityScreen(
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
-    externalSelectedThreadId: String? = null
+    externalSelectedThreadId: String? = null,
+    tabChrome: RaftActivityTabChrome? = null
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -630,6 +634,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = presentationStore,
         foregroundEpoch = 0L,
         externalSelectedThreadId = externalSelectedThreadId,
+        tabChrome = tabChrome,
         modifier = modifier
     )
 }
@@ -718,7 +723,8 @@ private fun SharedActivityPanelContent(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
-    externalSelectedThreadId: String? = null
+    externalSelectedThreadId: String? = null,
+    tabChrome: RaftActivityTabChrome? = null
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     // task #232 (#2224 review blocker 1): the panel owns per-page scroll
@@ -745,6 +751,7 @@ private fun SharedActivityPanelContent(
             totalCount = state.totalCount,
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
+            mainTab = tabChrome != null,
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
             onTitleClick = {
@@ -764,10 +771,24 @@ private fun SharedActivityPanelContent(
         // until the settle re-targets the store. keepItemAlive keeps hidden
         // pages composed, so the page body gates its shared-state effects on
         // the pager's `active` flag.
+        // App-shell tab: the 通知 segment is one more page after the store's filter pages.
+        val notificationsPage = filters.size
         TabPager(
-            selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
-            onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
-            pageCount = filters.size,
+            selectedIndex =
+                if (tabChrome?.notificationsSelected == true) {
+                    notificationsPage
+                } else {
+                    filters.indexOf(state.selectedFilter).coerceAtLeast(0)
+                },
+            onSelectedIndexChange = { index ->
+                if (index == notificationsPage) {
+                    tabChrome?.onNotificationsSelectedChange(true)
+                } else {
+                    tabChrome?.onNotificationsSelectedChange(false)
+                    onIntent(SharedActivityIntent.SetFilter(filters[index]))
+                }
+            },
+            pageCount = filters.size + if (tabChrome != null) 1 else 0,
             gesturePolicy = TabPagerGesturePolicy(
                 startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
             ),
@@ -776,12 +797,20 @@ private fun SharedActivityPanelContent(
                 SharedActivityFilterBar(
                     selectedFilter = state.selectedFilter,
                     totalUnreadCount = state.totalUnreadCount,
-                    onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
-                    onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
+                    onFilterSelected = {
+                        tabChrome?.onNotificationsSelectedChange(false)
+                        onIntent(SharedActivityIntent.SetFilter(it))
+                    },
+                    onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) },
+                    tabChrome = tabChrome
                 )
             },
             modifier = Modifier.weight(1f).fillMaxWidth()
         ) { page, active ->
+            if (tabChrome != null && page == notificationsPage) {
+                tabChrome.notificationsContent(active)
+                return@TabPager
+            }
             val pageFilter = filters[page]
             val pageState = projectActivityStateForFilterPage(state, pageFilter)
             if (pageState.snapshot != null) {
@@ -938,16 +967,28 @@ private fun SharedActivityHeader(
     onClose: (() -> Unit)?,
     topSafeAreaPadding: Dp,
     refreshing: Boolean,
-    onTitleClick: (() -> Unit)? = null
+    onTitleClick: (() -> Unit)? = null,
+    mainTab: Boolean = false
 ) {
+    if (mainTab) {
+        // App-shell tab head (like Tasks / Members): the frame-layer header with the Activity
+        // sticker, the title and the stats line; a root tab has no back arrow.
+        RaftTopPageHeader(
+            title = stringResource(MR.strings.tab_activity),
+            subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
+            iconName = RaftMainTabHeaderSurface.Activity.iconName,
+            topSafeAreaOverride = topSafeAreaPadding,
+            contentStartPadding = RaftMainTabHeaderStartPadding,
+            titleStyle = RaftMainTabHeaderTitleStyle,
+            refreshing = refreshing,
+            onTitleClick = onTitleClick,
+            showBodyTopBanner = false,
+        )
+        return
+    }
     RaftTopPageHeader(
         title = stringResource(MR.strings.home_nav_activity),
-        subtitle =
-            if (totalUnreadCount > 0) {
-                stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
-            } else {
-                stringResource(MR.strings.activity_header_active_count, totalCount)
-            },
+        subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
         backgroundColor = RaftColor.SurfaceWhite,
         topSafeAreaOverride = topSafeAreaPadding,
         refreshing = refreshing,
@@ -963,12 +1004,22 @@ private fun SharedActivityHeader(
 }
 
 @Composable
+private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): String =
+    if (totalUnreadCount > 0) {
+        stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
+    } else {
+        stringResource(MR.strings.activity_header_active_count, totalCount)
+    }
+
+@Composable
 private fun SharedActivityFilterBar(
     selectedFilter: InboxFilter,
     totalUnreadCount: Int,
     onFilterSelected: (InboxFilter) -> Unit,
-    onMarkAllRead: () -> Unit
+    onMarkAllRead: () -> Unit,
+    tabChrome: RaftActivityTabChrome? = null
 ) {
+    val notificationsSelected = tabChrome?.notificationsSelected == true
     Column(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
         Row(
             modifier =
@@ -979,18 +1030,32 @@ private fun SharedActivityFilterBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val notificationsLabel = stringResource(MR.strings.activity_filter_notifications)
             SegmentedControl(
-                selectedValue = selectedFilter.wireValue,
+                selectedValue = if (notificationsSelected) RaftActivityNotificationsSegment else selectedFilter.wireValue,
                 options =
                     InboxFilter.entries.map { filter ->
                         SegmentedControlOption(value = filter.wireValue, label = filter.localizedLabel())
-                    },
+                    } +
+                        listOfNotNull(
+                            tabChrome?.let { chrome ->
+                                SegmentedControlOption(
+                                    value = RaftActivityNotificationsSegment,
+                                    label = notificationsLabel,
+                                    count = chrome.notificationCount
+                                )
+                            }
+                        ),
                 onValueSelected = { value ->
-                    InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
+                    if (value == RaftActivityNotificationsSegment) {
+                        tabChrome?.onNotificationsSelectedChange(true)
+                    } else {
+                        InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
+                    }
                 },
                 modifier = Modifier.weight(1f)
             )
-            if (totalUnreadCount > 0) {
+            if (totalUnreadCount > 0 && !notificationsSelected) {
                 RaftBrutalActionButton(
                     label = stringResource(MR.strings.inbox_action_mark_all_read),
                     minHeight = 28.dp,
