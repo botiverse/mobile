@@ -77,7 +77,6 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
-import build.raft.app.raftInputFontFaceName
 import build.raft.app.MainActivity
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.RaftCmpRoot

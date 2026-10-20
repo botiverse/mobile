@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.compat.ui.RaftProvidePageActive
+import build.raft.app.RaftProvideTextRendering
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -186,7 +187,10 @@ fun RaftPagerHost(
     ) {
         // Back handlers of an inactive (kept-alive, hidden) page must not fire.
         RaftProvidePageActive(active) {
-            (pager as? ComposeContainer)?.composedContent?.invoke()
+            // Raft text rendering defaults (CSS line box, ...) for Text calls not built from a token.
+            RaftProvideTextRendering {
+                (pager as? ComposeContainer)?.composedContent?.invoke()
+            }
         }
     }
 }

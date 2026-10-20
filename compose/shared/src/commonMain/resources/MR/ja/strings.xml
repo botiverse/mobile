@@ -198,12 +198,6 @@
     <string name="settings_appearance_activity_sender_avatars_enabled">表示</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">非表示</string>
     <string name="settings_appearance_subtitle">メッセージのフォントサイズと表示密度</string>
-    <string name="settings_appearance_font">フォント</string>
-    <string name="settings_appearance_font_detail">アプリの文字に使う書体。Web クライアントの選択肢と同じです。</string>
-    <string name="settings_appearance_font_hanken">Hanken Grotesk</string>
-    <string name="settings_appearance_font_geist">Geist + Inter</string>
-    <string name="settings_appearance_font_space">Space Grotesk + Space Mono</string>
-    <string name="settings_appearance_font_system">システム</string>
     <string name="settings_notifications_title">通知</string>
     <string name="settings_notifications_subtitle">プッシュ通知の状態とワークスペースのミュート</string>
     <string name="settings_language_title">言語</string>

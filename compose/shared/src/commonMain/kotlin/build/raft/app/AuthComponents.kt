@@ -54,6 +54,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -88,12 +89,14 @@ internal enum class AuthActionButtonVariant {
     Large
 }
 
-private val AuthInputTextStyle =
-    RaftType.Input.copy(
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        color = RaftColor.TextBlack
-    ).withRaftFontWeight(FontWeight.Normal)
+private val AuthInputTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Input.copy(
+            fontSize = 16.sp,
+            lineHeight = 24.sp,
+            color = RaftColor.TextBlack
+        ).withRaftFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
 private val AuthTopBarHeight = 62.dp

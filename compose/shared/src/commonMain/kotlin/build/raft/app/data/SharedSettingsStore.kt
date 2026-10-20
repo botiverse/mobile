@@ -446,7 +446,6 @@ sealed interface SharedSettingsIntent {
         val result: SystemNotificationActionResult
     ) : SharedSettingsIntent
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
-    data class SetFontPreference(val fontKey: String) : SharedSettingsIntent
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetLinkOpenMode(val mode: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
@@ -595,7 +594,6 @@ class SharedSettingsDataSource(
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
-    private val fontPreferenceRepository: FontPreferenceRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
     private val apiEnvironmentStore: SharedApiEnvironmentStore? = null,
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
@@ -1113,22 +1111,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    /**
-     * Task #179: persist the chosen font face and publish it to the observable face state so the
-     * running UI repaints without a restart.
-     */
-    suspend fun setFontPreference(fontKey: String): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            fontPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_font_unavailable", retryable = false))
-        val font = FontPreference.fromStorageKey(fontKey)
-        repository.selectFontPreference(font)
-        // RaftDesignTokens already imports from this package, so reference the state by its
-        // fully-qualified name instead of adding another import edge.
-        build.raft.app.RaftFontFaceState.apply(font)
-        return loadMobilePreferences()
-    }
-
     suspend fun setMessageAlignment(alignmentKey: String): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1610,11 +1592,6 @@ class SharedSettingsDataSource(
     private suspend fun SettingsMobileSnapshot.withLocalMobilePreferences(): SettingsMobileSnapshot {
         val notificationPreference = notificationPreferenceRepository?.getNotificationPreference()
         val locale = localeRepository?.getLocale()
-        // Task #179: cold start. Publish the stored face to the observable state so the very
-        // first composition renders the chosen font, not the default and then a swap.
-        fontPreferenceRepository?.getFontPreference()?.current?.let { stored ->
-            build.raft.app.RaftFontFaceState.apply(stored)
-        }
         val chatLayout = chatLayoutPreferenceRepository?.getChatLayoutPreference()
         val linkOpenMode = linkOpenPreferenceRepository?.getLinkOpenMode()
         return copy(
@@ -2505,16 +2482,6 @@ class SharedSettingsStore(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_LANGUAGE, inProgress = true)
                     )
                 dataSource.setLocale(intent.localeTag).applyMobileActionResult(MOBILE_ACTION_LANGUAGE)
-            }
-            is SharedSettingsIntent.SetFontPreference -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_FONT_PREFERENCE, inProgress = true)
-                    )
-                // Task #179: local preference. Applying it to the observable face state is what
-                // repaints the app; the store write is what survives a cold start.
-                dataSource.setFontPreference(intent.fontKey)
-                    .applyMobileActionResult(MOBILE_ACTION_FONT_PREFERENCE)
             }
             is SharedSettingsIntent.SetMessageAlignment -> {
                 _state.value =
@@ -3827,7 +3794,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.UpdateAppearance,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
-            is SharedSettingsIntent.SetFontPreference,
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetLinkOpenMode,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
@@ -4074,7 +4040,6 @@ internal const val DEVELOPER_ACTION_HANDS_UPDATE_CHECK = "handsUpdateCheck"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
-internal const val MOBILE_ACTION_FONT_PREFERENCE = "fontPreference"
 internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"

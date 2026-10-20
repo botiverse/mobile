@@ -1,11 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.FontPreference
 import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.designtokens.RaftUiThemeColors
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -14,6 +10,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import build.raft.app.compat.ui.KuiklyFont
 import androidx.compose.ui.unit.TextUnit
+import build.raft.designsystem.theme.RaftFonts
+import build.raft.designsystem.theme.RaftTypography
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -194,150 +192,73 @@ internal object RaftShadow {
     val Sticker = 4.dp
 }
 
-// Kuikly serializes FontFamily as comma-joined font names WITHOUT weight info.
-// A single FontFamily with multiple weights would always pick the first entry.
-// We must use one FontFamily per weight and manually dispatch.
-// See KuiklyTextExtension.toKuiklyFontFamily() for the serialization constraint.
+// One FontFamily per weight, dispatched by hand: the native hosts resolve a face by its name
+// ("SpaceGrotesk-Bold"), so the weight lives in the font name.
 
 /**
- * Task #179: process-scoped, OBSERVABLE current font face.
- *
- * Every type token below resolves its family through this. There are ~1109 callsites of the
- * RaftType / RaftMonoFamily helpers, so the preference cannot be threaded per-call-site.
- * Instead the root reads [RaftFontFaceState.preference] during composition; changing it
- * repaints every text style that re-resolves a token.
- *
- * Deliberately a Compose state, not a bare getter: a plain field would change the value but
- * leave already-composed text on the old face.
+ * The Raft Design System fixes the faces (raft-ui fonts.css): Space Grotesk is what people say,
+ * Space Mono is what machines write. There is no user font setting; the Web has none either.
  */
-internal object RaftFontFaceState {
-    var preference: FontPreference by mutableStateOf(FontPreference.Default)
-        private set
+private fun raftFace(name: String, weight: FontWeight): FontFamily =
+    FontFamily(KuiklyFont(name, weight, FontStyle.Normal))
 
-    /**
-     * @return true when the face actually changed, so callers can decide to force a rebuild
-     * (the Settings screen uses this to repaint surfaces that cached their own TextStyle).
-     */
-    fun apply(next: FontPreference): Boolean {
-        if (next == preference) return false
-        preference = next
-        return true
-    }
-}
-
-/**
- * Regular sans face name of the active font preference (e.g. "HankenGrotesk-Regular"), or null
- * for [FontPreference.System]. Native hosts read this to style editors the Compose text style
- * does not reach, so they follow Settings > Appearance instead of a fixed face.
- */
-fun raftInputFontFaceName(): String? = raftSansRegularFaceName(RaftFontFaceState.preference)
-
-internal fun raftSansRegularFaceName(preference: FontPreference): String? =
-    preference.sansFamily?.let { base ->
-        base.split('_').joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } } + "-Regular"
-    }
-
-private val SpaceGroteskBold = FontFamily(KuiklyFont("SpaceGrotesk-Bold", FontWeight.Bold, FontStyle.Normal))
-private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("SpaceGrotesk-SemiBold", FontWeight.SemiBold, FontStyle.Normal))
-private val SpaceGroteskMedium = FontFamily(KuiklyFont("SpaceGrotesk-Medium", FontWeight.Medium, FontStyle.Normal))
-private val SpaceGroteskRegular = FontFamily(KuiklyFont("SpaceGrotesk-Regular", FontWeight.Normal, FontStyle.Normal))
+private val SpaceGroteskLight = raftFace("SpaceGrotesk-Light", FontWeight.Light)
+private val SpaceGroteskRegular = raftFace("SpaceGrotesk-Regular", FontWeight.Normal)
+private val SpaceGroteskMedium = raftFace("SpaceGrotesk-Medium", FontWeight.Medium)
+private val SpaceGroteskSemiBold = raftFace("SpaceGrotesk-SemiBold", FontWeight.SemiBold)
+private val SpaceGroteskBold = raftFace("SpaceGrotesk-Bold", FontWeight.Bold)
 private val SpaceGroteskFamilies = setOf(
-    SpaceGroteskBold,
-    SpaceGroteskSemiBold,
+    SpaceGroteskLight,
+    SpaceGroteskRegular,
     SpaceGroteskMedium,
-    SpaceGroteskRegular
+    SpaceGroteskSemiBold,
+    SpaceGroteskBold
 )
+// Space Mono ships only Regular (400) and Bold (700).
+private val SpaceMonoRegular = raftFace("SpaceMono-Regular", FontWeight.Normal)
+private val SpaceMonoBold = raftFace("SpaceMono-Bold", FontWeight.Bold)
 
-/**
- * Task #179: the "is this a family we encoded a weight into?" test used to be a fixed set of the
- * four Space Grotesk faces. With a selectable face the set has to follow the active preference,
- * otherwise a Hanken/Geist/Inter style would silently skip weight resolution and render at the
- * default weight.
- */
-private fun raftEncodedFamilies(): Set<FontFamily> {
-    val preference = RaftFontFaceState.preference
-    if (preference.sansFamily == null) return emptySet()
-    val resolved =
-        listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
-            .mapTo(mutableSetOf()) { fontFamilyFor("sans", preference, it) }
-    // The type tokens resolve through fontFamilyFor() for every option, Space Grotesk included, so
-    // that set must be recognised; the legacy Space constants stay recognised for older callers.
-    return if (preference == FontPreference.SpaceGrotesk) resolved + SpaceGroteskFamilies else resolved
-}
-
+/** Is this one of the per-weight Space Grotesk families the tokens encode a weight into? */
 private fun isRaftEncodedFamily(fontFamily: FontFamily?): Boolean =
-    fontFamily != null && fontFamily in raftEncodedFamilies()
+    fontFamily != null && fontFamily in SpaceGroteskFamilies
 
-// Task #179: one family set per selectable option. The names match the Android
-// `RaftLegacyHostActivity.resolveTypeface()` aliases and the OHOS/iOS registration names.
-// Families are cached because this runs on every text style construction; a fresh FontFamily
-// per call would allocate on a hot path for no behavioural gain.
-private val raftFamilyCache = mutableMapOf<Triple<String, FontPreference, String>, FontFamily>()
-
-private fun fontFamilyFor(role: String, preference: FontPreference, fontWeight: FontWeight): FontFamily {
-    val base = when (role) {
-        "sans" -> preference.sansFamily
-        "heading" -> preference.headingFamily
-        else -> preference.monoFamily
-    }
-    // null means "this role has no bundled family". The right fallback depends on the role:
-    // the mono role must land on the platform's MONOSPACE face. Returning FontFamily.Default here
-    // would hand back the platform sans face, so code blocks and timestamps would render
-    // proportionally even though the option promises the host's own type, mono included.
-    if (base == null) {
-        return if (role == "mono") FontFamily.Monospace else FontFamily.Default
-    }
-    val suffix = when {
-        // Mono ships only Regular/Bold per family. Asking for SpaceMono-Medium would miss in
-        // resolveTypeface() and fall back to the SANS face, i.e. render mono text in a
-        // proportional font. Collapse mono to the two weights that actually exist.
-        role == "mono" -> if (fontWeight >= FontWeight.Bold) "Bold" else "Regular"
-        fontWeight >= FontWeight.Bold -> "Bold"
-        fontWeight >= FontWeight.SemiBold -> "SemiBold"
-        fontWeight >= FontWeight.Medium -> "Medium"
-        fontWeight >= FontWeight.Light && fontWeight < FontWeight.Normal -> "Light"
-        else -> "Regular"
-    }
-    return raftFamilyCache.getOrPut(Triple(role, preference, suffix)) {
-        // KuiklyFont names use PascalWithDashes ("HankenGrotesk-SemiBold"); the storage key is
-        // snake_case ("hanken_grotesk"), so rebuild the display name from the parts.
-        val display = base.split('_').joinToString("") { part ->
-            part.replaceFirstChar { it.uppercaseChar() }
-        }
-        FontFamily(KuiklyFont("$display-$suffix", fontWeight, FontStyle.Normal))
+internal fun raftFontFamilyForWeight(fontWeight: FontWeight?): FontFamily {
+    val weight = fontWeight ?: FontWeight.Normal
+    return when {
+        weight >= FontWeight.Bold -> SpaceGroteskBold
+        weight >= FontWeight.SemiBold -> SpaceGroteskSemiBold
+        weight >= FontWeight.Medium -> SpaceGroteskMedium
+        weight >= FontWeight.Light && weight < FontWeight.Normal -> SpaceGroteskLight
+        else -> SpaceGroteskRegular
     }
 }
 
-internal fun raftFontFamilyForWeight(fontWeight: FontWeight?): FontFamily =
-    fontFamilyFor("sans", RaftFontFaceState.preference, fontWeight ?: FontWeight.Normal)
-
-private val raftMultiWeightFamilyCache = mutableMapOf<Pair<String, FontPreference>, FontFamily>()
-
 /**
- * One family holding every bundled weight of the active face for [role] ("sans" or "mono").
- * The per-weight families above encode the weight in the face name; the designsystem
- * module's type tokens pick a weight with `copy(fontWeight = …)` the way CSS does, which
- * needs every weight in one family. Space Mono / Geist Mono ship only Regular and Bold.
+ * One family holding every bundled weight of [role] ("sans" or "mono"). The per-weight families
+ * above encode the weight in the face name; the designsystem module's type tokens pick a weight
+ * with `copy(fontWeight = …)` the way CSS does, which needs every weight in one family. Space
+ * Mono ships only Regular and Bold.
  */
-internal fun raftMultiWeightFontFamily(role: String, preference: FontPreference = RaftFontFaceState.preference): FontFamily {
-    val base = if (role == "mono") preference.monoFamily else preference.sansFamily
-    if (base == null) return if (role == "mono") FontFamily.Monospace else FontFamily.Default
-    return raftMultiWeightFamilyCache.getOrPut(role to preference) {
-        val display = base.split('_').joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } }
-        val faces =
-            if (role == "mono") {
-                listOf(FontWeight.Normal to "Regular", FontWeight.Bold to "Bold")
-            } else {
-                listOf(
-                    FontWeight.Light to "Light",
-                    FontWeight.Normal to "Regular",
-                    FontWeight.Medium to "Medium",
-                    FontWeight.SemiBold to "SemiBold",
-                    FontWeight.Bold to "Bold"
-                )
-            }
-        FontFamily(faces.map { (weight, suffix) -> KuiklyFont("$display-$suffix", weight, FontStyle.Normal) })
-    }
+internal fun raftMultiWeightFontFamily(role: String): FontFamily =
+    if (role == "mono") RaftMonoMultiWeightFamily else RaftSansMultiWeightFamily
+
+private val RaftSansMultiWeightFamily: FontFamily by lazy {
+    FontFamily(
+        listOf(
+            FontWeight.Light to "Light",
+            FontWeight.Normal to "Regular",
+            FontWeight.Medium to "Medium",
+            FontWeight.SemiBold to "SemiBold",
+            FontWeight.Bold to "Bold"
+        ).map { (weight, suffix) -> KuiklyFont("SpaceGrotesk-$suffix", weight, FontStyle.Normal) }
+    )
+}
+
+private val RaftMonoMultiWeightFamily: FontFamily by lazy {
+    FontFamily(
+        KuiklyFont("SpaceMono-Regular", FontWeight.Normal, FontStyle.Normal),
+        KuiklyFont("SpaceMono-Bold", FontWeight.Bold, FontStyle.Normal)
+    )
 }
 
 private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
@@ -346,9 +267,8 @@ private fun FontFamily.encodedSpaceGroteskWeight(): FontWeight? =
         SpaceGroteskSemiBold -> FontWeight.SemiBold
         SpaceGroteskMedium -> FontWeight.Medium
         SpaceGroteskRegular -> FontWeight.Normal
-        else ->
-            listOf(FontWeight.Bold, FontWeight.SemiBold, FontWeight.Medium, FontWeight.Normal, FontWeight.Light)
-                .firstOrNull { weight -> fontFamilyFor("sans", RaftFontFaceState.preference, weight) == this }
+        SpaceGroteskLight -> FontWeight.Light
+        else -> null
     }
 
 private fun renderedSpaceGroteskWeight(fontFamily: FontFamily, requestedWeight: FontWeight): FontWeight =
@@ -358,16 +278,15 @@ private fun renderedSpaceGroteskWeight(fontFamily: FontFamily, requestedWeight: 
         FontWeight.Normal
     }
 
-// Mono resolves through the same per-weight name encoding: Kuikly drops weight info from the
-// serialized family name, so the weight has to live in the font name. Space Mono ships only
-// Regular (400) and Bold (700); the Light/Medium/SemiBold slots simply resolve to whichever
-// bundled mono weight the host has, and the platform resolver falls back when a name is absent.
+// Mono resolves through the same per-weight name encoding. Space Mono ships only Regular (400)
+// and Bold (700), so every lighter weight collapses to Regular (asking for a missing mono weight
+// would fall back to the SANS face).
 internal fun raftMonoFamilyForWeight(fontWeight: FontWeight?): FontFamily =
-    fontFamilyFor("mono", RaftFontFaceState.preference, fontWeight ?: FontWeight.Normal)
+    if ((fontWeight ?: FontWeight.Normal) >= FontWeight.Bold) SpaceMonoBold else SpaceMonoRegular
 
 // Convenience token for the common regular-weight mono callsites (task numbers,
 // timestamps, counts, handles, codes). Use raftMonoFamilyForWeight() when a
-// callsite needs bold mono. Task #179: read through the preference so mono follows the face choice.
+// callsite needs bold mono.
 internal val RaftMonoFamily: FontFamily
     get() = raftMonoFamilyForWeight(FontWeight.Normal)
 
@@ -382,33 +301,37 @@ private fun raftTextStyle(
     lineHeight: TextUnit,
     letterSpacing: TextUnit
 ): TextStyle {
-    val fontFamily = fontFamilyFor("sans", RaftFontFaceState.preference, fontWeight)
+    val fontFamily = raftFontFamilyForWeight(fontWeight)
     return TextStyle(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight),
         fontSize = fontSize,
         lineHeight = lineHeight,
         letterSpacing = letterSpacing
-    )
+    ).withRaftTextRendering()
 }
 
 internal fun TextStyle.withRaftFontWeight(fontWeight: FontWeight): TextStyle {
-    val fontFamily = fontFamilyFor("sans", RaftFontFaceState.preference, fontWeight)
+    val fontFamily = raftFontFamilyForWeight(fontWeight)
     return copy(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight)
-    )
+    ).withRaftTextRendering()
 }
 
+// A SpanStyle carries no paragraph attributes (line height style, text motion): spans inherit
+// them from the paragraph style of the text they sit in, which the RaftType tokens set.
 internal fun raftSpanStyleForWeight(fontWeight: FontWeight): SpanStyle {
-    val fontFamily = fontFamilyFor("sans", RaftFontFaceState.preference, fontWeight)
+    val fontFamily = raftFontFamilyForWeight(fontWeight)
     return SpanStyle(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight)
     )
 }
 
-internal fun TextStyle.withResolvedRaftFontFamily(): TextStyle {
+internal fun TextStyle.withResolvedRaftFontFamily(): TextStyle = resolveRaftFontFamily().withRaftTextRendering()
+
+private fun TextStyle.resolveRaftFontFamily(): TextStyle {
     val requestedWeight = fontWeight
     return when {
         fontFamily == null ->
@@ -428,43 +351,67 @@ internal fun TextStyle.withResolvedRaftFontFamily(): TextStyle {
 }
 
 /**
- * The one content text size (artin 2026-10-18, 1.14.1): message text, the composer, body copy and
- * sidebar conversation names all read from here so they stay the same size. 16sp was tried on
- * device and reverted to the shipped 14sp.
+ * The raft-design Typography scale (designsystem [RaftTypography], 1:1 with raft-ui styles.css
+ * `--text-*`), read here for its numbers only: size, line height, tracking and default weight.
+ * The family comes from the per-weight Space Grotesk faces above, so the families passed in are
+ * placeholders.
+ */
+private val RaftScale: RaftTypography =
+    RaftTypography.from(RaftFonts(sans = FontFamily.SansSerif, mono = FontFamily.Monospace))
+
+private fun raftTextStyle(token: TextStyle, fontWeight: FontWeight = token.fontWeight ?: FontWeight.Normal): TextStyle =
+    raftTextStyle(fontWeight, token.fontSize, token.lineHeight, token.letterSpacing)
+
+/**
+ * The one content text size: message text, the composer, body copy and sidebar conversation
+ * names all read from here so they stay the same size. Lead decision 2026-10-19: the type scale
+ * follows raft-design Typography, so content is `text-body` 16/24 (the 14sp body is retired).
  */
 internal object RaftTextSize {
-    val Content = 14.sp
-    val ContentLineHeight = 20.sp
-    /** Single-line list rows (sidebar names) keep the tighter line height buttons always had. */
-    val ListItemLineHeight = 18.sp
+    val Content: TextUnit get() = RaftScale.body.fontSize
+    val ContentLineHeight: TextUnit get() = RaftScale.body.lineHeight
 }
 
+/**
+ * The legacy role names, each pointing at a raft-design Typography token (weights per the
+ * Typography page's "Weights by use"). New code should prefer the designsystem's
+ * `RaftTheme.typography` directly.
+ */
 internal object RaftType {
-    // Task #179: these are GETTERS, not vals. A `val` is evaluated once at object initialisation
-    // and then keeps whatever face was active at first touch -- pressing a font option would write
-    // the preference and repaint nothing, because ~970 call sites read this object. A getter
-    // re-resolves against RaftFontFaceState.preference on every read, so a change reaches them all.
+    // GETTERS, not vals: the UI-text locale ([raftUiTextLocaleList]) follows the app language,
+    // which can change at runtime.
+
+    /** `text-title` 22/28 700, -0.01em. */
     val PageTitle: TextStyle
-        get() = raftTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
-    // raft-ui group/section labels are source case at `tracking-normal`; the 1.2sp
-    // tracking only ever served the retired ALL-CAPS brutal labels.
+        get() = raftTextStyle(RaftScale.title)
+    /**
+     * raft-ui sidebar group / section label: `text-footnote font-bold normal-case
+     * tracking-normal` (13/18 700), source case, no tracking.
+     */
     val SectionLabel: TextStyle
-        get() = raftTextStyle(FontWeight.SemiBold, 12.sp, 16.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.footnote, FontWeight.Bold)
+    /** `text-body` 16/24 400. */
     val Body: TextStyle
-        get() = raftTextStyle(FontWeight.Normal, RaftTextSize.Content, RaftTextSize.ContentLineHeight, 0.sp)
+        get() = raftTextStyle(RaftScale.body)
+    /** `text-caption` 12/16 500. */
     val Caption: TextStyle
-        get() = raftTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.caption)
+    /** `text-callout` 14/20 at 500, the menu-item weight: row titles, menu items, quiet actions. */
     val Button: TextStyle
-        get() = raftTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.callout, FontWeight.Medium)
+    /** `text-subhead` 15/20 700: buttons. */
     val ButtonBold: TextStyle
-        get() = raftTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.subhead, FontWeight.Bold)
+    /** `text-label` 11/13 600: tab bar labels. */
     val TabLabel: TextStyle
-        get() = raftTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
+        get() = raftTextStyle(RaftScale.label)
+    /** `--field-*` 16/24 400. Typed text is user content: Simplified Chinese Han forms, like the Web. */
     val Input: TextStyle
-        get() = raftTextStyle(FontWeight.Normal, RaftTextSize.Content, RaftTextSize.ContentLineHeight, 0.sp)
-    /** Sidebar conversation names: content size, button weights. */
+        get() = raftTextStyle(RaftScale.field).withRaftUserContentLocale()
+    /** Sidebar conversation names: `text-body` at 600 (raft-ui phone sidebar rows). */
     val ListItem: TextStyle
-        get() = raftTextStyle(FontWeight.Medium, RaftTextSize.Content, RaftTextSize.ListItemLineHeight, 0.sp)
+        get() = raftTextStyle(RaftScale.body, FontWeight.SemiBold)
+    /** Selected / loud-unread sidebar names: `text-body` at 700. */
     val ListItemBold: TextStyle
-        get() = raftTextStyle(FontWeight.Bold, RaftTextSize.Content, RaftTextSize.ListItemLineHeight, 0.sp)
+        get() = raftTextStyle(RaftScale.body, FontWeight.Bold)
 }

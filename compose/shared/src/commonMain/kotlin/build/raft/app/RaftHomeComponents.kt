@@ -138,6 +138,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.layout
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
@@ -178,7 +179,6 @@ private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
 private val SidebarActionIconSize = 14.dp
 private val SidebarActionIconBoxSize = 14.dp
-private val SidebarActionRowHeight = 32.dp
 private val HomeSmallShadowOffset = 2.dp
 private val SidebarRowHorizontalPadding = 8.dp
 private val SidebarActionLabelGap = 6.dp
@@ -188,6 +188,18 @@ private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
+
+/**
+ * Sidebar row height: 32dp at the default font scale, grown with the font scale so the
+ * text-body (16/24) name never clips. Fixed (not heightIn) so the sort sheet's row step matches.
+ */
+@Composable
+@ReadOnlyComposable
+private fun sidebarRowHeight(): Dp =
+    with(LocalDensity.current) { maxOf(ChannelRowHeight, RaftTextSize.ContentLineHeight.toDp() + SidebarRowTextInset) }
+
+// Vertical room around the name inside the 32dp row (32 - 24).
+private val SidebarRowTextInset = 8.dp
 private const val EdgeAutoScrollStepPx = 18f
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
@@ -278,11 +290,12 @@ internal fun homeChannelTitleTextStyle(
 ): TextStyle =
     // Channel names and DM / agent names in the sidebar read the same ListItem token so the rows
     // stay the same size (artin 2026-10-18: pinned DMs rendered larger than channels).
+    // Conversation names are user content (Simplified Chinese Han forms, like the Web).
     if (selected || (hasUnread && badgeTone == HomeSidebarBadgeTone.Loud)) {
         RaftType.ListItemBold
     } else {
         RaftType.ListItem
-    }
+    }.withRaftUserContentLocale()
 
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): RaftLucideIconName? =
     if (muted) RaftLucideIconName.BellOff else null
@@ -5209,8 +5222,10 @@ private fun HomeNotificationActionButton(text: String, color: Color, onClick: ()
     )
 }
 
-internal val HomeNotificationActionButtonTextStyle =
-    RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
+internal val HomeNotificationActionButtonTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Caption.withRaftFontWeight(FontWeight.Bold)
 
 private fun RaftHomeNotificationKind.notificationColor(): Color = when (this) {
     RaftHomeNotificationKind.Warning -> RaftColor.AccentOrange
@@ -6424,7 +6439,7 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(SidebarActionRowHeight)
+                    .height(sidebarRowHeight())
                     .background(rowBackground, RoundedCornerShape(RaftAppRadius.Control))
                     .border(RaftAppStroke.Control, borderColor, RoundedCornerShape(RaftAppRadius.Control))
                     .padding(horizontal = SidebarRowHorizontalPadding),
@@ -6695,7 +6710,7 @@ private fun ChannelRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(ChannelRowHeight)
+                    .height(sidebarRowHeight())
                     .background(rowBackground, RoundedCornerShape(RaftAppRadius.Control))
                     .border(RaftAppStroke.Control, borderColor, RoundedCornerShape(RaftAppRadius.Control))
                     .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
@@ -6813,7 +6828,7 @@ private fun HomeSidebarSkeletonRow(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(ChannelRowHeight)
+                .height(sidebarRowHeight())
                 .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -6841,7 +6856,8 @@ private fun RaftSidebarSortOverlay(
     var order by remember(items) { mutableStateOf(items.map { it.id }) }
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
-    val rowStepPx = with(density) { (ChannelRowHeight + 2.dp).toPx().coerceAtLeast(1f) }
+    val rowHeight = sidebarRowHeight()
+    val rowStepPx = with(density) { (rowHeight + 2.dp).toPx().coerceAtLeast(1f) }
     val edgeScrollZonePx = with(density) { RaftSortEdgeScrollZone.toPx() }
     val edgeScrollStepPx = with(density) { RaftSortEdgeScrollStep.toPx() }
     val listState = rememberLazyListState()
@@ -6994,7 +7010,7 @@ private fun RaftSidebarSortOverlay(
                     // floating overlay); every other row stays exactly in place, so
                     // there is no per-frame reflow to jitter under auto-scroll.
                     if (draggedId == itemId) {
-                        Spacer(Modifier.fillMaxWidth().height(ChannelRowHeight))
+                        Spacer(Modifier.fillMaxWidth().height(sidebarRowHeight()))
                     } else {
                         // 1-based position before the row icon: live from the settled
                         // preview during a drag (debounced, so no frantic jumping),
@@ -7240,7 +7256,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(ChannelRowHeight)
+                    .height(sidebarRowHeight())
                     .background(rowBackground, RoundedCornerShape(RaftAppRadius.Control))
                     .border(RaftAppStroke.Control, borderColor, RoundedCornerShape(RaftAppRadius.Control))
                     .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),

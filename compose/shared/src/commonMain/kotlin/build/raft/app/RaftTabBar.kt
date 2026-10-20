@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -164,10 +165,11 @@ internal fun raftSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
 internal fun raftFloatingDockBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
     RaftFloatingDockBottomTabBarHostHeight + bottomSafeArea
 
+// raft-ui SidebarGroupLabel (the Web settings sidebar's group headings): `text-footnote
+// font-bold normal-case tracking-normal`, i.e. RaftType.SectionLabel in source case.
 internal val RaftVerticalTabSectionTextStyle: TextStyle
     get() =
-        RaftType.TabLabel.copy(
-            letterSpacing = 1.sp,
+        RaftType.SectionLabel.copy(
             color = RaftColor.TextBlack.copy(alpha = 0.4f)
         )
 internal val RaftVerticalTabSectionBottomPadding = 4.dp
@@ -196,7 +198,7 @@ internal fun RaftVerticalTabBar(
                         )
                 ) {
                     Text(
-                        item.section.uppercase(),
+                        item.section,
                         style = RaftVerticalTabSectionTextStyle,
                         color = RaftVerticalTabSectionTextStyle.color
                     )
@@ -377,13 +379,16 @@ private fun RaftBottomTabItem(
             selected -> RaftColor.TextBlack
             else -> RaftColor.ForegroundHint
         }
+        // The label is sized to the bar's fixed 58dp geometry and, like a native tab bar,
+        // does not scale with the system font size (it would run out of the bar).
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         Text(
             text = item.label,
             style =
                 RaftType.TabLabel
                     .copy(
-                        fontSize = RaftBottomTabBarSpec.LabelFontSize,
-                        lineHeight = RaftBottomTabBarSpec.LabelLineHeight
+                        fontSize = RaftBottomTabBarSpec.LabelFontSize / fontScale,
+                        lineHeight = RaftBottomTabBarSpec.LabelLineHeight / fontScale
                     )
                     .withRaftFontWeight(raftBottomTabLabelWeight(selected))
                     .copy(color = labelColor),

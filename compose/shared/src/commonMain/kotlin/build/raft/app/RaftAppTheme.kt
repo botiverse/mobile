@@ -176,7 +176,7 @@ enum class RaftAppAppearance {
 
 /**
  * Process-scoped, OBSERVABLE current theme, the colour counterpart of
- * [RaftFontFaceState]. [RaftColor]'s themed tokens and [LocalRaftTheme] resolve
+ * the type tokens. [RaftColor]'s themed tokens and [LocalRaftTheme] resolve
  * through it, so flipping [appearance] (or the OS setting under
  * [RaftAppAppearance.System]) repaints everything composed from those tokens without
  * threading a theme through ~thousands of callsites.

@@ -247,9 +247,7 @@ internal fun RaftSearchHitText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val ranges = remember(text, query) { homeSearchHighlightRanges(text, query) }
-    // The hit span names the bold face of the Settings > Appearance face, so rebuild it on a
-    // face change.
-    val annotated = remember(text, ranges, RaftFontFaceState.preference) { raftSearchHitAnnotatedString(text, ranges) }
+    val annotated = remember(text, ranges) { raftSearchHitAnnotatedString(text, ranges) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val fill = RaftColor.Brand
     val edge = RaftColor.StickerInk

@@ -685,15 +685,9 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         RaftIosAvatarCacheHost.shared.install()
         RaftIosAppScopeMMKV.install()
-        // Task #521: publish the stored font face before the first composition (same as
-        // RaftApplication on Android). Without it the first frames use the default face and
-        // only switch when a settings snapshot loads, or never on a slow cold start.
-        _ = KeyValueStoreKt.raftRestoreStoredFontPreferenceOnColdStart()
-        RaftIosDiagnosticsRecord(
-            "info",
-            "font_preference",
-            KeyValueStoreKt.raftReadStoredFontPreferenceForDiagnostics()
-        )
+        // The font picker is gone (the design system fixes the faces); drop its stored choice
+        // (same as RaftApplication on Android).
+        _ = KeyValueStoreKt.raftClearLegacyFontPreference()
         RaftIosInstallThreadComposerTemporaryFileRetirement()
         let curlCaPath = raftCurlCaBundlePath()
         let curlBootstrap = RaftIosNetworkTransportBootstrapKt

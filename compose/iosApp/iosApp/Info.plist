@@ -58,23 +58,6 @@
             <string>space_grotesk_light.ttf</string>
             <string>space_mono_regular.ttf</string>
             <string>space_mono_bold.ttf</string>
-            <string>hanken_grotesk_light.ttf</string>
-            <string>hanken_grotesk_regular.ttf</string>
-            <string>hanken_grotesk_medium.ttf</string>
-            <string>hanken_grotesk_semibold.ttf</string>
-            <string>hanken_grotesk_bold.ttf</string>
-            <string>geist_light.ttf</string>
-            <string>geist_regular.ttf</string>
-            <string>geist_medium.ttf</string>
-            <string>geist_semibold.ttf</string>
-            <string>geist_bold.ttf</string>
-            <string>inter_light.ttf</string>
-            <string>inter_regular.ttf</string>
-            <string>inter_medium.ttf</string>
-            <string>inter_semibold.ttf</string>
-            <string>inter_bold.ttf</string>
-            <string>geist_mono_regular.ttf</string>
-            <string>geist_mono_bold.ttf</string>
         </array>
         <key>UIApplicationSceneManifest</key>
         <dict>

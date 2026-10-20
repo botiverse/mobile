@@ -11,12 +11,13 @@ class MessageBodyTypographyTest {
         val medium = raftMessageBodyTextStyle("md")
         val large = raftMessageBodyTextStyle("lg")
 
-        assertEquals(12.sp, small.fontSize)
-        assertEquals(18.sp, small.lineHeight)
-        assertEquals(14.sp, medium.fontSize)
-        assertEquals(20.sp, medium.lineHeight)
-        assertEquals(16.sp, large.fontSize)
-        assertEquals(24.sp, large.lineHeight)
+        // Web appearanceStore: text-sm 14/20, text-base 16/24 (raft-design text-body), text-lg 18/28.
+        assertEquals(14.sp, small.fontSize)
+        assertEquals(20.sp, small.lineHeight)
+        assertEquals(16.sp, medium.fontSize)
+        assertEquals(24.sp, medium.lineHeight)
+        assertEquals(18.sp, large.fontSize)
+        assertEquals(28.sp, large.lineHeight)
     }
 
     @Test

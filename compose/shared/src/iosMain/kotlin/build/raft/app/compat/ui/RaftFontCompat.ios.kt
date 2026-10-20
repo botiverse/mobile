@@ -20,9 +20,8 @@ import platform.posix.memcpy
  *
  * `SystemFont(name)` does not work for these faces: Skia resolves a SystemFont through
  * `FontMgr.legacyMakeTypeface(identity)`, which CoreText matches as a FAMILY name. The Kuikly
- * names are PostScript names ("HankenGrotesk-Regular", family "Hanken Grotesk"), so the match
- * missed and every Compose text silently fell back to the system face, whatever the Settings >
- * Appearance font. Reading the very TTF the app ships (UIAppFonts, bundle root, same base name as
+ * names are PostScript names ("SpaceGrotesk-Regular", family "Space Grotesk"), so the match
+ * missed and every Compose text silently fell back to the system face. Reading the very TTF the app ships (UIAppFonts, bundle root, same base name as
  * the Android `res/font` resource) makes the face exact and independent of CoreText name matching.
  *
  * The identity stays [name] (used by the font cache and by tests). Unknown names fall back to

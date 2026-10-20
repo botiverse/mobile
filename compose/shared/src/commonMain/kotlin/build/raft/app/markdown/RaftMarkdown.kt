@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.model.TaskStatus
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftType
+import build.raft.app.withRaftUserContentLocale
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
@@ -1887,11 +1888,11 @@ internal fun String.preparedRaftMarkdownFullRendererContentOrNull(): MarkdownPar
 private const val RaftMarkdownDefaultPreparseLimit = 20
 
 private val RaftMarkdownBodyFontSize get() = RaftTextSize.Content
-// Markdown body keeps its taller 22sp line box (unchanged from before the shared size token).
-private val RaftMarkdownBodyLineHeight = 22.sp
+// `text-body` 16/24, the Web's message text.
+private val RaftMarkdownBodyLineHeight get() = RaftTextSize.ContentLineHeight
 internal val RaftMarkdownTaskCheckboxSize = 14.dp
 internal val RaftMarkdownTaskCheckboxFirstLineOffset =
-    ((22.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
+    ((RaftTextSize.ContentLineHeight.value.dp - RaftMarkdownTaskCheckboxSize) / 2).coerceAtLeast(0.dp)
 internal const val RaftMarkdownPendingActionIndicator = " …"
 private const val RaftMarkdownBodyClickTag = "slock-markdown-body-click"
 private val LocalRaftMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
@@ -2840,7 +2841,9 @@ internal fun raftMarkdownHeadingStyle(base: TextStyle, scale: Float): TextStyle 
 }
 
 internal fun raftMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
-    val resolvedBase = raftMarkdownTextStyleWithInlineLineHeight(base)
+    // Markdown is user content: every style derives from this base, so Han characters render in
+    // Simplified Chinese forms throughout.
+    val resolvedBase = raftMarkdownTextStyleWithInlineLineHeight(base).withRaftUserContentLocale()
     // web pre: `font-mono [font-size:inherit]` — Space Mono at the body size.
     val codeBlock =
         resolvedBase.copy(
