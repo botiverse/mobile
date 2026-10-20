@@ -1641,12 +1641,19 @@ internal fun activityPresentationOwnerIdentity(
     filter: InboxFilter,
 ): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
 
-internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
-    // The destination store acknowledges the stable channel/thread identity after it is loaded
-    // and visible. Activity rows can reorder while navigation is in flight, so the list must not
-    // infer or write read state from its transient presentation snapshot.
-    return null
-}
+/**
+ * Opening an unread row marks it read immediately, like web `handleOpen`
+ * (botiverse/slock 1bb70cbeb, ThreadsInbox.tsx:830-833). The row passed here is
+ * the committed gesture's current row (resolved by key against the live list),
+ * so a reorder during navigation cannot redirect the read; the destination
+ * store's own acknowledgement still follows and is idempotent.
+ */
+internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? =
+    if (unreadCount > 0 && !isUnfollowedActivityThread && kind != InboxItemKind.MentionAction) {
+        SharedActivityIntent.MarkRead(this)
+    } else {
+        null
+    }
 
 /**
  * Menu membership is a pure projection of the row's server-owned follow

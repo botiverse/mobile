@@ -166,12 +166,12 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun openingActivityRowsLeavesReadAcknowledgementToTheDestinationStore() {
+    fun openingAnUnreadActivityRowMarksThatRowReadLikeWeb() {
         val opened = activityItem(key = "thread:opened").copy(unreadCount = 2)
-        val promotedWhileNavigating = activityItem(key = "thread:promoted").copy(unreadCount = 1)
 
-        assertEquals(null, opened.activityOpenReadIntent())
-        assertEquals(null, promotedWhileNavigating.activityOpenReadIntent())
+        assertEquals(build.raft.app.data.SharedActivityIntent.MarkRead(opened), opened.activityOpenReadIntent())
+        assertEquals(null, activityItem(key = "thread:read").activityOpenReadIntent())
+        assertEquals(null, opened.copy(kind = InboxItemKind.Thread, isFollowing = false).activityOpenReadIntent())
     }
 
     @Test
