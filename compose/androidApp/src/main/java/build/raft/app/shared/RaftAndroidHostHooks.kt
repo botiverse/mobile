@@ -82,10 +82,15 @@ internal suspend fun <T : Any> raftOpenRenderLease(
     context: CoroutineContext,
     open: () -> T?,
     close: (T) -> Unit,
+    beforeHandOver: () -> Unit = {},
 ): T? {
     val slot = AtomicReference<T?>(null)
     try {
         withContext(context + NonCancellable) { slot.set(open()) }
+        // Test hook: runs in the window between the block returning and the hand-over,
+        // which is otherwise unobservable. Production never passes this -- it defaults to
+        // a no-op, so behaviour is unchanged. Do not pass anything with side effects.
+        beforeHandOver()
         // A cancel can arrive after withContext returns but before the hand-over below.
         // Observing it here makes "cancelled before the hand-over" deterministic: either
         // this throws and the catch closes the lease, or the caller is still active.
