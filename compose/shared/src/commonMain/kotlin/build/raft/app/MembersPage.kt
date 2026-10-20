@@ -163,12 +163,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -6535,7 +6537,14 @@ private fun MembersDetailHeader(
                 size = RaftAvatarSize.Md,
                 memberAvatarResolver = memberAvatarResolver,
                 modifier = if (avatarClick != null) {
-                    Modifier.clickable(onClick = avatarClick)
+                    val chooseAvatarLabel = stringResource(MR.strings.member_action_choose_avatar)
+                    Modifier
+                        .semantics { contentDescription = chooseAvatarLabel }
+                        .clickable(
+                            onClickLabel = chooseAvatarLabel,
+                            role = Role.Button,
+                            onClick = avatarClick
+                        )
                 } else {
                     Modifier
                 }
@@ -7026,7 +7035,7 @@ private fun MembersAgentArchiveSection(
         archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer && !deleting
 
     MembersDetailSection(
-        title = stringResource(MR.strings.member_archive_section_title).raftDisplayUppercase()
+        title = stringResource(MR.strings.member_archive_section_title)
     ) {
         if (archiveState == MembersAgentArchiveUiState.Failed) {
             MembersLifecycleWarningBanner(
@@ -7914,11 +7923,14 @@ private fun MembersAgentRuntimeErrorBanner(
     onCopyInfo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // raft-ui PanelNotice under the header: the runtime error, Copy Info and View Logs.
+    // raft-ui PanelNotice under the header: the runtime error, then Copy Info and View Logs.
     RaftPanelNotice(
         message = if (canViewPrivate) errorText else stringResource(MR.strings.member_state_agent_error),
         modifier = modifier,
         status = RaftBannerStatus.Warning,
+        // The error text gets the full width and up to 4 lines; the actions go underneath.
+        maxLines = 4,
+        stackActions = true,
         actions = if (canViewPrivate) {
             {
                 RaftButton(
@@ -8722,23 +8734,31 @@ private fun MembersAgentInfoField(
 ) {
     Column(modifier = modifier) {
         // raft-ui DescriptionTerm: footnote medium `foreground-hint`.
-        RaftText(
-            text = label,
-            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-            color = RaftTheme.colors.foregroundHint,
-            modifier = Modifier.padding(bottom = MembersInfoLabelGap)
-        )
+        Box(Modifier.padding(bottom = MembersInfoLabelGap)) {
+            RaftText(
+                text = label,
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                color = RaftTheme.colors.foregroundHint
+            )
+        }
         content()
     }
 }
 
-/** The status chip's colour (raft-ui agent page hero): working yellow, error red, else neutral. */
+/**
+ * The hero status chip's soft wash, as web AgentDetailPanel `PRESENCE_CHIP_VARIANT`
+ * (botiverse/slock c1105a1): online lime (`success`), thinking/working yellow (`primary`),
+ * error orange (`warning`), offline stone (`muted`). Idle is web's `online` activity and
+ * Disconnected its `offline`. Null (not yet observed) has no web activity; it keeps the
+ * neutral `default` wash so the chip does not claim Offline (task #256).
+ */
 private fun AgentStatus?.membersStatusBadgeVariant(): RaftBadgeVariant =
     when (this) {
         AgentStatus.Working, AgentStatus.Thinking -> RaftBadgeVariant.Primary
         AgentStatus.Online, AgentStatus.Idle -> RaftBadgeVariant.Success
-        AgentStatus.Error -> RaftBadgeVariant.Danger
-        AgentStatus.Offline, AgentStatus.Disconnected, null -> RaftBadgeVariant.Default
+        AgentStatus.Error -> RaftBadgeVariant.Warning
+        AgentStatus.Offline, AgentStatus.Disconnected -> RaftBadgeVariant.Muted
+        null -> RaftBadgeVariant.Default
     }
 
 @Composable
@@ -10756,39 +10776,12 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                 verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 envVarNames.forEach { name ->
-                    // raft-ui Badge (outline) for env-var names: chip radius, hairline ring, Space Mono.
-                    Box(
-                        modifier = Modifier
-                            .heightIn(min = 22.dp)
-                            .border(RaftStroke.Hairline, RaftTheme.colors.lineMuted, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "$name=",
-                                style = RaftType.Caption.copy(
-                                    fontFamily = RaftMonoFamily,
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
-                                ),
-                                color = RaftColor.TextBlack,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = membersMaskedEnvValue(envVars[name]),
-                                style = RaftType.Caption.copy(
-                                    fontFamily = RaftMonoFamily,
-                                    fontSize = 12.sp,
-                                    lineHeight = 16.sp
-                                ),
-                                color = RaftTheme.colors.foregroundHint,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
+                    // raft-ui Badge (outline) for env-var names: chip radius, hairline ring, Space Mono;
+                    // the value is masked.
+                    RaftBadge(
+                        text = "$name=${membersMaskedEnvValue(envVars[name])}",
+                        appearance = RaftBadgeAppearance.Outline
+                    )
                 }
             }
         }
@@ -12248,13 +12241,15 @@ private fun MembersAgentChatTabContent(
 
 @Composable
 private fun MembersAgentChannelRow(channel: AgentChannelSummary, divider: Boolean = false) {
-    // raft-ui ListRow (plain): the channel's 20dp icon, its name, its description; a muted
-    // channel ends with the bell-off icon and a soft Muted tag.
+    // raft-ui ListRow (plain): the channel's 20dp icon, its name, its description (up to 2
+    // lines); a muted channel ends with the bell-off icon and a soft Muted tag.
     RaftListRow(
         title = channel.name,
         variant = RaftListRowVariant.Plain,
         divider = divider,
         description = channel.description?.takeIf { it.isNotBlank() },
+        wrapDescription = true,
+        descriptionMaxLines = 2,
         leading = { RaftContentLucideIcon(channel.type.threadChannelHeaderIcon(), size = 20.dp) },
         trailing = if (channel.activityMuted) {
             {
@@ -12297,13 +12292,16 @@ private fun MembersAgentDmRow(
                 .membersAgentDmPeerProfile(row, currentServerId)
                 ?.raftAvatarCacheIdentity(currentServerId)
         }
-    // raft-ui AvatarListRow: the 35dp peer avatar, name, @handle in Space Mono, the last
-    // message as the preview with an Activity only tag, the time on the right.
+    // raft-ui AvatarListRow: the 35dp peer avatar, name, "Agent DM · @handle" in Space Mono,
+    // the last message as the preview (up to 3 lines) with an Activity only tag, the time on
+    // the right.
     RaftListRow(
         title = row.peerName,
         divider = divider,
-        subtitle = "@${row.peerName}",
+        subtitle = "${stringResource(MR.strings.member_label_agent_dm)} · @${row.peerName}",
         description = row.lastMessagePreview?.takeIf { it.isNotBlank() },
+        wrapDescription = true,
+        descriptionMaxLines = 3,
         alignTop = true,
         leading = {
             RaftAvatar(
@@ -12441,21 +12439,28 @@ private fun MembersAgentReminderCard(
                 }
                 if (messageRef != null) {
                     val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
-                    RaftBadge(
-                        text = messageRef,
-                        appearance = RaftBadgeAppearance.Outline,
-                        enabled = true,
+                    // The 22dp badge sits in a 44dp-tall target when it opens the message; a
+                    // reference with nothing to open is dimmed (alpha 0.7).
+                    Box(
                         modifier = Modifier
                             .weight(1f, fill = false)
                             .then(
                                 if (permalink != null) {
-                                    Modifier.clickable(role = Role.Button) { onOpenMessageRef(permalink) }
-                                } else {
                                     Modifier
+                                        .heightIn(min = 44.dp)
+                                        .clickable(role = Role.Button) { onOpenMessageRef(permalink) }
+                                } else {
+                                    Modifier.alpha(0.7f)
                                 }
                             ),
-                        icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) }
-                    )
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        RaftBadge(
+                            text = messageRef,
+                            appearance = RaftBadgeAppearance.Outline,
+                            icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) }
+                        )
+                    }
                 }
             }
         }
@@ -12480,10 +12485,12 @@ private fun MembersAgentWorkspaceTab(
         modifier = modifier,
         framed = false,
         trailingContent = {
+            // Ghost Lg: the 18dp glyph is unchanged, the touch target is 44dp.
             RaftIconButton(
                 onClick = onRefresh,
-                contentDescription = stringResource(MR.strings.common_retry),
-                variant = RaftButtonVariant.Ghost
+                contentDescription = stringResource(MR.strings.member_action_refresh),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg
             ) {
                 RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp)
             }
@@ -12648,12 +12655,13 @@ private fun MembersWorkspaceNodeRow(
             }
         }
         errorMessage?.let {
-            RaftText(
-                text = stringResource(MR.strings.member_error_workspace_child_load, it),
-                style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.dangerStrong,
-                modifier = Modifier.padding(start = (12 + (row.depth + 1) * 16).dp, end = 12.dp, bottom = 6.dp)
-            )
+            Box(Modifier.padding(start = (12 + (row.depth + 1) * 16).dp, end = 12.dp, bottom = 6.dp)) {
+                RaftText(
+                    text = stringResource(MR.strings.member_error_workspace_child_load, it),
+                    style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.dangerStrong
+                )
+            }
         }
     }
 }
@@ -13671,14 +13679,11 @@ private fun MembersDetailSection(
             trailingContent?.invoke()
         }
         // raft-ui Card (default): container radius, `line-hairline` edge on `layer-card`, p-4.
-        val cardShape = RoundedCornerShape(RaftRadius.Container)
         val contentModifier =
             if (framed) {
                 Modifier
                     .fillMaxWidth()
-                    .clip(cardShape)
-                    .background(RaftTheme.colors.layerCard, cardShape)
-                    .border(RaftStroke.Hairline, RaftTheme.colors.lineHairline, cardShape)
+                    .membersRaftCard()
                     .padding(RaftAppSpacing.Md)
             } else {
                 Modifier.fillMaxWidth()
