@@ -6526,7 +6526,7 @@ private fun MembersDetailHeader(
         ) {
             RaftIconButton(
                 onClick = onBack,
-                contentDescription = stringResource(MR.strings.common_back),
+                tooltip = stringResource(MR.strings.common_back),
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg
             ) {
@@ -6579,7 +6579,7 @@ private fun MembersDetailHeader(
                 ) {
                     RaftIconButton(
                         onClick = onOpenDirectMessage,
-                        contentDescription = stringResource(MR.strings.member_label_message),
+                        tooltip = stringResource(MR.strings.member_label_message),
                         variant = RaftButtonVariant.Ghost,
                         size = RaftIconButtonSize.Lg
                     ) {
@@ -6601,7 +6601,7 @@ private fun MembersDetailHeader(
                                 threeDotButtonAnchorResolver.resolve()
                             )
                         },
-                        contentDescription = stringResource(MR.strings.tab_more),
+                        tooltip = stringResource(MR.strings.tab_more),
                         variant = RaftButtonVariant.Ghost,
                         size = RaftIconButtonSize.Lg,
                         modifier =
@@ -12488,7 +12488,7 @@ private fun MembersAgentWorkspaceTab(
             // Ghost Lg: the 18dp glyph is unchanged, the touch target is 44dp.
             RaftIconButton(
                 onClick = onRefresh,
-                contentDescription = stringResource(MR.strings.member_action_refresh),
+                tooltip = stringResource(MR.strings.member_action_refresh),
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg
             ) {
