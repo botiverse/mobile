@@ -43,6 +43,16 @@ import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import build.raft.designsystem.components.raftUnreadCountDescription
+import build.raft.designsystem.components.raftUnreadCountText
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -212,98 +222,29 @@ internal fun RaftBottomTabBar(
     // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
     // Tab switches are #191 hot path; this marker measures per-tab-item composition.
     traceMarkdownSection(RaftTabBarTraceNames.BOTTOM_TAB_RENDER, items.size) {
-    // raft-ui `MobileNav` (Raft DS > TabBar): an edge bar on the card layer
-    // with a seam on top; the selected tab wears the yellow sticker behind its
-    // icon and a bold label, the rest sit on foreground-hint.
+    // Approved mockup (activity-tab A): an edge bar on the card layer with a
+    // 1dp seam on top; every tab is a 56x32 pill slot holding a centred 23dp
+    // icon with the label 4dp below. The selected pill is the brand sticker
+    // (2dp ink border, 9dp radius); the pink count sits on the slot's top-right
+    // corner, above the pill border, and never covers the icon.
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(53.dp)
+            .height(RaftBottomTabBarSpec.BarHeight)
             .background(RaftColor.Card)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .padding(start = 8.dp, top = RaftAppStroke.Thin + 6.dp, end = 8.dp)
+                .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
         ) {
             items.forEach { item ->
-                val selected = item.selected
-                // raft-ui MobileNav press: the overlay sits on the sticker (12% ink on the active
-                // brand sticker, fill-pressed at rest), never a wash over the whole cell. A bare
-                // clickable here fell back to CMP's default indication: a dark gray rectangle.
-                val pressSource = remember { MutableInteractionSource() }
-                val pressed = pressSource.collectIsPressedAsState().value
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = pressSource,
-                            indication = null,
-                            enabled = item.enabled
-                        ) { onSelect(item.key) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Top
-                ) {
-                    // 56x30 sticker plus its 1.5dp sticker-edge ring drawn
-                    // outside it (ring-[1.5px]); the label sits 3dp below the
-                    // sticker, i.e. 7dp below the 22dp icon.
-                    Box(
-                        modifier = Modifier
-                            .width(56.dp + RaftAppStroke.Control * 2)
-                            .height(30.dp + RaftAppStroke.Control * 2)
-                            .offset(y = -RaftAppStroke.Control)
-                            .then(
-                                if (selected) {
-                                    Modifier
-                                        .border(RaftAppStroke.Control, RaftColor.StickerEdge, RoundedCornerShape(RaftAppRadius.Control + RaftAppStroke.Control))
-                                        .padding(RaftAppStroke.Control)
-                                        .background(RaftColor.Brand, RoundedCornerShape(RaftAppRadius.Control))
-                                        .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Control))
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .then(
-                                if (pressed && item.enabled) {
-                                    Modifier.background(
-                                        raftBottomTabPressOverlay(selected),
-                                        RoundedCornerShape(RaftAppRadius.Control)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        RaftLucideIcon(
-                            name = item.iconName,
-                            color =
-                                when {
-                                    !item.enabled -> raftArgbHex(RaftColor.ForegroundDisabled)
-                                    selected -> raftArgbHex(RaftColor.StickerInk)
-                                    else -> raftArgbHex(RaftColor.ForegroundHint)
-                                },
-                            strokeWidth = 2f,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        RaftTabIconBadge(
-                            count = item.badgeCount,
-                            modifier = Modifier.align(Alignment.TopStart).offset(x = 33.dp, y = (-4).dp)
-                        )
-                    }
-                    Text(
-                        text = item.label,
-                        style =
-                            RaftType.TabLabel
-                                .withRaftFontWeight(if (selected) FontWeight.Bold else FontWeight.SemiBold)
-                                .copy(color = if (selected) RaftColor.TextBlack else RaftColor.ForegroundHint),
-                        color = if (selected) RaftColor.TextBlack else RaftColor.ForegroundHint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                RaftBottomTabItem(
+                    item = item,
+                    onSelect = onSelect,
+                    modifier = Modifier.weight(1f).fillMaxHeight()
+                )
             }
         }
         Box(
@@ -314,6 +255,175 @@ internal fun RaftBottomTabBar(
                 .align(Alignment.TopCenter)
         )
     }
+    }
+}
+
+/** Geometry of the approved bottom tab bar mockup (/tmp/activity-tab-mockups gen.js `.tabbar`). */
+internal object RaftBottomTabBarSpec {
+    val BarHeight = 58.dp
+    val TopPadding = 7.dp
+    val PillWidth = 56.dp
+    val PillHeight = 32.dp
+    val PillRadius = 9.dp
+    val PillBorder = 2.dp
+    val IconSize = 23.dp
+    const val IconStroke = 2f
+    val LabelGap = 4.dp
+    val LabelFontSize = 11.5.sp
+    val LabelLineHeight = 14.sp
+    val LabelWeight = FontWeight.SemiBold
+    val SelectedLabelWeight = FontWeight.Bold
+    // Count badge, positioned from the pill slot's outer top-left corner.
+    val BadgeOffsetX = 35.dp
+    val BadgeOffsetY = (-3).dp
+    val BadgeHeight = 18.dp
+    val BadgeMinWidth = 20.dp
+    val BadgeHorizontalPadding = 5.dp
+    val BadgeRadius = 5.dp
+    val BadgeBorder = 1.5.dp
+    val BadgeFontSize = 11.sp
+}
+
+internal fun raftBottomTabLabelWeight(selected: Boolean): FontWeight =
+    if (selected) RaftBottomTabBarSpec.SelectedLabelWeight else RaftBottomTabBarSpec.LabelWeight
+
+@Composable
+private fun RaftBottomTabItem(
+    item: RaftBottomTabItemPayload,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top
+) {
+    val selected = item.selected
+    // raft-ui MobileNav press: the overlay sits on the pill (12% ink on the active
+    // brand sticker, fill-pressed at rest), never a wash over the whole cell. A bare
+    // clickable here fell back to CMP's default indication: a dark gray rectangle.
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed = pressSource.collectIsPressedAsState().value
+    val pillShape = RoundedCornerShape(RaftBottomTabBarSpec.PillRadius)
+    val inkColor = when {
+        !item.enabled -> RaftColor.ForegroundDisabled
+        selected -> RaftColor.StickerInk
+        else -> RaftColor.ForegroundHint
+    }
+    Column(
+        modifier = modifier
+            .clickable(
+                interactionSource = pressSource,
+                indication = null,
+                enabled = item.enabled
+            ) { onSelect(item.key) },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = verticalArrangement
+    ) {
+        // The slot holds the pill and, as a sibling drawn after it, the badge,
+        // so the pill border can never paint over the count.
+        Box(
+            modifier = Modifier.size(RaftBottomTabBarSpec.PillWidth, RaftBottomTabBarSpec.PillHeight)
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .then(
+                        if (selected) {
+                            val edge = RaftColor.StickerEdge
+                            Modifier
+                                .drawBehind {
+                                    // Die-cut ring outside the pill: transparent in light, a paper ring in dark.
+                                    if (edge.alpha > 0f) {
+                                        val w = RaftAppStroke.Control.toPx()
+                                        drawRoundRect(
+                                            color = edge,
+                                            topLeft = Offset(-w / 2f, -w / 2f),
+                                            size = Size(size.width + w, size.height + w),
+                                            cornerRadius = CornerRadius(RaftBottomTabBarSpec.PillRadius.toPx() + w / 2f),
+                                            style = Stroke(w)
+                                        )
+                                    }
+                                }
+                                .background(RaftColor.Brand, pillShape)
+                                .border(RaftBottomTabBarSpec.PillBorder, RaftColor.StickerInk, pillShape)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .then(
+                        if (pressed && item.enabled) {
+                            Modifier.background(raftBottomTabPressOverlay(selected), pillShape)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                RaftLucideIcon(
+                    name = item.iconName,
+                    color = raftArgbHex(inkColor),
+                    strokeWidth = RaftBottomTabBarSpec.IconStroke,
+                    modifier = Modifier.size(RaftBottomTabBarSpec.IconSize)
+                )
+            }
+            RaftBottomTabCountBadge(
+                count = item.badgeCount,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = RaftBottomTabBarSpec.BadgeOffsetX, y = RaftBottomTabBarSpec.BadgeOffsetY)
+                    .wrapContentSize(align = Alignment.TopStart, unbounded = true)
+            )
+        }
+        Spacer(Modifier.height(RaftBottomTabBarSpec.LabelGap))
+        val labelColor = when {
+            !item.enabled -> RaftColor.ForegroundDisabled
+            selected -> RaftColor.TextBlack
+            else -> RaftColor.ForegroundHint
+        }
+        Text(
+            text = item.label,
+            style =
+                RaftType.TabLabel
+                    .copy(
+                        fontSize = RaftBottomTabBarSpec.LabelFontSize,
+                        lineHeight = RaftBottomTabBarSpec.LabelLineHeight
+                    )
+                    .withRaftFontWeight(raftBottomTabLabelWeight(selected))
+                    .copy(color = labelColor),
+            color = labelColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/**
+ * The tab's pink unread count (mockup `.badge.tb`): 18dp tall, min 20dp wide, 5dp side
+ * padding inside a 1.5dp ink border, 5dp radius, 11sp bold. Nothing for 0; `99+` above 99.
+ */
+@Composable
+private fun RaftBottomTabCountBadge(count: Int, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    val shape = RoundedCornerShape(RaftBottomTabBarSpec.BadgeRadius)
+    val description = raftUnreadCountDescription(count)
+    Box(
+        modifier = modifier
+            .zIndex(1f)
+            .clearAndSetSemantics { contentDescription = description }
+            .height(RaftBottomTabBarSpec.BadgeHeight)
+            .widthIn(min = RaftBottomTabBarSpec.BadgeMinWidth)
+            .background(RaftColor.Attention, shape)
+            .border(RaftBottomTabBarSpec.BadgeBorder, RaftColor.StickerInk, shape)
+            .padding(horizontal = RaftBottomTabBarSpec.BadgeBorder + RaftBottomTabBarSpec.BadgeHorizontalPadding),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = raftUnreadCountText(count),
+            style = RaftType.TabLabel
+                .copy(fontSize = RaftBottomTabBarSpec.BadgeFontSize, lineHeight = RaftBottomTabBarSpec.BadgeFontSize)
+                .withRaftFontWeight(FontWeight.Bold)
+                .copy(color = RaftColor.StickerInk),
+            color = RaftColor.StickerInk,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
@@ -401,50 +511,13 @@ private fun RaftSharedAndroidFloatingBottomTabBarHost(
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { item ->
-                val selected = item.selected
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .background(
-                            if (selected) RaftColor.BrandYellow.copy(alpha = 0.2f) else Color.Transparent,
-                            RoundedCornerShape(16.dp)
-                        )
-                        .clickable(enabled = item.enabled) { onSelect(item.key) }
-                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                // Same pill / badge / label as the shared bar (approved mockup A).
+                RaftBottomTabItem(
+                    item = item,
+                    onSelect = onSelect,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     verticalArrangement = Arrangement.Center
-                ) {
-                    Box {
-                        RaftLucideIcon(
-                            name = item.iconName,
-                            color = when {
-                                !item.enabled -> "#42000000"
-                                selected -> "#FF000000"
-                                else -> "#73000000"
-                            },
-                            modifier = Modifier.size(17.dp)
-                        )
-                        RaftTabIconBadge(
-                            count = item.badgeCount,
-                            modifier = Modifier.align(Alignment.TopStart).offset(x = 11.dp, y = (-8).dp)
-                        )
-                    }
-                    Text(
-                        text = item.label.raftDisplayUppercase(),
-                        style = RaftType.Caption.copy(
-                            color = when {
-                                !item.enabled -> Color.Black.copy(alpha = 0.26f)
-                                selected -> Color.Black
-                                else -> Color.Black.copy(alpha = 0.45f)
-                            },
-                            fontSize = 9.sp,
-                            lineHeight = 11.sp
-                        ).withRaftFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                )
             }
         }
     }
