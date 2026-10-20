@@ -194,7 +194,7 @@ internal fun JsonObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         myMessageAlignment = MyMessageAlignmentPreference.fromStorageKey(optString(KEY_MY_MESSAGE_ALIGNMENT)),
         desktopModeOnLargeScreen = optBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN),
         compactConsecutiveMessages = optBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true),
-        longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, false),
+        longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED),
         singleTapOpensThreadEnabled = optBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, true),
         threadUnreadJumpEnabled = optBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false),
         newMessageMenuEnabled = optBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, false),

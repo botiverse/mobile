@@ -1469,7 +1469,6 @@ HSPLbuild/raft/app/ThreadFailureReasonKt;->threadUserFacingErrorLabels(Landroidx
 HSPLbuild/raft/app/ThreadHeaderDisplayNamesKt;->threadHeaderSafeTitleOrNull$default(Ljava/lang/String;Ljava/util/Set;ILjava/lang/Object;)Ljava/lang/String;
 HSPLbuild/raft/app/ThreadHeaderDisplayNamesKt;->threadHeaderSafeTitleOrNull(Ljava/lang/String;Ljava/util/Set;)Ljava/lang/String;
 HSPLbuild/raft/app/ThreadHeaderProjectionStateOwner;->accept(Ljava/util/Map;)Lbuild/raft/app/ThreadHeaderProjectionAcceptance;
-HSPLbuild/raft/app/ThreadLongMessageCollapseKt;->threadLongMessageCollapseActive(ZLbuild/raft/app/ThreadLongMessageRenderPlan;)Z
 HSPLbuild/raft/app/ThreadMarkdownPreparseCandidate;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 HSPLbuild/raft/app/ThreadMarkdownPreparseCandidate;->equals(Ljava/lang/Object;)Z
 HSPLbuild/raft/app/ThreadMarkdownPreparseCandidate;->getBody()Ljava/lang/String;

@@ -777,8 +777,8 @@
     <string name="thread_open_task_number">OPEN TASK #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">Search this thread…</string>
-    <string name="thread_show_more">Show more</string>
-    <string name="thread_show_less">Show less</string>
+    <string name="thread_long_message_show_more">Show More</string>
+    <string name="thread_long_message_show_less">Show Less</string>
     <string name="composer_placeholder_message_design">Message design</string>
     <string name="composer_state_no_matching_members">No matching members</string>
     <string name="composer_state_no_matching_channels">No matching channels</string>
@@ -1750,9 +1750,14 @@
     <string name="settings_mobile_compact_enabled">Repeated avatars hidden</string>
     <string name="settings_mobile_compact_disabled">Show every message avatar</string>
     <string name="settings_mobile_long_message_collapse">Collapse long messages</string>
-    <string name="settings_mobile_long_message_collapse_detail">Collapse long messages to an 8-line preview. Expand each message when you want to read the full content.</string>
-    <string name="settings_mobile_long_message_collapse_enabled">Preview the first 8 lines</string>
+    <string name="settings_mobile_long_message_collapse_detail">Clip messages taller than most of the screen behind a Show More link. Each channel or DM can override this in its settings.</string>
+    <string name="settings_mobile_long_message_collapse_enabled">Long messages are clipped with Show More</string>
     <string name="settings_mobile_long_message_collapse_disabled">Show full messages</string>
+    <string name="conversation_long_message_collapse">Collapse long messages</string>
+    <string name="conversation_long_message_collapse_follows_global_on">Following the Mobile setting: on</string>
+    <string name="conversation_long_message_collapse_follows_global_off">Following the Mobile setting: off</string>
+    <string name="conversation_long_message_collapse_override_on">On for this conversation only (the Mobile setting is off)</string>
+    <string name="conversation_long_message_collapse_override_off">Off for this conversation only (the Mobile setting is on)</string>
     <string name="settings_mobile_single_tap_thread">Single tap opens Thread</string>
     <string name="settings_mobile_single_tap_thread_detail">Open a message Thread by tapping its body once. Replies and the message menu remain available when this is off.</string>
     <string name="settings_mobile_single_tap_thread_enabled">Tap message bodies to open Thread</string>

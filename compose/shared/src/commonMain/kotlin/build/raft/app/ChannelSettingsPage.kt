@@ -209,6 +209,11 @@ private fun ChannelSettingsPageScreen() {
     val canManage = settingsState.canManage
     val pinned = settingsState.isPinned(route.channelId.value)
     var dialog by remember(route) { mutableStateOf<ChannelSettingsDialog?>(null) }
+    val longMessageCollapseSetting =
+        rememberRaftLongMessageCollapseConversationSetting(
+            serverId = route.serverId.value,
+            conversationId = route.channelId.value
+        )
     val updateFailedLabel = stringResource(MR.strings.thread_settings_update_failed)
     val archiveFailedLabel = stringResource(MR.strings.thread_error_archive_channel)
     val deleteFailedLabel = stringResource(MR.strings.thread_error_delete_channel)
@@ -285,6 +290,7 @@ private fun ChannelSettingsPageScreen() {
                         channel = channel,
                         memberSlice = memberSlice,
                         pinned = pinned,
+                        longMessageCollapseSetting = longMessageCollapseSetting,
                         canManage = canManage,
                         writeActionsEnabled = settingsState.writeActionsEnabled && authorityAccepted,
                         onEdit = { dialog = ChannelSettingsDialog.Edit },
@@ -372,6 +378,7 @@ private fun ChannelSettingsContent(
     channel: HomeChannelRow,
     memberSlice: SharedServerChannelMembersSlice,
     pinned: Boolean,
+    longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     canManage: Boolean,
     writeActionsEnabled: Boolean,
     onEdit: () -> Unit,
@@ -405,6 +412,7 @@ private fun ChannelSettingsContent(
                 muted = channel.activityMuted,
                 pinned = pinned,
                 enabled = writeActionsEnabled,
+                longMessageCollapseSetting = longMessageCollapseSetting,
                 onToggleMute = onToggleMute,
                 onTogglePin = onTogglePin
             )
@@ -563,6 +571,7 @@ private fun ChannelPreferencesCard(
     muted: Boolean,
     pinned: Boolean,
     enabled: Boolean,
+    longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit
 ) {
@@ -587,6 +596,15 @@ private fun ChannelPreferencesCard(
             checked = pinned,
             enabled = enabled,
             onClick = onTogglePin
+        )
+        // Device-local display preference: available without write permission on the channel.
+        ChannelSettingsDivider()
+        ChannelPreferenceRow(
+            title = stringResource(MR.strings.conversation_long_message_collapse),
+            detail = longMessageCollapseSetting.preference.localizedDetail(),
+            checked = longMessageCollapseSetting.effective,
+            enabled = longMessageCollapseSetting.available,
+            onClick = { longMessageCollapseSetting.onSetEnabled(!longMessageCollapseSetting.effective) }
         )
     }
 }

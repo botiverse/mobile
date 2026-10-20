@@ -1560,10 +1560,10 @@ data class SettingsMobileSnapshot(
         ),
     val longMessageCollapse: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
-            enabled = false,
+            enabled = RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED,
             available = true,
-            statusLabel = "Off",
-            detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
+            statusLabel = if (RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED) "Enabled" else "Off",
+            detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
         ),
     val singleTapOpensThread: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
