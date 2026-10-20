@@ -150,6 +150,7 @@ internal fun RaftProvideTextRendering(content: @Composable () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     CompositionLocalProvider(
+        // common-map-compat: allow-nonmap-merge (TextStyle.merge)
         LocalTextStyle provides LocalTextStyle.current.merge(raftTextRenderingStyle(RaftUiTextLocaleState.localeList)),
         content = content,
     )
