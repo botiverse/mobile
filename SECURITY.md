@@ -1,6 +1,6 @@
 # Security Policy
 
-Raft Mobile (Android, iOS and HarmonyOS clients of Raft) handles private conversations, session tokens, device credentials and push registrations. We
+Raft Mobile (Android and iOS clients of Raft) handles private conversations, session tokens, device credentials and push registrations. We
 take vulnerability reports seriously and want to hear about anything that
 weakens the isolation between users, servers, agents or machines.
 
@@ -18,7 +18,7 @@ respond.
 
 A useful report includes:
 
-- the affected component (Android app, iOS app, HarmonyOS app, shared Kotlin Multiplatform module, or CI/release scripts) and the version or commit,
+- the affected component (Android app, iOS app, shared Kotlin Multiplatform module, or CI/release scripts) and the version or commit,
 - steps to reproduce, ideally against a debug build pointed at a local or staging Raft server with
   synthetic data,
 - the impact you believe it has (what an attacker with which position can do),

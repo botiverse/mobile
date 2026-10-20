@@ -588,13 +588,6 @@ class SlockAppShellTest {
                 platformDefaultRenderer = "iosLiquidGlass"
             )
         )
-        assertEquals(
-            SlockAppTabBarRenderer.OhosHdsImmersive,
-            resolveSlockAppTabBarRenderer(
-                explicitRenderer = "ohosHdsImmersive",
-                platformDefaultRenderer = "iosLiquidGlass"
-            )
-        )
     }
 
     @Test
@@ -917,10 +910,6 @@ class SlockAppShellTest {
             slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.IosLiquidGlass, bottomSafeArea)
         )
         assertEquals(
-            floatingHostClearance,
-            slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.OhosHdsImmersive, bottomSafeArea)
-        )
-        assertEquals(
             slockSharedBottomTabBarContentInset(bottomSafeArea),
             slockAppBottomTabBarContentInset(SlockAppTabBarRenderer.SharedCompose, bottomSafeArea)
         )
@@ -937,16 +926,6 @@ class SlockAppShellTest {
 
         assertEquals(1, hostState.entries.size)
         assertEquals(SharedCreateAgentDialogHostRoute, hostState.entries.single().route)
-    }
-
-    @Test
-    fun ohosHdsDockBlockerMatchesFloatingPillRect() {
-        // Pill lives at [top+10 .. top+66] of the 92dp host (56dp bar lifted
-        // 26dp off the bottom), inset 18dp per side — the Compose tap blocker
-        // must cover exactly that rect so margins stay tap-through.
-        assertEquals(10.dp, slockOhosHdsDockBlockerTopOffset())
-        assertEquals(56.dp, slockOhosHdsDockBlockerHeight())
-        assertEquals(18.dp, slockOhosHdsDockBlockerSideMargin())
     }
 
     @Test

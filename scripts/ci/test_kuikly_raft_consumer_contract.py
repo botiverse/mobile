@@ -25,6 +25,10 @@ require(len(closure) == 37 and len(set(closure)) == 37, "closure must contain 37
 require(closure == sorted(closure), "closure must remain sorted")
 require(all(gav.startswith("com.tencent.kuikly-open:") for gav in closure), "closure group drifted")
 require(sum(gav.endswith(f":{NORMAL}") for gav in closure) == 28, "normal GAV count drifted")
+# The published 2.28.0-raft.13 release set still carries the 9 OHOS GAVs; main
+# no longer consumes them (OHOS froze at 1.14.x), but the manifest gate checks
+# the closure against the immutable published manifest, so they stay listed
+# until the next Kuikly release set drops the OHOS plane.
 require(sum(gav.endswith(f":{OHOS}") for gav in closure) == 9, "OHOS GAV count drifted")
 require(
     all(":core-gradle-plugin:" not in gav for gav in closure),
@@ -39,9 +43,9 @@ require(
 )
 version_catalog = read("compose/gradle/libs.versions.toml")
 require(f'kuiklyAndroid = "{NORMAL}"' in version_catalog, "Android catalog pin drifted")
-require(f'kuiklyOhos = "{OHOS}"' in version_catalog, "OHOS catalog pin drifted")
+require("kuiklyOhos" not in version_catalog, "OHOS catalog pin must stay removed")
 
-for settings_path in ("compose/settings.gradle.kts", "compose/settings.ohos.gradle.kts"):
+for settings_path in ("compose/settings.gradle.kts",):
     settings = read(settings_path)
     require("RaftArtifactsKuiklyRelease" in settings, f"{settings_path} misses the Raft release repo")
     require('includeGroup("com.tencent.kuikly-open")' in settings, f"{settings_path} misses Kuikly exclusivity")
@@ -64,19 +68,6 @@ require(
 require("third_party/kuikly-ui" not in podfile_lock, "iOS lockfile retains the Kuikly gitlink")
 require(not (ROOT / "third_party/kuikly-ui").exists(), "obsolete Kuikly consumer gitlink remains")
 require('submodule "third_party/kuikly-ui"' not in read(".gitmodules"), "Kuikly gitlink metadata remains")
-
-ohos_package = read("compose/ohosApp/entry/oh-package.json5")
-har_spec = f"file:../../build/kuikly/core-render-ohos-{OHOS}.har"
-require(har_spec in ohos_package, "OHOS renderer is not pinned to the manifest-generated HAR")
-require("kuikly-render-staging2" not in ohos_package, "OHOS local staging HAR fallback remains")
-ohos_lock = read("compose/ohosApp/entry/oh-package-lock.json5")
-har_lock_path = f"../../build/kuikly/core-render-ohos-{OHOS}.har"
-require(har_lock_path in ohos_lock, "OHOS lockfile does not bind the manifest-generated HAR")
-require("kuikly-render-staging2" not in ohos_lock, "OHOS lockfile retains the staging2 HAR")
-require(
-    not list((ROOT / "compose/ohosApp/entry/libs").glob("kuikly-render-staging2-*")),
-    "checked-in staging2 renderer artifacts remain",
-)
 
 for obsolete_script in (
     "scripts/build_kuikly_fork.sh",
@@ -101,7 +92,6 @@ workflows = (
     ".github/workflows/android-release.yml",
     ".github/workflows/android-testbox.yml",
     ".github/workflows/ios-release.yml",
-    ".github/workflows/ohos-release.yml",
     ".github/workflows/qa-acceptance-ios.yml",
     ".github/workflows/qa-acceptance.yml",
     ".github/workflows/test.yml",
@@ -132,16 +122,4 @@ require(
 )
 fetcher = read("scripts/ci/fetch_kuikly_release_artifact.py")
 require('publication["size"]' in fetcher, "artifact fetcher does not use the production manifest schema")
-for workflow_path in (".github/workflows/test.yml", ".github/workflows/ohos-release.yml"):
-    require(
-        "verify_kuikly_ohos_renderer.sh" in read(workflow_path),
-        f"{workflow_path} does not validate the manifest-bound renderer binary",
-    )
-renderer_verifier = read("scripts/ci/verify_kuikly_ohos_renderer.sh")
-require('command -v node' in renderer_verifier, "OHOS renderer verifier misses ambient Node")
-require(
-    'DEVECO_SDK_HOME}/../tool/node/bin/node' in renderer_verifier,
-    "OHOS renderer verifier misses the DevEco command-line-tools Node fallback",
-)
-
 print("Kuikly immutable-Raft consumer source contract: PASS")

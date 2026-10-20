@@ -23,7 +23,7 @@ const CAP = Number(arg("--cap", "5"));
 // Roots cover every layer that can put a glyph on screen (artin's "还有啥
 // 文件可能有" sweep, 2026-07-15): shared Kotlin, MR string RESOURCES (the
 // composer "✓ Added" chips hid there — .kt-only scanning missed them),
-// both host app layers, and OHOS ArkTS.
+// and both host app layers.
 const KOTLIN_ROOTS = [
   "compose/shared/src/commonMain/kotlin/build/raft/app",
   "compose/androidApp/src/main/java",
@@ -36,7 +36,6 @@ const RESOURCE_GLOBS = [
 ];
 const HOST_ROOTS = [
   { dir: "compose/iosApp/iosApp", exts: [".m", ".swift"] },
-  { dir: "compose/ohosApp", exts: [".ets"] },
 ];
 const GLYPHS = /[✓✔✗✘✕×➜➔←↑↓▲▼►◄▶◀‣▪✦★☆]/;
 const EXCLUDE_FILE = [/Test\.kt$/, /visualFixtures\//];

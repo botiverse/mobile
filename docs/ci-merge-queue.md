@@ -12,8 +12,7 @@ branch or from an unreviewed payload.
 - An ordinary product pull request runs the Android compile/unit tier.
 - A `full-ci` label runs the deterministic full tier and emulator/connected
   jobs before queue admission.
-- A `merge_group` runs Android, iOS, OHOS shared/host, fork prebuilds, and the
-  OHOS receipt self-test. Emulator/connected jobs remain excluded until their
+- A `merge_group` runs Android and iOS. Emulator/connected jobs remain excluded until their
   bounded infrastructure-abort retry contract has landed and has fresh flake
   evidence.
 - `main`, `release-*`, scheduled, and manual Test runs execute every tier.

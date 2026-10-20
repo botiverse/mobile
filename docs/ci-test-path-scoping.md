@@ -9,15 +9,17 @@ required by the Mobile ruleset.
 
 ## Path groups
 
+HarmonyOS (OHOS) was frozen at 1.14.x and removed from `main`, so the planner
+no longer has an OHOS group; OHOS CI exists only on `release/1.14.x`.
+
 | Changed paths | Selected platform groups | Notes |
 | --- | --- | --- |
 | `compose/androidApp/**`, `compose/shared/src/android*/**` | Android | Includes Android unit and instrumented sources. |
-| `compose/iosApp/**`, `compose/shared/src/ios*/**` | iOS | Runs the macOS compile without unrelated Android/OHOS jobs. |
-| `compose/ohosApp/**`, `compose/ohosBridge/**`, `compose/shared/src/ohos*/**` | OHOS | Includes the OHOS receipt, shared compile, host compile and their dependency prebuilds. |
-| `compose/shared/src/native*/**` | iOS + OHOS | Native shared code can affect both native targets. |
-| Other `compose/**` paths | Android + iOS + OHOS | Common/shared code, Gradle/version configuration and any new unrecognized source-set layout fail closed to all platforms. |
-| Test-owned actions/helpers, dependency pins and `.gitmodules` | Android + iOS + OHOS | Workflow inputs and shared dependency changes are treated as cross-platform. |
-| `.github/workflows/test.yml`, the planner/verifier/contract, the Mobile ruleset plan | Android + iOS + OHOS | CI control changes force the deterministic non-emulator matrix. |
+| `compose/iosApp/**`, `compose/shared/src/ios*/**` | iOS | Runs the macOS compile without unrelated Android jobs. |
+| `compose/shared/src/native*/**` | iOS | Native shared code only affects the iOS native targets. |
+| Other `compose/**` paths | Android + iOS | Common/shared code, Gradle/version configuration and any new unrecognized source-set layout fail closed to all platforms. |
+| Test-owned actions/helpers, dependency pins and `.gitmodules` | Android + iOS | Workflow inputs and shared dependency changes are treated as cross-platform. |
+| `.github/workflows/test.yml`, the planner/verifier/contract, the Mobile ruleset plan | Android + iOS | CI control changes force the deterministic non-emulator matrix. |
 | Anything outside the Test-owned groups | none | Expensive jobs are skipped; `plan` and `CI gate` still report. |
 
 Pull requests use merge-base diff semantics, matching GitHub's changed-file
@@ -35,7 +37,7 @@ platforms.
 | Ordinary pull request | Exact union of changed-path groups. |
 | Pull request with `full-ci` | All platforms plus Android emulator jobs. |
 | Merge queue | Deterministic all-platform matrix; emulator jobs remain excluded by the queue contract. |
-| Push to `main` | Exact union of changed-path groups. Android-selected pushes retain the existing emulator readback; iOS-only, OHOS-only and irrelevant pushes do not spend emulator capacity. An irrelevant-only push is an explicit no-op. |
+| Push to `main` | Exact union of changed-path groups. Android-selected pushes retain the existing emulator readback; iOS-only and irrelevant pushes do not spend emulator capacity. An irrelevant-only push is an explicit no-op. |
 | Push to `release-*` | Full all-platform and emulator readback, regardless of paths. |
 | Schedule or manual dispatch | Full all-platform and emulator readback. |
 

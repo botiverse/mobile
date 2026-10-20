@@ -16,9 +16,8 @@ internal data class FeatureFlagClientContext(
 
 internal const val FEATURE_FLAG_CLIENT_OS_ANDROID: String = "android"
 internal const val FEATURE_FLAG_CLIENT_OS_IOS: String = "ios"
-internal const val FEATURE_FLAG_CLIENT_OS_OHOS: String = "ohos"
 
-/** One of [FEATURE_FLAG_CLIENT_OS_ANDROID] / [FEATURE_FLAG_CLIENT_OS_IOS] / [FEATURE_FLAG_CLIENT_OS_OHOS]. */
+/** One of [FEATURE_FLAG_CLIENT_OS_ANDROID] / [FEATURE_FLAG_CLIENT_OS_IOS]. */
 internal expect fun featureFlagClientOs(): String
 
 internal fun currentFeatureFlagClientContext(): FeatureFlagClientContext {

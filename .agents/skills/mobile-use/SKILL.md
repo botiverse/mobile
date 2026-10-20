@@ -1,20 +1,18 @@
 ---
 name: mobile-use
-description: Use when controlling or auditing Raft mobile apps from command line across Android, iOS, and Harmony/OHOS with the repo-local mobile-use package. Covers android-use, ios-use, harmony-use, screenshots/layout capture, log capture/analysis, launch trimming, and remote host wrappers.
+description: Use when controlling or auditing Raft mobile apps from command line across Android and iOS with the repo-local mobile-use package. Covers android-use, ios-use, screenshots/layout capture, log capture/analysis, launch trimming, and remote host wrappers.
 ---
 
 # Mobile Use
 
 Use `tools/mobile-use` as the standard repo-local package for repeatable mobile
-device automation. It installs three platform-specific CLIs and keeps shared
+device automation. It installs two platform-specific CLIs and keeps shared
 bottom helpers in one package:
 
 - `android-use` for ADB, Android app launch/control, logcat, screenshots, UI XML,
   and diagnostics intents.
 - `ios-use` for Xcode/simctl build/install/launch, simulator control,
   screenshots, logs, and remote wrappers.
-- `harmony-use` for DevEco/HDC/Hvigor, OHOS install/launch, emulator control,
-  screenshots/layout, HiLog analysis, and remote wrappers.
 
 ## Setup
 
@@ -29,7 +27,6 @@ For one-off use without installing:
 ```bash
 PYTHONPATH=tools/mobile-use/src python3 -m android_use --help
 PYTHONPATH=tools/mobile-use/src python3 -m ios_use --help
-PYTHONPATH=tools/mobile-use/src python3 -m harmony_use --help
 ```
 
 ## Android Audit Flow
@@ -84,17 +81,5 @@ UI inspect/act defaults to `agent-device` (`AGENT_DEVICE_BIN` or PATH). Use
 `--driver qa-loop --workspace compose/iosApp/iosApp.xcworkspace` only for the
 legacy XCTest file protocol. Product-log verdicts stay outside `ios-use`.
 
-## Harmony/OHOS Flow
-
-```bash
-harmony-use doctor --pretty
-harmony-use devices --pretty
-harmony-use build-hap --project compose/ohosApp --pretty
-harmony-use install --project compose/ohosApp --pretty
-harmony-use launch --bundle build.raft.mobile --pretty
-harmony-use hilog --bundle build.raft.mobile --duration 20 --out artifacts/ohos --pretty
-harmony-use analyze-log artifacts/ohos/state-hilog.txt --pretty
-```
-
-HiLog analysis groups old Ktor/CIO TLS stub regressions, NetworkKMM failures,
-and TLS certificate verification failures.
+HarmonyOS/OHOS device automation (`harmony-use`) was removed from `main` when
+OHOS was frozen at 1.14.x; it remains on the `release/1.14.x` branch.

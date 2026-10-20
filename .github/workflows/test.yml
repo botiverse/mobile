@@ -15,16 +15,12 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android/OHOS compile, no iOS, no device suite); full = deliberate full readback (all platforms + device suite + canonical-final)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); full = deliberate full readback (all platforms + device suite + canonical-final)."
         type: choice
         options:
           - pr
           - full
         default: pr
-      ohos_receipt_specimen:
-        description: "Task #91: force a controlled nonzero OHOS shared-compile exit to prove the resource-receipt artifact still uploads on RED. Does not affect normal runs."
-        type: boolean
-        default: false
       attachment_authority_repeat:
         description: "Re-run the public-Downloads authority class N times per API level to reproduce the intermittent API 31 cross-UID SecurityException. Default 1."
         type: number
@@ -49,11 +45,6 @@ concurrency:
   # PR and merge-queue refs keep superseding stale work for that exact ref.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/release-') }}
 
-env:
-  # Cache-path format + immutable Harmony image epoch. Bump whenever either
-  # changes so migration runs prove a cold container publish/save/restore.
-  HARMONY_CACHE_EPOCH: hci-v6.1.1.280-333681267bdf-r2
-
 jobs:
   plan:
     name: CI path plan + contract
@@ -67,7 +58,6 @@ jobs:
     outputs:
       run_android: ${{ steps.plan.outputs.run_android }}
       run_ios: ${{ steps.plan.outputs.run_ios }}
-      run_ohos: ${{ steps.plan.outputs.run_ohos }}
       run_device_suite: ${{ steps.plan.outputs.run_device_suite }}
       run_canonical_final: ${{ steps.plan.outputs.run_canonical_final }}
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
@@ -87,12 +77,6 @@ jobs:
       - name: Validate iOS Hands release notes contract
         run: scripts/ci/test_ios_hands_release_contract.sh
 
-      - name: Validate OHOS attachment-open diagnostic production wiring
-        run: node compose/ohosApp/scripts/test_attachment_open_diagnostics_source_contract.mjs
-
-      - name: Validate OHOS shared font cold-start ordering
-        run: node compose/ohosApp/scripts/test_font_cold_start_source_contract.mjs
-
       - name: Validate attachment save failure mapping across native bridges
         run: python3 scripts/ci/test_attachment_save_mapping_contract.py
 
@@ -102,25 +86,12 @@ jobs:
       - name: Validate Hands Android SDK Raft consumer contract
         run: python3 scripts/ci/test_hands_raft_consumer_contract.py
 
-      - name: Validate remote Touchlab dependency contract
-        run: python3 scripts/ci/test_remote_touchlab_ci_contract.py
-
       - name: Validate no-local-Ktor dependency contract
         run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
 
-      # Incident-born gate (task #976): PR #1920 imported kotlinx.coroutines.test
-      # into commonTest; the OHOS test targets have no such KLIB, so only the
-      # post-merge OHOS shared compile went red. This contract runs on every PR.
-      # Denylist form: seals the listed dependencies, not the general class.
-      - name: Validate commonTest cross-platform test dependency contract
-        run: |
-          python3 scripts/ci/check_commontest_crossplatform_deps.py --self-test
-          python3 scripts/ci/check_commontest_crossplatform_deps.py
-
-      # Task #373 / PR #2497: mermaid consumer confinement. Three platform
-      # actuals must stay source-byte-identical; mermaid types stay out of
-      # commonMain/commonTest; OHOS mermaid GAVs stay on ohosArm64* with -ohos.
-      # Source identity, not KBA vs 2.1.21 ABI identity.
+      # Task #373 / PR #2497: mermaid consumer confinement. The Android and
+      # iOS actuals must stay source-byte-identical; mermaid types stay out of
+      # commonMain/commonTest.
       - name: Validate mermaid plane confinement contract
         run: |
           python3 scripts/ci/check_mermaid_plane_confinement.py --self-test
@@ -291,7 +262,7 @@ jobs:
   kuikly-artifacts:
     name: Kuikly release manifest (Raft)
     needs: [plan]
-    if: ${{ needs.plan.outputs.run_android == 'true' || needs.plan.outputs.run_ios == 'true' || needs.plan.outputs.run_ohos == 'true' }}
+    if: ${{ needs.plan.outputs.run_android == 'true' || needs.plan.outputs.run_ios == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -517,9 +488,19 @@ jobs:
       # Hard run gate since #215 cleared the legacy failures: the shared JVM
       # suite must pass. Run androidApp unit tests in the same gate so stale
       # Android host tests cannot stay hidden until a local developer run.
+      # :designsystem:desktopTest is the CMP design system's unit tests plus its
+      # screenshot goldens in verify mode (compose/designsystem/README.md).
       - name: Run shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain --stacktrace
+        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
+
+      - name: Upload design system screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: designsystem-screenshot-diffs
+          path: compose/designsystem/build/reports/screenshots/
+          if-no-files-found: ignore
 
       - name: Verify NetworkKMM curl runtime and pinned CA
         shell: bash
@@ -952,7 +933,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
-      - name: Compile shared iOS targets and unit tests
+      - name: Compile shared and design system iOS targets and unit tests
         working-directory: compose
         run: |
           ./gradlew \
@@ -960,6 +941,7 @@ jobs:
             :shared:compileKotlinIosSimulatorArm64 \
             :shared:compileKotlinIosX64 \
             :shared:compileTestKotlinIosSimulatorArm64 \
+            :designsystem:compileKotlinIosSimulatorArm64 \
             --no-daemon \
             --console=plain \
             --stacktrace
@@ -1130,323 +1112,6 @@ jobs:
         if: failure()
         uses: ./.github/actions/gradle-failure-diagnostics
 
-  # Task #91: checked-in teeth for the OHOS resource receipt — proves the
-  # crash-artifact inventory is secret-safe (allowlist extraction + mechanical
-  # redaction) and the classifier fails closed (indeterminate(no_phase)) on a
-  # missing compile-phase receipt. Fast bash-only self-test that runs the real
-  # scripts against controlled fixtures; gates on any leak or wrong verdict.
-  ohos-receipt-selftest:
-    name: OHOS resource receipt self-test
-    needs: [plan]
-    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Crash-artifact sanitization + classifier no-phase fixture
-        run: bash .github/actions/ohos-resource-receipt/test_crash_artifacts.sh
-
-  ohos:
-    name: OHOS shared compile
-    # Runs on Linux, not macOS (#469): this job consumes ohosArm64 klibs,
-    # all built on Linux by the prebuilds and shared through Blacksmith's
-    # colocated cache, which macOS runners do not participate in (the sibling
-    # ohos-host container hits it). Native-bridge changes additionally link the
-    # debug K/N library here and compile the NAPI C++ boundary against its generated
-    # header; the 8-vCPU runner has the headroom the 4-vCPU ArkTS job lacks.
-    # On top of that it runs in artin's
-    # harmonyos-ci-image (task #240), which presets the full OHOS toolchain
-    # (OHOS_SDK_HOME/LLVM from command-line-tools 6.1.1.280) — no per-run
-    # setup-ohos-sdk download, and the SDK version matches ohos-host and the
-    # KuiklyBase-components CI instead of the previous 6.0 pin.
-    # 8vcpu: kspKotlinOhosArm64 (the heaviest K/N JVM step) OOM'd fleet-wide
-    # on 4vcpu VMs after moving into the container — killed mid-task with no
-    # compile error. The job sat too close to the VM memory ceiling; doubling
-    # the VM beats per-daemon heap tuning (docker create shows no --memory
-    # cap, so the VM itself is the boundary).
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
-    needs: [plan, kuikly-artifacts]
-    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
-    timeout-minutes: 90
-    env:
-      # Task #91: fail-close resource receipt scratch dir (memory/cgroup snapshots,
-      # compile-phase exit/signal, crash inventory, classifier verdict). Uploaded
-      # as a diagnostic artifact; never influences the gate result. Uses
-      # github.workspace (allowed in job-level env; the `runner` context is not).
-      OHOS_RECEIPT_DIR: ${{ github.workspace }}/ohos-resource-receipt
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      # actions/checkout writes safe.directory through a temporary HOME. Later
-      # container steps restore their normal HOME, so persist and verify it.
-      - name: Establish Git repository context
-        uses: ./.github/actions/git-safe-workspace
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Apply Gradle cache policy
-        uses: ./.github/actions/gradle-cache-policy
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      - name: Detect OHOS native-bridge changes
-        id: ohos_native
-        shell: bash
-        run: |
-          set -euo pipefail
-          required=true
-          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
-            required=true
-          else
-            diff_rc=0
-            scripts/ci/git-diff-path-state.sh "${{ github.event.pull_request.base.sha }}" HEAD -- \
-              .github/workflows/test.yml \
-              compose/build.ohos.gradle.kts \
-              compose/ohosBridge \
-              compose/ohosApp/hvigor \
-              compose/ohosApp/entry/src/main/cpp \
-              compose/ohosApp/entry/src/main/ets/entryability \
-              compose/ohosApp/scripts \
-              compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockNetworkRequestLifetime.kt \
-              compose/shared/src/commonTest/kotlin/build/raft/app/network/SlockNetworkRequestLifetimeCoordinatorTest.kt \
-              || diff_rc=$?
-            echo "OHOS native-bridge path diff rc: $diff_rc"
-            case "$diff_rc" in
-              0) required=false ;;
-              1) required=true ;;
-              *)
-                echo "::warning::git diff failed with exit $diff_rc; running OHOS native-bridge gate"
-                required=true
-                ;;
-            esac
-          fi
-          echo "required=$required" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Node.js for OHOS native contract checks
-        if: steps.ohos_native.outputs.required == 'true'
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-
-      # Task #91: capture the runner's cgroup memory accounting before the
-      # heaviest K/N step so a no-diagnostic kspKotlinOhosArm64 kill can later be
-      # classified fail-close. Collection only; never affects the gate.
-      - name: OHOS resource receipt — pre-compile snapshot
-        uses: ./.github/actions/ohos-resource-receipt
-        with:
-          phase: pre
-
-      - name: Compile shared OHOS target and unit tests
-        id: compile_shared_ohos
-        working-directory: compose
-        env:
-          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
-          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-        run: |
-          set +e
-          ./gradlew \
-            -c settings.ohos.gradle.kts \
-            :shared:compileKotlinOhosArm64 \
-            :shared:compileTestKotlinOhosArm64 \
-            :ohosBridge:compileKotlinOhosArm64 \
-            --no-daemon \
-            --console=plain \
-            --stacktrace
-          rc=$?
-
-          # Task #91 controlled nonzero specimen: when dispatched with
-          # ohos_receipt_specimen=true and the real compile passed, force a
-          # nonzero exit so the always() resource-receipt upload is proven to run
-          # on a RED job. Normal runs leave the input unset and are unaffected.
-          specimen="${{ github.event.inputs.ohos_receipt_specimen }}"
-          if [ "$specimen" = "true" ] && [ "$rc" -eq 0 ]; then
-            echo "ohos_receipt_specimen=true: forcing controlled nonzero exit to exercise the resource-receipt upload path"
-            rc=42
-          fi
-
-          # Record the real compile phase/exit/signal; the post step classifies it.
-          receipt_dir="${OHOS_RECEIPT_DIR:-${RUNNER_TEMP:-/tmp}/ohos-resource-receipt}"
-          mkdir -p "$receipt_dir"
-          # rc>128 only SUGGESTS a signal via the 128+N convention; it is not
-          # proof the process was killed by signal N, so record it as a candidate.
-          sig_candidate="none"
-          if [ "$rc" -gt 128 ]; then sig_candidate=$((rc - 128)); fi
-          {
-            printf 'phase=compile_shared_ohos\n'
-            printf 'exit_code=%s\n' "$rc"
-            printf 'signal_candidate=%s\n' "$sig_candidate"
-            if [ "$specimen" = "true" ]; then printf 'specimen_forced=true\n'; else printf 'specimen_forced=false\n'; fi
-          } > "$receipt_dir/compile-phase.env"
-          echo "----- ohos-resource-receipt [compile-phase] -----"
-          cat "$receipt_dir/compile-phase.env"
-          echo "-------------------------------------------------"
-          # Re-exit with the real (or specimen-forced) code: never swallow a RED.
-          exit "$rc"
-
-      - name: Link and stage the generated OHOS Kotlin Native bridge
-        if: steps.ohos_native.outputs.required == 'true'
-        working-directory: compose
-        env:
-          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
-          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-        run: |
-          ./gradlew \
-            -c settings.ohos.gradle.kts \
-            copyNetworkOhosRuntimeLibs \
-            :ohosBridge:linkDebugSharedOhosArm64 \
-            --no-daemon \
-            --console=plain \
-            --stacktrace
-
-          shared_output="ohosBridge/build/bin/ohosArm64/debugShared"
-          test -s "$shared_output/libshared.so"
-          test -s "$shared_output/libshared_api.h"
-          grep -q 'raftUpdateProcessNetworkVisibility' "$shared_output/libshared_api.h"
-          test "$(wc -l < "$shared_output/libshared_api.h")" -le 500
-          node ohosApp/scripts/test_kuikly_plugin_source_contract.mjs
-          node ohosApp/scripts/test_mr_resource_staging_source_contract.mjs
-
-          mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
-          install -m 755 "$shared_output/libshared.so" ohosApp/entry/libs/arm64-v8a/libshared.so
-          install -m 644 "$shared_output/libshared_api.h" ohosApp/entry/src/main/cpp/libshared_api.h
-          node ohosApp/scripts/test_process_network_lifecycle_source_contract.mjs
-
-      - name: Compile OHOS NAPI against the generated Kotlin Native bridge
-        if: steps.ohos_native.outputs.required == 'true'
-        working-directory: compose/ohosApp
-        shell: bash
-        env:
-          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
-          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-        run: |
-          ../../scripts/ci/verify_kuikly_ohos_renderer.sh
-          ohpm install --all
-          hvigorw --sync -p product=default --analyze=normal --no-daemon
-          hvigorw --mode module \
-            -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            default@BuildNativeWithNinja --analyze=normal --no-daemon
-
-      # DevEco's Linux CLI has no previewer callback for GenerateUnitTestResult;
-      # compile the LocalUnit bundle here while Darwin/local covers execution.
-      - name: Compile OHOS LocalUnit sources
-        if: steps.ohos_native.outputs.required == 'true'
-        working-directory: compose/ohosApp
-        shell: bash
-        env:
-          OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
-          DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-        run: |
-          node scripts/test_mobile_oauth_source_contract.mjs
-          hvigorw --mode module \
-            -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            default@UnitTestArkTS --analyze=normal --no-daemon
-          hvigorw --mode module \
-            -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            assembleHap --analyze=normal --no-daemon
-          node --test scripts/verify_mobile_oauth_hap.test.mjs
-          node scripts/verify_mobile_oauth_hap.mjs \
-            entry/build/default/outputs/default/entry-default-unsigned.hap \
-            raft-debug
-
-      - name: Gradle failure diagnostics
-        if: failure()
-        uses: ./.github/actions/gradle-failure-diagnostics
-
-      # Task #91: always() resource receipt — post snapshot, crash inventory,
-      # always_executed marker, fail-close classifier, and artifact upload. Runs
-      # on success AND failure so a no-diagnostic kill still leaves evidence.
-      # Never changes the gate result.
-      - name: OHOS resource receipt — post-compile + classify + upload
-        if: always()
-        uses: ./.github/actions/ohos-resource-receipt
-        with:
-          phase: post
-
-  # OHOS host (hvigor/ArkTS) gate — catches .ets compile errors that the
-  # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which
-  # ships the full DevEco command-line-tools (ohpm/hvigorw/SDK/JDK17) that
-  # hosted runners cannot download (Huawei-login-gated). The hvigor build's
-  # kuikly plugin shells out to gradle to link the shared .so; its OHOS
-  # SQLDelight fork resolves from Raft Artifacts like the ohos job.
-  ohos-host:
-    name: OHOS host (hvigor/ArkTS) compile
-    runs-on: ubuntu-latest
-    needs: [plan, kuikly-artifacts]
-    if: ${{ needs.plan.outputs.run_ohos == 'true' }}
-    timeout-minutes: 90
-    container:
-      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1@sha256:333681267bdf66eaba96d311d34eada49cfd86621f33c21cdf9a19fed343f5e5
-    env:
-      OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
-      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      # The workspace is provisioned by the host runner user while steps run
-      # as the container user, so git refuses it as "dubious ownership" ('*'
-      # also covers the submodule checkouts below).
-      - name: Establish Git repository context
-        uses: ./.github/actions/git-safe-workspace
-        with:
-          scope: all
-
-      # zstd (actions/cache compression fingerprint) and curl (the SQLite
-      # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
-      # into harmonyos-ci-image, so the per-run apt-get install is gone.
-      - name: Apply Gradle cache policy
-        uses: ./.github/actions/gradle-cache-policy
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-      # This gate compiles the host ArkTS/.ets — the layer the KMP-only jobs
-      # cannot see (e.g. the tabbar host regression). It deliberately stops
-      # short of the full unsigned-HAP assembleHap: that would require linking
-      # the shared KMP libshared.so, whose konanc whole-program release -opt
-      # link does not fit this 7.8 GiB / 2-CPU container. Every attempt hit a
-      # hard wall — the konan compiler daemon has a large-enough thread stack
-      # but a too-small heap that is not raisable (kotlin.native.jvmArgs is
-      # ignored) and OOMs the -opt; running konanc in-process makes the heap
-      # settable via -Xmx but then the deep IR-lowering recursion overflows the
-      # worker thread's stack (which ignores -Xss); the debug variant instead
-      # bloats codegen with -g until clang OOM-kills the whole runner. The
-      # Kotlin content of libshared is already gated by the "OHOS shared
-      # compile" job, so the unique coverage here is the ArkTS compile, which
-      # needs no native link. (Revisit assembleHap if this job moves to a
-      # larger runner or the image gains headroom.)
-      - name: Verify manifest-bound OHOS Kuikly renderer
-        shell: bash
-        run: scripts/ci/verify_kuikly_ohos_renderer.sh
-
-      - name: ohpm install
-        working-directory: compose/ohosApp
-        shell: bash
-        run: ohpm install --all
-
-      - name: hvigor sync
-        working-directory: compose/ohosApp
-        shell: bash
-        run: hvigorw --sync -p product=default --analyze=normal --parallel --no-daemon
-
-      - name: hvigor CompileArkTS (host .ets gate)
-        working-directory: compose/ohosApp
-        shell: bash
-        run: |
-          bash scripts/test_bridge_unknown_method_source_contract.sh
-          hvigorw --mode module \
-            -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            default@CompileArkTS --analyze=normal --parallel --no-daemon
-
   # The only Test context intended for the main-branch required-check rule.
   # It always reports, including docs-only PRs, and mechanically verifies that
   # exactly the jobs selected by the checked-in plan passed. Emulator jobs are
@@ -1465,9 +1130,6 @@ jobs:
       - android-minimum-supported-attachment-runtime
       - android-canonical-final-actual-host
       - ios
-      - ohos-receipt-selftest
-      - ohos
-      - ohos-host
     steps:
       - name: Checkout aggregate verifier
         uses: actions/checkout@v5

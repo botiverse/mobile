@@ -1,3 +1,0 @@
-package = build.raft.app.data.ohosmmkv
-headers = slock_mmkv_c_wrapper.h
-staticLibraries = libmmkv_c_wrapper.so

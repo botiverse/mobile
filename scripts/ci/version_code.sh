@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared versionCode computation for Android/iOS/OHOS releases.
+# Shared versionCode computation for Android/iOS releases.
 #
 # Formula (task #321, authoritative single source):
 #   versionCode = major*10_000_000 + minor*100_000 + patch*1_000 + build

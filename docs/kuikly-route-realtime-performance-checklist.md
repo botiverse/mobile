@@ -8,7 +8,8 @@ This checklist was extracted from the OHOS Thread freeze investigation in
 `#KMP` task #136. The failure mode was not a native crash: Thread first content
 rendered, socket heartbeat continued, but the Kuikly thread stayed near a full
 core because Home presence realtime kept reducing Home state and writing/reading
-Home cache while Thread was active.
+Home cache while Thread was active. (OHOS has since been frozen at 1.14.x and
+removed from `main`; the principles below apply to the Android and iOS hosts.)
 
 ## Principles
 
@@ -17,7 +18,7 @@ Home cache while Thread was active.
   trigger broad recomposition while another route is active.
 - Realtime events need product priority, not a single shared "apply to every
   route immediately" path.
-- Diagnostics should preserve enough data for Quiver/export and HDC analysis,
+- Diagnostics should preserve enough data for Quiver/export and device analysis,
   but high-frequency facts must not flood `console.log`.
 - Page-visible content is not sufficient acceptance for transition work.
   A route can appear correct while the render thread is pegged.
@@ -122,7 +123,7 @@ deduped and bounded:
 
 ## Logging Policy
 
-OHOS bridge logging must separate persistent diagnostics from console noise:
+Host bridge logging must separate persistent diagnostics from console noise:
 
 - Default `bridge.log` should record through diagnostics storage/export.
 - `console.log` should be limited to errors, warnings, key lifecycle boundaries,
@@ -130,19 +131,15 @@ OHOS bridge logging must separate persistent diagnostics from console noise:
 - High-frequency diagnostics should not mirror to console by default:
   `write_realtime_skip`, `presence_batch`, `read_home`, `write_home`,
   `shared_*_cache`, heartbeat skip, and repeated equivalent no-ops.
-- HDC debugging should use explicit summary tags rather than dumping every
+- Device debugging should use explicit summary tags rather than dumping every
   bridge log line.
 
 Audit pattern:
 
 ```bash
-rg -n "bridge\\.log|console\\.log|SlockOhosDiagnostics.record" \
-  compose/shared/src/commonMain/kotlin/build/raft/app \
-  compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets
+rg -n "bridge\\.log|console\\.log" \
+  compose/shared/src/commonMain/kotlin/build/raft/app
 ```
-
-For OHOS, confirm that `KRBridgeModule.log` records diagnostics but only
-allowlisted messages reach `console.log`.
 
 ## Performance Instrumentation
 
@@ -150,9 +147,6 @@ Kuikly page-level metrics and business route logs must be correlated:
 
 - Android already has Kuikly performance callbacks wired through
   `SlockKuiklyPerf`.
-- OHOS must return launch/frame/memory monitor types from
-  `KuiklyViewDelegate.performanceMonitorTypes()` before `SlockKuiklyPerf`
-  callbacks are expected.
 - Add route business logs around the transition:
   `home_open_conversation`, `thread_start`,
   `thread_persistent_cache_result`, `thread_first_render`,
@@ -161,8 +155,8 @@ Kuikly page-level metrics and business route logs must be correlated:
 - Do not call Kuikly `PerformanceModule.getPerformanceData()` from hot
   recomposition paths. Trigger it once from an event boundary if a snapshot is
   needed.
-- During OHOS validation, correlate `hilog`, `hdc shell top -H`, Kuikly perf
-  logs, and business route logs.
+- During device validation, correlate platform logs (logcat / iOS unified
+  log), per-thread CPU, Kuikly perf logs, and business route logs.
 
 ## UI Layer Batch Audit
 
@@ -182,7 +176,6 @@ Prioritize these surfaces:
   `SettingsComputersPage.kt`, `SettingsBillingPage.kt`,
   `SettingsStoragePage.kt`, `SharedInboxPanel.kt`, and
   `ThreadComposerPage.kt` render logs keyed by full payloads.
-- OHOS bridge: `KRBridgeModule.ets` diagnostics and console mirroring policy.
 
 For each hit, record:
 
@@ -196,7 +189,7 @@ For each hit, record:
 
 Keep platform compile fixes separate from performance fixes:
 
-- Source-set/API compile repairs, such as OHOS `Clock` actuals, belong to their
+- Source-set/API compile repairs, such as platform `Clock` actuals, belong to their
   own task and commit.
 - Performance patches should not silently absorb unrelated compile fixes.
 - Final acceptance must run on the final pushed-main shape or a clearly stated
@@ -206,13 +199,13 @@ Minimum verification for a Home -> Thread performance fix:
 
 ```bash
 cd compose
-./gradlew --no-daemon --console=plain -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
+./gradlew --no-daemon --console=plain :shared:compileDebugKotlinAndroid :shared:compileKotlinIosSimulatorArm64
 ```
 
-Then on OHOS device:
+Then on a device:
 
 - enter Thread from Home,
 - confirm first content renders,
 - confirm Kuikly thread does not stay near a full core,
 - confirm no Home `presence_batch` cache storm while Thread is active,
-- confirm `hilog` console is not flooded by high-frequency bridge logs.
+- confirm the platform log is not flooded by high-frequency bridge logs.

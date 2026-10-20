@@ -12,7 +12,6 @@ const iosLiteral = read('compose/iosApp/iosApp/KuiklyExpand/Components/SlockSand
 const ios = JSON.parse(iosLiteral);
 const androidNative = read('compose/androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt');
 const iosNative = read('compose/iosApp/iosApp/KuiklyExpand/Components/SlockSandboxWebView.m');
-const ohosNative = read('compose/ohosApp/entry/src/main/ets/kuikly/components/SlockSandboxWebView.ets');
 const bootstrap = read('compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneWebViewHost.kt')
   .split('internal fun feedbackWebViewBootstrapJavaScript(')[1]
   .match(/return """([\s\S]*?)"""/)[1]
@@ -134,6 +133,4 @@ test('native hosts fence auth script and runtime updates to trusted documents', 
   assert.match(iosNative, /isSameOriginURL:activeURL/);
   assert.match(iosNative, /!self\.allowNavigation && !\[self isAllowedMainDocumentURL:activeURL\]/);
   assert.match(iosNative, /evaluateJavaScript:script completionHandler:nil/);
-  assert.match(ohosNative, /window\.top!==window\.self/);
-  assert.match(ohosNative, /this\.controller\.runJavaScript\(script\)/);
 });

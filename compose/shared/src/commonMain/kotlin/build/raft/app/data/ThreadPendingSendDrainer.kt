@@ -161,8 +161,7 @@ internal class ThreadPendingSendDrainer(
     /**
      * Test seam for backoff wakeups: production leaves this null and [scheduleWakeup] arms a
      * delayed re-trigger on [scope]; tests capture the delay and drive the follow-up drain
-     * manually, keeping every assertion free of wall-clock sleeps (commonTest has no
-     * kotlinx-coroutines-test KLIB on OHOS — see scripts/ci/check_commontest_crossplatform_deps.py).
+     * manually, keeping every assertion free of wall-clock sleeps.
      */
     private val wakeupSchedulerOverride: ((Long) -> Unit)? = null
 ) {

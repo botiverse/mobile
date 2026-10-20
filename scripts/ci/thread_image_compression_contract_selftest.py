@@ -204,53 +204,7 @@ static NSString *SlockCompressedAttachmentFileName(NSString *name) { return name
 if (!encoded) { [NSFileManager.defaultManager removeItemAtURL:outputURL error:nil]; }
 attachment_image_compression_failed
     '''
-    ohos = '''
-const S = "composer_image_compressor";
-class KRBridgeModule {
-  static readonly COMPRESS_THREAD_IMAGE = "compressThreadImage";
-  static readonly CANCEL_COMPRESS_THREAD_IMAGE = "cancelCompressThreadImage";
-  call(method: string) { switch (method) {
-    case KRBridgeModule.COMPRESS_THREAD_IMAGE: this.compressThreadImage({}, cb); break;
-    case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE: this.cancelCompressThreadImage({}); break;
-  }}
-  private isOhosImageAttachment(uri: string, mimeType: string, imageOnly: boolean) {
-    if (mimeType.startsWith('video/')) return false;
-    const lowerUri = uri.toLowerCase().split('?')[0];
-    if (/\\.(mp4|flv)$/.test(lowerUri)) return false;
-    if (mimeType.startsWith('image/')) return true;
-    if (/\\.(avif|bmp|gif|heic|heif|jpe?g|png|webp|tiff?)$/.test(uri)) return true;
-    return false;
-  }
-  private async cacheCompressedPickedThreadImage() { }
-  private async isThreadImageCompressionInput(fileName: string, mimeType: string, sourcePath: string) {
-    const normalizedMimeType = mimeType.split(';')[0].trim().toLowerCase();
-    if (!normalizedMimeType.startsWith('image/')) return false;
-    const extension = fileName.split('.').pop()?.toLowerCase() ?? '';
-    if (['mp4', 'flv'].includes(extension)) return false;
-    const normalizedSourcePath = sourcePath.toLowerCase().split('?')[0].split('#')[0];
-    if (/\\.(mp4|flv)$/.test(normalizedSourcePath)) return false;
-    const sourceStat = await fs.stat(sourcePath);
-    return sourceStat.isFile() && sourceStat.size > 0;
-  }
-  private threadImageCompressionOutputName(fileName: string) { return fileName; }
-  private async compressThreadImage(params: KRAny, callback: KuiklyRenderCallback) {
-    const requestId = params["requestId"]; const fileRef = params["fileRef"];
-    const fileName = params["fileName"]; const mimeType = params["mimeType"];
-    const targetPath = `${UUID.randomUUID()}.jpg`;
-    await this.cacheCompressedPickedThreadImage();
-    await packer.packToFile(pixelMap, fd, { format: 'image/jpeg' });
-    callback({ source: "composer_image_compressor", mimeType: "image/jpeg" });
-    await fs.unlink(targetPath);
-  }
-  private cancelCompressThreadImage(params: KRAny) { }
-  private async cacheCompressedPickedThreadImage() {
-    await packer.packToFile(pixelMap, fd, { format: 'image/jpeg' });
-    await fs.unlink(targetPath);
-  }
-  attachment_image_compression_failed
-}
-    '''
-    return {"bridge": bridge, "preview": preview, "thread": thread, "android": android, "ios": ios, "ohos": ohos,
+    return {"bridge": bridge, "preview": preview, "thread": thread, "android": android, "ios": ios,
             "uploaded_preview": "threadComposerImageAnnotationPayload(threadInstanceKey, actionId, files, originalImage)"}
 
 
@@ -330,10 +284,6 @@ def self_test() -> int:
             lambda s: s.__setitem__("ios", s["ios"].replace("- (void)compressThreadImage:", "- (void)otherThreadImage:", 1)),
         ),
         (
-            "OHOS cancellation dispatch",
-            lambda s: s.__setitem__("ohos", s["ohos"].replace("case KRBridgeModule.CANCEL_COMPRESS_THREAD_IMAGE", "case KRBridgeModule.OTHER", 1)),
-        ),
-        (
             "video-first guard",
             lambda s: s.__setitem__("android", s["android"].replace('if (extension in THREAD_ATTACHMENT_VIDEO_EXTENSIONS) return false', "", 1)),
         ),
@@ -397,48 +347,6 @@ def self_test() -> int:
         (
             "failure cleanup",
             lambda s: s.__setitem__("ios", s["ios"].replace("removeItemAtURL:outputURL", "", 1)),
-        ),
-        (
-            "OHOS source-path video guard",
-            lambda s: s.__setitem__(
-                "ohos",
-                _replace_in_region(
-                    s["ohos"],
-                    "private async isThreadImageCompressionInput(",
-                    "private threadImageCompressionOutputName(",
-                    r"if (/\.(mp4|flv)$/.test(normalizedSourcePath)) return false;",
-                    "",
-                    "OHOS source-path video guard mutation",
-                ),
-            ),
-        ),
-        (
-            "OHOS source-path shared flv parity",
-            lambda s: s.__setitem__(
-                "ohos",
-                _replace_in_region(
-                    s["ohos"],
-                    "private async isThreadImageCompressionInput(",
-                    "private threadImageCompressionOutputName(",
-                    "mp4|flv",
-                    "mp4",
-                    "OHOS source-path flv parity mutation",
-                ),
-            ),
-        ),
-        (
-            "OHOS picker shared flv parity",
-            lambda s: s.__setitem__(
-                "ohos",
-                _replace_in_region(
-                    s["ohos"],
-                    "private isOhosImageAttachment(",
-                    "private async cacheCompressedPickedThreadImage(",
-                    r"mp4|flv",
-                    "mp4",
-                    "OHOS picker flv parity mutation",
-                ),
-            ),
         ),
         (
             "iOS picker video guard",

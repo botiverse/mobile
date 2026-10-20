@@ -2035,9 +2035,6 @@
     <string name="settings_storage_row_downloads_detail">下载中或失败后留下的临时数据；已完成的文件保留在系统下载目录中。</string>
     <string name="settings_storage_row_temporary">临时文件和日志</string>
     <string name="settings_storage_row_temporary_detail">应用生成的调试日志和临时文件。</string>
-    <string name="settings_storage_ohos_database_detail">OHOS 主机能力暂未提供存储用量。</string>
-    <string name="settings_storage_ohos_image_cache_detail">OHOS 暂不支持清除图片缓存。</string>
-    <string name="settings_storage_ohos_temporary_detail">请在诊断页面清除本地诊断日志缓冲区。</string>
     <string name="settings_storage_feedback_image_cleared">图片缓存已清除。</string>
     <string name="settings_storage_feedback_downloads_cleared">附件暂存数据已清除；系统下载目录中的已完成文件未被删除。</string>
     <string name="settings_storage_feedback_temporary_cleared">临时文件和诊断日志已清除。</string>

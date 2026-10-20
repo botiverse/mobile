@@ -151,12 +151,6 @@ kotlin {
                 // still have to compile on the ordinary unit gate, which passes no flag. Wiring the
                 // data here (and only here) keeps both true without a second gated test source set.
                 kotlin.srcDir("src/visualFixtureData/kotlin")
-                // SOURCE-SET CHANGES MUST BE MADE IN BOTH FILES: this one and
-                // compose/shared/build.ohos.gradle.kts. The OHOS leg does not build from this file
-                // at all — it runs `-c settings.ohos.gradle.kts`, which sets buildFileName to
-                // build.ohos.gradle.kts — so wiring added only here is invisible to
-                // compileTestKotlinOhosArm64. That file reads no slockVisualFixtures flag, so it
-                // registers this directory on commonTest unconditionally.
             }
             dependencies {
                 implementation(kotlin("test"))
@@ -316,14 +310,6 @@ tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
     dependsOn(stageTmmCommonSources)
 }
 
-tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
-}
-
-tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
-}
-
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
 }
@@ -332,7 +318,7 @@ tasks.matching { it.name.startsWith("compile") || it.name.startsWith("ksp") }.co
     dependsOn(generateSlockDatetimeBuildConfig)
 }
 
-tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
+tasks.matching { it.name == "generateMRandroidMain" }.configureEach {
     mustRunAfter(stageTmmCommonSources)
 }
 
@@ -466,8 +452,7 @@ tasks.named("check").configure {
 
 tasks.matching { task ->
     task.name == "preBuild" ||
-        task.name.startsWith("compileKotlinIos") ||
-        task.name == "compileKotlinOhosArm64"
+        task.name.startsWith("compileKotlinIos")
 }.configureEach {
     dependsOn(verifyNetworkCurlCaBundle)
 }

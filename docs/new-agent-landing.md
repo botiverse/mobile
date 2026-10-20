@@ -61,9 +61,9 @@ Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
 | Kuikly release consumed by mobile | `compose/gradle/kuikly-release-closure.json` | Immutable Raft Maven release manifest |
 | Upstream Kuikly reference | `.agents/skills/kuikly-ui-framework/references/KuiklyUI` | `github.com/Tencent-TDS/KuiklyUI` |
 
-The mobile repo vendors no OHOS/KMP fork sources any more: the SQLDelight,
-Stately and SQLiter OHOS forks are all consumed from Raft Artifacts (see
-`docs/ohos-sqldelight-fork.md`).
+The mobile repo vendors no KMP fork sources. HarmonyOS (OHOS) support is
+frozen: `1.14.x` is the last OHOS release and is built only from the
+`release/1.14.x` branch; `main` carries no OHOS app, bridge, scripts, or docs.
 
 When API payloads or Socket.IO events are in question, use the TypeScript
 server source as the contract oracle. Mobile no longer vendors that repository

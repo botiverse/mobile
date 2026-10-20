@@ -18,7 +18,6 @@ export function verifyTierResults(needs) {
   const outputs = needs.plan.outputs || {};
   const runAndroid = requireBoolean(outputs.run_android, "run_android");
   const runIos = requireBoolean(outputs.run_ios, "run_ios");
-  const runOhos = requireBoolean(outputs.run_ohos, "run_ohos");
   const runDeviceSuite = requireBoolean(outputs.run_device_suite, "run_device_suite");
   const runCanonicalFinal = requireBoolean(outputs.run_canonical_final, "run_canonical_final");
   const attachmentRaw = outputs.attachment_api_levels;
@@ -48,14 +47,11 @@ export function verifyTierResults(needs) {
     //   test.yml  ios:  needs: [plan, kuikly-artifacts]
     // If that dependency is ever removed, the correct fix flips sides — the PRODUCER should
     // drop run_ios from the kuikly-artifacts `if:`, and this expectation should go back to
-    // runAndroid || runOhos. Re-derive before editing either side; do not read this line as
+    // runAndroid. Re-derive before editing either side; do not read this line as
     // "iOS always needs kuikly artifacts".
-    ["kuikly-artifacts", runAndroid || runOhos || runIos],
+    ["kuikly-artifacts", runAndroid || runIos],
     ["android", runAndroid],
     ["ios", runIos],
-    ["ohos-receipt-selftest", runOhos],
-    ["ohos", runOhos],
-    ["ohos-host", runOhos],
     [DEVICE_SUITE_JOB, runDeviceSuite],
     [CANONICAL_FINAL_JOB, runCanonicalFinal],
     [ATTACHMENT_JOB, runAttachment],
@@ -71,7 +67,6 @@ export function verifyTierResults(needs) {
   return {
     run_android: runAndroid,
     run_ios: runIos,
-    run_ohos: runOhos,
     run_device_suite: runDeviceSuite,
     run_canonical_final: runCanonicalFinal,
     attachment_api_levels: attachmentLevels,
@@ -79,7 +74,7 @@ export function verifyTierResults(needs) {
   };
 }
 
-function fixture({ android, ios, ohos, deviceSuite, canonicalFinal, attachmentLevels }) {
+function fixture({ android, ios, deviceSuite, canonicalFinal, attachmentLevels }) {
   const levels = attachmentLevels ?? [];
   const needs = {
     plan: {
@@ -87,7 +82,6 @@ function fixture({ android, ios, ohos, deviceSuite, canonicalFinal, attachmentLe
       outputs: {
         run_android: String(android),
         run_ios: String(ios),
-        run_ohos: String(ohos),
         run_device_suite: String(deviceSuite),
         run_canonical_final: String(canonicalFinal),
         attachment_api_levels: JSON.stringify(levels),
@@ -95,12 +89,9 @@ function fixture({ android, ios, ohos, deviceSuite, canonicalFinal, attachmentLe
       },
     },
   };
-  needs["kuikly-artifacts"] = { result: android || ohos || ios ? "success" : "skipped" };
+  needs["kuikly-artifacts"] = { result: android || ios ? "success" : "skipped" };
   needs.android = { result: android ? "success" : "skipped" };
   needs.ios = { result: ios ? "success" : "skipped" };
-  needs["ohos-receipt-selftest"] = { result: ohos ? "success" : "skipped" };
-  needs.ohos = { result: ohos ? "success" : "skipped" };
-  needs["ohos-host"] = { result: ohos ? "success" : "skipped" };
   needs[DEVICE_SUITE_JOB] = { result: deviceSuite ? "success" : "skipped" };
   needs[CANONICAL_FINAL_JOB] = { result: canonicalFinal ? "success" : "skipped" };
   needs[ATTACHMENT_JOB] = { result: levels.length > 0 ? "success" : "skipped" };
@@ -117,16 +108,15 @@ function expectFailure(needs, message) {
 }
 
 function selfTest() {
-  const none = { android: false, ios: false, ohos: false, deviceSuite: false, canonicalFinal: false, attachmentLevels: [] };
+  const none = { android: false, ios: false, deviceSuite: false, canonicalFinal: false, attachmentLevels: [] };
   verifyTierResults(fixture(none));
   verifyTierResults(fixture({ ...none, android: true }));
   verifyTierResults(fixture({ ...none, ios: true }));
-  verifyTierResults(fixture({ ...none, ohos: true }));
-  verifyTierResults(fixture({ ...none, android: true, ios: true, ohos: true }));
+  verifyTierResults(fixture({ ...none, android: true, ios: true }));
   // full-ci PR: device suite + API31 only, no canonical-final
-  verifyTierResults(fixture({ android: true, ios: true, ohos: true, deviceSuite: true, canonicalFinal: false, attachmentLevels: [31] }));
+  verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, canonicalFinal: false, attachmentLevels: [31] }));
   // nightly/manual: full device suite + canonical-final + all attachment legs
-  verifyTierResults(fixture({ android: true, ios: true, ohos: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
+  verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
 
   // iOS-only broke for 18 days, and WHY it survived is the part worth pinning: fixture() and
   // the expectation table were built from the SAME formula, so they agreed with each other
@@ -147,9 +137,9 @@ function selfTest() {
   failedAndroid.android.result = "failure";
   expectFailure(failedAndroid, "selected Android failure");
 
-  const missingOhos = fixture({ ...none, ohos: true });
-  missingOhos.ohos.result = "skipped";
-  expectFailure(missingOhos, "selected OHOS job skipped");
+  const missingIos = fixture({ ...none, ios: true });
+  missingIos.ios.result = "skipped";
+  expectFailure(missingIos, "selected iOS job skipped");
 
   const accidentalDevice = fixture({ ...none, android: true });
   accidentalDevice[DEVICE_SUITE_JOB].result = "success";

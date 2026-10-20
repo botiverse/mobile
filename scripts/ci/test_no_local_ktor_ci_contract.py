@@ -6,14 +6,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOWS = (
-    ROOT / ".github/workflows/test.yml",
-    ROOT / ".github/workflows/ohos-release.yml",
-)
-NETWORK_VERSIONS = (
-    "0.1.0-raft.35",
-    "0.1.0-raft.35-ohos",
-)
+WORKFLOWS = (ROOT / ".github/workflows/test.yml",)
+NETWORK_VERSIONS = ("0.1.0-raft.35",)
 
 
 def require(condition: bool, message: str) -> None:
@@ -59,9 +53,7 @@ def main() -> None:
     for value in forbidden:
         require(value not in combined, f"active CI still builds or hydrates Ktor locally: {value}")
 
-    # Every OHOS fork dependency (Kuikly, Touchlab, SQLDelight) now resolves
-    # from Raft Artifacts, so no workflow hydrates mavenLocal at all. Ktor can
-    # therefore only re-enter through a checked-in consumer or the public
+    # No workflow hydrates mavenLocal at all. Ktor can therefore only re-enter through a checked-in consumer or the public
     # NetworkKMM metadata, both verified below.
     for path, source in sources.items():
         for value in (".m2/repository", "mavenLocal()", "io/ktor", "io.ktor"):
@@ -107,8 +99,6 @@ def main() -> None:
             "ktor-client-core-ohosarm64" not in public_metadata,
             f"NetworkKMM {version} depends on a local Ktor OHOS physical variant",
         )
-        if version.endswith("-ohos"):
-            require("io.ktor" not in public_metadata, "immutable OHOS NetworkKMM still depends on Ktor")
 
     print("no-local-Ktor CI contract: PASS")
 
