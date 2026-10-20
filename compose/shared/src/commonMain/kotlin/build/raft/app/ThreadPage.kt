@@ -14906,54 +14906,54 @@ private fun ThreadPageContentContent(
                 query = query,
                 generation = requestGeneration
             )
-        // Debounce search so normal typing does not fire one request per
-        // keystroke; the field itself stays interactive while loading.
-        if (query.isNotBlank() && !append) delay(300)
-        if (!requestIdentity.accepts(
-                serverId = forwardServerId?.value.orEmpty(),
-                sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect,
-                query = forwardPickerFlow.query,
-                generation = forwardPickerFlow.requestGeneration
-            )
-        ) return@LaunchedEffect
+        val isCurrentRequest = {
+            val liveSession = forwardPickerFlow.sessionKey
+            liveSession != null &&
+                requestIdentity.accepts(
+                    serverId = forwardServerId?.value.orEmpty(),
+                    sessionKey = liveSession,
+                    query = forwardPickerFlow.query,
+                    generation = forwardPickerFlow.requestGeneration
+                )
+        }
+        // Debounce search so a burst of typing coalesces into one local filter; the
+        // field itself stays interactive while loading.
         val result: DataResult<ThreadForwardTargetLoadPage> =
-            if (query.isBlank()) {
-                when (
-                    val page =
-                        repository.directoryTargets(
-                            serverId = serverId,
-                            sessionId = sessionKey.directorySessionId(),
-                            cursor = cursor,
-                            pageSize = 30
-                        )
-                ) {
-                    is DataResult.Content ->
-                        DataResult.Content(
-                            ThreadForwardTargetLoadPage(
-                                items = page.data.items,
-                                nextCursor = page.data.nextCursor,
-                                reset = page.data.reset
+            raftForwardPickerGatedLoad<DataResult<ThreadForwardTargetLoadPage>>(
+                debounce = query.isNotBlank() && !append,
+                isCurrent = isCurrentRequest
+            ) {
+                if (query.isBlank()) {
+                    when (
+                        val page =
+                            repository.directoryTargets(
+                                serverId = serverId,
+                                sessionId = sessionKey.directorySessionId(),
+                                cursor = cursor,
+                                pageSize = 30
                             )
-                        )
-                    is DataResult.Empty -> DataResult.Empty(page.reason)
-                    is DataResult.Error -> DataResult.Error(page.error)
-                    is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                    ) {
+                        is DataResult.Content ->
+                            DataResult.Content(
+                                ThreadForwardTargetLoadPage(
+                                    items = page.data.items,
+                                    nextCursor = page.data.nextCursor,
+                                    reset = page.data.reset
+                                )
+                            )
+                        is DataResult.Empty -> DataResult.Empty(page.reason)
+                        is DataResult.Error -> DataResult.Error(page.error)
+                        is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                    }
+                } else {
+                    when (val page = repository.searchTargets(serverId, query, limit = 60)) {
+                        is DataResult.Content -> DataResult.Content(ThreadForwardTargetLoadPage(items = page.data))
+                        is DataResult.Empty -> DataResult.Empty(page.reason)
+                        is DataResult.Error -> DataResult.Error(page.error)
+                        is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
+                    }
                 }
-            } else {
-                when (val page = repository.searchTargets(serverId, query, limit = 60)) {
-                    is DataResult.Content -> DataResult.Content(ThreadForwardTargetLoadPage(items = page.data))
-                    is DataResult.Empty -> DataResult.Empty(page.reason)
-                    is DataResult.Error -> DataResult.Error(page.error)
-                    is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
-                }
-            }
-        if (!requestIdentity.accepts(
-                serverId = forwardServerId?.value.orEmpty(),
-                sessionKey = forwardPickerFlow.sessionKey ?: return@LaunchedEffect,
-                query = forwardPickerFlow.query,
-                generation = forwardPickerFlow.requestGeneration
-            )
-        ) return@LaunchedEffect
+            } ?: return@LaunchedEffect
         when (result) {
             is DataResult.Content -> {
                 val nextItems = result.data.items
@@ -31987,6 +31987,9 @@ internal fun <T> RaftForwardTargetPicker(
     var multiSelect by remember(state.sessionKey) { mutableStateOf(!singleTapContinues) }
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val loading = state.loadState == RaftForwardPickerLoadState.Loading
+    // A search refinement keeps the current rows on screen (they stay non-interactive until
+    // the new generation lands) instead of veiling them with the skeleton per keystroke.
+    val refiningSearch = loading && state.query.isNotBlank() && !state.appending
     val listState = key(state.sessionKey) { rememberLazyListState() }
     RaftBackHandler(enabled = state.dismissEnabled, label = "thread_forward_targets") {
         onIntent(RaftForwardTargetPickerIntent.Dismiss)
@@ -32159,7 +32162,7 @@ internal fun <T> RaftForwardTargetPicker(
                             )
                         }
                     }
-                    if (loading || state.errorCode != null) {
+                    if ((loading && !refiningSearch) || state.errorCode != null) {
                         Box(
                             modifier =
                                 Modifier
