@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -585,26 +586,35 @@ internal fun ActivityConversationListRow(
             ) {
                 ActivityConversationLeading(model, item, agentStatusResolver)
                 Column(modifier = Modifier.weight(1f)) {
+                    // Line 1: title (+ task badge) and, at its end, the time (raft-ui InboxItem: the
+                    // timestamp sits beside the title only, so it never narrows the excerpt below).
                     Row(
                         modifier = Modifier.height(titleLine),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RaftText(
-                            text = model.title ?: fallback,
-                            modifier = Modifier.weight(1f, fill = false),
-                            style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
-                            color = titleColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (model.taskNumber != null && model.taskStatus != null) {
-                            SharedActivityFooterBadge(
-                                label = "#${model.taskNumber}",
-                                slot = SharedActivityFooterSlot.Task,
-                                taskStatus = model.taskStatus,
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RaftText(
+                                text = model.title ?: fallback,
+                                modifier = Modifier.weight(1f, fill = false),
+                                style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
+                                color = titleColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
+                            if (model.taskNumber != null && model.taskStatus != null) {
+                                SharedActivityFooterBadge(
+                                    label = "#${model.taskNumber}",
+                                    slot = SharedActivityFooterSlot.Task,
+                                    taskStatus = model.taskStatus,
+                                )
+                            }
                         }
+                        ActivityConversationTime(item, timeContext)
                     }
                     // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
                     // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
@@ -635,7 +645,9 @@ internal fun ActivityConversationListRow(
                                 )
                             }.orEmpty()
                         }
-                    Box(modifier = Modifier.height(bodyLine), contentAlignment = Alignment.CenterStart) {
+                    // Line 2+: the excerpt (up to two lines) with the marks beside its first line.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                    Box(modifier = Modifier.weight(1f).heightIn(min = bodyLine), contentAlignment = Alignment.CenterStart) {
                     RaftText(
                         text =
                             activityConversationBodyText(
@@ -658,8 +670,9 @@ internal fun ActivityConversationListRow(
                         inlineContent = inlineContent,
                     )
                     }
+                    ActivityConversationMarks(model, marksHeight = bodyLine)
+                    }
                 }
-                ActivityConversationTrailing(item, model, timeContext, lineHeight = titleLine, marksHeight = bodyLine)
             }
             if (showDoneAction) {
                 // Rule L (touch): the row's primary action is always on screen, never hover-only, with a
@@ -783,57 +796,52 @@ private fun ActivityConversationLeading(
 }
 
 @Composable
-private fun ActivityConversationTrailing(
-    item: InboxItem,
-    model: ActivityConversationRowModel,
-    timeContext: RaftTimeContext?,
-    lineHeight: Dp,
-    marksHeight: Dp,
-) {
+private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeContext?) {
+    RaftRelativeTimestampText(
+        value = item.latestActivityAt ?: item.lastMessageAt,
+        timeContext = timeContext,
+        style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
+        color = RaftTheme.colors.foregroundHint,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.widthIn(max = 96.dp),
+    )
+}
+
+/** raft-ui `InboxItemMarks` (draft, mention, muted / unread count), beside the excerpt's first line. */
+@Composable
+private fun ActivityConversationMarks(model: ActivityConversationRowModel, marksHeight: Dp) {
     val colors = RaftTheme.colors
-    Column(horizontalAlignment = Alignment.End) {
-        // The time sits beside the title line and the marks beside the body line (raft-ui compact).
-        Box(modifier = Modifier.height(lineHeight), contentAlignment = Alignment.CenterEnd) {
-        RaftRelativeTimestampText(
-            value = item.latestActivityAt ?: item.lastMessageAt,
-            timeContext = timeContext,
-            style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
-            color = colors.foregroundHint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 96.dp),
-        )
+    if (!model.hasDraft && !model.showMentionMarker && !model.muted && !model.showUnreadCount) return
+    Row(
+        modifier = Modifier.height(marksHeight),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (model.hasDraft) {
+            val draftDescription = stringResource(MR.strings.activity_list_draft_description)
+            Box(
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = draftDescription
+                        role = Role.Image
+                    }
+            ) {
+                RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
+            }
         }
-        Row(
-            modifier = Modifier.height(marksHeight),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (model.hasDraft) {
-                val draftDescription = stringResource(MR.strings.activity_list_draft_description)
-                Box(
-                    modifier =
-                        Modifier.semantics {
-                            contentDescription = draftDescription
-                            role = Role.Image
-                        }
-                ) {
-                    RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
-                }
-            }
-            if (model.showMentionMarker) {
-                RaftMentionMarker(contentDescription = stringResource(MR.strings.activity_list_mentioned_you))
-            }
-            when {
-                model.muted ->
-                    RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
-                model.showUnreadCount ->
-                    RaftUnreadCount(
-                        model.unreadCount,
-                        contentDescription =
-                            stringResource(MR.strings.activity_list_unread_count_description, model.unreadCount),
-                    )
-            }
+        if (model.showMentionMarker) {
+            RaftMentionMarker(contentDescription = stringResource(MR.strings.activity_list_mentioned_you))
+        }
+        when {
+            model.muted ->
+                RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
+            model.showUnreadCount ->
+                RaftUnreadCount(
+                    model.unreadCount,
+                    contentDescription =
+                        stringResource(MR.strings.activity_list_unread_count_description, model.unreadCount),
+                )
         }
     }
 }
