@@ -271,7 +271,7 @@
     <string name="thread_action_reply_in_thread">Reply in Thread</string>
     <string name="thread_action_add_reaction">Add Reaction</string>
     <string name="thread_action_remove_from_saved">Remove from Saved</string>
-    <string name="thread_action_save_message">Save Message</string>
+    <string name="thread_action_save_message">Save</string>
     <string name="thread_action_unfollow_thread">Unfollow Thread</string>
     <string name="thread_action_follow_thread">Follow Thread</string>
     <string name="thread_action_reopen_task">Reopen Task</string>
@@ -1437,7 +1437,7 @@
     <string name="agent_create_label_custom">Custom</string>
     <string name="agent_create_label_custom_model">Custom model</string>
     <string name="agent_create_label_custom_ellipsis">Custom…</string>
-    <string name="agent_create_placeholder_name">e.g. Noel</string>
+    <string name="agent_create_placeholder_name">e.g. Alice</string>
     <string name="agent_create_placeholder_model">Enter model name</string>
     <string name="agent_create_placeholder_select_computer">Select computer</string>
     <string name="agent_create_placeholder_select_runtime">Select runtime</string>
@@ -1456,6 +1456,9 @@
     <string name="agent_create_action_upgrade_for_more">Upgrade for more</string>
     <string name="agent_create_state_computers_loading">Loading computers...</string>
     <string name="agent_create_state_computers_empty">No computers. Connect a computer first.</string>
+    <string name="agent_create_connect_computer_first">Connect a computer first</string>
+    <string name="agent_create_needs_computer_description">Agents run on your computer. Connect one and Raft will detect the runtimes on it, then you can create agents here.</string>
+    <string name="agent_create_action_connect_computer">Add Computer</string>
     <string name="agent_create_hint_required_computer">Required computer: %1$s</string>
     <string name="agent_create_hint_suggested_computer">Suggested computer: %1$s</string>
     <string name="agent_create_state_no_runtimes">No runtimes available</string>
@@ -1477,7 +1480,7 @@
     <string name="agent_create_error_name_reserved">Agent name @%1$s is reserved. Choose another name.</string>
     <string name="agent_create_error_name_min">Agent name must be at least 1 character</string>
     <string name="agent_create_error_name_max">Agent name must be at most 32 characters</string>
-    <string name="agent_create_error_name_characters">Agent name must start with a letter and can only contain letters, numbers, hyphens, and underscores</string>
+    <string name="agent_create_error_name_characters">Start with a letter, then letters, numbers, - or _</string>
     <string name="agent_create_label_fast_mode">Fast mode</string>
     <string name="agent_create_hint_command">Spawn-time command. Raft passes stream-json args; the executable must read stream-json from stdin and emit Claude-compatible JSON on stdout. Enter only a path or command name; flags are not shell-parsed.</string>
     <string name="agent_create_label_advanced">Advanced</string>

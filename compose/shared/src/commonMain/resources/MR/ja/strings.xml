@@ -277,7 +277,7 @@
     <string name="thread_action_reply_in_thread">スレッドで返信</string>
     <string name="thread_action_add_reaction">リアクションを追加</string>
     <string name="thread_action_remove_from_saved">保存済みから削除</string>
-    <string name="thread_action_save_message">メッセージを保存</string>
+    <string name="thread_action_save_message">保存</string>
     <string name="thread_action_unfollow_thread">スレッドのフォローを解除</string>
     <string name="thread_action_follow_thread">スレッドをフォロー</string>
     <string name="thread_action_reopen_task">タスクを再オープン</string>
@@ -1443,7 +1443,7 @@
     <string name="agent_create_label_custom">カスタム</string>
     <string name="agent_create_label_custom_model">カスタムモデル</string>
     <string name="agent_create_label_custom_ellipsis">カスタム…</string>
-    <string name="agent_create_placeholder_name">例: Noel</string>
+    <string name="agent_create_placeholder_name">例：Alice</string>
     <string name="agent_create_placeholder_model">モデル名を入力</string>
     <string name="agent_create_placeholder_select_computer">コンピューターを選択</string>
     <string name="agent_create_placeholder_select_runtime">ランタイムを選択</string>
@@ -1462,6 +1462,9 @@
     <string name="agent_create_action_upgrade_for_more">アップグレードして追加</string>
     <string name="agent_create_state_computers_loading">コンピューターを読み込み中...</string>
     <string name="agent_create_state_computers_empty">コンピューターがありません。まずコンピューターを接続してください。</string>
+    <string name="agent_create_connect_computer_first">まずコンピューターを接続してください</string>
+    <string name="agent_create_needs_computer_description">エージェントはお使いのコンピューターで動作します。コンピューターを接続すると Raft がそのランタイムを検出し、ここでエージェントを作成できるようになります。</string>
+    <string name="agent_create_action_connect_computer">コンピューターを追加</string>
     <string name="agent_create_hint_required_computer">必須のコンピューター: %1$s</string>
     <string name="agent_create_hint_suggested_computer">推奨のコンピューター: %1$s</string>
     <string name="agent_create_state_no_runtimes">利用できるランタイムがありません</string>
@@ -1483,7 +1486,7 @@
     <string name="agent_create_error_name_reserved">エージェント名 @%1$s は予約されています。別の名前を選択してください。</string>
     <string name="agent_create_error_name_min">エージェント名は 1 文字以上にしてください</string>
     <string name="agent_create_error_name_max">エージェント名は 32 文字以内にしてください</string>
-    <string name="agent_create_error_name_characters">エージェント名は英字で始まり、英字、数字、ハイフン、アンダースコアのみ使用できます</string>
+    <string name="agent_create_error_name_characters">英字で始め、英字、数字、- または _ のみを使用してください</string>
     <string name="agent_create_label_fast_mode">高速モード</string>
     <string name="agent_create_hint_command">起動時のコマンドです。Raft は stream-json 引数を渡します。実行ファイルは stdin から stream-json を読み取り、stdout に Claude 互換の JSON を出力する必要があります。パスまたはコマンド名のみを入力してください。フラグはシェル解析されません。</string>
     <string name="agent_create_label_advanced">詳細設定</string>

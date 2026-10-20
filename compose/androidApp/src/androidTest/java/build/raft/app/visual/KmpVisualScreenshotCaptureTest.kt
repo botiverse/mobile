@@ -3509,10 +3509,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureMembersCreateAgentDialogEmpty() {
         captureMembersCreateAgentStateCase(
             caseId = "components.members.create-agent.dialog-empty",
-            variant = "empty",
-            // A blank initial name is replaced by a random suggestion, so clear
-            // the seeded name the way a user would to reach React's empty field.
-            beforeScreenshot = { clearEditableTextField("Product-QA-Bot") }
+            variant = "empty"
         )
     }
 
@@ -3540,50 +3537,14 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    private fun captureMembersCreateAgentStateCase(
-        caseId: String,
-        variant: String,
-        beforeScreenshot: (() -> Unit)? = null
-    ) {
+    private fun captureMembersCreateAgentStateCase(caseId: String, variant: String) {
         captureKmpComponentCase(
             caseId = caseId,
             pageName = "compose_create_agent_state_visual",
             pageData = JSONObject().put("variant", variant),
             crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500,
-            beforeScreenshot = beforeScreenshot
+            settleMs = 2_500
         )
-    }
-
-    /** Clear the editable field currently showing [text] through its accessibility SetText action. */
-    private fun clearEditableTextField(text: String) {
-        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
-        var field: android.view.accessibility.AccessibilityNodeInfo? = null
-        while (field == null) {
-            val roots = listOfNotNull(uiAutomation.rootInActiveWindow) + uiAutomation.windows.mapNotNull { it.root }
-            field =
-                roots
-                    .asSequence()
-                    .flatMap { it.findAccessibilityNodeInfosByText(text).asSequence() }
-                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isEditable } }
-                    .firstOrNull()
-            if (field != null || SystemClock.uptimeMillis() >= deadline) break
-            Thread.sleep(250)
-        }
-        requireNotNull(field) { "No editable field showing \"$text\" to clear" }
-        val cleared =
-            field.performAction(
-                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
-                android.os.Bundle().apply {
-                    putCharSequence(
-                        android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        ""
-                    )
-                }
-            )
-        require(cleared) { "SetText(\"\") was rejected by the field showing \"$text\"" }
-        Thread.sleep(500)
     }
 
     @Test
@@ -7174,7 +7135,6 @@ class KmpVisualScreenshotCaptureTest {
         private const val STABLE_CAPTURE_RETRY_MS = 750L
         private const val APP_DIALOG_WINDOWS_CAPTURE_SUFFIX = "+app-dialog-windows"
         private const val DIALOG_IME_DISMISS_SETTLE_MS = 1_000L
-        private const val EDITABLE_FIELD_LOOKUP_TIMEOUT_MS = 10_000L
         private const val VISUAL_READY_TIMEOUT_MS = 10_000L
 
         // Reaction-glyph sprite atlas settle (task #379). The reaction atlas is

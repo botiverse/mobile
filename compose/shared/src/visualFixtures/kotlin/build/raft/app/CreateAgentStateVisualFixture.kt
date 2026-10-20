@@ -20,9 +20,8 @@ import build.raft.app.model.getDefaultModel
  *  - `onboarding`       dialog-onboarding: React renders its onboarding step; the
  *                       shared dialog has no onboarding layout, so this captures the
  *                       standard form with the same seed (the gap stays visible)
- *  - `empty`            dialog-empty: empty description; the harness clears the
- *                       name field because a blank initial name is replaced by a
- *                       random suggestion
+ *  - `empty`            dialog-empty: blank name and description, no name
+ *                       suggestion, so every placeholder shows
  *  - `no-computer`      dialog-no-computer: zero machines
  *  - `builtin-provider` builtin-provider-dialog: runtime builtin
  *  - `pi-provider`      pi-provider-dialog: runtime pi
@@ -52,7 +51,7 @@ private fun createAgentStateVisualSpec(variant: String): CreateAgentStateVisualS
     when (variant) {
         "error" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), name = "bad name!!")
         "onboarding" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"))
-        "empty" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), description = "")
+        "empty" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), name = "", description = "")
         "no-computer" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), noMachines = true)
         "builtin-provider" -> CreateAgentStateVisualSpec("builtin", listOf("builtin", "claude", "codex"))
         "pi-provider" -> CreateAgentStateVisualSpec("pi", listOf("pi", "claude", "codex"))
@@ -78,6 +77,7 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             submitting = false,
             errorMessage = null,
             initialName = spec.name,
+            suggestNameWhenBlank = spec.name.isNotBlank(),
             initialDescription = spec.description,
             initialRuntime = spec.runtime,
             initialModel = getDefaultModel(spec.runtime),

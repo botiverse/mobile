@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.graphics.compositeOver
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.initialThreadRepliesReadModel
@@ -64,15 +65,15 @@ class ThreadInlineRepliesTest {
             RaftColor.TextBlack.copy(alpha = 0.08f),
             threadNeutralMessageSurfaceColor(emphasized = true),
         )
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.03f), threadReactionChipBackground(selected = false))
+        assertEquals(RaftAppThemeState.colors.fillMuted, threadReactionChipBackground(selected = false))
         assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.08f),
+            RaftAppThemeState.colors.fillPressed.compositeOver(RaftAppThemeState.colors.fillMuted),
             threadReactionChipBackground(selected = false, emphasized = true),
         )
-        assertEquals(RaftColor.AccentPink.copy(alpha = 0.2f), threadReactionChipBackground(selected = true))
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.03f), threadReactionAddChipBackground())
+        assertEquals(RaftAppThemeState.colors.attentionSoft, threadReactionChipBackground(selected = true))
+        assertEquals(RaftAppThemeState.colors.fillMuted, threadReactionAddChipBackground())
         assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.08f),
+            RaftAppThemeState.colors.fillPressed.compositeOver(RaftAppThemeState.colors.fillMuted),
             threadReactionAddChipBackground(emphasized = true),
         )
     }

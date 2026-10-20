@@ -497,6 +497,7 @@ internal fun ThreadMessageVisualScreenContent() {
                 messages.forEach { selectedMessage ->
                     ThreadMessageCard(
                         memberAvatarResolver = ThreadVisualMemberAvatarResolver,
+                        memberModelLabelResolver = ThreadVisualMemberModelLabelResolver,
                         message = selectedMessage,
                         messageBodyTextStyle = messageBodyTextStyle,
                         agentStatusResolver = agentStatusResolver,
@@ -571,6 +572,7 @@ internal fun ThreadMessageVisualScreenContent() {
                 }
                 ThreadMessageCard(
                     memberAvatarResolver = ThreadVisualMemberAvatarResolver,
+                    memberModelLabelResolver = ThreadVisualMemberModelLabelResolver,
                     message = visualMessage,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,
@@ -618,20 +620,55 @@ internal fun ThreadMessageVisualScreenContent() {
     val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
     val message =
         remember(baseMessage, menuVariant, interactionProbe) {
-            if (
-                baseMessage != null &&
-                (menuVariant == "task" || interactionProbe == "task-status-owner") &&
-                baseMessage.taskId == null
-            ) {
-                baseMessage.copy(
-                    taskId = "task-menu-246",
-                    taskNumber = 246,
-                    taskStatus = "in_progress",
-                    taskAssigneeId = "agent-cindy",
-                    taskAssigneeName = "Cindy"
-                )
+            when {
+                baseMessage == null -> null
+                interactionProbe == "task-status-owner" && menuVariant.isBlank() ->
+                    baseMessage.copy(
+                        taskId = "task-menu-246",
+                        taskNumber = 246,
+                        taskStatus = "in_progress",
+                        taskAssigneeId = "agent-cindy",
+                        taskAssigneeName = "Cindy"
+                    )
+                menuVariant == "task" ->
+                    // React threadMessageMenuFixture(true): task #246 on its own body, 3 read replies.
+                    baseMessage.copy(
+                        body = "Task conversion follow-up for #design: capture the grouped menu before publish.",
+                        threadChannelId = "thread-msg-menu-task",
+                        replyCount = 3,
+                        unreadReplyCount = 0,
+                        firstUnreadReplyMessageId = null,
+                        taskId = "task-menu-246",
+                        taskNumber = 246,
+                        taskStatus = "in_progress",
+                        taskAssigneeKind = "agent",
+                        taskAssigneeId = "agent-cindy",
+                        taskAssigneeName = "Cindy"
+                    )
+                menuVariant.isNotBlank() ->
+                    // React threadMessageMenuFixture(false): no linked task, 3 read replies.
+                    baseMessage.copy(
+                        threadChannelId = "thread-msg-menu-default",
+                        replyCount = 3,
+                        unreadReplyCount = 0,
+                        firstUnreadReplyMessageId = null,
+                        taskId = null,
+                        taskNumber = null,
+                        taskStatus = null,
+                        taskAssigneeKind = null,
+                        taskAssigneeId = null,
+                        taskAssigneeName = null
+                    )
+                else -> baseMessage
+            }
+        }
+    // The menu variants carry their own reply metadata on the message (React menu fixtures).
+    val messageReplyMetadata =
+        message?.let {
+            if (menuVariant.isNotBlank()) {
+                it.toThreadReplyMetadata()
             } else {
-                baseMessage
+                visualReplyMetadataByParentId.threadReplyMetadataFor(it)
             }
         }
     if (message != null && interactionProbe == "task-status-owner") {
@@ -644,12 +681,12 @@ internal fun ThreadMessageVisualScreenContent() {
     }
     var menuRowBounds by remember(visualFixture, message?.id) { mutableStateOf<Rect?>(null) }
     val menuActions =
-        remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId) {
+        remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId, messageReplyMetadata) {
             if (message == null || !actionsMenuVisible) {
                 emptyList()
             } else {
                 val menuReplyMetadata =
-                    visualReplyMetadataByParentId.threadReplyMetadataFor(message).let { metadata ->
+                    (messageReplyMetadata ?: visualReplyMetadataByParentId.threadReplyMetadataFor(message)).let { metadata ->
                         if (menuVariant == "followed") {
                             metadata.copy(
                                 threadChannelId = metadata.threadChannelId ?: "visual-followed-thread",
@@ -670,7 +707,9 @@ internal fun ThreadMessageVisualScreenContent() {
                     showShareMessagesAction = true,
                     showCancelAction = false,
                     showDeleteAction = false,
-                    showForwardAction = true,
+                    // The React menu fixtures render MessageItem without a MessageForwardContext,
+                    // so web offers no Forward row there.
+                    showForwardAction = false,
                     showAddReactionAction = payload.showReactionActions,
                     onReply = {},
                     onCopyLink = {},
@@ -892,10 +931,11 @@ internal fun ThreadMessageVisualScreenContent() {
                 ) {
                 ThreadMessageCard(
                     memberAvatarResolver = ThreadVisualMemberAvatarResolver,
+                    memberModelLabelResolver = ThreadVisualMemberModelLabelResolver,
                     message = message,
                     messageBodyTextStyle = messageBodyTextStyle,
                     agentStatusResolver = agentStatusResolver,
-                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
+                    replyMetadata = messageReplyMetadata ?: visualReplyMetadataByParentId.threadReplyMetadataFor(message),
                     highlightedMentions = highlightedMentions,
                     popupOpen = menuActions.isNotEmpty(),
                     inlineReplyParticipantsById = payload.members.associateBy(RaftThreadMemberItem::id),

@@ -271,7 +271,7 @@
     <string name="thread_action_reply_in_thread">在消息列中回复</string>
     <string name="thread_action_add_reaction">添加回应</string>
     <string name="thread_action_remove_from_saved">从收藏中移除</string>
-    <string name="thread_action_save_message">收藏消息</string>
+    <string name="thread_action_save_message">收藏</string>
     <string name="thread_action_unfollow_thread">取消关注消息列</string>
     <string name="thread_action_follow_thread">关注消息列</string>
     <string name="thread_action_reopen_task">重新打开任务</string>
@@ -1435,7 +1435,7 @@
     <string name="agent_create_label_custom">自定义</string>
     <string name="agent_create_label_custom_model">自定义模型</string>
     <string name="agent_create_label_custom_ellipsis">自定义…</string>
-    <string name="agent_create_placeholder_name">例如 Noel</string>
+    <string name="agent_create_placeholder_name">例如 Alice</string>
     <string name="agent_create_placeholder_model">输入模型名称</string>
     <string name="agent_create_placeholder_select_computer">选择计算机</string>
     <string name="agent_create_placeholder_select_runtime">选择运行时</string>
@@ -1454,6 +1454,9 @@
     <string name="agent_create_action_upgrade_for_more">升级后可创建更多</string>
     <string name="agent_create_state_computers_loading">正在加载计算机…</string>
     <string name="agent_create_state_computers_empty">暂无计算机，请先连接一台计算机。</string>
+    <string name="agent_create_connect_computer_first">请先连接一台 Computer</string>
+    <string name="agent_create_needs_computer_description">Agent 运行在你的 Computer 上。连接一台后，Raft 会检测上面的 runtimes，然后你就可以在这里创建 Agent。</string>
+    <string name="agent_create_action_connect_computer">添加 Computer</string>
     <string name="agent_create_hint_required_computer">必须使用的计算机：%1$s</string>
     <string name="agent_create_hint_suggested_computer">建议使用的计算机：%1$s</string>
     <string name="agent_create_state_no_runtimes">没有可用的运行时</string>
@@ -1475,7 +1478,7 @@
     <string name="agent_create_error_name_reserved">Agent 名称 @%1$s 已保留，请选择其他名称。</string>
     <string name="agent_create_error_name_min">Agent 名称至少需要 1 个字符</string>
     <string name="agent_create_error_name_max">Agent 名称最多可输入 32 个字符</string>
-    <string name="agent_create_error_name_characters">Agent 名称必须以字母开头，且只能包含字母、数字、连字符和下划线</string>
+    <string name="agent_create_error_name_characters">须以字母开头，只能用字母、数字、- 和 _</string>
     <string name="agent_create_label_fast_mode">快速模式</string>
     <string name="agent_create_hint_command">启动命令。Raft 会传入 stream-json 参数；可执行文件必须从标准输入读取 stream-json，并向标准输出写出兼容 Claude 的 JSON。请只输入路径或命令名；不会按 shell 规则解析参数。</string>
     <string name="agent_create_label_advanced">高级</string>

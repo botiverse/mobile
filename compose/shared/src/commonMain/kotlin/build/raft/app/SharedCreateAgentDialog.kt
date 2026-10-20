@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftBanner
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSelectField
@@ -853,6 +858,9 @@ internal fun SharedCreateAgentDialog(
     runtimeFormV2Override: RuntimeFormV2Access? = null,
     errorFieldKeys: Set<String> = emptySet(),
     takenAgentNames: List<String> = emptyList(),
+    onConnectComputer: (() -> Unit)? = null,
+    // False keeps a blank [initialName] blank (placeholder showing) instead of a suggestion.
+    suggestNameWhenBlank: Boolean = true,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
@@ -861,7 +869,7 @@ internal fun SharedCreateAgentDialog(
     // field (react CreateAgentDialog parity); the dice button beside the label rolls
     // another. Prefilled names (action cards, typed member query) are kept as-is.
     var name by remember(initialName) {
-        mutableStateOf(initialName.ifBlank { suggestAgentName(takenAgentNames) })
+        mutableStateOf(if (suggestNameWhenBlank) initialName.ifBlank { suggestAgentName(takenAgentNames) } else initialName)
     }
     var description by remember(initialDescription) { mutableStateOf(textFieldValueAtEnd(initialDescription)) }
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
@@ -1302,6 +1310,16 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
+    // An agent runs on a computer: with none connected every field would be dead, so the
+    // dialog asks for the computer instead (web CreateAgentDialog `create-agent-needs-computer`).
+    if (!external && machines.isEmpty() && !machinesLoading && machinesErrorMessage == null) {
+        CreateAgentNeedsComputerDialog(
+            onDismiss = onDismiss,
+            onConnectComputer = onConnectComputer ?: onDismiss
+        )
+        return
+    }
+
     RaftUnifiedDialog(
         title =
             if (external) {
@@ -1425,6 +1443,7 @@ internal fun SharedCreateAgentDialog(
                         onValueChange = { name = it },
                         placeholder = stringResource(MR.strings.agent_create_placeholder_name),
                         enabled = !submitting,
+                        error = inlineNameError?.let { localizedInlineNameError ?: it },
                         autoFocus = true,
                         labelAccessory = {
                             CreateAgentRandomNameButton(
@@ -1433,15 +1452,6 @@ internal fun SharedCreateAgentDialog(
                             )
                         }
                     )
-                }
-                if (inlineNameError != null) {
-                    item(key = "name-error") {
-                        Text(
-                            text = localizedInlineNameError ?: inlineNameError,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
-                        )
-                    }
                 }
                 item(key = "description") {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1806,6 +1816,41 @@ private fun localizedCreateAgentNameError(name: String, fallback: String): Strin
 @Suppress("UNUSED_PARAMETER")
 private fun onDismissOnce() {
     // intentionally empty
+}
+
+/** Web CreateAgentDialog with zero machines: an info Banner and Cancel / Add Computer (`mt-5 gap-2`). */
+@Composable
+private fun CreateAgentNeedsComputerDialog(onDismiss: () -> Unit, onConnectComputer: () -> Unit) {
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.agent_create_title),
+        onDismiss = onDismiss,
+        hostRoute = SharedCreateAgentDialogHostRoute
+    ) {
+        RaftBanner(
+            title = stringResource(MR.strings.agent_create_connect_computer_first),
+            description = stringResource(MR.strings.agent_create_needs_computer_description),
+            status = RaftBannerStatus.Info,
+            showIcon = false
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
+            )
+            RaftButton(
+                text = stringResource(MR.strings.agent_create_action_connect_computer),
+                onClick = onConnectComputer,
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg
+            )
+        }
+    }
 }
 
 @Composable

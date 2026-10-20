@@ -1,5 +1,10 @@
 package build.raft.app
 
+import androidx.compose.ui.graphics.compositeOver
+import build.raft.app.designtokens.RaftUiPalette
+import build.raft.app.markdown.raftTaskStatusColor
+import build.raft.app.markdown.RaftTaskStatusPixelStyle
+import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
@@ -24752,12 +24757,21 @@ private fun ThreadMessageCardContent(
                 showReplyAction = showReplyAction,
             )
         }
+    val repliesBadge =
+        threadRepliesBadgeSpec(
+            replyMetadata = replyMetadata,
+            showReplyAction = showReplyAction,
+            hasInlineReplies = inlineReplyPresentation != null
+        )
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
-            message.hasThreadFooterMeta(
-                showSavedBadge = showSavedBadge,
-                hasPendingReaction = hasPendingReaction
+            (
+                repliesBadge != null ||
+                    message.hasThreadFooterMeta(
+                        showSavedBadge = showSavedBadge,
+                        hasPendingReaction = hasPendingReaction
+                    )
             )
     val messagePerformanceKey =
         remember(message.id, messageIndex) {
@@ -24867,7 +24881,7 @@ private fun ThreadMessageCardContent(
                             ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
-                        muted = authorBadgeLabel != null,
+                        muted = message.threadAuthorAvatarMuted(),
                         onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
@@ -25190,7 +25204,9 @@ private fun ThreadMessageCardContent(
                                             showSavedBadge = showSavedBadge,
                                             showReactionAddAction = showReactionAddAction,
                                             onToggleReaction = onToggleReaction,
-                                            onShowReactionDetails = onShowReactionDetails
+                                            onShowReactionDetails = onShowReactionDetails,
+                                            repliesBadge = repliesBadge,
+                                            onOpenThread = { onOpenThread(message.id) }
                                         )
                                     }
                                 }
@@ -25239,7 +25255,7 @@ private fun ThreadMessageCardContent(
                             ),
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
-                        muted = authorBadgeLabel != null,
+                        muted = message.threadAuthorAvatarMuted(),
                         onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
@@ -26450,21 +26466,31 @@ private fun ThreadReactionChip(
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val background = threadReactionChipBackground(reaction.selected, emphasized = isHovered)
+    // Web: `h-6 rounded-chip pl-1.5 pr-2 gap-1`, a 16px glyph and a `font-mono text-mono-meta
+    // font-bold` count.
     val chipModifier =
         Modifier
             .hoverable(hoverInteractionSource)
-            .background(background, RoundedCornerShape(RaftAppRadius.Sm))
-            .padding(horizontal = 6.dp, vertical = 3.dp)
+            .height(24.dp)
+            .background(background, RoundedCornerShape(RaftAppRadius.Chip))
+            .padding(start = 6.dp, end = 8.dp)
     val chipContent: @Composable () -> Unit = {
         Row(
+            modifier = Modifier.fillMaxHeight(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            ThreadQuickReactionGlyph(threadDisplayReactionEmoji(reaction.emoji), modifier = Modifier.size(15.dp))
+            ThreadQuickReactionGlyph(threadDisplayReactionEmoji(reaction.emoji), modifier = Modifier.size(16.dp))
             if (reaction.count > 0) {
                 Text(
                     text = reaction.count.toString(),
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                    style =
+                        RaftType.Caption.copy(
+                            fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
+                            fontWeight = FontWeight.Normal,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        ),
                     color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -26540,18 +26566,23 @@ private data class ThreadReactionChipGestureCallbacks(
 internal fun threadNeutralMessageSurfaceColor(emphasized: Boolean): Color =
     RaftColor.TextBlack.copy(alpha = if (emphasized) 0.08f else 0.03f)
 
+/**
+ * Web MessageItem reaction chip: `bg-attention-soft` for the viewer's own reaction, otherwise
+ * `bg-fill-muted`; `press-overlay` (fill-pressed) while pressed or hovered.
+ */
 internal fun threadReactionChipBackground(
     selected: Boolean,
     emphasized: Boolean = false
 ): Color =
-    if (selected) {
-        RaftColor.AccentPink.copy(alpha = 0.2f)
-    } else {
-        threadNeutralMessageSurfaceColor(emphasized)
+    when {
+        selected -> RaftAppThemeState.colors.attentionSoft
+        emphasized -> RaftAppThemeState.colors.fillPressed.compositeOver(RaftAppThemeState.colors.fillMuted)
+        else -> RaftAppThemeState.colors.fillMuted
     }
 
+/** Web mobile add-reaction chip: `bg-fill-muted`, `press-overlay` when pressed. */
 internal fun threadReactionAddChipBackground(emphasized: Boolean = false): Color =
-    threadNeutralMessageSurfaceColor(emphasized)
+    if (emphasized) RaftAppThemeState.colors.fillPressed.compositeOver(RaftAppThemeState.colors.fillMuted) else RaftAppThemeState.colors.fillMuted
 
 // task #569: everything the tooltip needs, captured at long-press time.
 internal data class ThreadReactionDetailsRequest(
@@ -26763,15 +26794,20 @@ private fun ThreadReactionAddChipChrome() {
     Box(
         modifier = Modifier
             .hoverable(hoverInteractionSource)
-            .height(20.dp)
+            .height(24.dp)
             .background(
                 threadReactionAddChipBackground(emphasized = isHovered),
-                RoundedCornerShape(RaftAppRadius.Sm),
+                RoundedCornerShape(RaftAppRadius.Chip),
             )
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        RaftLucideIcon(RaftLucideIconName.Plus, modifier = Modifier.size(13.dp), color = RaftColor.TextBlackArgb)
+        // Web: lucide Plus 16 / stroke 2 in `text-foreground-muted`.
+        RaftLucideIcon(
+            RaftLucideIconName.Plus,
+            modifier = Modifier.size(16.dp),
+            color = raftArgbHex(RaftAppThemeState.colors.foregroundMuted)
+        )
     }
 }
 
@@ -27409,7 +27445,7 @@ internal class ThreadMessageTapMovementGate {
 }
 
 internal fun RaftThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
-    if (threadAuthorBadgeLabel() != null) return null
+    if (threadAuthorAvatarMuted()) return null
     // Avatar slot styling consumes the already-normalized Thread projection. It must not infer a
     // human author from unknown presentation data or from the legacy agent-id heuristic.
     val authorMemberKind = authorKind.projectedMemberKindOrNull() ?: return null
@@ -27427,23 +27463,20 @@ private fun String.isLikelyThreadAgentId(): Boolean =
         contains("_agent", ignoreCase = true) ||
         contains("-agent", ignoreCase = true)
 
+/** Web sender chip: `h-5 px-1.5 rounded-chip bg-fill-muted text-caption font-semibold text-foreground-muted`. */
 @Composable
 private fun ThreadMessageAuthorBadge(label: String) {
     Box(
         modifier =
             Modifier
-                .heightIn(min = 18.dp)
-                // raft muted badge: fill-muted on the chip radius, no ink edge.
+                .height(20.dp)
                 .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Chip))
-                .padding(horizontal = RaftAppSpacing.Xs, vertical = 2.dp),
+                .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            style =
-                RaftType.Caption
-                    .withRaftFontWeight(FontWeight.Bold)
-                    .copy(fontSize = 10.sp, color = RaftColor.TextMuted),
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold).copy(color = RaftColor.TextMuted),
             color = RaftColor.TextMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -27453,8 +27486,9 @@ private fun ThreadMessageAuthorBadge(label: String) {
 
 internal fun RaftThreadMessageItem.threadAuthorBadgeLabel(): String? =
     when {
-        isDeletedThreadAuthor() -> "DELETED"
-        isRemovedThreadHuman() -> "REMOVED"
+        isDeletedThreadAuthor() -> "Archived"
+        isRemovedThreadHuman() -> "Removed"
+        isLeftThreadHuman() -> "Left"
         else -> null
     }
 
@@ -27561,6 +27595,12 @@ private fun RaftThreadMessageItem.isDeletedThreadAuthor(): Boolean =
 
 private fun RaftThreadMessageItem.isRemovedThreadHuman(): Boolean =
     !isThreadAgentAuthor() && senderMembershipStatus.equals("removed", ignoreCase = true)
+
+private fun RaftThreadMessageItem.isLeftThreadHuman(): Boolean =
+    !isThreadAgentAuthor() && senderMembershipStatus.equals("left", ignoreCase = true)
+
+/** Only an archived author greys out (web `grayscale opacity-60`); departed humans keep their avatar. */
+internal fun RaftThreadMessageItem.threadAuthorAvatarMuted(): Boolean = isDeletedThreadAuthor()
 
 private fun RaftThreadMessageItem.isThreadAgentAuthor(): Boolean =
     authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
@@ -27993,6 +28033,65 @@ internal val ThreadInlineReplyTimestampStyle: TextStyle
             lineHeight = 15.sp,
         )
 
+/**
+ * Web `ThreadRepliesBadge`: the footer chip for a thread whose replies are not previewed inline.
+ * Unread replies make it a soft information badge ("5 replies · 2 new"), otherwise a solid one.
+ */
+internal data class ThreadRepliesBadgeSpec(val replyCount: Int, val unreadCount: Int)
+
+internal fun threadRepliesBadgeSpec(
+    replyMetadata: ThreadReplyMetadata,
+    showReplyAction: Boolean,
+    hasInlineReplies: Boolean,
+): ThreadRepliesBadgeSpec? =
+    if (showReplyAction && !hasInlineReplies && replyMetadata.replyCount > 0) {
+        ThreadRepliesBadgeSpec(
+            replyCount = replyMetadata.replyCount,
+            unreadCount = replyMetadata.unreadReplyCount.coerceAtLeast(0)
+        )
+    } else {
+        null
+    }
+
+@Composable
+private fun ThreadRepliesBadge(spec: ThreadRepliesBadgeSpec, messageId: String, onOpenThread: () -> Unit) {
+    val countLabel =
+        if (spec.replyCount == 1) {
+            stringResource(MR.strings.thread_inline_reply_count_one)
+        } else {
+            stringResource(MR.strings.thread_inline_reply_count_many, spec.replyCount)
+        }
+    val label =
+        if (spec.unreadCount > 0) {
+            countLabel + " · " + stringResource(MR.strings.thread_inline_new_replies, spec.unreadCount)
+        } else {
+            countLabel
+        }
+    val unread = spec.unreadCount > 0
+    Button(
+        onClick = onOpenThread,
+        clickIdentity = "thread_replies_badge:$messageId",
+        modifier = Modifier.background(Color.Transparent)
+    ) {
+        build.raft.designsystem.components.RaftBadge(
+            text = label,
+            appearance =
+                if (unread) build.raft.designsystem.components.RaftBadgeAppearance.Soft
+                else build.raft.designsystem.components.RaftBadgeAppearance.Solid,
+            variant =
+                if (unread) build.raft.designsystem.components.RaftBadgeVariant.Information
+                else build.raft.designsystem.components.RaftBadgeVariant.Default,
+            icon = {
+                RaftLucideIcon(
+                    RaftLucideIconName.MessageSquare,
+                    modifier = Modifier.fillMaxSize(),
+                    color = raftArgbHex(build.raft.designsystem.theme.LocalRaftContentColor.current)
+                )
+            }
+        )
+    }
+}
+
 @Composable
 internal fun ThreadMessageFooterMeta(
     message: RaftThreadMessageItem,
@@ -28006,7 +28105,9 @@ internal fun ThreadMessageFooterMeta(
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
-    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null
+    onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
+    repliesBadge: ThreadRepliesBadgeSpec? = null,
+    onOpenThread: () -> Unit = {}
 ) {
     val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
     val hasTask = message.hasThreadTaskFooterMeta()
@@ -28018,7 +28119,7 @@ internal fun ThreadMessageFooterMeta(
         )
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
-    if (!hasTask && !showSavedBadge && !hasReactions && !showReactionAddChip) return
+    if (!hasTask && !showSavedBadge && repliesBadge == null && !hasReactions && !showReactionAddChip) return
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -28042,17 +28143,26 @@ internal fun ThreadMessageFooterMeta(
                     taskStatusActionsEnabled = taskStatusActionsEnabled,
                     taskOpenEnabled = taskOpenEnabled
                 )
-            // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status
-            // soft fill with a status-strong glyph and a 12/16 label.
+            // raft-ui `TaskChip` (default): 22dp, rounded-chip, no edge, the status soft
+            // fill, `pl-1.5 pr-2 gap-1.5`, the 9dp `TaskStatusIcon` pixel and a 12/16
+            // semibold label.
+            val taskPixel =
+                RaftTaskStatusPixelStyle(
+                    fill = selectedStatus.status.raftTaskStatusColor(RaftAppThemeState.colors),
+                    stroke = RaftUiPalette.stickerInk
+                )
             RaftAnchoredMetaChip(
                 label = label,
-                iconName = selectedStatus.icon,
-                iconSize = selectedStatus.iconSize,
+                iconName = null,
+                leadingContent = { RaftTaskStatusPixel(taskPixel) },
+                labelFontWeight = FontWeight.SemiBold,
+                contentGap = 6.dp,
+                startPadding = 6.dp,
                 color = selectedStatus.status.threadTaskChipSoftFill(),
-                iconColorArgb = raftArgbHex(selectedStatus.status.threadTaskChipStrong()),
                 borderWidth = 0.dp,
                 minHeight = 22.dp,
-                horizontalPadding = 7.dp,
+                horizontalPadding = 8.dp,
+                verticalPadding = 0.dp,
                 labelFontSize = 12.sp,
                 labelLineHeight = 16.sp,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
@@ -28074,6 +28184,9 @@ internal fun ThreadMessageFooterMeta(
                 clickIdentity = "thread-saved:${message.id}",
                 onClick = null
             )
+        }
+        repliesBadge?.let { spec ->
+            ThreadRepliesBadge(spec = spec, messageId = message.id, onOpenThread = onOpenThread)
         }
         if (hasReactions) {
             visibleReactions.forEach { reaction ->
@@ -28103,15 +28216,6 @@ private fun TaskStatus.threadTaskChipSoftFill(): Color =
         TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewSoft
         TaskStatus.Done -> RaftAppThemeState.colors.taskStatusDoneSoft
         TaskStatus.Closed -> RaftAppThemeState.colors.taskStatusClosedSoft
-    }
-
-private fun TaskStatus.threadTaskChipStrong(): Color =
-    when (this) {
-        TaskStatus.Todo -> RaftAppThemeState.colors.taskStatusTodoStrong
-        TaskStatus.InProgress -> RaftAppThemeState.colors.taskStatusInProgressStrong
-        TaskStatus.InReview -> RaftAppThemeState.colors.taskStatusInReviewStrong
-        TaskStatus.Done -> RaftAppThemeState.colors.taskStatusDoneStrong
-        TaskStatus.Closed -> RaftAppThemeState.colors.taskStatusClosedStrong
     }
 
 internal data class ThreadReactionPendingKey(

@@ -174,7 +174,12 @@ internal fun RaftAnchoredMetaChip(
     pressFeedback: Boolean = onClick != null || onClickWithoutAnchor != null,
     anchorPlacement: RaftAnchorPlacement = RaftAnchorPlacement.Tap,
     clickIdentity: Any? = null,
-    anchorOwnerIdentity: Any? = null
+    anchorOwnerIdentity: Any? = null,
+    // Drawn before the label instead of [iconName] (e.g. raft-ui's task status pixel).
+    leadingContent: (@Composable () -> Unit)? = null,
+    labelFontWeight: FontWeight = FontWeight.Bold,
+    contentGap: Dp = RaftAppSpacing.Xs,
+    startPadding: Dp = horizontalPadding
 ) {
     val clickDispatch =
         resolveRaftMetaChipClickDispatch(
@@ -191,7 +196,7 @@ internal fun RaftAnchoredMetaChip(
             .heightIn(min = minHeight)
             .border(borderWidth, RaftColor.BorderBlack, chipShape)
             .background(color, chipShape)
-            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+            .padding(start = startPadding, end = horizontalPadding, top = verticalPadding, bottom = verticalPadding)
             .let { base ->
                 if (
                     clickDispatch != RaftMetaChipClickDispatch.Anchored ||
@@ -232,19 +237,23 @@ internal fun RaftAnchoredMetaChip(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+            horizontalArrangement = Arrangement.spacedBy(contentGap)
         ) {
-            iconName?.let {
-                RaftLucideIcon(
-                    it,
-                    modifier = Modifier.size(iconSize),
-                    color = iconColorArgb,
-                    fill = iconFillArgb
-                )
+            if (leadingContent != null) {
+                leadingContent()
+            } else {
+                iconName?.let {
+                    RaftLucideIcon(
+                        it,
+                        modifier = Modifier.size(iconSize),
+                        color = iconColorArgb,
+                        fill = iconFillArgb
+                    )
+                }
             }
             Text(
                 text = label,
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
+                style = RaftType.Caption.withRaftFontWeight(labelFontWeight).copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
                 color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

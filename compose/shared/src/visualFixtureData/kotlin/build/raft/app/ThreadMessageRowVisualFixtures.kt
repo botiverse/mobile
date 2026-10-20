@@ -393,6 +393,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS_LEGACY = "
 /** Task statuses the message-row host provides to Markdown; null = no task source. */
 internal fun threadVisualFixtureTaskStatuses(fixture: String): Map<Int, TaskStatus>? =
     when (fixture) {
+        // React resolves #42 from its linked task (in review); #43 is not in its task store.
+        THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE -> mapOf(42 to TaskStatus.InReview)
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS ->
             mapOf(
                 92 to TaskStatus.InReview,
@@ -454,6 +456,27 @@ internal val ThreadVisualMemberAvatarResolver =
         avatarFlow = { memberId -> kotlinx.coroutines.flow.flowOf(ThreadVisualFixtureAgentAvatars[memberId]) }
     )
 
+/**
+ * Agent models from the shared visual fixture data: React's MessageItem shows the
+ * sender agent's model next to its name (appearance `showAgentModelName`, on by
+ * default), resolved from the agent directory. ccWow runs Claude; every other
+ * fixture agent runs Codex `gpt-5-codex`.
+ */
+private val ThreadVisualFixtureAgentModelLabels: Map<String, String> =
+    ThreadVisualFixtureAgentAvatars.keys.associateWith { memberId ->
+        if (memberId == "agent-cc-wow") {
+            build.raft.app.model.getModelLabel("claude", "claude-sonnet-5")
+        } else {
+            build.raft.app.model.getModelLabel("codex", "gpt-5-codex")
+        }
+    }
+
+internal val ThreadVisualMemberModelLabelResolver =
+    RaftMemberModelLabelResolver(
+        currentLabel = { memberId -> ThreadVisualFixtureAgentModelLabels[memberId] },
+        labelFlow = { memberId -> kotlinx.coroutines.flow.flowOf(ThreadVisualFixtureAgentModelLabels[memberId]) }
+    )
+
 internal fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
@@ -495,7 +518,13 @@ internal fun threadVisualFixture(
                             replyCount = 0,
                             unreadReplyCount = 0,
                             firstUnreadReplyMessageId = null,
-                            threadChannelId = null
+                            threadChannelId = null,
+                            taskId = null,
+                            taskNumber = null,
+                            taskStatus = null,
+                            taskAssigneeKind = null,
+                            taskAssigneeId = null,
+                            taskAssigneeName = null
                         )
                     }
             )
@@ -564,11 +593,14 @@ internal fun threadVisualFixture(
                 selectedTab = "chat",
                 showModeTabs = false,
                 showReplyActions = true,
-                alignOwnMessagesRight = true,
+                // React renders this row full width (no left/right conversation layout).
+                alignOwnMessagesRight = false,
                 showMessageSaveAction = false,
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
-                knownMarkdownChannelNames = listOf("product"),
+                // React's store knows #design but no #product channel, so the
+                // body's `#product:f8e569cb` thread ref stays plain text there.
+                knownMarkdownChannelNames = listOf("design"),
                 messages =
                     listOf(
                         RaftThreadMessageItem(
@@ -586,9 +618,17 @@ internal fun threadVisualFixture(
                             replyCount = 5,
                             unreadReplyCount = 2,
                             firstUnreadReplyMessageId = "reply-agent-visual-2",
+                            // React THREAD_MESSAGE_FIXTURE.linkedTask: #10, in progress, Cindy.
+                            taskId = "msg-agent-reply",
+                            taskNumber = 10,
+                            taskStatus = "in_progress",
+                            taskAssigneeKind = "agent",
+                            taskAssigneeId = "agent-cindy",
+                            taskAssigneeName = "Cindy",
+                            // 2 reactors including the viewer (fxOwner), so the chip is "yours".
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👍", count = 1, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 2, selected = true)
                                 )
                         )
                     ),
@@ -1076,16 +1116,10 @@ internal fun threadVisualFixture(
                                     "Ordinary mention regression: @KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers.\n\n" +
                                     "Short code should stay compact: `CODE_SPAN`, `raft.build.markdown.inlineCode`, `go test ./...`, and `git commit -s`.\n\n" +
                                     "Long path should wrap inline without ellipsis: `reply/channel-markdown/msg-inline-visual/composer-draft-scroll-realtime-read-receipt/owner-key-consumes-thread-route-identity-only/without-source-thread-fallback/max-width-wrap-proof-alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu`.\n\n" +
-                                    "Command should wrap with the same neutral fill and no frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
+                                    "Command should wrap with the same yellow fill and black frame: `./gradlew :shared:testDebugUnitTest --tests build.raft.app.markdown.SlockMarkdownTest --tests build.raft.app.visual.KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode`.\n\n" +
                                     "> Quote block keeps normal markdown flow beside inline `code` and Slock tags.\n\n" +
                                     "- Link: https://raft.build/visual-testing\n" +
-                                    "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`\n\n" +
-                                    "Task-list parity in the real message consumer:\n" +
-                                    "- [ ] Pending item wraps across the message column and keeps typed task #42 independent from its read-only checkbox.\n" +
-                                    "- [x] Completed lower-case marker\n" +
-                                    "  - [X] Completed upper-case nested marker\n" +
-                                    "1. [ ] Ordered pending item\n\n" +
-                                    "[x] Bare marker stays ordinary text.",
+                                    "- File: `compose/shared/src/commonMain/kotlin/build/raft/app/markdown/SlockMarkdown.kt`",
                             threadChannelId = "thread-msg-long-inline-code-visual",
                             replyCount = 4,
                             unreadReplyCount = 1,
@@ -1097,8 +1131,9 @@ internal fun threadVisualFixture(
                             taskAssigneeName = "Cindy",
                             reactions =
                                 listOf(
-                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false),
-                                    RaftThreadReactionItem(emoji = "✅", count = 1, selected = true)
+                                    // React: the viewer is among the 👍 reactors, Cindy alone reacted ✅.
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = true),
+                                    RaftThreadReactionItem(emoji = "✅", count = 1, selected = false)
                                 ),
                             attachments =
                                 listOf(

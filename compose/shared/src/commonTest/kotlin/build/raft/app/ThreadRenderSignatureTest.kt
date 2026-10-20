@@ -214,10 +214,10 @@ class ThreadRenderSignatureTest {
                 senderMembershipStatus = "removed"
             )
 
-        assertEquals("DELETED", deletedAgent.threadAuthorBadgeLabel())
+        assertEquals("Archived", deletedAgent.threadAuthorBadgeLabel())
         assertEquals(false, deletedAgent.canOpenThreadAuthorProfile())
         assertEquals(null, deletedAgent.resolvedThreadAvatarWireValue())
-        assertEquals("REMOVED", removedHuman.threadAuthorBadgeLabel())
+        assertEquals("Removed", removedHuman.threadAuthorBadgeLabel())
         assertEquals(false, removedHuman.canOpenThreadAuthorProfile())
     }
 
@@ -416,7 +416,7 @@ class ThreadRenderSignatureTest {
 
         assertEquals("deleted", roundTripped.senderMembershipStatus)
         assertEquals("2026-06-06T00:00:00.000Z", roundTripped.authorDeletedAt)
-        assertEquals("DELETED", roundTripped.threadAuthorBadgeLabel())
+        assertEquals("Archived", roundTripped.threadAuthorBadgeLabel())
         assertEquals(false, roundTripped.canOpenThreadAuthorProfile())
         assertEquals(null, roundTripped.resolvedThreadAvatarWireValue())
     }
