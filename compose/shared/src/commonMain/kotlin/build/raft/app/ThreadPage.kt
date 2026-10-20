@@ -27612,7 +27612,13 @@ private fun RaftThreadMessageItem.isThreadAgentAuthor(): Boolean =
 
 /** The author's name for the avatar's initials; never the author id (no name shows the icon). */
 private fun RaftThreadMessageItem.threadAvatarName(): String =
-    authorName.trim().takeUnless { it.isEmpty() || it == authorId } ?: avatarLabel
+    // Web AvatarSlot: a person without an avatar shows the raft-ui person glyph
+    // (GravatarAvatar's fallback), never initials; an empty label draws that glyph.
+    if (externalAuthor == null && !isThreadAgentAuthor()) {
+        ""
+    } else {
+        authorName.trim().takeUnless { it.isEmpty() || it == authorId } ?: avatarLabel
+    }
 
 /** raft-ui Avatar `type`: an agent author without a face sits on `inactive`. */
 private fun RaftThreadMessageItem.threadAvatarFill(): Color =
@@ -28126,11 +28132,15 @@ internal fun ThreadMessageFooterMeta(
     val showReactionAddChip = showReactionAddAction && hasReactions
     if (!hasTask && !showSavedBadge && repliesBadge == null && !hasReactions && !showReactionAddChip) return
 
-    Row(
+    // Web MessageItemFooter: `flex flex-wrap items-center gap-1.5` -- chips that do not fit
+    // wrap to the next line instead of squeezing the task chip.
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement =
-            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
+            if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        itemVerticalAlignment = Alignment.CenterVertically
     ) {
         if (hasTask) {
             val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
@@ -28170,7 +28180,7 @@ internal fun ThreadMessageFooterMeta(
                 verticalPadding = 0.dp,
                 labelFontSize = 12.sp,
                 labelLineHeight = 16.sp,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
+                modifier = Modifier.widthIn(max = 260.dp),
                 clickIdentity = taskClickIdentity,
                 anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
                 onClick = taskChipClick
