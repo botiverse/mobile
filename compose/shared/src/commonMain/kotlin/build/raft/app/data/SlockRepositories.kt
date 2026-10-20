@@ -233,15 +233,13 @@ interface ConversationRepository {
 
     suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
-        bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+        bytes: ByteArray
     ): DataResult<Unit> =
         DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
 
     suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
-        file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
+        file: PlatformFile
     ): DataResult<Unit> =
         DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
 

@@ -138,7 +138,7 @@ internal class SlockNetworkAuthMiddleware(
     ): Boolean {
         val current = sessionStore.readSession() ?: return false
         val currentServerId = (serverIdOverride?.value ?: current.currentServerId).orEmpty()
-        return current.matchesExpectedAuthorityIdentity(this, currentServerId, environmentIdProvider())
+        return current.matchesExpectedAuthority(this, currentServerId, environmentIdProvider())
     }
 
 }
@@ -179,34 +179,6 @@ internal fun StoredAuthSession.matchesExpectedAuthority(
             // one at every request boundary.  The blank/blank arm is retained solely for legacy
             // unbound unit fixtures which predate environment-aware authority; a missing live
             // environment never satisfies a non-blank witness.
-            if (expectedEnvironment.isBlank()) {
-                effectiveEnvironment.isBlank()
-            } else {
-                effectiveEnvironment == expectedEnvironment
-            }
-        }
-
-/**
- * Post-request re-check of a successful transport: guard on identity (account + server +
- * environment), not the access/refresh token. A 401 inside the request block triggers a token
- * rotation through [SharedAuthRefreshCoordinator] and the retry already returns fresh data;
- * comparing tokens here would discard that successful result as auth_authority_changed — the same
- * failure shape task #302 fixed in SharedActivityStore.requestSessionStillCurrent.
- *
- * Only the two post-transport re-checks in [SlockNetworkAuthMiddleware.request] use this; the
- * pre-request and post-refresh gates still run the full [matchesExpectedAuthority] witness so a
- * refreshed session can never replay an old bound mutation.
- */
-internal fun StoredAuthSession.matchesExpectedAuthorityIdentity(
-    expected: SlockExpectedAuthBinding,
-    effectiveServerId: String,
-    effectiveEnvironmentId: String? = null,
-): Boolean =
-    user.id.trim() == expected.accountId.trim() &&
-        currentServerId?.trim() == expected.serverId.trim() &&
-        effectiveServerId.trim() == expected.serverId.trim() &&
-        expected.environmentId.normalizedEnvironmentId().let { expectedEnvironment ->
-            val effectiveEnvironment = effectiveEnvironmentId?.normalizedEnvironmentId().orEmpty()
             if (expectedEnvironment.isBlank()) {
                 effectiveEnvironment.isBlank()
             } else {

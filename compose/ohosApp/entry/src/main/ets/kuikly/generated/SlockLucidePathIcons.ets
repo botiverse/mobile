@@ -153,7 +153,6 @@ export const SlockLucidePathIconNames: string[] = [
   'mail',
   'mail-open',
   'mail-plus',
-  'map-pin',
   'message-circle',
   'message-circle-off',
   'message-circle-plus',
@@ -6381,33 +6380,6 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 16 19 h 6',
-      fillPaint: 'none',
-      strokePaint: 'currentColor',
-      fillOpacity: 0,
-      strokeOpacity: 1,
-      strokeWidth: 2,
-      strokeLineCap: LineCapStyle.Round,
-      strokeLineJoin: LineJoinStyle.Round,
-      viewportWidth: 24,
-      viewportHeight: 24,
-    }
-      ];
-    case 'map-pin':
-      return [
-    {
-      commands: 'M 20 10 c 0 4.993 -5.539 10.193 -7.399 11.799 a 1 1 0 0 1 -1.202 0 C 9.539 20.193 4 14.993 4 10 a 8 8 0 0 1 16 0',
-      fillPaint: 'none',
-      strokePaint: 'currentColor',
-      fillOpacity: 0,
-      strokeOpacity: 1,
-      strokeWidth: 2,
-      strokeLineCap: LineCapStyle.Round,
-      strokeLineJoin: LineJoinStyle.Round,
-      viewportWidth: 24,
-      viewportHeight: 24,
-    },
-    {
-      commands: 'M 9 10 A 3 3 0 1 0 15 10 A 3 3 0 1 0 9 10 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

@@ -11,7 +11,6 @@ import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
-import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -562,7 +561,6 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
 ): SharedAgentDetailState {
     if (event.kind != MemberKind.Agent) return this
     val agentId = event.memberId
-    if (this.agentId != agentId) return this
     if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
     val nextActivityLog = agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextRealtimeActivityLog =
@@ -661,7 +659,7 @@ private fun MemberProfile.toAgentDetailSeed(activity: List<AgentActivityEntry>):
             name = fallbackName,
             displayName = display,
             runtime = roleDescription,
-            avatarUrl = preferredAvatarWireValue(avatar, avatarUrl),
+            avatarUrl = avatar?.wireValue ?: avatarUrl,
             activityDetail = description,
             machineName = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() },
             machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() }

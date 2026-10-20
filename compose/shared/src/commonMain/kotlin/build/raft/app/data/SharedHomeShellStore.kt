@@ -148,17 +148,8 @@ class SharedHomeShellStore(
             SharedHomeShellIntent.CloseSecondaryDestination ->
                 _state.value = _state.value.copy(destination = null)
             is SharedHomeShellIntent.SetSelectedTab -> setSelectedTab(intent.tab)
-            is SharedHomeShellIntent.SetSelectedConversation -> {
+            is SharedHomeShellIntent.SetSelectedConversation ->
                 _state.value = _state.value.copy(selectedConversationId = intent.conversationId)
-                // task #299: the home store keeps its own selectedConversationId
-                // which the realtime merge uses to suppress unread increments for
-                // the "active" conversation. Leaving a conversation only clears
-                // the shell field, so forward the clear or the last opened
-                // conversation would never accrue unread again.
-                if (intent.conversationId == null) {
-                    dispatchHome(SharedHomeIntent.ClearSelectedConversation)
-                }
-            }
             is SharedHomeShellIntent.SelectTopAction ->
                 dispatchHome(SharedHomeIntent.SelectTopAction(intent.action))
             is SharedHomeShellIntent.DismissNotification ->
@@ -226,15 +217,11 @@ class SharedHomeShellStore(
     }
 
     private fun openDestination(destination: String) {
-        val hadSelection = _state.value.selectedConversationId != null
         _state.value =
             _state.value.copy(
                 destination = destination,
                 selectedConversationId = null
             )
-        if (hadSelection) {
-            dispatchHome(SharedHomeIntent.ClearSelectedConversation)
-        }
         when (destination) {
             SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
@@ -381,7 +368,6 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.ToggleServerDrawerSection -> "patch:server-drawer-toggle:${serverId.value}"
         is SharedHomeIntent.RetryServerDrawerSection -> "hydrate:server-drawer-retry:${serverId.value}"
         is SharedHomeIntent.SelectConversation -> "patch:select:$threadId"
-        SharedHomeIntent.ClearSelectedConversation -> "patch:select:_"
         is SharedHomeIntent.SelectTopAction -> "patch:top-action:$action"
         is SharedHomeIntent.SelectServer -> "hydrate:server:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "patch:realtime:$serverId"

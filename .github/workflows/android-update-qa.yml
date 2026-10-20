@@ -44,11 +44,6 @@ jobs:
       baseline_build: ${{ steps.inputs.outputs.baseline_build }}
       target_build: ${{ steps.inputs.outputs.target_build }}
     steps:
-      - name: Checkout version formula
-        uses: actions/checkout@v5
-        with:
-          sparse-checkout: scripts/ci
-          sparse-checkout-cone-mode: false
       - id: inputs
         shell: bash
         run: |

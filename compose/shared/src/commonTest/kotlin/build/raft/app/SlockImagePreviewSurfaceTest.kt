@@ -66,59 +66,6 @@ class SlockImagePreviewSurfaceTest {
     }
 
     @Test
-    fun hydrationSwapBeforeFirstSuccessKeepsDepartedSourceAsUnderlay() {
-        // task #287: thumbnail still loading when the signed full URL commits
-        // (lastSucceededSource == null, single image so no fallback). Without
-        // the departed-source underlay the spinner flashes a second time.
-        val presentation =
-            slockImagePreviewLoadingPresentation(
-                activeSource = "https://cdn.example/full.jpg",
-                fallbackSource = null,
-                showLoadingIndicator = true,
-                activeSucceeded = false,
-                activeFailed = false,
-                previousRenderedSource = null,
-                previousPresentableSource = "https://cdn.example/thumb.jpg"
-            )
-
-        assertEquals("https://cdn.example/thumb.jpg", presentation.fallbackUnderlaySource)
-        assertFalse(presentation.showLoadingOverlay)
-    }
-
-    @Test
-    fun succeededFrameStillWinsOverDepartedPendingSource() {
-        val presentation =
-            slockImagePreviewLoadingPresentation(
-                activeSource = "https://cdn.example/full.jpg",
-                fallbackSource = null,
-                showLoadingIndicator = true,
-                activeSucceeded = false,
-                activeFailed = false,
-                previousRenderedSource = "https://cdn.example/thumb.jpg",
-                previousPresentableSource = "https://cdn.example/intermediate.jpg"
-            )
-
-        assertEquals("https://cdn.example/thumb.jpg", presentation.fallbackUnderlaySource)
-        assertFalse(presentation.showLoadingOverlay)
-    }
-
-    @Test
-    fun departedSourceEqualToActiveIsNotUnderlaid() {
-        val presentation =
-            slockImagePreviewLoadingPresentation(
-                activeSource = "https://cdn.example/thumb.jpg",
-                fallbackSource = null,
-                showLoadingIndicator = true,
-                activeSucceeded = false,
-                activeFailed = false,
-                previousPresentableSource = "https://cdn.example/thumb.jpg"
-            )
-
-        assertNull(presentation.fallbackUnderlaySource)
-        assertTrue(presentation.showLoadingOverlay)
-    }
-
-    @Test
     fun cachedFallbackReloadDoesNotFlashSpinnerButCanSurfaceTerminalFailure() {
         val loadingFallback =
             slockImagePreviewLoadingPresentation(

@@ -2169,8 +2169,6 @@ class SlockMarkdownTest {
                 ThreadMarkdownTagKind.DirectMessageThread ->
                     tag.directMessagePeerName.orEmpty().trim().lowercase() in directMessagePeerKeys &&
                         !tag.threadShortId.isNullOrBlank()
-                ThreadMarkdownTagKind.DirectMessage ->
-                    tag.directMessagePeerName.orEmpty().trim().lowercase() in directMessagePeerKeys
                 ThreadMarkdownTagKind.Channel,
                 ThreadMarkdownTagKind.ChannelThread -> {
                     val key =

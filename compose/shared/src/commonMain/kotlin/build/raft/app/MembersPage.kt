@@ -132,7 +132,6 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.buildRuntimeConfig
-import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.ServerId
@@ -258,36 +257,6 @@ private val MembersPageInset = SlockSpacing.Md
 // React Sidebar members view: scroll container `px-2` (8px) + per-row/section `px-2` (8px) = 16px
 // total; the container half lives on the LazyColumn, the row half on each row/header.
 internal val MembersListContainerInset = 8.dp
-
-/**
- * Spec (task #12 §3): single-pane body content may not stretch unbounded on wide
- * windows — at most 720dp and centered, with side margins >=24dp on DualPane
- * windows. The cap is measured against the actual content-slot width, not the
- * whole window, so any future chrome (e.g. the nav rail) that narrows the slot
- * automatically keeps margins honest instead of over-claiming space.
- *
- * Compact windows are untouched: when the slot is <=720dp the content fills it
- * exactly as before (no new padding is introduced for narrow screens).
- */
-internal val MembersListContentMaxWidth = 720.dp
-internal val MembersListContentMinSideMargin = 24.dp
-
-/**
- * §3 cap, gated on the window's DualPane layout fact and measured against the
- * actual content-slot width:
- * - Compact windows (paneLayout != DualPane): return slotWidth unchanged — no
- *   new padding or cap on narrow screens, whatever the slot happens to be.
- * - DualPane windows: content = min(720dp, slotWidth - 48dp), so the >=24dp
- *   side margins hold even if rail chrome narrows the slot below 840+48.
- */
-internal fun membersListContentMaxWidth(
-    slotWidth: Dp,
-    paneLayout: SlockAdaptivePaneLayout,
-): Dp {
-    if (paneLayout != SlockAdaptivePaneLayout.DualPane) return slotWidth
-    val cap = slotWidth - MembersListContentMinSideMargin * 2
-    return if (cap < MembersListContentMaxWidth) cap else MembersListContentMaxWidth
-}
 internal val MembersListHorizontalInset = 8.dp
 internal val MembersListAvatarSize = 18.dp
 internal val MembersListRowMinHeight = 34.dp
@@ -1314,16 +1283,9 @@ internal class ComposeMembersSmokePage : build.raft.app.base.BasePager() {
 
 @Page(MEMBERS_PAGE, supportInLocal = true)
 internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProductRoute.Members) {
-    private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
-
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { MembersPageContent(paneLayout = adaptivePane.layout) }
-    }
-
-    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
-        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
-        adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
+        setAuthenticatedContent { MembersPageContent() }
     }
 }
 
@@ -1890,9 +1852,7 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
     }
 
 @Composable
-internal fun MembersPageContent(
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
-) {
+internal fun MembersPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
@@ -1947,14 +1907,6 @@ internal fun MembersPageContent(
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val createAgentFormStore = remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
-    // Task #409: members-page agent machine groups persist their collapse
-    // state in the same slock:sidebarCollapsed:<userId>:agent-machine-group:*
-    // key family the web sidebar uses.
-    val membersAgentGroupCollapseStore = remember {
-        build.raft.app.data.KeyValueMembersAgentMachineGroupCollapseStore(
-            build.raft.app.data.slockSharedPreferenceStore()
-        )
-    }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -2017,11 +1969,8 @@ internal fun MembersPageContent(
     // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
     // checks now use the real selected server.
     var activeServerId by remember { mutableStateOf<String?>(null) }
-    var membersCurrentUserId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(authStore) {
-        val session = authStore.readSession()
-        activeServerId = session?.currentServerId
-        membersCurrentUserId = session?.user?.id
+        activeServerId = authStore.readSession()?.currentServerId
     }
     val serverId = activeServerId ?: ""
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
@@ -2317,7 +2266,6 @@ internal fun MembersPageContent(
         refreshing = membersRefreshing,
         onBack = { bridge.closePage() },
         onRefresh = refreshMembers,
-        paneLayout = paneLayout,
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
             scope.launch {
@@ -2397,9 +2345,6 @@ internal fun MembersPageContent(
             },
             inviteHumanLoadJoinLink = { loadInviteJoinLink() }
         ),
-        // Task #409: persist per-machine collapse under the session user id.
-        currentUserId = membersCurrentUserId,
-        agentGroupCollapseStore = membersAgentGroupCollapseStore,
         // #89: pass agentsApiClient so Permissions tab can call
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
@@ -2561,8 +2506,6 @@ internal fun memberDetailInitialRouteState(
                 accessMode = identity.memberDetailAccessMode(activeServer)
             )
         MemberKind.System -> null
-        // External projections never open a member detail route.
-        MemberKind.External -> null
     }
 }
 
@@ -2798,12 +2741,6 @@ private class MemberDetailRouteProvider(
                         profileGeneration = profileGeneration
                     )
                 )
-                // Agent detail hydration carries the canonical avatarUrl; seed it back so
-                // the scoped roster cache drops a stale pixel fallback in-session.
-                serverMembersStore.seedProfiles(
-                    profileServerId,
-                    listOf(detail.toStaticMembersProfile(profileServer.copy(id = profileServerId)))
-                )
                 MemberDetailRouteState.Agent(
                     server = profileServer.copy(id = profileServerId),
                     currentUserId = currentUserId,
@@ -2852,12 +2789,6 @@ private class MemberDetailRouteProvider(
                     )
                 )
                 serverMembersStore.applyAgentDetailSnapshot(presenceRequest, detailResult.data)
-                // Same reason as the remote-profile branch: publish the freshly loaded
-                // avatar/profile fields so in-session roster observers update.
-                serverMembersStore.seedProfiles(
-                    server.id,
-                    listOf(detailResult.data.toStaticMembersProfile(server))
-                )
                 MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
@@ -3069,7 +3000,6 @@ private class MemberDetailRouteProvider(
                 MemberKind.Agent -> channelRepository.openAgentDirectMessage(member.id)
                 MemberKind.Human -> channelRepository.openUserDirectMessage(member.id)
                 MemberKind.System -> DataResult.Empty(EmptyReason.NoMembers)
-                MemberKind.External -> DataResult.Empty(EmptyReason.NoMembers)
             }
         if (result is DataResult.Content && authority != null) {
             sharedHomeStore?.supplementOpenedDirectMessage(
@@ -4617,19 +4547,10 @@ internal fun MembersRouteContent(
      */
     canCreateAgents: Boolean = false,
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
-    /**
-     * Task #409: current session's user id, used as the persistence scope for
-     * per-machine agent-group collapse (same `slock:sidebarCollapsed:<userId>`
-     * key family as web). Null keeps the groups collapsible but unpersisted
-     * (smoke/test surfaces).
-     */
-    currentUserId: String? = null,
-    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
     onRefresh: () -> Unit = {}
 ) {
     MembersListContent(
@@ -4647,10 +4568,7 @@ internal fun MembersRouteContent(
         bottomContentPadding = bottomContentPadding,
         scrollToTopRequest = scrollToTopRequest,
         initialListState = initialListState,
-        onListStateSnapshot = onListStateSnapshot,
-        paneLayout = paneLayout,
-        currentUserId = currentUserId,
-        agentGroupCollapseStore = agentGroupCollapseStore
+        onListStateSnapshot = onListStateSnapshot
     )
 }
 
@@ -4671,10 +4589,7 @@ internal fun MembersListContent(
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
-    paneLayout: SlockAdaptivePaneLayout = SlockAdaptivePaneLayout.Compact,
-    onRefresh: () -> Unit = {},
-    currentUserId: String? = null,
-    agentGroupCollapseStore: build.raft.app.data.MembersAgentMachineGroupCollapseStore? = null
+    onRefresh: () -> Unit = {}
 ) {
     val createAgentSubmit = createAgent.createAgentSubmit
     val createAgentMachines = createAgent.createAgentMachines
@@ -4718,7 +4633,7 @@ internal fun MembersListContent(
         payload.members.groupBy {
             when (it.kind) {
                 MemberKind.Human -> payload.labels.humans
-                MemberKind.Agent, MemberKind.System, MemberKind.External -> payload.labels.agents
+                MemberKind.Agent, MemberKind.System -> payload.labels.agents
             }
         }
     }
@@ -4726,19 +4641,6 @@ internal fun MembersListContent(
     val humans = groupedMembers[payload.labels.humans].orEmpty()
     var agentsExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.agentsExpanded) }
     var humansExpanded by remember(payload.instanceId) { mutableStateOf(initialListState.humansExpanded) }
-    val membersCurrentUserId = currentUserId?.trim().orEmpty()
-    // Task #409: collapse state = persisted default + this page's user taps.
-    // The members payload and the session user id both arrive asynchronously,
-    // so the stored state cannot be read once eagerly: a group that does not
-    // exist yet when the store is read would render expanded forever. Resolve
-    // per group at render instead: user taps this session override the stored
-    // value, untouched groups read the store. This survives members arriving
-    // after the user id (and vice versa) on the standalone members page.
-    var agentGroupCollapseOverrides by remember(payload.instanceId, membersCurrentUserId) {
-        mutableStateOf<Map<String, Boolean>>(emptyMap())
-    }
-    fun isAgentGroupCollapsed(groupKey: String): Boolean =
-        resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
     var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
@@ -4767,10 +4669,6 @@ internal fun MembersListContent(
             humansCount = humans.size,
             agentsExpanded = agentsExpanded,
             humansExpanded = humansExpanded,
-            collapsedAgentGroupKeys =
-                groupedAgentMembers(agents)
-                    .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
-                    .toSet(),
             showHumanDirectory = payload.showHumanDirectory,
             hasPullToRefreshItem = showPullToRefreshItem
         )
@@ -4815,21 +4713,13 @@ internal fun MembersListContent(
             .background(SlockColor.SurfaceWhite)
     ) {
         MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
-        BoxWithConstraints(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-        val lazyMaxWidth = maxWidth
         LazyColumn(
             state = listState,
             // React parity: the web members view pads the scroll container itself (Sidebar
             // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
             // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
             // the missing half — without it the list sits 8dp from the screen edge (task #140).
-            modifier = Modifier
-                .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
-                .fillMaxSize()
-                .padding(horizontal = MembersListContainerInset),
+            modifier = Modifier.fillMaxSize().padding(horizontal = MembersListContainerInset),
             verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
@@ -4872,40 +4762,15 @@ internal fun MembersListContent(
             }
             if (agentsExpanded) {
                 groupedAgentMembers(agents).forEach { group ->
-                    item("group_${group.key}") {
-                        val groupExpanded = !isAgentGroupCollapsed(group.key)
+                    item("group_${group.label}") {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = MembersListMachineLabelInset)
-                                .padding(top = SlockSpacing.Xs)
-                                .clickable {
-                                    // Slot stores *collapsed*; toggling writes !collapsed
-                                    // (writing !groupExpanded stored the old value and made the
-                                    // row a no-op — task #409 regression).
-                                    val collapseNow =
-                                        resolveAgentGroupCollapseToggle(
-                                            isAgentGroupCollapsed(group.key)
-                                        )
-                                    agentGroupCollapseOverrides =
-                                        agentGroupCollapseOverrides + (group.key to collapseNow)
-                                    agentGroupCollapseStore?.setCollapsed(
-                                        membersCurrentUserId,
-                                        group.key,
-                                        collapseNow
-                                    )
-                                },
+                                .padding(top = SlockSpacing.Xs),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                         ) {
-                            SlockLucideIcon(
-                                SlockLucideIconName.ChevronRight,
-                                modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                color = SlockColor.TextMutedGrayArgb,
-                                rotationDegrees = if (groupExpanded) 90f else 0f,
-                                rotationAnimationDurationSeconds =
-                                    SlockCollapsibleSectionTokens.AnimationDurationSeconds
-                            )
                             SlockLucideIcon(
                                 SlockLucideIconName.Monitor,
                                 modifier = Modifier.size(MembersListMachineLabelIconSize),
@@ -4916,27 +4781,19 @@ internal fun MembersListContent(
                                 style = MembersListMachineLabelTextStyle,
                                 color = SlockColor.TextMutedGray,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Text(
-                                text = group.members.size.toString(),
-                                style = MembersListMachineLabelTextStyle,
-                                color = SlockColor.TextMutedGray
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
-                    if (!isAgentGroupCollapsed(group.key)) {
-                        items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
-                            val member = group.members[index]
-                            MembersListRow(
-                                member = member,
-                                agentStatusResolver = agentStatusResolver,
-                                memberAvatarResolver = memberAvatarResolver,
-                                modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                                onClick = { onOpenMember(member) }
-                            )
-                        }
+                    items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
+                        val member = group.members[index]
+                        MembersListRow(
+                            member = member,
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver,
+                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                            onClick = { onOpenMember(member) }
+                        )
                     }
                 }
             }
@@ -4977,7 +4834,6 @@ internal fun MembersListContent(
                 }
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
-        }
         }
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
@@ -5088,39 +4944,11 @@ internal fun MembersListContent(
     }
 }
 
-/**
- * Task #409: a group's collapsed state is the user's tap this page session if
- * they made one, otherwise the persisted value under `userId`. Resolving per
- * group (rather than snapshotting the stored set once) keeps groups that
- * arrive after the first read — the standalone members page fills its list
- * asynchronously — from silently rendering expanded.
- */
-/**
- * The collapsed value a machine-group tap should write: the opposite of the
- * currently resolved collapsed state. Kept as a named pure function because a
- * previous implementation wrote the non-inverted state, which made taps a
- * no-op (task #409 regression).
- */
-internal fun resolveAgentGroupCollapseToggle(currentlyCollapsed: Boolean): Boolean =
-    !currentlyCollapsed
-
-internal fun resolveAgentGroupCollapsed(
-    groupKey: String,
-    overrides: Map<String, Boolean>,
-    userId: String,
-    store: build.raft.app.data.MembersAgentMachineGroupCollapseStore?
-): Boolean {
-    overrides[groupKey]?.let { return it }
-    if (userId.isBlank() || store == null) return false
-    return store.isCollapsed(userId, groupKey)
-}
-
 internal fun membersLazyItemCount(
     agents: List<MemberProfile>,
     humansCount: Int,
     agentsExpanded: Boolean,
     humansExpanded: Boolean,
-    collapsedAgentGroupKeys: Set<String> = emptySet(),
     showHumanDirectory: Boolean = true,
     hasPullToRefreshItem: Boolean = true
 ): Int {
@@ -5132,11 +4960,7 @@ internal fun membersLazyItemCount(
             1 // bottom spacer
     val agentItems =
         if (agentsExpanded) {
-            groupedAgentMembers(agents).sumOf { group ->
-                // Task #409: a collapsed machine group still renders its header
-                // row (computer name + count) but none of its member rows.
-                if (collapsedAgentGroupKeys.contains(group.key)) 1 else 1 + group.members.size
-            }
+            groupedAgentMembers(agents).sumOf { group -> 1 + group.members.size }
         } else {
             0
         }
@@ -9874,9 +9698,6 @@ internal fun membersAgentRuntimeModelDisplayLabel(
             ?.firstOrNull { it.id == normalizedModelId }
             ?.label
             .verifiedDisplayLabel()
-        // The agent genuinely carries this model id; hiding it entirely reads as
-        // "model missing" (task #284). Fall back to the raw id rather than nothing.
-        ?: normalizedModelId
 }
 
 @Composable
@@ -10040,9 +9861,6 @@ private fun MembersAgentRuntimeConfigDialog(
     var builtInSupportsImageInput by remember(stableInitialConfig) {
         mutableStateOf((initialBuiltInProvider as? RuntimeProviderConfig.Gateway)?.supportsImageInput == true)
     }
-    var builtInLoadLocalPlugins by remember(stableInitialConfig) {
-        mutableStateOf(stableInitialConfig.loadLocalPlugins == true)
-    }
     var fastMode by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.mode is RuntimeModeConfig.Fast) }
     var reasoningEffort by remember(stableInitialConfig) { mutableStateOf(stableInitialConfig.reasoningEffort) }
     // kimi-sdk (task #275): only an explicit selector pick counts as "changed";
@@ -10069,7 +9887,7 @@ private fun MembersAgentRuntimeConfigDialog(
     }
     var saveValidationError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var advancedOpen by remember(stableInitialConfig) {
-        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty() || builtInLoadLocalPlugins)
+        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
     }
     val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
     val cleanServerId = currentServerId?.trim().orEmpty()
@@ -10138,8 +9956,7 @@ private fun MembersAgentRuntimeConfigDialog(
                 baseUrl = builtInBaseUrl,
                 model = model,
                 envVars = envVarEntries.toMembersRuntimeEnvVars(),
-                supportsImageInput = builtInSupportsImageInput,
-                loadLocalPlugins = builtInLoadLocalPlugins
+                supportsImageInput = builtInSupportsImageInput
             )?.membersProjectRetainedBuiltInSecret(retainBuiltInProviderSecret)
         } else {
             null
@@ -10231,7 +10048,6 @@ private fun MembersAgentRuntimeConfigDialog(
                 builtInBaseUrl = ""
                 builtInApiKey = TextFieldValue("")
                 builtInSupportsImageInput = false
-                builtInLoadLocalPlugins = false
                 val modelSource =
                     builtInForm.optionSources["model"] as?
                         build.raft.app.data.SharedAgentCreateFormOptionSource.DependentSelect
@@ -10462,7 +10278,6 @@ private fun MembersAgentRuntimeConfigDialog(
                                     builtInApiKey = TextFieldValue("")
                                     builtInBaseUrl = ""
                                     builtInSupportsImageInput = false
-                                    builtInLoadLocalPlugins = false
                                 }
                                 builtInProviderId = nextProvider
                             },
@@ -10472,8 +10287,6 @@ private fun MembersAgentRuntimeConfigDialog(
                             onBaseUrlChange = { builtInBaseUrl = it },
                             supportsImageInput = builtInSupportsImageInput,
                             onSupportsImageInputChange = { builtInSupportsImageInput = it },
-                            loadLocalPlugins = builtInLoadLocalPlugins,
-                            onLoadLocalPluginsChange = { builtInLoadLocalPlugins = it },
                             model = model,
                             onModelChange = { model = it },
                             envVarEntries = envVarEntries,
@@ -13207,7 +13020,6 @@ private val MemberKind.membersAvatarColor: Color
         MemberKind.Human -> SlockColor.AccentLavender
         MemberKind.Agent -> SlockColor.AccentPink
         MemberKind.System -> SlockColor.AccentCyan
-        MemberKind.External -> SlockColor.AccentCyan
     }
 
 internal data class MembersAgentStatusDisplayState(
@@ -13273,7 +13085,6 @@ private val MemberProfile.detailRoleLabel: String
                 MemberKind.Agent -> "Agent"
                 MemberKind.Human -> "Human member"
                 MemberKind.System -> "System"
-                MemberKind.External -> "External"
             }
 
 private fun MemberProfile.membersHumanRoleChipColor(): Color =
@@ -13619,7 +13430,7 @@ internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfi
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
             runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = preferredAvatarWireValue(member.avatar, member.avatarUrl) ?: summary?.avatarUrl
+            avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
         )
     return copy(summary = nextSummary)
 }
@@ -13793,14 +13604,7 @@ internal fun membersAgentActivityNextBottomAnchor(
         else -> current
     }
 
-internal data class MembersAgentGroup(
-    /**
-     * Task #409: the persisted-collapse key — the machine's `computer-id:`
-     * badge when present (stable across renames, same reason web keys by
-     * `machineId`), otherwise the display name, otherwise the shared
-     * [build.raft.app.data.MembersAgentMachineGroupNoMachineKey] sentinel.
-     */
-    val key: String,
+private data class MembersAgentGroup(
     val label: String,
     val members: List<MemberProfile>
 )
@@ -13863,20 +13667,13 @@ private fun SlockSpinnerIcon(
     )
 }
 
-internal fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgentGroup> =
+private fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgentGroup> =
     members
         .groupBy { member ->
-            member.membersComputerId
-                ?: member.membersComputerName
-                ?: build.raft.app.data.MembersAgentMachineGroupNoMachineKey
+            member.permissionBadges
+                .firstNotNullOfOrNull { badge ->
+                    badge.removePrefix("computer:")
+                        .takeIf { badge.startsWith("computer:") && it.isNotBlank() }
+                } ?: "no computer"
         }
-        .map { (key, groupedMembers) ->
-            MembersAgentGroup(
-                key = key,
-                label = groupedMembers.firstOrNull()?.membersComputerName
-                    ?: membersNoComputerGroupLabel,
-                members = groupedMembers
-            )
-        }
-
-internal const val membersNoComputerGroupLabel = "no computer"
+        .map { (label, groupedMembers) -> MembersAgentGroup(label, groupedMembers) }

@@ -100,7 +100,6 @@ data class RuntimeConfig(
     val reasoningEffort: String? = null,
     val envVars: Map<String, String>? = null,
     val command: String? = null,
-    val loadLocalPlugins: Boolean? = null,
     val hostUserState: RuntimeHostUserState? = null
 )
 

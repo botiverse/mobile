@@ -367,25 +367,6 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun clearingSelectedConversationForwardsClearToHomeStore() {
-        // task #299: leaving a conversation must clear the home store's
-        // selectedConversationId too, otherwise realtime merges keep
-        // suppressing unread for the last opened conversation.
-        val fixture = fixture()
-        val store = fixture.store
-
-        store.dispatch(SharedHomeShellIntent.SetSelectedConversation("channel-1"))
-        store.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-
-        assertNull(store.state.value.selectedConversationId)
-        assertEquals(
-            listOf<SharedHomeIntent>(SharedHomeIntent.ClearSelectedConversation),
-            fixture.homeIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
     fun mutedConversationDisablesLocalActivityMessagePatchButStillForwardsEvent() {
         val fixture = fixture(homeState = homeStateForServer("server-1", activityMuted = true))
         val event =

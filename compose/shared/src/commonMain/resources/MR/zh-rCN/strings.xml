@@ -34,9 +34,6 @@
     <string name="tab_dms">私信</string>
     <string name="tab_activity">动态</string>
     <string name="tab_more">更多</string>
-    <string name="more_hub_tasks_subtitle">查看与跟踪任务</string>
-    <string name="more_hub_members_subtitle">浏览人类成员与 Agent</string>
-    <string name="more_hub_settings_subtitle">偏好设置与账号</string>
     <string name="release_notes_title">更新日志</string>
     <string name="release_notes_loading">加载中…</string>
     <string name="release_notes_error_title">无法加载更新日志</string>
@@ -62,7 +59,6 @@
     <string name="common_open">打开</string>
     <string name="common_send">发送</string>
     <string name="common_share">分享</string>
-    <string name="share_open_failed">无法打开分享面板，请重试</string>
     <string name="common_stop">停止</string>
     <string name="common_yes">是</string>
     <string name="common_no">否</string>
@@ -344,7 +340,6 @@
     <string name="relative_time_day_future_many">%1$d 天后</string>
     <string name="thread_author_you">你</string>
     <string name="thread_error_open_thread">无法打开消息列</string>
-    <string name="thread_external_author_hint">外部 %1$s 用户</string>
     <string name="thread_error_open_profile">无法打开资料</string>
     <string name="thread_error_comments_unavailable">评论不可用</string>
     <string name="thread_error_send_comment">无法发送评论</string>

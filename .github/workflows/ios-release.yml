@@ -89,11 +89,6 @@ jobs:
       export_method: ${{ steps.p.outputs.export_method }}
       release_mode: ${{ steps.p.outputs.release_mode }}
     steps:
-      - name: Checkout version formula
-        uses: actions/checkout@v5
-        with:
-          sparse-checkout: scripts/ci
-          sparse-checkout-cone-mode: false
       - id: p
         shell: bash
         run: |

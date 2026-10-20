@@ -74,18 +74,11 @@ private sealed interface SlockPlatformLogQueueItem {
     ) : SlockPlatformLogQueueItem
 }
 
-internal class SlockPlatformLogQueue(
-    scope: CoroutineScope,
-    private val recordSink: ((SlockPlatformLogRecord) -> Unit)? = null,
-    // Lets tests admit records between individual channel reads without timing or threads.
-    private val afterLanePoll: ((SlockPlatformLogHint) -> Unit)? = null
-) {
-    private companion object {
-        const val NormalCapacity = 496
-        const val AuthCriticalCapacity = 16
-        const val ControlCapacity = 1
-        const val QueueTag = "SlockPlatformLog"
-    }
+private object SlockPlatformLogQueue {
+    private const val NormalCapacity = 496
+    private const val AuthCriticalCapacity = 16
+    private const val ControlCapacity = 1
+    private const val QueueTag = "SlockPlatformLog"
 
     private val normalQueue = Channel<SlockPlatformLogQueueItem.Entry>(capacity = NormalCapacity)
     private val authCriticalQueue = Channel<SlockPlatformLogQueueItem.Entry>(capacity = AuthCriticalCapacity)
@@ -97,6 +90,7 @@ internal class SlockPlatformLogQueue(
     private val normalAdmissionDropped = atomic(0L)
     private val authCriticalOverflowDropped = atomic(0L)
     private val authCriticalAdmissionDropped = atomic(0L)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
         scope.launch {
@@ -105,21 +99,8 @@ internal class SlockPlatformLogQueue(
             var controlHead: SlockPlatformLogQueueItem.Flush? = null
             while (true) {
                 if (normalHead == null) normalHead = normalQueue.tryReceive().getOrNull()
-                afterLanePoll?.invoke(SlockPlatformLogHint.None)
                 if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
-                afterLanePoll?.invoke(SlockPlatformLogHint.AuthCritical)
                 if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
-                if (normalHead != null || authCriticalHead != null || controlHead != null) {
-                    // The first pass is not an atomic snapshot: a previously empty lane
-                    // may receive an entry before a later lane exposes a Flush or Entry.
-                    // Admission serializes sequence assignment and publication, so every
-                    // item preceding an observed candidate is already enqueued. Refill
-                    // missing heads after observing that candidate before choosing the
-                    // minimum. Keep observed heads: later admissions cannot precede them.
-                    if (normalHead == null) normalHead = normalQueue.tryReceive().getOrNull()
-                    if (authCriticalHead == null) authCriticalHead = authCriticalQueue.tryReceive().getOrNull()
-                    if (controlHead == null) controlHead = controlQueue.tryReceive().getOrNull()
-                }
                 val item = earliest(normalHead, authCriticalHead, controlHead)
                 if (item == null) {
                     wakeups.receive()
@@ -300,7 +281,7 @@ internal class SlockPlatformLogQueue(
     ) {
         val safeTag = tag.trim().ifBlank { "SlockShared" }.take(SlockLogTagMaxChars)
         val safeMessage = message.sanitizeSlockLogMessage().take(SlockLogMessageMaxChars)
-        val sink = recordSink ?: SlockPlatformLogSinkRegistry.sink
+        val sink = SlockPlatformLogSinkRegistry.sink
         if (sink != null) {
             val record =
                 SlockPlatformLogRecord(
@@ -314,10 +295,6 @@ internal class SlockPlatformLogQueue(
         }
         runCatching { slockPlatformLog(level, safeTag, safeMessage, timestampMillis, hint) }
     }
-}
-
-private val slockPlatformLogQueue by lazy {
-    SlockPlatformLogQueue(CoroutineScope(SupervisorJob() + Dispatchers.Default))
 }
 
 /**
@@ -386,7 +363,7 @@ private fun slockLog(
     message: String,
     hint: SlockPlatformLogHint
 ) {
-    slockPlatformLogQueue.enqueue(level, tag, message, hint)
+    SlockPlatformLogQueue.enqueue(level, tag, message, hint)
 }
 
 /**
@@ -399,7 +376,7 @@ private fun slockLog(
  * shared queue contract.
  */
 internal suspend fun flushSlockPlatformLogs() {
-    slockPlatformLogQueue.flush()
+    SlockPlatformLogQueue.flush()
 }
 
 internal suspend fun flushSlockPlatformLogsForTest() = flushSlockPlatformLogs()

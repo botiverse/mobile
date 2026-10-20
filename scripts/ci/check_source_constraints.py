@@ -476,7 +476,7 @@ def check_composer_retirement_uses_bounded_waits(connected_test: str) -> None:
     body = match.group("body")
     required = (
         'waitUntil(RenderTimeoutMs, "initial editor")',
-        'waitUntil(SendTimeoutMs, "same editor cleared after send")',
+        'waitUntil(SendTimeoutMs, "first attached replacement editor")',
         'waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition")',
         "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS",
     )
@@ -516,7 +516,7 @@ def check_composer_native_send_snapshot_wiring(
         "templateChildren().firstNotNullOfOrNull",
         "val nativeEditorRoot = this",
         "nativeEditorRoot.findSlockNativeTextEditor()",
-        "nativeEditor.getTextInputState(",
+        "nativeEditor.getTextInputState(callback)",
     )
     for token in basic_required:
         if token not in basic_widget and token not in text_field:
@@ -1226,7 +1226,7 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
     for source_name, token in (
         ("basic", "is AutoHeightTextAreaView -> this"),
         ("basic", "nativeEditorRoot.findSlockNativeTextEditor()"),
-        ("basic", "nativeEditor.getTextInputState("),
+        ("basic", "nativeEditor.getTextInputState(callback)"),
         ("composer", "if (pendingToken !== token) return false"),
         ("composer", "delay(ThreadComposerNativeSnapshotTimeoutMillis)"),
         ("composer", 'currentOnEvent("sendSnapshotUnavailable", "timeout", null, null)'),
@@ -1530,7 +1530,7 @@ private fun ThreadMessageMenuChrome() = Unit
     good_retirement_test = '''
 fun sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition() {
     waitUntil(RenderTimeoutMs, "initial editor") { true }
-    waitUntil(SendTimeoutMs, "same editor cleared after send") { true }
+    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }
     waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") { true }
     println("SLOCK_COMPOSER_SESSION_RETIREMENT_PASS")
 }
@@ -1542,8 +1542,8 @@ fun anotherCase() = Unit
     try:
         check_composer_retirement_uses_bounded_waits(
             good_retirement_test.replace(
-                'waitUntil(SendTimeoutMs, "same editor cleared after send") { true }',
-                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "same editor cleared after send") { true }',
+                'waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
+                'waitForIdleSync()\n    waitUntil(SendTimeoutMs, "first attached replacement editor") { true }',
             )
         )
     except Violation:

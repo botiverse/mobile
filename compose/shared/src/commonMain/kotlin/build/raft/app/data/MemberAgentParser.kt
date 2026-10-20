@@ -762,7 +762,6 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentStatus = agentStatus,
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
-        model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)

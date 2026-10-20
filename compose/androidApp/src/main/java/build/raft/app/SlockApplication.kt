@@ -1,7 +1,6 @@
 package build.raft.app
 
 import android.app.Application
-import android.content.Context
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVApiEnvironmentKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
@@ -22,14 +21,8 @@ import build.raft.app.network.installAndroidSlockNetworkTransportAtStartup
 import kotlinx.coroutines.runBlocking
 
 class SlockApplication : Application() {
-    override fun attachBaseContext(base: Context) {
-        installCoroutineWorkerKeepAlive()
-        super.attachBaseContext(base)
-    }
-
     override fun onCreate() {
         super.onCreate()
-        recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
         SlockAndroidLocalDiagnostics.init(this)
@@ -116,47 +109,4 @@ class SlockApplication : Application() {
             }
         )
     }
-}
-
-internal const val COROUTINE_WORKER_KEEP_ALIVE_SEC = "315360000"
-
-internal const val COROUTINE_WORKER_KEEP_ALIVE_PROPERTY =
-    "kotlinx.coroutines.scheduler.keep.alive.sec"
-
-/**
- * task #312: kotlinx.coroutines' `CoroutineScheduler.Worker.indexInArray` setter calls
- * `Thread.setName` while it may run inside `synchronized(workers)`. On ART that setName
- * suspends a peer thread while another worker blocks on the same monitor, forming a
- * SuspendThreadByPeer <-> workers-monitor deadlock (~1007s -> SIGABRT). The setName path is
- * only reachable from `tryTerminateWorker`, which runs only when a worker has been idle past
- * `IDLE_WORKER_KEEP_ALIVE_NS`. Pinning that keep-alive far in the future makes worker
- * termination (and therefore the setName/compaction path) unreachable.
- *
- * Must run before any coroutine/`Dispatchers` use, so it lives in `attachBaseContext`, the
- * earliest app-controlled point (`ContentProvider.onCreate` runs later). The value is
- * deliberately not `Long.MAX_VALUE`: worker park computes `nanoTime() + keepAliveNs` and a
- * too-large value overflows negative, which would terminate immediately.
- */
-internal fun installCoroutineWorkerKeepAlive() {
-    System.setProperty(COROUTINE_WORKER_KEEP_ALIVE_PROPERTY, COROUTINE_WORKER_KEEP_ALIVE_SEC)
-}
-
-/**
- * Read back the keep-alive the DefaultScheduler actually consumed (task #312). Reflects
- * the internal `TasksKt.IDLE_WORKER_KEEP_ALIVE_NS` so a device diagnostics bundle can
- * confirm the pin took effect at runtime. Best-effort; never throws.
- */
-private fun SlockApplication.recordCoroutineWorkerKeepAliveDiagnostics() {
-    val readBack =
-        runCatching {
-            val tasksClass = Class.forName("kotlinx.coroutines.scheduling.TasksKt")
-            val field = tasksClass.getDeclaredField("IDLE_WORKER_KEEP_ALIVE_NS")
-            field.isAccessible = true
-            field.getLong(null)
-        }.getOrElse { -1L }
-    SlockAndroidLocalDiagnostics.recordLog(
-        "info",
-        "SlockCoroutineWorkerKeepAlive",
-        "coroutine_keepalive_ns=$readBack property=$COROUTINE_WORKER_KEEP_ALIVE_SEC"
-    )
 }

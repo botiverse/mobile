@@ -286,7 +286,7 @@ class KimiSdkReasoningEffortSelectorTest {
         val wrongRef =
             membersKimiSdkReasoningSaveDecision(
                 capability = kimiEditCapability(),
-                formRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3"),
+                formRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2"),
                 effortTouched = true,
                 modelChanged = false,
                 currentEffort = "high"
@@ -416,7 +416,7 @@ class KimiSdkReasoningEffortSelectorTest {
         listOf(
             SharedRuntimeFormDefinitionRef(1, "kimi-sdk", "kimi-sdk.create.v2"),
             SharedRuntimeFormDefinitionRef(2, "kimi-sdk", "kimi-sdk.create.v1"),
-            SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v4")
+            SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
         ).forEach { ref ->
             assertEquals(
                 "runtime_form_ref_unsupported",

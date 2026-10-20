@@ -2,8 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.model.MemberKind
 import build.raft.app.shared.data.local.AvatarCacheMetadataEntity
-import kotlin.coroutines.CoroutineContext
-import kotlinx.coroutines.withContext
 
 /**
  * Binds a native response to one exact owner/subject/content request generation. The callback must
@@ -80,65 +78,6 @@ internal interface SlockAvatarCacheMetadataStore {
     suspend fun clearSubject(owner: SlockAvatarCacheOwner, subject: SlockAvatarCacheSubject)
     suspend fun clearOwner(owner: SlockAvatarCacheOwner)
     suspend fun clearAll()
-}
-
-/**
- * task #323: runs every metadata read/write of [delegate] on [dispatcher] so SQLite I/O never
- * executes on the caller's thread (the Kuikly frame thread when reached from composition).
- * Guards evaluated inside the delegate's transaction ([SlockAvatarCacheCommitGuard.allows]) read
- * session state under the session lock, so they are safe to evaluate off the frame thread.
- */
-internal class DispatchingSlockAvatarCacheMetadataStore(
-    private val delegate: SlockAvatarCacheMetadataStore,
-    private val dispatcher: CoroutineContext
-) : SlockAvatarCacheMetadataStore {
-    override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
-        withContext(dispatcher) { delegate.read(key) }
-
-    override suspend fun commitSuccess(
-        metadata: SlockAvatarCacheMetadata,
-        guard: SlockAvatarCacheCommitGuard
-    ): SlockAvatarCacheCommitResult =
-        withContext(dispatcher) { delegate.commitSuccess(metadata, guard) }
-
-    override suspend fun commitFailure(
-        failure: SlockAvatarCacheFailure,
-        retireMatchingMetadata: Boolean,
-        guard: SlockAvatarCacheCommitGuard
-    ): SlockAvatarCacheCommitResult =
-        withContext(dispatcher) { delegate.commitFailure(failure, retireMatchingMetadata, guard) }
-
-    override suspend fun restoreAfterNativeFinalizeFailure(
-        key: SlockAvatarCacheKey,
-        expectedCommittedState: SlockAvatarCacheStoredState,
-        previousState: SlockAvatarCacheStoredState,
-        guard: SlockAvatarCacheCommitGuard
-    ): SlockAvatarCacheCommitResult =
-        withContext(dispatcher) {
-            delegate.restoreAfterNativeFinalizeFailure(key, expectedCommittedState, previousState, guard)
-        }
-
-    override suspend fun clearFailure(key: SlockAvatarCacheKey) =
-        withContext(dispatcher) { delegate.clearFailure(key) }
-
-    override suspend fun clearTemporaryFailures(owner: SlockAvatarCacheOwner) =
-        withContext(dispatcher) { delegate.clearTemporaryFailures(owner) }
-
-    override suspend fun clearSubject(owner: SlockAvatarCacheOwner, subject: SlockAvatarCacheSubject) =
-        withContext(dispatcher) { delegate.clearSubject(owner, subject) }
-
-    override suspend fun clearOwner(owner: SlockAvatarCacheOwner) =
-        withContext(dispatcher) { delegate.clearOwner(owner) }
-
-    override suspend fun clearAll() =
-        withContext(dispatcher) { delegate.clearAll() }
-
-    override suspend fun readCommittedForOwner(
-        owner: SlockAvatarCacheOwner,
-        nowMs: Long,
-        limit: Long
-    ): List<SlockAvatarCacheMetadata> =
-        withContext(dispatcher) { delegate.readCommittedForOwner(owner, nowMs, limit) }
 }
 
 private object AvatarCacheCommitRevoked : RuntimeException()

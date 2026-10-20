@@ -1784,8 +1784,7 @@ class SharedSettingsDataSource(
                 featureFlagOverrides =
                     (hostResult as? DataResult.Content)?.data?.featureFlagOverrides.orEmpty(),
                 appleSignInLocalOverride = authRuntimeCapabilityStore?.current()?.localAppleSignInOverride == true,
-                // Apple is always offered on iOS; the old local test toggle has no effect.
-                appleSignInLocalOverrideAvailable = false,
+                appleSignInLocalOverrideAvailable = authRuntimeCapabilityStore != null,
                 loadErrors = loadErrors
             )
         )

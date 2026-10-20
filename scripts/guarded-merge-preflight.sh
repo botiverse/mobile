@@ -38,14 +38,10 @@ IFS=$'\t' read -r allow_rebase allow_squash allow_merge <<< "$policy"
   echo "refusing merge: ${repo} must keep guarded squash available" >&2
   exit 1
 }
-# Merge commits are intentionally left enabled on this repo (release back-merge
-# needs them to record ancestry, and artin ruled to keep the option on).
-# Guarded-squash-merge produces a squash commit, never a merge commit, so an
-# enabled merge-commit option does not weaken the contract. Warn rather than
-# refuse so the reconcile window and normal squashes both keep working.
-if [ "$allow_merge" != "false" ]; then
-  echo "note: ${repo} allows ordinary merge commits (intended); guarded squash still produces squash commits" >&2
-fi
+[ "$allow_merge" = "false" ] || {
+  echo "refusing merge: ${repo} must disable ordinary merge commits" >&2
+  exit 1
+}
 
 pr_state="$($gh_bin api "repos/${repo}/pulls/${pr_number}" --jq '[.state, (.draft | tostring), .head.sha, .base.ref] | @tsv')"
 IFS=$'\t' read -r state draft live_head base_ref <<< "$pr_state"

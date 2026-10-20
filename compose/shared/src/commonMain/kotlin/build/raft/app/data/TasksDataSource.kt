@@ -627,8 +627,6 @@ internal fun MemberProfile.taskAssigneeTypeValueOrNull(): String? =
         MemberKind.Human -> "user"
         MemberKind.Agent -> "agent"
         MemberKind.System -> null
-        // External projections are never task assignees.
-        MemberKind.External -> null
     }
 
 /**

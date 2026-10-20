@@ -6,7 +6,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class MarkdownReferencePendingTest {
 
@@ -121,49 +120,6 @@ class MarkdownReferencePendingTest {
             "#general-renamed$SlockMarkdownPendingActionIndicator",
             resolveSlockRichTextTokenLabel(token, "#general-renamed")
         )
-    }
-
-    @Test
-    fun pendingThreadReferenceRetainsThreadChromeKindAndSetsActiveFlag() {
-        val plan = plan("Open #general:1c50c30a", scope = "message")
-        val base = document(plan)
-        val threadAction = base.actions.single { it.refKind == SlockRichTextRefKind.Thread }
-
-        val active =
-            buildSlockRichTextDocumentFromMarkdownPlan(
-                source = plan.content,
-                content = plan.content,
-                tokenPlan = plan,
-                activeActionId = threadAction.id
-            )
-        val token = active.inlineTokens.single { it.actionId == threadAction.id }
-
-        assertTrue(token.active)
-        assertEquals(SlockRichTextChromeKind.Thread, token.chrome)
-        assertEquals("", token.trailingIndicator)
-        assertEquals("#general:1c50c30a", token.text)
-    }
-
-    @Test
-    fun pendingTokenWithoutTrailingIndicatorSuppliesSpinnerInlineContent() {
-        val plan = plan("Open #general", scope = "message")
-        val base = document(plan)
-        val channelAction = base.actions.single()
-
-        val activeDocument =
-            buildSlockRichTextDocumentFromMarkdownPlan(
-                source = plan.content,
-                content = plan.content,
-                tokenPlan = plan,
-                activeActionId = channelAction.id
-            )
-        val annotator =
-            slockMarkdownAnnotator(
-                document = activeDocument
-            )
-        val inlineContentMap = annotator.inlineContent?.invoke()
-        assertNotNull(inlineContentMap)
-        assertTrue(inlineContentMap.containsKey(slockMarkdownActionSpinnerInlineId(channelAction.id)))
     }
 
     private fun plan(content: String, scope: String): MarkdownInlineTokenPlan =

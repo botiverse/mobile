@@ -83,10 +83,13 @@ internal val LocalThreadInlineVideoPreviewHost =
 @Composable
 internal fun ThreadInlineVideoAttachmentCard(
     attachment: KuiklyThreadAttachmentItem,
-    onDownload: () -> Unit
+    commentsEnabled: Boolean,
+    onDownload: () -> Unit,
+    onOpenComments: () -> Unit
 ) {
     val host = LocalThreadInlineVideoPreviewHost.current
     val previewState = host?.states?.get(attachment.id)
+    val canOpenComments = commentsEnabled
 
     LaunchedEffect(attachment.id, host != null) {
         if (previewState == null) {
@@ -133,6 +136,19 @@ internal fun ThreadInlineVideoAttachmentCard(
                     )
                 }
             }
+        }
+        if (canOpenComments) {
+            SlockBrutalActionButton(
+                label = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
+                onClick = onOpenComments,
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = SlockColor.SurfaceCream,
+                minWidth = 0.dp,
+                minHeight = 30.dp,
+                leadingIcon = SlockLucideIconName.MessageCircle,
+                shadowOffset = 0.dp,
+                textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+            )
         }
     }
 }

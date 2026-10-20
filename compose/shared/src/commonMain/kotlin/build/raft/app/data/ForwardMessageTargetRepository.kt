@@ -9,7 +9,6 @@ import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
-import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -854,8 +853,6 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
             MemberKind.Human -> ForwardMessageTargetKind.HumanDirectMessageCandidate
             MemberKind.Agent -> ForwardMessageTargetKind.AgentDirectMessageCandidate
             MemberKind.System -> return null
-            // External projections are never forward-target identities.
-            MemberKind.External -> return null
         }
     val title = displayName.trim().takeIf { it.isNotBlank() } ?: handle.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
@@ -864,7 +861,7 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
         id = id.value,
         title = title,
         subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
-        avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl),
+        avatarWireValue = avatar?.wireValue ?: avatarUrl,
         avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
         channelKind = ConversationKind.DirectMessage,
         channelType = "dm",

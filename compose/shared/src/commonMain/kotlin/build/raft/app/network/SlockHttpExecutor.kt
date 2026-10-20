@@ -71,7 +71,6 @@ internal interface SlockHttpExecutor {
         method: String,
         headers: Map<String, String>,
         bodyBytes: ByteArray,
-        onUploadProgress: ((SlockTransferProgress) -> Unit)? = null,
     ): SlockHttpExecutorResponse =
         SlockHttpExecutorResponse(
             code = 501,
@@ -86,7 +85,6 @@ internal interface SlockHttpExecutor {
         method: String,
         headers: Map<String, String>,
         body: SlockHttpFileBody,
-        onUploadProgress: ((SlockTransferProgress) -> Unit)? = null,
     ): SlockHttpExecutorResponse =
         SlockHttpExecutorResponse(
             code = 501,

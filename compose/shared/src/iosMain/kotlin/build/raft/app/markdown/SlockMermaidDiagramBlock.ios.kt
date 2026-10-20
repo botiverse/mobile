@@ -25,7 +25,6 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import build.raft.app.SlockColor
-import build.raft.app.slockLogInfo
 import build.raft.mermaid.core.MermaidParseResult
 import build.raft.mermaid.core.MermaidParser
 import build.raft.mermaid.kuikly.MermaidKuiklyRenderer
@@ -79,7 +78,6 @@ internal actual fun SlockMermaidDiagramBlock(
                     .height(diagramHeightDp),
                 viewInit = {
                     drawCallback = { context, _, _ ->
-                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewInit layoutFrameDefault=${isLayoutFrameDefault()}")
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -87,12 +85,9 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
-                    slockLogInfo("SlockMermaid", "mermaid_drawcb_redraw_enter site=viewInit layoutFrameDefault=${isLayoutFrameDefault()} renderViewNull=${renderView == null} nativeRef=${nativeRef}")
-                    redraw()
                 },
                 viewUpdate = { view ->
                     view.drawCallback = { context, _, _ ->
-                        slockLogInfo("SlockMermaid", "mermaid_drawcb_entry site=viewUpdate layoutFrameDefault=${view.isLayoutFrameDefault()}")
                         MermaidKuiklyRenderer.render(
                             scene = layoutScene,
                             context = context,
@@ -100,8 +95,6 @@ internal actual fun SlockMermaidDiagramBlock(
                             batchDraw = true,
                         )
                     }
-                    slockLogInfo("SlockMermaid", "mermaid_drawcb_redraw_enter site=viewUpdate layoutFrameDefault=${view.isLayoutFrameDefault()} renderViewNull=${view.renderView == null} nativeRef=${view.nativeRef}")
-                    view.redraw()
                 }
             )
 

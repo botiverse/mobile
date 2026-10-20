@@ -265,7 +265,7 @@ class SharedAgentDetailStoreTest {
         assertNull(summary?.activity)
         assertEquals("Building Android", summary?.activityDetail)
         assertEquals("gpt-5-codex", summary?.runtime)
-        assertEquals("https://example.com/avatar.png", summary?.avatarUrl)
+        assertEquals("pixel:agent-one", summary?.avatarUrl)
         assertEquals("Jiachengs-MacBook-Pro", summary?.machineName)
         assertEquals("machine-1", summary?.machineId)
     }

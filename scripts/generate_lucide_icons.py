@@ -195,7 +195,6 @@ LUCIDE_ICONS = [
     "mail",
     "mail-open",
     "mail-plus",
-    "map-pin",
     "message-circle",
     "message-circle-off",
     "message-circle-plus",

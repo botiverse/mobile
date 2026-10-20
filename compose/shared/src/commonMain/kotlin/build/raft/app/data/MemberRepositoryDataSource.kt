@@ -32,17 +32,6 @@ private val memberRepositoryJson = Json {
     encodeDefaults = true
 }
 
-// task #152: the PATCH `runtimeConfig` object must match the web/create wire shape —
-// absent optional fields are OMITTED, never serialized as explicit `null`. The server
-// validates any non-undefined value (e.g. `loadLocalPlugins !== undefined` must be a
-// boolean on builtin and is rejected on every other runtime), so `"loadLocalPlugins":null`
-// 400'd every non-Built-in runtime save. Mirrors AgentsApi's create-body encoder.
-private val agentRuntimeConfigUpdateJson = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = true
-    explicitNulls = false
-}
-
 private fun PlatformFile.toAgentAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
@@ -101,14 +90,12 @@ interface SlockNetworkClient {
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     suspend fun putAttachmentUploadFile(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     /**
@@ -206,7 +193,6 @@ internal interface AuthorityBoundSlockNetworkClient {
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
         expectedAuthority: SlockExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun putAttachmentUploadFileBound(
@@ -214,7 +200,6 @@ internal interface AuthorityBoundSlockNetworkClient {
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
         expectedAuthority: SlockExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun prepareAttachmentUploadFileBound(
@@ -298,18 +283,16 @@ internal fun SlockNetworkClient.boundTo(expectedAuthority: SlockExpectedAuthBind
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             bytes: ByteArray,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
-            bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority, onUploadProgress)
+            bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority)
                 ?: authorityBindingUnsupportedResponse()
 
         override suspend fun putAttachmentUploadFile(
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             file: PlatformFile,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
-            bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority, onUploadProgress)
+            bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority)
                 ?: authorityBindingUnsupportedResponse()
 
         override suspend fun prepareAttachmentUploadFile(
@@ -1196,7 +1179,7 @@ private fun RuntimeModelConfig.toAgentModelWireValue(): String =
 private fun build.raft.app.model.RuntimeConfig.toAgentUpdateJson(
     retainOmittedBuiltInProviderSecret: Boolean
 ): JsonElement {
-    val encoded = agentRuntimeConfigUpdateJson.encodeToJsonElement(this).jsonObject
+    val encoded = memberRepositoryJson.encodeToJsonElement(this).jsonObject
     if (!retainOmittedBuiltInProviderSecret || runtime != "builtin") return encoded
     val provider = encoded["provider"] as? JsonObject ?: return encoded
     val providerWithoutSecret =
@@ -1268,8 +1251,6 @@ private fun AddChannelMemberRequest.toBodyText(): String =
         MemberKind.Agent -> memberRepositoryJson.encodeToString(AddAgentChannelMemberRequestBody(memberId.value))
         MemberKind.Human -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
         MemberKind.System -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
-        // Unreachable: external projections can never be added as channel members.
-        MemberKind.External -> memberRepositoryJson.encodeToString(AddUserChannelMemberRequestBody(memberId.value))
     }
 
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
@@ -1378,15 +1359,20 @@ private fun List<MemberProfile>.resolveComputerLabels(machineNames: Map<String, 
     map { it.resolveComputerLabel(machineNames) }
 
 private fun MemberProfile.resolveComputerLabel(machineNames: Map<String, String>): MemberProfile {
+    val badgesWithoutIds = permissionBadges.filterNot { it.startsWith(MemberComputerIdBadgePrefix) }
     val currentComputerLabel = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() }
-    if (!currentComputerLabel.isNullOrBlank()) return this
+    if (!currentComputerLabel.isNullOrBlank()) {
+        return if (badgesWithoutIds == permissionBadges) this else copy(permissionBadges = badgesWithoutIds)
+    }
     val machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() } ?: return this
-    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() } ?: return this
-    // Task #409: keep the `computer-id:` badge — the members page uses it as
-    // the collapse-persistence key, stable across machine renames (same reason
-    // web keys agent-machine groups by machineId). Before this fix the badge
-    // was stripped on merge and the id never reached the list.
-    return copy(permissionBadges = permissionBadges + resolvedName.toMemberComputerBadge())
+    val resolvedName = machineNames[machineId]?.takeIf { it.isNotBlank() }
+    return if (resolvedName != null) {
+        copy(permissionBadges = badgesWithoutIds + resolvedName.toMemberComputerBadge())
+    } else if (badgesWithoutIds == permissionBadges) {
+        this
+    } else {
+        copy(permissionBadges = badgesWithoutIds)
+    }
 }
 
 private val MemberProfile.memberKey: String
@@ -1398,7 +1384,6 @@ private val MemberKind.channelMemberPathSegment: String
             MemberKind.Agent -> "agent"
             MemberKind.Human -> "user"
             MemberKind.System -> "system"
-            MemberKind.External -> "external"
         }
 
 private fun DataResult<MemberSnapshot>.logMemberCounts(

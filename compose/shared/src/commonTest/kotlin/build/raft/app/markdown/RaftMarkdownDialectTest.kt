@@ -67,52 +67,14 @@ class RaftMarkdownDialectTest {
     }
 
     @Test
-    fun malformedDmThreadSuffixDegradesToTheBareDmRef() {
-        // Web: the thread pass fails, then `createRaftDmRefRegex` claims
-        // `dm:@artin` and leaves the bad suffix as plain text.
+    fun rejectsMalformedDmThreadFormsWithoutConsumingTheirMentionFallback() {
         val source =
             "dm:@artin:12345 dm:@artin:123456789 dm:@artin:12zzzz " +
                 "dm:@发布者:DEADBEEF dm:@release.bot:DEADBEEF"
 
         assertEquals(
-            listOf("dm:@artin", "dm:@artin", "dm:@artin", "@发布者", "dm:@release.bot:DEADBEEF"),
+            listOf("@artin", "@artin", "@artin", "@发布者", "dm:@release.bot:DEADBEEF"),
             source.raftRefs(),
-        )
-    }
-
-    @Test
-    fun recognizesKindPinnedDmThreadRefsAsOneRef() {
-        val source = "Open dm:@skyzh~agent:1c50c30a or dm:@skyzh~human:DEADBEEF now."
-
-        assertEquals(
-            listOf("dm:@skyzh~agent:1c50c30a", "dm:@skyzh~human:DEADBEEF"),
-            source.raftRefs(),
-        )
-    }
-
-    @Test
-    fun unknownDmPeerKindClaimsTheWholeTokenInsteadOfFallingBackToMention() {
-        // Web `createRaftMalformedDmKindRefRegex`: the token is claimed so the
-        // app layer renders it as plain text, never as an `@skyzh` mention.
-        val source = "dm:@skyzh~bot:1c50c30a dm:@skyzh~agentx:1c50c30a dm:@skyzh~:1c50c30a dm:@skyzh~agent~human:1c50c30a"
-
-        assertEquals(
-            listOf(
-                "dm:@skyzh~bot:1c50c30a",
-                "dm:@skyzh~agentx:1c50c30a",
-                "dm:@skyzh~:1c50c30a",
-                "dm:@skyzh~agent~human:1c50c30a",
-            ),
-            source.raftRefs(),
-        )
-    }
-
-    @Test
-    fun dmRefsWithoutThreadSuffixAreOneRef() {
-        assertEquals(
-            listOf("dm:@skyzh~agent", "dm:@skyzh~human", "dm:@skyzh", "dm:@release.bot", "dm:@skyzh."),
-            // Like Web `[\w.-]+`, a trailing dot stays part of the peer token.
-            "dm:@skyzh~agent later, dm:@skyzh~human, dm:@skyzh dm:@release.bot dm:@skyzh.".raftRefs()
         )
     }
 

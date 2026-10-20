@@ -19,7 +19,6 @@ import build.raft.app.model.MessageCommentRef
 import build.raft.app.model.MessageDeliveryState
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
-import build.raft.app.model.providerLabel
 import build.raft.app.model.MessageType
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.Presence
@@ -125,8 +124,6 @@ private data class MessagesWireMessage(
     val actionMetadata: WireActionCardMetadata? = null,
     val commentRef: MessagesWireCommentRef? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
-    /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
-    val externalAuthor: WireExternalAuthor? = null,
 )
 
 @Serializable
@@ -162,9 +159,6 @@ private data class MessagesWireContextResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
-    // Task #1142: the server embeds the same parent-message keyed summary record on the
-    // context endpoint as on the page endpoint; the client used to drop it here.
-    val threadSummariesByParentMessageId: JsonElement? = null,
 )
 
 @Serializable
@@ -285,31 +279,10 @@ fun parseSharedMessageContext(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
-    val responseRoot =
-        runCatching { messagesJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull()
-            ?: return SharedMessagesPayload(emptyList())
     val response = runCatching {
-        messagesJson.decodeFromJsonElement(MessagesWireContextResponse.serializer(), responseRoot)
+        messagesJson.decodeFromString(MessagesWireContextResponse.serializer(), bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
     val resolvedThreadId = response.channelId?.let(::ThreadId) ?: fallbackThreadId
-    // Task #1142: an anchored open (Activity row, notification, search) lands on this page.
-    // Read the embedded summaries exactly like the page parser so reply rows render on the
-    // first frame instead of waiting for the targeted summary refetch.
-    val embeddedFieldPresent = "threadSummariesByParentMessageId" in responseRoot
-    val embeddedElement =
-        response.threadSummariesByParentMessageId
-            ?: responseRoot["threadSummariesByParentMessageId"]
-    val embeddedSummaries =
-        when (embeddedElement) {
-            is JsonObject -> parseChannelThreadSummaryRecordElement(embeddedElement, diagnostics)
-            else -> null
-        }
-    val embeddedAuthority =
-        when {
-            !embeddedFieldPresent -> ThreadReplySummariesAuthority.Unavailable
-            embeddedSummaries != null -> ThreadReplySummariesAuthority.Embedded
-            else -> ThreadReplySummariesAuthority.EmbeddedInvalid
-        }
     return SharedMessagesPayload(
         messages = response.messages.mapNotNull { it.toDomain(resolvedThreadId, diagnostics) },
         channelId = response.channelId?.let(::ChannelId),
@@ -317,11 +290,6 @@ fun parseSharedMessageContext(
         canonicalTarget = response.canonicalTarget?.toDomain(),
         hasOlder = response.hasOlder,
         hasNewer = response.hasNewer,
-        threadSummaries =
-            ThreadReplySummariesSnapshot(
-                threads = embeddedSummaries?.items.orEmpty(),
-            ),
-        replySummariesAuthority = embeddedAuthority,
         historyLimited = response.historyLimited,
         channelArchived = response.channelArchived,
     )
@@ -422,25 +390,15 @@ private fun MessagesWireMessage.toDomain(
         senderType.strictMemberKindOrNull(
             source = "rest_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.MessageSender,
+            contract = MemberKindWireContract.InternalActor,
         ) ?: return null
-    val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=rest_message_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
-    val resolvedExternalAuthor =
-        if (external) externalAuthor?.toExternalMessageAuthor(senderName.ifBlank { null }) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
         id = MemberId(senderId),
-        displayName = resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId },
+        displayName = senderName.ifBlank { senderId },
         handle = senderName.ifBlank { senderId },
         kind = authorKind,
-        // Web parity: the sender subtitle carries the provider label for external
-        // senders; senderDescription is a member field and stays member-only.
-        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
-        avatarUrl = resolvedExternalAuthor?.avatarUrl,
+        description = senderDescription,
         presence = Presence.Offline,
     )
     val resolvedThreadId = channelId.takeIf { it.isNotBlank() }?.let(::ThreadId) ?: fallbackThreadId
@@ -501,7 +459,6 @@ private fun MessagesWireMessage.toDomain(
         firstUnreadReplyMessageId = resolvedFirstUnreadReplyMessageId?.let(::MessageId),
         updatedAtLabel = updatedAt.ifBlank { null },
         commentRef = commentRef?.toDomain(),
-        externalAuthor = resolvedExternalAuthor,
     )
 }
 

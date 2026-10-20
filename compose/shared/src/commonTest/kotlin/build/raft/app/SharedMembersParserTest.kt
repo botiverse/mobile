@@ -969,7 +969,7 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun runtimeModelPresentationUsesCatalogThenKnownStaticLabelsAndFallsBackToRawId() {
+    fun runtimeModelPresentationUsesCatalogThenKnownStaticLabelsAndNeverRawIds() {
         val catalog =
             SharedCreateAgentRuntimeModelCatalog(
                 models =
@@ -989,12 +989,8 @@ class SharedMembersParserTest {
             "Claude Sonnet",
             membersAgentRuntimeModelDisplayLabel("claude", "sonnet", null)
         )
-        // task #284: an agent genuinely configured with a model id not present in the
-        // catalog/static map must still show *something* — hide-as-missing regressed to
-        // "no model chip" on real profiles.
-        assertEquals("unknown-model", membersAgentRuntimeModelDisplayLabel("claude", "unknown-model", null))
-        assertEquals(
-            "raw-only",
+        assertNull(membersAgentRuntimeModelDisplayLabel("claude", "unknown-model", null))
+        assertNull(
             membersAgentRuntimeModelDisplayLabel(
                 runtimeId = "claude",
                 modelId = "raw-only",
@@ -1004,7 +1000,6 @@ class SharedMembersParserTest {
                     )
             )
         )
-        assertNull(membersAgentRuntimeModelDisplayLabel("claude", "", null))
     }
 
     @Test

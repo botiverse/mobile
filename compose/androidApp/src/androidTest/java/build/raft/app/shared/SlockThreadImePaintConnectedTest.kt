@@ -7,7 +7,6 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -25,8 +24,6 @@ import build.raft.app.threadNewerAutoMessageLabel
 import build.raft.app.ThreadNewerAutoPaginationVisualFixtureProbe
 import java.util.ArrayDeque
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -63,15 +60,7 @@ class SlockThreadImePaintConnectedTest {
             lateinit var retiredEditor: EditText
             scenario.onActivity { activity ->
                 retiredEditor = requireNotNull(activity.window.decorView.findAttachedComposerEditText())
-            }
-            // Drive focus through the same bounded wait as the rest of the suite:
-            // a present-but-not-yet-focusable editor (window focus still settling on
-            // a slow CI emulator) makes the one-shot requestFocus() flake.
-            waitUntil(RenderTimeoutMs, "retired editor focused") {
-                scenario.onActivity { retiredEditor.requestFocus() }
-                retiredEditor.hasFocus()
-            }
-            scenario.onActivity { activity ->
+                assertTrue("retired editor should accept focus", retiredEditor.requestFocus())
                 val inputMethodManager =
                     activity.getSystemService(InputMethodManager::class.java)
                 inputMethodManager.showSoftInput(retiredEditor, InputMethodManager.SHOW_IMPLICIT)
@@ -119,39 +108,32 @@ class SlockThreadImePaintConnectedTest {
                     failure,
                 )
             }
-            // task #465 (artin ruling: keep the current product contract — send
-            // retires the logical editor session but REUSES the same native
-            // EditText; there is no replacement view). Assert the retained editor
-            // is cleared (session advanced in place) rather than a new instance.
-            // finishComposingBeforeStateRead drains any in-flight IME composition
-            // before the send reads state, so no real stale-session write can queue
-            // past send — the contract to verify is "same view, cleared, next real
-            // composition accepted".
-            val editorRetained = AtomicBoolean(false)
-            val draftClearedAfterSend = AtomicBoolean(false)
-            val imeVisibleAfterSend = AtomicBoolean(false)
+            val firstCompositionAccepted = AtomicBoolean(false)
+            val retiredDetachedAtReplacement = AtomicBoolean(false)
+            val imeVisibleAtReplacement = AtomicBoolean(false)
+            lateinit var replacementEditor: EditText
             try {
-                var lastEdgeDiagnostic: String? = null
-                waitUntil(SendTimeoutMs, "same editor cleared after send") {
+                waitUntil(SendTimeoutMs, "first attached replacement editor") {
                     var captured = false
                     scenario.onActivity { activity ->
                         val candidate = activity.window.decorView.findAttachedComposerEditText()
-                        if (candidate != null && candidate === retiredEditor && candidate.text.isEmpty()) {
-                            editorRetained.set(true)
-                            draftClearedAfterSend.set(true)
-                            imeVisibleAfterSend.set(
+                        if (candidate != null && candidate !== retiredEditor) {
+                            replacementEditor = candidate
+                            retiredDetachedAtReplacement.set(!retiredEditor.isAttachedToWindow)
+                            assertTrue("replacement editor must start empty", candidate.text.isEmpty())
+                            imeVisibleAtReplacement.set(
                                 activity.window.decorView.rootWindowInsets
                                     ?.isVisible(WindowInsets.Type.ime()) == true
                             )
+
+                            // Force the already-retired view's queued callback at the earliest point
+                            // where its replacement is reachable. It must neither refill the new
+                            // editor nor consume the replacement's first real IME state.
+                            retiredEditor.setText("sent")
+                            assertTrue("retired editor callback must not refill replacement draft", candidate.text.isEmpty())
+                            val connection = requireNotNull(candidate.onCreateInputConnection(EditorInfo()))
+                            firstCompositionAccepted.set(connection.setComposingText("sent", 1))
                             captured = true
-                        }
-                    }
-                    if (!captured) {
-                        val diagnostic =
-                            scenario.composerRetirementDiagnostics(nonce, retiredEditor)
-                        if (diagnostic != lastEdgeDiagnostic) {
-                            lastEdgeDiagnostic = diagnostic
-                            println("retainedEditorWait edge: $diagnostic")
                         }
                     }
                     captured
@@ -163,18 +145,11 @@ class SlockThreadImePaintConnectedTest {
                     failure,
                 )
             }
-            // A REAL first composition on the retained editor must still be
-            // accepted — same view, no focus/IME loss.
-            val firstCompositionAccepted = AtomicBoolean(false)
-            scenario.onActivity {
-                val connection = requireNotNull(retiredEditor.onCreateInputConnection(EditorInfo()))
-                firstCompositionAccepted.set(connection.setComposingText("sent", 1))
-            }
-            assertTrue("first composition on retained editor must be accepted", firstCompositionAccepted.get())
+            assertTrue("first replacement composition must be accepted at attach", firstCompositionAccepted.get())
             waitUntil(ImeTransitionTimeoutMs, "sent row and same-text first composition") {
                 ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce) >= 1 &&
                 scenario.currentComposerEditText()?.let { editor ->
-                    editor === retiredEditor && editor.isAttachedToWindow &&
+                    editor === replacementEditor && editor.isAttachedToWindow &&
                     editor.text.toString() == "sent" &&
                         BaseInputConnection.getComposingSpanStart(editor.text) == 0 &&
                         BaseInputConnection.getComposingSpanEnd(editor.text) == 4 &&
@@ -185,17 +160,17 @@ class SlockThreadImePaintConnectedTest {
             val sentRequestCount = ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)
             assertEquals("session retirement send must issue exactly one request", 1, sentRequestCount)
             val firstSelectionPreserved =
-                retiredEditor.selectionStart == 4 && retiredEditor.selectionEnd == 4
+                replacementEditor.selectionStart == 4 && replacementEditor.selectionEnd == 4
             val receipt =
                 "SLOCK_COMPOSER_SESSION_RETIREMENT_PASS " +
-                    "editorRetained=${editorRetained.get()} " +
-                    "retainedFocused=${retiredEditor.hasFocus()} " +
-                    "draftClearedAfterSend=${draftClearedAfterSend.get()} " +
+                    "replacementFocused=${replacementEditor.hasFocus()} " +
                     "firstComposition=${firstCompositionAccepted.get()} " +
                     "firstSelection=$firstSelectionPreserved " +
                     "requestCount=$sentRequestCount " +
                     "imeSetupFailureDiagnostics=$imeSetupFailureDiagnosticsVerified " +
-                    "imeVisibleAfterSend=${imeVisibleAfterSend.get()} " +
+                    "retiredDetachedAtSample=${retiredDetachedAtReplacement.get()} " +
+                    "retiredDetachedFinal=${!retiredEditor.isAttachedToWindow} " +
+                    "imeVisibleAtAttachSample=${imeVisibleAtReplacement.get()} " +
                     "imeNeverHiddenDuringSample=${!imeHiddenDuringReplacement.get()}"
             instrumentation.sendStatus(
                 0,
@@ -444,44 +419,10 @@ class SlockThreadImePaintConnectedTest {
     private fun waitUntil(timeoutMs: Long, description: String, condition: () -> Boolean) {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
-            // Synchronize each poll on real view-system progress instead of a
-            // bare fixed quantum. Draining the instrumentation main looper runs
-            // queued attach/composition work to completion; the Choreographer
-            // frame boundary is a deterministic "the view system advanced" edge.
-            // Bounded by [timeoutMs] like the cadence poll, so the task #76
-            // bounded-wait contract still holds.
-            awaitEditorIdleAndFrame(description, deadline)
             if (condition()) return
+            SystemClock.sleep(PollMs)
         }
         throw AssertionError("Timed out waiting for $description")
-    }
-
-    /**
-     * Blocks until the next [Choreographer] frame boundary (or [deadline]),
-     * after first running one turn on the main thread.
-     *
-     * Used by the frame-synchronized [waitUntil] path to turn readiness polling
-     * into event-driven waiting: each re-check happens only after the view
-     * system has actually advanced, so a healthy-but-slow CI host converges on
-     * real progress edges instead of racing a fixed sleep cadence.
-     *
-     * It deliberately does NOT call `waitForIdleSync`: that has no timeout and a
-     * live focus/IME/recomposition stream can block the decisive retirement case
-     * before its bounded replacement wait runs (task #76). `runOnMainSync` waits
-     * only for a single posted runnable — one real main-thread edge, not a
-     * queue-empty drain — and the `Choreographer` await is capped by [deadline].
-     */
-    private fun awaitEditorIdleAndFrame(description: String, deadline: Long) {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val frame = CountDownLatch(1)
-        instrumentation.runOnMainSync {
-            Choreographer.getInstance().postFrameCallback { frame.countDown() }
-        }
-        val remaining = deadline - SystemClock.uptimeMillis()
-        if (remaining <= 0) {
-            throw AssertionError("Timed out waiting for $description")
-        }
-        frame.await(remaining, TimeUnit.MILLISECONDS)
     }
 
     private fun ActivityScenario<SlockKuiklyActivity>.waitForRetiredEditorImeSetup(

@@ -583,45 +583,6 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun getThreadReplySummariesReturnsChannelSummariesWhenFollowedListIsSlow() = runBlocking {
-        // Task #1142: the account-wide followed list (multi-MB on busy accounts) must never gate
-        // the channel summaries that draw reply rows. Hold that request forever and expect the
-        // channel summaries back within the join budget, with no followed decoration.
-        val holdFollowed = CompletableDeferred<Unit>()
-        val network =
-            FakeConversationNetworkClient(
-                responses =
-                    mapOf(
-                        // The endpoint is a record keyed by parent message id (see
-                        // parseChannelThreadSummaryRecordElement); a {"threads":[...]} list is rejected.
-                        "GET channels/channel-1/threads" to
-                            """{"parent-1":{"threadChannelId":"thread-1","replyCount":4,"latestReplies":[]}}""",
-                    ),
-                requestRelease = mapOf("GET channels/threads/followed" to holdFollowed),
-            )
-        val repository = RealConversationRepository(sampleStore(), network)
-        repository.followedSummariesJoinBudgetMillis = 50L
-
-        val result =
-            withTimeout(2_000L) {
-                repository.getThreadReplySummaries(
-                    threadId = ThreadId("channel-1"),
-                    parentMessageIds = listOf(MessageId("parent-1"))
-                )
-            }
-
-        // Release the held request only after the result is in hand; the block must end in
-        // an assertion so the JUnit4 method stays void (runBlocking returns its last value).
-        holdFollowed.complete(Unit)
-        val summaries =
-            assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result, "unexpected result: $result").data
-        assertEquals(1, summaries.threads.size)
-        assertEquals("parent-1", summaries.threads.single().parentMessageId?.value)
-        assertEquals(4, summaries.threads.single().replyCount)
-        assertTrue(summaries.followedThreadKeys.isEmpty())
-    }
-
-    @Test
     fun getThreadReplySummariesDoesNotRefetchMessages() = runBlocking {
         val network =
             FakeConversationNetworkClient(

@@ -296,18 +296,16 @@ internal fun HomeSnapshot.toSharedConversationDirectoryState(
     )
 
 internal fun InboxSnapshot.toSharedConversationDirectoryState(
-    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit = {}
 ): SharedConversationDirectoryState =
-    items.toSharedConversationDirectoryState(server.id, dmPeerNames, logger)
+    items.toSharedConversationDirectoryState(server.id, logger)
 
 internal fun Iterable<InboxItem>.toSharedConversationDirectoryState(
     serverId: ServerId,
-    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit = {}
 ): SharedConversationDirectoryState =
     sharedConversationDirectoryStateFromProjections(
-        projections = flatMap { item -> item.toSharedConversationDirectoryProjections(serverId, dmPeerNames, logger) },
+        projections = flatMap { item -> item.toSharedConversationDirectoryProjections(serverId, logger) },
         logger = logger
     )
 
@@ -449,27 +447,25 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
 
 private fun InboxItem.toSharedConversationDirectoryProjections(
     serverId: ServerId,
-    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit
 ): List<SharedConversationDirectoryProjection> {
     val parentProjection =
         if (kind == InboxItemKind.Thread) {
-            parentChannelProjection(serverId, dmPeerNames, logger)
+            parentChannelProjection(serverId, logger)
         } else {
             null
         }
-    val itemProjection = toSharedConversationDirectoryProjection(serverId, dmPeerNames)
+    val itemProjection = toSharedConversationDirectoryProjection(serverId)
     return listOfNotNull(parentProjection, itemProjection)
 }
 
 private fun InboxItem.parentChannelProjection(
     serverId: ServerId,
-    dmPeerNames: Map<String, String> = emptyMap(),
     logger: (String) -> Unit
 ): SharedConversationDirectoryProjection? {
     val parentId = parentChannelId?.value?.takeIf { it.isNotBlank() } ?: return null
     val title =
-        parentChannelTitle(dmPeerNames)
+        parentChannelName
             .safeInboxDisplayNameOrNull(additionalIdentityIds = setOf(parentId))
             ?: parentId
     val conversationKind =
@@ -501,8 +497,7 @@ private fun InboxItem.parentChannelProjection(
 }
 
 internal fun InboxItem.toSharedConversationDirectoryProjection(
-    serverId: ServerId,
-    dmPeerNames: Map<String, String> = emptyMap()
+    serverId: ServerId
 ): SharedConversationDirectoryProjection? {
     val canonicalChannelId =
         when (kind) {
@@ -521,7 +516,7 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
         }
     val titleSource =
         when (kind) {
-            InboxItemKind.Thread -> parentChannelTitle(dmPeerNames)
+            InboxItemKind.Thread -> parentChannelName ?: channelName
             else -> channelName
         }
     val title =
@@ -568,20 +563,6 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
         parentMessageId = parentMessage
     )
 }
-
-/**
- * task #399: the parent title for a DM-parent thread is the peer's display
- * name (hydrated from the Home DM list), not the raw channel name; the raw
- * name is only a fail-soft fallback when the DM list has not landed.
- */
-private fun InboxItem.parentChannelTitle(dmPeerNames: Map<String, String>): String =
-    if (parentChannelKind == ConversationKind.DirectMessage) {
-        parentChannelId?.value?.let(dmPeerNames::get)?.takeIf { it.isNotBlank() }
-            ?: parentChannelName
-            ?: channelName
-    } else {
-        parentChannelName ?: channelName
-    }
 
 private data class SharedConversationDirectorySender(
     val messageIds: Set<String>,

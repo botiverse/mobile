@@ -143,17 +143,6 @@ internal class SlockKuiklyChildPageView :
 
     private fun syncChildLifecycleVisibility() {
         val shouldBeVisible = slockChildLifecycleShouldBeVisible(viewAppeared = viewAppeared, active = active)
-        // task #309: a child can log `child_tab_render active=true` (the compose `active`
-        // attr) yet never appear on screen when the parent Pager's `didAppear`/
-        // `viewDidAppear` was not delivered to this host — `viewAppeared` stays false and
-        // `shouldBeVisible` is false even though the attr flipped. Log the full triple so a
-        // real-device repro can tell "rendered but not visible" (viewAppeared=false) apart
-        // from "visible but not painted" (shouldBeVisible=true).
-        slockLogInfo(
-            "SlockKuiklyChildPage",
-            "child_visible viewAppeared=$viewAppeared active=$active " +
-                "shouldBeVisible=$shouldBeVisible"
-        )
         val events =
             slockChildLifecycleEvents(
                 previouslyVisible = childLifecycleVisible,

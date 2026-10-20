@@ -23,13 +23,10 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
-import build.raft.app.data.WireExternalAuthor
-import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.providerLabel
 import build.raft.app.model.Message
 import build.raft.app.model.MessageCommentHostSource
 import build.raft.app.model.MessageCommentRef
@@ -391,8 +388,6 @@ private data class MessageWireDto(
     val commentRef: CommentRefWireDto? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
     val conversationContext: ConversationContextWireDto? = null,
-    /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
-    val externalAuthor: WireExternalAuthor? = null,
 )
 
 /**
@@ -686,24 +681,16 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         senderType.strictMemberKindOrNull(
             source = "realtime_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.MessageSender,
+            contract = MemberKindWireContract.InternalActor,
         ) ?: return null
-    val external = senderKind == MemberKind.External
-    if (external && externalAuthor == null) {
-        diagnostics("projection_value_rejected source=realtime_message_sender field=externalAuthor value=missing messageId=$id")
-        return null
-    }
-    val resolvedExternalAuthor =
-        if (external) externalAuthor?.toExternalMessageAuthor(senderName) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
         id = MemberId(authorId),
-        displayName = resolvedExternalAuthor?.displayName ?: senderName ?: authorId,
+        displayName = senderName ?: authorId,
         handle = senderName ?: authorId,
         kind = authorKind,
-        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
-        avatarUrl = resolvedExternalAuthor?.avatarUrl,
-        avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName ?: authorId).take(1).uppercase(),
+        description = senderDescription,
+        avatarLabel = (senderName ?: authorId).take(1).uppercase(),
         presence = Presence.Offline,
     )
     val channelIdValue = channelId
@@ -737,7 +724,6 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         commentRef = commentRef?.toDomain(),
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         conversationContext = conversationContext?.toDomain(),
-        externalAuthor = resolvedExternalAuthor,
     )
 }
 
@@ -1462,7 +1448,7 @@ private fun NotificationPushDto.toDomainOrNull(
             cleanSenderType.strictMemberKindOrNull(
                 source = "notification_push_sender",
                 diagnostics = diagnostics,
-                contract = MemberKindWireContract.MessageSender,
+                contract = MemberKindWireContract.InternalActor,
             )
         } else {
             null

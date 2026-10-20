@@ -904,7 +904,6 @@ internal suspend fun ChannelRepository.openPinnedMemberDirectMessage(
         MemberKind.Agent -> openAgentDirectMessage(identity.memberId)
         MemberKind.Human -> openUserDirectMessage(identity.memberId)
         MemberKind.System -> DataResult.Empty(EmptyReason.NoChannels)
-        MemberKind.External -> DataResult.Empty(EmptyReason.NoChannels)
     }
 
 internal class HomeConversationOpenBarrier(

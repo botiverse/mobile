@@ -51,8 +51,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -173,12 +171,6 @@ internal class SharedHomeStore(
     // base snapshot and clobber any server-side pinned list.
     private val sidebarOrderMutex = Mutex()
     private val sidebarOrderByServer = linkedMapOf<ServerId, SettingsServerSidebarOrderSnapshot>()
-    // task #322: version counter for local pin mutations (TogglePinned / SetPinnedSortMode /
-    // PerReceiverPinnedChanged). The concurrent sidebar-order fetch snapshots this at
-    // launch and, before applying a late-arriving result, re-checks it inside
-    // `sidebarOrderMutex`: if a pin landed meanwhile, the deferred stale result is
-    // dropped instead of clobbering the authoritative pin.
-    private var sidebarPinChangeVersion: Long = 0L
     private var channelActivityMuteRequestSeq: Long = 0L
     private val channelActivityMuteRequests = linkedMapOf<ChannelId, ChannelActivityMuteRequest>()
     private val backgroundUnreadByScope =
@@ -353,28 +345,23 @@ internal class SharedHomeStore(
         }
     }
 
-    fun supplementConversationIdentity(
-        snapshot: InboxSnapshot,
-        dmPeerNames: Map<String, String> = emptyMap()
-    ) {
+    fun supplementConversationIdentity(snapshot: InboxSnapshot) {
         supplementConversationIdentity(
             serverId = snapshot.server.id,
             source = SharedConversationIdentitySupplementSource.Activity,
-            items = snapshot.items,
-            dmPeerNames = dmPeerNames
+            items = snapshot.items
         )
     }
 
     fun supplementConversationIdentity(
         serverId: ServerId,
         source: SharedConversationIdentitySupplementSource,
-        items: List<InboxItem>,
-        dmPeerNames: Map<String, String> = emptyMap()
+        items: List<InboxItem>
     ) {
         val serverKey = serverId.value
         supplementalConversationIdentityStates
             .getOrPut(serverKey) { linkedMapOf() }[source] =
-            items.toSharedConversationDirectoryState(serverId, dmPeerNames, logger = diagnosticsLogger)
+            items.toSharedConversationDirectoryState(serverId, logger = diagnosticsLogger)
         publishConversationIdentity(serverKey)
     }
 
@@ -535,8 +522,6 @@ internal class SharedHomeStore(
                         selectedTopAction = null
                     )
                 )
-            SharedHomeIntent.ClearSelectedConversation ->
-                reduceState(_state.value.copy(selectedConversationId = null))
             is SharedHomeIntent.SelectTopAction ->
                 reduceState(
                     _state.value.copy(
@@ -1828,17 +1813,6 @@ internal class SharedHomeStore(
             activeServer?.let { server ->
                 readReceiptOwnerFactory?.invoke(server.value, activeSession.user.id)
             }
-        // task #322: fire the sidebar-order fetch concurrently with the home request so
-        // the pinned section can land in the same frame as the channel list instead of
-        // being appended after it. `applySidebarOrderLocally` merges it on arrival; the
-        // bounded await below only waits a short cap before publishing channels alone.
-        val sidebarFetchPinChangeVersion = sidebarPinChangeVersion
-        val sidebarOrderDeferred =
-            activeServer?.let { serverId ->
-                scope.async {
-                    runCatching { loadSidebarOrder(serverId) }.getOrNull()
-                }
-            }
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         if (sessionGeneration != homeSessionGeneration.value) {
             diagnosticsLogger("home_network_result_drop reason=session_generation_changed")
@@ -1888,64 +1862,11 @@ internal class SharedHomeStore(
             } else {
                 rawSnapshot
             }
-        // task #322: the sidebar-order fetch runs concurrently with the home request.
-        // Wait a short cap for it before building the published content so the pinned
-        // section lands in the same frame as the channel list; on timeout the home
-        // content publishes channels alone and the deferred result merges under
-        // `sidebarOrderMutex` when it resolves (same result, no second request).
-        val earlySidebarOrder =
-            runCatching {
-                sidebarOrderDeferred?.let { deferred ->
-                    withTimeoutOrNull(SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS) { deferred.await() }
-                }
-            }.getOrNull()
-        val freshSnapshotWithSidebar =
-            if (
-                earlySidebarOrder is DataResult.Content &&
-                    freshSnapshot != null &&
-                    activeServer == freshSnapshot.server.id
-            ) {
-                sidebarOrderByServer[freshSnapshot.server.id] = earlySidebarOrder.data
-                freshSnapshot.copy(sidebarOrder = earlySidebarOrder.data)
-            } else {
-                freshSnapshot
-            }
-        // On timeout or a non-Content early result, still reuse the in-flight deferred so
-        // the late-arriving order merges under sidebarOrderMutex — the same request's
-        // result, no second fetch, and Pin/Unpin dispatched meanwhile stays serialized.
-        if (
-            sidebarOrderDeferred != null &&
-                freshSnapshotWithSidebar === freshSnapshot
-        ) {
-            sidebarOrderDeferred?.let { deferred ->
-                scope.launch {
-                    val lateResult = deferred.await()
-                    if (lateResult is DataResult.Content && activeServer != null) {
-                        sidebarOrderMutex.withLock {
-                            val current =
-                                _state.value.content as? SharedHomeContentState.Content ?: return@withLock
-                            // A pin dispatched between this fetch's launch and its late
-                            // apply already wrote the authoritative snapshot — drop the
-                            // stale deferred result instead of clobbering the pin.
-                            if (
-                                current.snapshot.server.id == activeServer &&
-                                    sidebarPinChangeVersion == sidebarFetchPinChangeVersion
-                            ) {
-                                applySidebarOrderLocally(
-                                    serverId = current.snapshot.server.id,
-                                    next = lateResult.data
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
         val result =
             when (dataResult) {
                 is DataResult.Content ->
                     createHomeContent(
-                        snapshot = requireNotNull(freshSnapshotWithSidebar),
+                        snapshot = requireNotNull(freshSnapshot),
                         session = activeSession,
                         contentRefreshing = false,
                         previousContent = previousContent
@@ -1997,7 +1918,7 @@ internal class SharedHomeStore(
                 } else {
                     _state.value.serverActivityUnread
                 }
-        val nextContent = result
+            val nextContent = result
             // #81: derive the badge projection from the fresh snapshot.
             // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
             //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
@@ -2100,6 +2021,7 @@ internal class SharedHomeStore(
                     request = request,
                     snapshot = freshSnapshot
                 )
+                loadAndMergeSidebarOrder()
             }
         }
     }
@@ -2251,7 +2173,6 @@ internal class SharedHomeStore(
             }
         val strippedSnapshot = snapshot.withoutReadStateV1Hydrates()
         val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
-            ?: compatiblePreviousContent?.baseSnapshot?.sidebarOrder
         val snapshotWithSidebarOrder =
             if (sidebarOrder != null && strippedSnapshot.sidebarOrder != sidebarOrder) {
                 strippedSnapshot.copy(sidebarOrder = sidebarOrder)
@@ -2404,6 +2325,27 @@ internal class SharedHomeStore(
     }
 
     /**
+     * #211: load the current server's sidebar-order snapshot and merge it
+     * into the active `HomeSnapshot`. Safe to call from any load path; if
+     * the active content is not `Content` (e.g. Loading / Empty / Error),
+     * the result is dropped because there is no snapshot to attach it to.
+     * Held under [sidebarOrderMutex] so it never races with a Pin/Unpin
+     * dispatched before the initial load resolves.
+     */
+    private suspend fun loadAndMergeSidebarOrder() {
+        sidebarOrderMutex.withLock {
+            val current = _state.value.content as? SharedHomeContentState.Content ?: return@withLock
+            when (val result = loadSidebarOrder(current.snapshot.server.id)) {
+                is DataResult.Content ->
+                    applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> Unit
+            }
+        }
+    }
+
+    /**
      * #211: return the current sidebar-order snapshot, fetching it from the
      * server first if it has not been loaded yet. Holds [sidebarOrderMutex]
      * so a Pin/Unpin issued before the initial load completes cannot PATCH
@@ -2464,8 +2406,7 @@ internal class SharedHomeStore(
                         nextContent,
                         HomeServerDrawerLoadStatus.Loaded
                     )
-            ),
-            intentOverride = SharedHomeIntent.Refresh
+            )
         )
         return true
     }
@@ -2570,7 +2511,6 @@ internal class SharedHomeStore(
         }
         val target = current.snapshot.pinnedToggleTarget(intent)
         val next = previous.withToggledPinnedTarget(target)
-        sidebarPinChangeVersion += 1
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinned = next.pinned
@@ -2599,7 +2539,6 @@ internal class SharedHomeStore(
         }
         if (previous.pinnedSortMode == mode.wireValue) return
         val next = previous.copy(pinnedSortMode = mode.wireValue)
-        sidebarPinChangeVersion += 1
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinnedSortMode = mode.wireValue
@@ -3131,7 +3070,6 @@ internal class SharedHomeStore(
             scope = PerReceiverStateScope.Pinned,
             incomingVersion = update.version
         )
-        sidebarPinChangeVersion += 1
         return applySidebarOrderLocally(
             serverId = update.serverId,
             next = update.sidebarOrder
@@ -3541,7 +3479,6 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.RetryServerDrawerSection ->
             "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server-drawer-retry:${serverId.value}"
         is SharedHomeIntent.SelectConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:$threadId"
-        SharedHomeIntent.ClearSelectedConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:_"
         is SharedHomeIntent.SelectTopAction -> "${SharedHomeChannelFoldEvent.Patch.wireName}:top-action:$action"
         is SharedHomeIntent.SelectServer -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "${event.toSharedHomeChannelFoldEvent().wireName}:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
@@ -3654,11 +3591,6 @@ private data class BackgroundUnreadScopeProjection(
 }
 
 private const val BackgroundUnreadSeqBucketLimit = 256
-
-// task #322: cap on how long the first home paint waits for the concurrent sidebar-order
-// fetch before publishing channels alone. Kept short so a slow pinned-order endpoint
-// can't delay the channel list; the sidebar still merges on arrival when it's late.
-private const val SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS = 300L
 
 private data class HomeRealtimeConversationPatch(
     val conversation: ConversationSummary,
@@ -4205,13 +4137,6 @@ sealed interface SharedHomeIntent {
     data class ToggleServerDrawerSection(val serverId: ServerId) : SharedHomeIntent
     data class RetryServerDrawerSection(val serverId: ServerId) : SharedHomeIntent
     data class SelectConversation(val threadId: String) : SharedHomeIntent
-    /**
-     * task #299: clear the home-side active-conversation marker when the UI
-     * leaves a conversation. Without this the realtime merge keeps treating
-     * the last opened conversation as active and permanently suppresses its
-     * unread increment (ConversationSummary.withRealtimePreview).
-     */
-    data object ClearSelectedConversation : SharedHomeIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
@@ -4275,7 +4200,6 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ToggleServerDrawerSection,
             is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
-            SharedHomeIntent.ClearSelectedConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
@@ -4315,7 +4239,6 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ToggleServerDrawerSection,
             is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
-            SharedHomeIntent.ClearSelectedConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
@@ -4355,7 +4278,6 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.ToggleServerDrawerSection,
             is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
-            SharedHomeIntent.ClearSelectedConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,

@@ -184,8 +184,7 @@ private fun isTypographyProbeMarkdownTagValid(tag: ThreadMarkdownTag): Boolean =
     when (tag.kind) {
         ThreadMarkdownTagKind.Task -> true
         ThreadMarkdownTagKind.UserMention -> tag.label.removePrefix("@").equals("artin", ignoreCase = true)
-        ThreadMarkdownTagKind.DirectMessageThread,
-        ThreadMarkdownTagKind.DirectMessage ->
+        ThreadMarkdownTagKind.DirectMessageThread ->
             tag.directMessagePeerName.equals("artin", ignoreCase = true)
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {

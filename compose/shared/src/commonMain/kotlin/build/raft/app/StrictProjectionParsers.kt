@@ -9,9 +9,6 @@ internal enum class MemberKindWireContract {
     Identity,
     /** Frontend message, DM peer, task actor, saved, and search wire: user | agent. */
     InternalActor,
-    /** Message sender slots that may carry a Slack-bridge external projection:
-     *  user | agent | external_projection. Assignee/member slots keep InternalActor. */
-    MessageSender,
     /** Inbox activity facts: user | agent | system. */
     InboxActor,
     /** Agent creator enrichment: human | agent. */
@@ -35,13 +32,6 @@ internal fun String?.parsedMemberKindOrNull(
             when (this?.trim()?.lowercase()) {
                 "agent" -> MemberKind.Agent
                 "user" -> MemberKind.Human
-                else -> null
-            }
-        MemberKindWireContract.MessageSender ->
-            when (this?.trim()?.lowercase()) {
-                "agent" -> MemberKind.Agent
-                "user" -> MemberKind.Human
-                "external_projection" -> MemberKind.External
                 else -> null
             }
         MemberKindWireContract.InboxActor ->

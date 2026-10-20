@@ -64,7 +64,6 @@ internal fun MemberKind.memberKindWireValue(): String =
         MemberKind.Agent -> "agent"
         MemberKind.Human -> "human"
         MemberKind.System -> "system"
-        MemberKind.External -> "external"
     }
 
 internal fun MemberDetailIdentity.memberDetailAccessMode(
@@ -95,7 +94,5 @@ internal suspend fun <T> MemberDetailIdentity.dispatchMemberDetailLookup(
         MemberKind.Human -> loadHuman(memberId, sourceServerId, accessMode)
         MemberKind.Agent -> loadAgent(memberId, accessMode)
         MemberKind.System -> unsupported(memberId, kind)
-        // External projections are never member-detail identities.
-        MemberKind.External -> unsupported(memberId, kind)
     }
 }

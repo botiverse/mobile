@@ -7473,44 +7473,6 @@ internal object SlockLucidePathIcons {
         )
     }
 
-    private val MapPin: SlockLucideIconSpec by lazy {
-        SlockLucideIconSpec(
-            name = "map-pin",
-            viewBox =
-                SlockLucideViewBox(
-                    minX = 0f,
-                    minY = 0f,
-                    width = 24f,
-                    height = 24f,
-                ),
-            paths =
-                listOf(
-            SlockLucidePathSpec(
-                pathData = "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0",
-                fillPaint = null,
-                strokePaint = "currentColor",
-                fillOpacity = 0f,
-                strokeOpacity = 1f,
-                strokeWidth = 2f,
-                strokeLineCap = SlockLucideStrokeLineCap.Round,
-                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
-                fillRule = SlockLucideFillRule.NonZero,
-            ),
-            SlockLucidePathSpec(
-                pathData = "M 9.0 10.0 A 3.0 3.0 0 1 0 15.0 10.0 A 3.0 3.0 0 1 0 9.0 10.0 Z",
-                fillPaint = null,
-                strokePaint = "currentColor",
-                fillOpacity = 0f,
-                strokeOpacity = 1f,
-                strokeWidth = 2f,
-                strokeLineCap = SlockLucideStrokeLineCap.Round,
-                strokeLineJoin = SlockLucideStrokeLineJoin.Round,
-                fillRule = SlockLucideFillRule.NonZero,
-            ),
-                ),
-        )
-    }
-
     private val MessageCircle: SlockLucideIconSpec by lazy {
         SlockLucideIconSpec(
             name = "message-circle",
@@ -10525,7 +10487,6 @@ internal object SlockLucidePathIcons {
             "mail",
             "mail-open",
             "mail-plus",
-            "map-pin",
             "message-circle",
             "message-circle-off",
             "message-circle-plus",
@@ -10729,7 +10690,6 @@ internal object SlockLucidePathIcons {
             "mail" -> Mail
             "mail-open" -> MailOpen
             "mail-plus" -> MailPlus
-            "map-pin" -> MapPin
             "message-circle" -> MessageCircle
             "message-circle-off" -> MessageCircleOff
             "message-circle-plus" -> MessageCirclePlus

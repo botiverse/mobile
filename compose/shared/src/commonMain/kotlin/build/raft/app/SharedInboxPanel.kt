@@ -24,7 +24,6 @@ import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
-import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealReadReceiptRepository
 import build.raft.app.data.NetworkSlockThreadApi
@@ -184,16 +183,6 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
             )
         }
-    // task #399: DM-parent thread rows resolve their peer name through the
-    // Home DM list; this repository feeds the activity store's hydrate.
-    val channelRepository =
-        remember(authStore, networkClient) {
-            RealChannelRepository(
-                sessionStore = authStore,
-                networkClient = networkClient,
-                warningLogger = { message -> bridge.log("shared_activity_channel_warning $message") }
-            )
-        }
     val replyThreadPrewarmDataSource =
         remember(
             authStore,
@@ -252,7 +241,6 @@ internal fun SharedHomeActivityScreen(
             readReceiptRepository,
             conversationRepository,
             memberRepository,
-            channelRepository,
             replyThreadPrewarmDataSource
         ) {
             sharedStores.getOrCreateHomeActivityStore(
@@ -261,7 +249,6 @@ internal fun SharedHomeActivityScreen(
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
-                channelRepository = channelRepository,
                 prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
                 diagnosticsLogger = activityDiagnosticsLogger
             )
@@ -318,9 +305,8 @@ internal fun SharedHomeActivityScreen(
                 ?: flowOf(SharedConversationDirectoryState())
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
-    val activityConversationDirectory = remember(state.snapshot, state.dmPeerNames) {
-        state.snapshot?.toSharedConversationDirectoryState(dmPeerNames = state.dmPeerNames)
-            ?: SharedConversationDirectoryState()
+    val activityConversationDirectory = remember(state.snapshot) {
+        state.snapshot?.toSharedConversationDirectoryState() ?: SharedConversationDirectoryState()
     }
     val openConversationDirectory = remember(activityConversationDirectory, conversationDirectory) {
         listOf(activityConversationDirectory, conversationDirectory).mergedSharedConversationDirectoryState()
@@ -354,9 +340,9 @@ internal fun SharedHomeActivityScreen(
             )
         }
     }
-    LaunchedEffect(sharedHomeStore, state.snapshot, state.dmPeerNames) {
+    LaunchedEffect(sharedHomeStore, state.snapshot) {
         state.snapshot?.let { snapshot ->
-            sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
+            sharedHomeStore?.supplementConversationIdentity(snapshot)
         }
     }
     LaunchedEffect(routeVisibleTick) {
@@ -393,7 +379,7 @@ internal fun SharedHomeActivityScreen(
         state = safeOpenProjectedState,
         onOpenItem = { item ->
             state.snapshot?.let { snapshot ->
-                sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
+                sharedHomeStore?.supplementConversationIdentity(snapshot)
             }
             when (
                 val resolution =
@@ -894,7 +880,6 @@ private fun SharedActivityBodyContent(
                     },
                     selectedFilter = state.selectedFilter,
                     senderProfiles = state.senderProfiles,
-                    dmPeerNames = state.dmPeerNames,
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
                     loadingMore = state.loadingMore,
@@ -997,7 +982,6 @@ private fun SharedActivityList(
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
-    dmPeerNames: Map<String, String> = emptyMap(),
     refreshing: Boolean,
     pullRefreshing: Boolean,
     loadingMore: Boolean,
@@ -1281,7 +1265,6 @@ private fun SharedActivityList(
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
-                    dmPeerNames = dmPeerNames,
                     selected = selectedItemKey == item.key,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
@@ -1583,7 +1566,6 @@ private fun SharedActivitySelectedRowSurface(
 private fun SharedActivityRow(
     item: InboxItem,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
-    dmPeerNames: Map<String, String> = emptyMap(),
     selected: Boolean,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
@@ -1663,7 +1645,7 @@ private fun SharedActivityRow(
                     // right edge (artin #1171, 2026-07-17): timestamp right-aligned
                     // on the tag row; the title and the rows below do not move.
                     Text(
-                        text = item.channelLabel(dmPeerNames),
+                        text = item.channelLabel(),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
@@ -1696,7 +1678,6 @@ private fun SharedActivityRow(
                     }
                     val primaryPreview = item.primaryActivityPreviewText(
                         senderProfiles = senderProfiles,
-                        dmPeerNames = dmPeerNames,
                         threadFallback = threadFallback,
                         actionFallback = actionFallback,
                         conversationFallback = conversationFallback
@@ -1856,10 +1837,7 @@ private fun SharedActivitySenderAvatar(
     ) {
         when (identity.senderKind) {
             MemberKind.Agent,
-            MemberKind.Human,
-            // External senders render their wire avatar; the cache subject stays
-            // null because external ids are never member-cache identities.
-            MemberKind.External ->
+            MemberKind.Human ->
                 SlockAvatar(
                     avatarWireValue = identity.avatarWireValue,
                     label = identity.label,
@@ -2249,26 +2227,16 @@ private fun InboxFilter.localizedEmptyCopy(): String =
         }
     )
 
-internal fun InboxItem.displayTitle(dmPeerNames: Map<String, String> = emptyMap()): String =
+private fun InboxItem.displayTitle(): String =
     when (kind) {
-        InboxItemKind.Thread ->
-            if (parentChannelKind == ConversationKind.DirectMessage) {
-                dmPeerLabelOrFallback(dmPeerNames)
-            } else {
-                parentChannelName ?: channelName
-            }
+        InboxItemKind.Thread -> parentChannelName ?: channelName
         InboxItemKind.DirectMessage, InboxItemKind.Channel, InboxItemKind.MentionAction, InboxItemKind.System -> channelName
     }.ifBlank { channelId.value }
 
-internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap()): String =
+private fun InboxItem.channelLabel(): String =
     when (kind) {
         InboxItemKind.DirectMessage -> "@${channelName.ifBlank { channelId.value }}"
-        InboxItemKind.Thread ->
-            if (parentChannelKind == ConversationKind.DirectMessage) {
-                "@${dmPeerLabelOrFallback(dmPeerNames)}"
-            } else {
-                "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
-            }
+        InboxItemKind.Thread -> "#${(parentChannelName ?: channelName).ifBlank { channelId.value }}"
         InboxItemKind.MentionAction ->
             if (channelKind == ConversationKind.DirectMessage) {
                 "@${channelName.ifBlank { channelId.value }}"
@@ -2277,16 +2245,6 @@ internal fun InboxItem.channelLabel(dmPeerNames: Map<String, String> = emptyMap(
             }
         InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
     }
-
-/**
- * task #399: peer name for a DM-parent thread row. `parentChannelName` is the
- * raw channel name and is not a reliable peer projection for DMs, so the Home
- * DM list name wins; the raw name is only a fail-soft fallback.
- */
-internal fun InboxItem.dmPeerLabelOrFallback(dmPeerNames: Map<String, String>): String =
-    parentChannelId?.let { dmPeerNames[it.value] }?.takeIf { it.isNotBlank() }
-        ?: parentChannelName
-        ?: channelName.ifBlank { channelId.value }
 
 private fun InboxItem.senderDisplayName(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
@@ -2363,23 +2321,12 @@ internal data class ActivityPreviewText(
 
 internal fun InboxItem.primaryActivityPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
-    dmPeerNames: Map<String, String> = emptyMap(),
     threadFallback: String = "Thread update",
     actionFallback: String = "Action required",
     conversationFallback: String = "Conversation update"
 ): ActivityPreviewText =
     ActivityPreviewText(
-        senderName =
-            when {
-                // task #399 飞书 shape: a DM-parent thread's first line is
-                // "@peer: root preview" — the peer identity prefixes the root
-                // preview instead of the latest-activity sender.
-                kind == InboxItemKind.Thread &&
-                    parentChannelKind == ConversationKind.DirectMessage ->
-                    "@${dmPeerLabelOrFallback(dmPeerNames)}"
-                kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction -> null
-                else -> senderDisplayName(senderProfiles)
-            },
+        senderName = if (kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction) null else senderDisplayName(senderProfiles),
         body = previewText(threadFallback, actionFallback, conversationFallback)
     )
 
@@ -2571,9 +2518,7 @@ internal fun activityNextPresentationGeneration(
         currentGeneration + 1
     }
 
-internal fun InboxItem.toConversationSummary(
-    dmPeerNames: Map<String, String> = emptyMap()
-): ConversationSummary {
+internal fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = resolveInboxStreamChannelId()
     val parentId = parentMessageId
     val parentChannel = parentChannelId
@@ -2600,7 +2545,7 @@ internal fun InboxItem.toConversationSummary(
             },
         kind =
             launchConversationKind(),
-        name = displayTitle(dmPeerNames),
+        name = displayTitle(),
         subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: stableThreadIdentity?.value,
         unreadCount = unreadCount,
         unreadCountKnown = true,

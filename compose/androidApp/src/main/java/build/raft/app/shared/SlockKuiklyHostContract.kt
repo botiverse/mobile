@@ -20,9 +20,6 @@ internal object SlockKuiklyPages {
     const val SETTINGS_STORAGE = "compose_settings_storage"
     const val SETTINGS_BILLING = "compose_settings_billing"
     const val ICON_GALLERY = "compose_icon_gallery"
-    // Keep in sync with SLOCK_IN_APP_BROWSER_PAGE in shared/InAppBrowserPage.kt; that const is
-    // internal to the shared module and not visible here.
-    const val IN_APP_BROWSER = "compose_in_app_browser"
     const val ROUTER = "router"
 }
 

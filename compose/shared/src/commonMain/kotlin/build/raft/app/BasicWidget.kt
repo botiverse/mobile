@@ -174,10 +174,6 @@ private class SlockImagePreviewIdentityHolder(
     var identity: SlockImagePreviewRenderIdentity
 )
 
-private class SlockImagePreviewSourceOutcome(
-    var failed: Boolean = false
-)
-
 @Composable
 internal fun SlockImagePreviewRenderSlot(
     identity: SlockImagePreviewRenderIdentity,
@@ -194,28 +190,17 @@ internal fun slockImagePreviewLoadingPresentation(
     showLoadingIndicator: Boolean,
     activeSucceeded: Boolean,
     activeFailed: Boolean,
-    previousRenderedSource: String? = null,
-    previousPresentableSource: String? = null
+    previousRenderedSource: String? = null
 ): SlockImagePreviewLoadingPresentation {
     val active = activeSource?.trim()?.takeIf { it.isNotBlank() }
     val fallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() }
     val previous = previousRenderedSource?.trim()?.takeIf { it.isNotBlank() && it != active }
-    // A departed source that was still loading when the swap happened never
-    // reached Success, but its fetch/decode keeps running under the underlay
-    // image; showing it (or at least suppressing the spinner) avoids the
-    // second loading flash when hydration resolves faster than the first
-    // decode (task #287).
-    val previousPending =
-        previousPresentableSource
-            ?.trim()
-            ?.takeIf { it.isNotBlank() && it != active && it != previous }
     // Prefer the previous successfully rendered frame as the underlay during a
     // source swap: it is already decoded, so the surface keeps pixels on screen
     // while the new source is still loading instead of flashing blank.
-    val underlay = (previous ?: previousPending ?: fallback)?.takeIf { it != active }
+    val underlay = (previous ?: fallback)?.takeIf { it != active }
     val keepsContentVisible =
-        previous != null || previousPending != null ||
-            (fallback != null && !(active == fallback && activeFailed))
+        previous != null || (fallback != null && !(active == fallback && activeFailed))
     return SlockImagePreviewLoadingPresentation(
         fallbackUnderlaySource = underlay.takeUnless { activeSucceeded },
         showLoadingOverlay =
@@ -272,24 +257,6 @@ internal fun SlockAspectFitImagePreviewSurface(
     // URL swaps in over the already-rendered thumbnail instead of flashing a
     // blank frame (task #282).
     var lastSucceededSource by remember { mutableStateOf<String?>(null) }
-    // task #287: a source that departs while still loading (hydration resolved
-    // before its first Success) is also a valid underlay — its fetch keeps
-    // running under the new frame and the spinner must not flash a second
-    // time. Sources that departed in Error are excluded so a dead frame is
-    // never pinned underneath.
-    var lastPresentableSource by remember { mutableStateOf<String?>(null) }
-    val activeSourceOutcome = remember(activeSource) {
-        SlockImagePreviewSourceOutcome()
-    }
-    DisposableEffect(activeSource) {
-        val departed = activeSource
-        val outcome = activeSourceOutcome
-        onDispose {
-            if (departed != null && !outcome.failed) {
-                lastPresentableSource = departed
-            }
-        }
-    }
     Box(
         modifier = modifier
             .background(backgroundColor)
@@ -324,8 +291,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                     showLoadingIndicator = showLoadingIndicator,
                     activeSucceeded = activeSucceeded,
                     activeFailed = imageState is AsyncImagePainter.State.Error,
-                    previousRenderedSource = lastSucceededSource,
-                    previousPresentableSource = lastPresentableSource
+                    previousRenderedSource = lastSucceededSource
                 )
             loadingPresentation.fallbackUnderlaySource?.let { underlaySource ->
                 SlockCachedImage(
@@ -347,11 +313,8 @@ internal fun SlockAspectFitImagePreviewSurface(
                             if (state is AsyncImagePainter.State.Success) {
                                 lastSucceededSource = activeSource
                             }
-                            if (state is AsyncImagePainter.State.Error) {
-                                activeSourceOutcome.failed = true
-                                if (activeSource != normalizedFallback && normalizedFallback != null) {
-                                    activeSource = normalizedFallback
-                                }
+                            if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
+                                activeSource = normalizedFallback
                             }
                         }
                     )
@@ -367,11 +330,8 @@ internal fun SlockAspectFitImagePreviewSurface(
                             if (state is AsyncImagePainter.State.Success) {
                                 lastSucceededSource = activeSource
                             }
-                            if (state is AsyncImagePainter.State.Error) {
-                                activeSourceOutcome.failed = true
-                                if (activeSource != normalizedFallback && normalizedFallback != null) {
-                                    activeSource = normalizedFallback
-                                }
+                            if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
+                                activeSource = normalizedFallback
                             }
                         }
                     )
@@ -1497,18 +1457,8 @@ internal fun TextInputState.toSlockTextFieldValue(): TextFieldValue {
     )
 }
 
-internal data class SlockTextFieldNativeEditorRead(
-    val state: TextInputState?,
-    val editorNativeRef: Int? = null,
-)
-
 internal sealed class SlockTextFieldNativeEditingStateReadResult {
-    data class Available(
-        val value: TextFieldValue,
-        // nativeRef of the AutoHeightTextAreaView the state was read from (-1 when the
-        // read path could not attribute one); matches ViewRef.nativeRef on the native side.
-        val editorNativeRef: Int,
-    ) : SlockTextFieldNativeEditingStateReadResult()
+    data class Available(val value: TextFieldValue) : SlockTextFieldNativeEditingStateReadResult()
 
     data object Unavailable : SlockTextFieldNativeEditingStateReadResult()
 }
@@ -1533,15 +1483,14 @@ private fun DeclarativeBaseView<*, *>.findSlockNativeTextEditor(): AutoHeightTex
 internal class SlockTextFieldNativeEditingStateReader {
     private class Binding(
         val owner: Any,
-        // An async read OPERATION: callers hand it the callback that receives the result.
-        var read: ((SlockTextFieldNativeEditorRead) -> Unit) -> Unit,
+        var read: ((TextInputState?) -> Unit) -> Unit,
     )
 
     private var binding: Binding? = null
 
     internal fun bind(
         owner: Any,
-        read: ((SlockTextFieldNativeEditorRead) -> Unit) -> Unit,
+        read: ((TextInputState?) -> Unit) -> Unit,
     ) {
         val activeBinding = binding
         if (activeBinding?.owner === owner) {
@@ -1565,15 +1514,11 @@ internal class SlockTextFieldNativeEditingStateReader {
             onResult(SlockTextFieldNativeEditingStateReadResult.Unavailable)
             return
         }
-        activeBinding.read { editorRead ->
+        activeBinding.read { nativeState ->
             onResult(
-                if (binding === activeBinding && editorRead.state != null) {
+                if (binding === activeBinding && nativeState != null) {
                     SlockTextFieldNativeEditingStateReadResult.Available(
-                        value = editorRead.state.toSlockTextFieldValue(),
-                        // Kuikly nativeRef of the resolved AutoHeightTextAreaView — the
-                        // instance identity the native layer matches against
-                        // viewWithNativeRef for the adoption commit-time editor fence.
-                        editorNativeRef = editorRead.editorNativeRef ?: -1,
+                        nativeState.toSlockTextFieldValue()
                     )
                 } else {
                     SlockTextFieldNativeEditingStateReadResult.Unavailable
@@ -1807,17 +1752,9 @@ internal fun TextField(
                         // drops getTextInputState because that native view has no such method.
                         val nativeEditor = nativeEditorRoot.findSlockNativeTextEditor()
                         if (nativeEditor == null) {
-                            callback(SlockTextFieldNativeEditorRead(state = null))
+                            callback(null)
                         } else {
-                            val editorRef = nativeEditor.nativeRef
-                            nativeEditor.getTextInputState({ state ->
-                                callback(
-                                    SlockTextFieldNativeEditorRead(
-                                        state = state,
-                                        editorNativeRef = editorRef,
-                                    )
-                                )
-                            })
+                            nativeEditor.getTextInputState(callback)
                         }
                     }
                 }

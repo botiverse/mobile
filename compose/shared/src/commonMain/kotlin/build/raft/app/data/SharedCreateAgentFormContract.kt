@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 
 internal const val CREATE_AGENT_FORM_PROTOCOL_VERSION = 1
 internal const val CREATE_AGENT_BUILTIN_RUNTIME_ID = "builtin"
-internal const val CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION = "builtin-pi.create.v3"
+internal const val CREATE_AGENT_BUILTIN_PI_SCHEMA_VERSION = "builtin-pi.create.v2"
 internal const val CREATE_AGENT_KIMI_SDK_RUNTIME_ID = "kimi-sdk"
 internal const val CREATE_AGENT_KIMI_SDK_SCHEMA_VERSION = "kimi-sdk.create.v1"
 
@@ -239,8 +239,7 @@ internal fun SharedResolvedAgentCreateForm.buildBuiltInRuntimeConfig(
     baseUrl: String,
     model: String,
     envVars: Map<String, String>?,
-    supportsImageInput: Boolean = false,
-    loadLocalPlugins: Boolean = false
+    supportsImageInput: Boolean = false
 ): RuntimeConfig? {
     if (!hasConsistentBuiltInSources()) return null
     val cleanProviderId = providerId.trim()
@@ -279,7 +278,6 @@ internal fun SharedResolvedAgentCreateForm.buildBuiltInRuntimeConfig(
         mode = RuntimeModeConfig.Default,
         reasoningEffort = null,
         envVars = envVars,
-        loadLocalPlugins = loadLocalPlugins,
         hostUserState = RuntimeHostUserState.Forbidden
     )
 }

@@ -516,7 +516,7 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
             senderType.toSenderKind(
                 source = "saved_message_sender",
                 diagnostics = diagnostics,
-                contract = MemberKindWireContract.MessageSender,
+                contract = MemberKindWireContract.InternalActor,
             ),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = parentChannelId?.let(::ChannelId),
@@ -604,7 +604,7 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
             senderType.toSenderKind(
                 source = "search_message_sender",
                 diagnostics = diagnostics,
-                contract = MemberKindWireContract.MessageSender,
+                contract = MemberKindWireContract.InternalActor,
             ),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = ChannelId(parentChannelId),

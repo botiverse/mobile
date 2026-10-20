@@ -13,13 +13,14 @@ import kotlinx.coroutines.flow.asStateFlow
  * seeds them on the first root auth/AppShell page, and every later auth route reads this store.
  * Clearing or replacing [SlockAuthSessionStore] must not clear these capabilities.
  *
- * Legacy provider-probe and local-override values are retained for compatibility.
- * Apple button availability is determined solely by the iOS host capability;
- * these values cannot enable Apple on another platform or hide it on iOS.
+ * [SharedAuthRuntimeCapabilities.localAppleSignInOverride] is a signed-out diagnostics toggle:
+ * it only changes which provider buttons the iOS login surface renders locally. Platform host
+ * capability remains the outer gate, and backend provider availability (the `platform=mobile`
+ * rollout gate) still decides whether a start call succeeds.
  */
 data class SharedAuthRuntimeCapabilities(
     val socialProviderIds: Set<String> = emptySet(),
-    /** Legacy backend provider snapshot; not an Apple sign-in availability gate. */
+    /** Backend `/auth/providers?platform=…` result; null until a probe succeeds (fail-closed). */
     val backendEnabledSocialProviderIds: Set<String>? = null,
     val localAppleSignInOverride: Boolean = false
 )

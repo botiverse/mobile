@@ -419,17 +419,7 @@ internal fun ThreadMessageVisualScreenContent() {
             payload.toKnownMarkdownMentionNameSet()
         }
     val knownMarkdownDirectMessagePeerNames =
-        remember(
-            payload.knownMarkdownDirectMessagePeerNames,
-            payload.dmPeerName,
-            payload.dmPeerIdentity,
-            payload.surfaceKind,
-            payload.parentSurfaceKind,
-            payload.channelKind,
-            payload.parentChannelKind,
-            payload.members,
-            payload.memberCandidates
-        ) {
+        remember(payload.knownMarkdownDirectMessagePeerNames) {
             payload.toKnownMarkdownDirectMessagePeerNameSet()
         }
     val knownMarkdownTaskNumbers =

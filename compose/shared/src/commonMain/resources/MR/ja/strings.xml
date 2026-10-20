@@ -34,9 +34,6 @@
     <string name="tab_dms">DM</string>
     <string name="tab_activity">アクティビティ</string>
     <string name="tab_more">その他</string>
-    <string name="more_hub_tasks_subtitle">タスクを追跡・フォロー</string>
-    <string name="more_hub_members_subtitle">メンバーとエージェント</string>
-    <string name="more_hub_settings_subtitle">設定とアカウント</string>
     <string name="release_notes_title">リリースノート</string>
     <string name="release_notes_loading">読み込み中...</string>
     <string name="release_notes_error_title">リリースノートを読み込めませんでした</string>
@@ -62,7 +59,6 @@
     <string name="common_open">開く</string>
     <string name="common_send">送信</string>
     <string name="common_share">共有</string>
-    <string name="share_open_failed">共有パネルを開けませんでした。もう一度お試しください。</string>
     <string name="common_stop">停止</string>
     <string name="common_yes">はい</string>
     <string name="common_no">いいえ</string>
@@ -344,7 +340,6 @@
     <string name="relative_time_day_future_many">%1$d 日後</string>
     <string name="thread_author_you">あなた</string>
     <string name="thread_error_open_thread">スレッドを開けませんでした</string>
-    <string name="thread_external_author_hint">外部 %1$s ユーザー</string>
     <string name="thread_error_open_profile">プロフィールを開けませんでした</string>
     <string name="thread_error_comments_unavailable">コメントは利用できません</string>
     <string name="thread_error_send_comment">コメントを送信できませんでした</string>

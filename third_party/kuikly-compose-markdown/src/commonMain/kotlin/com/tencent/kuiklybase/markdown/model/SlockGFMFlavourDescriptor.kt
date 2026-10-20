@@ -544,10 +544,6 @@ private val RaftReferenceSourceTokenTypes: Set<IElementType> =
         // emphasis delimiter, but within a complete ref it belongs to the ref
         // token and must not reach the emphasis parser independently.
         MarkdownTokenTypes.EMPH,
-        // `~` separates a DM peer from its kind (`dm:@name~agent:short`). GFM
-        // lexes it as a strikethrough delimiter; inside a complete ref it is
-        // part of the ref token, never an independent strikethrough run.
-        GFMTokenTypes.TILDE,
     )
 
 private class SlockCodeSpanShieldingLexer : GeneratedLexer {

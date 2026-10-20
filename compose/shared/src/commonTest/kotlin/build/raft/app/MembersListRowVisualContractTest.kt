@@ -32,32 +32,4 @@ class MembersListRowVisualContractTest {
         assertEquals(14.sp, MembersListMachineLabelTextStyle.lineHeight)
         assertEquals("jiachens-macbook-pro.local", membersListMachineLabel("Jiachens-MacBook-Pro.local"))
     }
-
-    @Test
-    fun membersListContentWidthCapKeepsTwentyFourDpMargins() {
-        // Spec (task #12 §3): on DualPane windows Members content caps at 720dp
-        // centered with >=24dp side margins. The enable condition is the window's
-        // DualPane layout fact (not the slot width); the cap is measured against
-        // the actual content slot. Compact windows pass through unchanged.
-        assertEquals(720.dp, MembersListContentMaxWidth)
-        assertEquals(24.dp, MembersListContentMinSideMargin)
-        val compact = SlockAdaptivePaneLayout.Compact
-        val dual = SlockAdaptivePaneLayout.DualPane
-        // Compact windows: whatever the slot is, no cap, no new padding —
-        // including a sub-840 window that happens to have a wide slot.
-        assertEquals(360.dp, membersListContentMaxWidth(360.dp, compact))
-        assertEquals(750.dp, membersListContentMaxWidth(750.dp, compact))
-        assertEquals(800.dp, membersListContentMaxWidth(800.dp, compact))
-        assertEquals(1200.dp, membersListContentMaxWidth(1200.dp, compact))
-        // DualPane windows, wide slot: cap binds at 720dp (margins >=24dp).
-        assertEquals(720.dp, membersListContentMaxWidth(1200.dp, dual))
-        assertEquals(720.dp, membersListContentMaxWidth(768.dp, dual))
-        // DualPane window where rail chrome narrows the slot (e.g. 840dp window
-        // minus a 96dp rail = 744dp slot): margin clause binds so margins stay
-        // exactly 24dp.
-        assertEquals(696.dp, membersListContentMaxWidth(744.dp, dual))
-        // Slot wide enough that even after reserving 48dp margins the cap binds.
-        assertEquals(720.dp, membersListContentMaxWidth(800.dp, dual))
-        assertEquals(720.dp, membersListContentMaxWidth(816.dp, dual))
-    }
 }

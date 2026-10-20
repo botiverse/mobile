@@ -7,7 +7,6 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ThreadId
-import build.raft.app.model.formatSlockTimestampLabel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -63,30 +62,33 @@ class SharedDmsPageTest {
 
         // 1. Same day: clock time
         val todayTimestamp = "2026-05-20T14:25:00Z"
-        val todayResult = formatSlockTimestampLabel(todayTimestamp, context)
+        val todayResult = formatWeChatConversationTimestamp(todayTimestamp, context)
         assertEquals("14:25", todayResult)
 
-        // 2. Yesterday: falls back to "MM-DD HH:MM" (unified label, no "Yesterday")
+        // 2. Yesterday: "Yesterday"
         val yesterdayTimestamp = "2026-05-19T23:10:00Z"
-        val yesterdayResult = formatSlockTimestampLabel(yesterdayTimestamp, context)
-        assertEquals("05-19 23:10", yesterdayResult)
+        val yesterdayResult = formatWeChatConversationTimestamp(yesterdayTimestamp, context, yesterdayLabel = "Yesterday")
+        assertEquals("Yesterday", yesterdayResult)
 
-        // 3. Earlier this year: "MM-DD HH:MM"
+        val yesterdayZhResult = formatWeChatConversationTimestamp(yesterdayTimestamp, context, yesterdayLabel = "昨天")
+        assertEquals("昨天", yesterdayZhResult)
+
+        // 3. Earlier this year: "MM-DD"
         val earlierThisYear = "2026-03-15T09:00:00Z"
-        val earlierResult = formatSlockTimestampLabel(earlierThisYear, context)
-        assertEquals("03-15 09:00", earlierResult)
+        val earlierResult = formatWeChatConversationTimestamp(earlierThisYear, context)
+        assertEquals("03-15", earlierResult)
 
-        // 4. Previous year: "YYYY-MM-DD HH:MM"
+        // 4. Previous year: "YYYY-MM-DD"
         val previousYear = "2025-11-20T10:00:00Z"
-        val previousResult = formatSlockTimestampLabel(previousYear, context)
-        assertEquals("2025-11-20 10:00", previousResult)
+        val previousResult = formatWeChatConversationTimestamp(previousYear, context)
+        assertEquals("2025-11-20", previousResult)
 
         // 5. Blank / null timestamp
-        assertEquals("", formatSlockTimestampLabel(null, context))
-        assertEquals("", formatSlockTimestampLabel("  ", context))
+        assertEquals("", formatWeChatConversationTimestamp(null, context))
+        assertEquals("", formatWeChatConversationTimestamp("  ", context))
 
         // 6. Unparseable string returns original string trimmed
-        assertEquals("raw-custom-text", formatSlockTimestampLabel(" raw-custom-text ", context))
+        assertEquals("raw-custom-text", formatWeChatConversationTimestamp(" raw-custom-text ", context))
     }
 
     @Test
@@ -210,75 +212,5 @@ class SharedDmsPageTest {
         )
         assertEquals(0, totalWeChatDmUnreadCount(noUnreadItems))
         assertEquals("私信", formatWeChatDmHeaderTitle(baseTitle, totalWeChatDmUnreadCount(noUnreadItems)))
-    }
-
-    @Test
-    fun testResolveEffectiveDmsTimeContextWithAnchoredExplicitContext() {
-        val explicit = SlockTimeContext(
-            localOffsetMinutes = 0,
-            todayEpochDay = 20593L,
-            nowEpochMillis = 1779278400000L
-        )
-        val inherited = SlockTimeContext(
-            localOffsetMinutes = 480,
-            todayEpochDay = 20594L,
-            nowEpochMillis = 1779364800000L
-        )
-        val resolved = resolveEffectiveDmsTimeContext(explicit, inherited)
-        assertEquals(explicit, resolved)
-    }
-
-    @Test
-    fun testResolveEffectiveDmsTimeContextMergesLiveInheritedWhenExplicitLacksAnchors() {
-        // Regression test for Task #402:
-        // When explicit context (such as threadTimeContext) only has capabilities
-        // (localOffsetMinutes, timeFormat) without todayEpochDay or nowEpochMillis,
-        // it must NOT shadow the live inherited context from LocalSlockTimeContextProvider.
-        val staticExplicit = SlockTimeContext(
-            localOffsetMinutes = 480,
-            todayEpochDay = null,
-            nowEpochMillis = null,
-            timeFormat = "12h"
-        )
-        val liveInherited = SlockTimeContext(
-            localOffsetMinutes = 480,
-            todayEpochDay = 20593L, // 2026-05-20
-            nowEpochMillis = 1779278400000L,
-            timeFormat = "24h"
-        )
-
-        // Raw static context alone would fail and return raw ISO timestamp
-        val rawTimestamp = "2026-05-20T14:25:00+08:00"
-        assertEquals(rawTimestamp, formatSlockTimestampLabel(rawTimestamp, staticExplicit))
-
-        // When resolved through resolveEffectiveDmsTimeContext, it takes live anchors and formats properly
-        val resolved = resolveEffectiveDmsTimeContext(staticExplicit, liveInherited)
-        assertEquals(20593L, resolved.todayEpochDay)
-        assertEquals(1779278400000L, resolved.nowEpochMillis)
-        assertEquals("12h", resolved.timeFormat)
-        assertEquals(480, resolved.localOffsetMinutes)
-
-        val formatted = formatSlockTimestampLabel(rawTimestamp, resolved)
-        assertEquals("02:25 PM", formatted)
-    }
-
-    @Test
-    fun testResolveEffectiveDmsTimeContextFallbackWhenBothLackAnchors() {
-        // When both explicit and inherited lack todayEpochDay/nowEpochMillis,
-        // it must anchor to the current system clock and compute todayEpochDay
-        val staticContext = SlockTimeContext(
-            localOffsetMinutes = 0,
-            todayEpochDay = null,
-            nowEpochMillis = null
-        )
-        val resolved = resolveEffectiveDmsTimeContext(staticContext, null)
-        assertNotNull(resolved.todayEpochDay)
-        assertNotNull(resolved.nowEpochMillis)
-        assertEquals(0, resolved.localOffsetMinutes)
-
-        // Null explicit and inherited context also safely produces an anchored context
-        val resolvedFromNull = resolveEffectiveDmsTimeContext(null, null)
-        assertNotNull(resolvedFromNull.todayEpochDay)
-        assertNotNull(resolvedFromNull.nowEpochMillis)
     }
 }

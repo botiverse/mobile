@@ -520,11 +520,7 @@ class DirectAttachmentUploadCoordinatorTest {
             return prepareResults.removeFirstOrNull() ?: prepareDirectAttachmentUploadFile(file)
         }
 
-        override suspend fun put(
-            upload: AttachmentUploadSessionPut,
-            file: PlatformFile,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?,
-        ): DataResult<Unit> {
+        override suspend fun put(upload: AttachmentUploadSessionPut, file: PlatformFile): DataResult<Unit> {
             putCalls += 1
             val id = upload.url.substringAfter("/upload/")
             return if (ordinal(id) in putFailureOrdinals) {

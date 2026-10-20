@@ -96,11 +96,7 @@ expect_fail "rebase disabled" "must enable rebase merge" env "${base_env[@]}" \
 expect_fail "squash disabled" "must keep guarded squash available" env "${base_env[@]}" \
   FAKE_MERGE_POLICY='true\tfalse\tfalse' \
   "$preflight" botiverse/mobile 1459 "$head_sha"
-# Merge commits are intentionally left enabled on this repo (release back-merge
-# needs them and artin ruled to keep the option on). The preflight tolerates
-# allow_merge=true — it warns instead of refusing, because guarded-squash-merge
-# still produces a squash commit.
-expect_pass "ordinary merge enabled tolerated" env "${base_env[@]}" \
+expect_fail "ordinary merge enabled" "must disable ordinary merge commits" env "${base_env[@]}" \
   FAKE_MERGE_POLICY='true\ttrue\ttrue' \
   "$preflight" botiverse/mobile 1459 "$head_sha"
 expect_fail "draft PR" "is still draft" env "${base_env[@]}" \

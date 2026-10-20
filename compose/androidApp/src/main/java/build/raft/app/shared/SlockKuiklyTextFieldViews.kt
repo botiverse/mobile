@@ -3,7 +3,6 @@ package build.raft.app.shared
 import android.content.Context
 import android.text.Editable
 import android.text.InputType
-import android.text.method.MovementMethod
 import android.view.ActionMode
 import android.view.Gravity
 import android.view.Menu
@@ -58,8 +57,6 @@ internal open class SlockKuiklyTextFieldView(
         // applyResolvedTypeface().
         applyResolvedTypeface()
     }
-
-    override fun getDefaultMovementMethod(): MovementMethod = SlockArrowKeyMovementMethod
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
         when (propKey) {

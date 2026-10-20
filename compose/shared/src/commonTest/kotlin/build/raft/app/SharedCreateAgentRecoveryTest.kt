@@ -243,7 +243,7 @@ class SharedCreateAgentRecoveryTest {
 
     // ── Fixtures ──
 
-    private val supportedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
+    private val supportedRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
 
     private fun formRejection(): DataResult<Unit> =
         DataResult.Error(ScreenError("form_definition_ref_required", retryable = true))

@@ -198,17 +198,17 @@ kotlin {
             kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
-                implementation("build.raft.mermaid:mermaid-core:0.1.6-ohos")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.6-ohos")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.6-ohos")
-                implementation("build.raft.mermaid:mermaid-kuikly:0.1.6-ohos")
+                implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2-ohos")
+                implementation("build.raft.mermaid:mermaid-kuikly:0.1.2-ohos")
             }
         }
         val ohosArm64Test by getting {
             dependencies {
-                implementation("build.raft.mermaid:mermaid-core:0.1.6-ohos")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.6-ohos")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.6-ohos")
+                implementation("build.raft.mermaid:mermaid-core:0.1.2-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.2-ohos")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.2-ohos")
             }
         }
 

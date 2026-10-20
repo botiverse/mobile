@@ -221,7 +221,6 @@ internal fun buildSharedCreateAgentDialogSubmit(
     builtInApiKey: TextFieldValue = TextFieldValue(""),
     builtInBaseUrl: String = "",
     builtInSupportsImageInput: Boolean = false,
-    builtInLoadLocalPlugins: Boolean = false,
     builtInModel: String = "",
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
     kimiSdkForm: SharedResolvedAgentCreateForm? = null
@@ -252,7 +251,6 @@ internal fun buildSharedCreateAgentDialogSubmit(
                 apiKey = builtInApiKey.text,
                 baseUrl = builtInBaseUrl,
                 supportsImageInput = builtInSupportsImageInput,
-                loadLocalPlugins = builtInLoadLocalPlugins,
                 model = builtInModel,
                 envVars = createAgentRuntimeEnvVars(envVarEntries)
             )
@@ -861,7 +859,6 @@ internal fun SharedCreateAgentDialog(
     var builtInApiKey by remember { mutableStateOf(TextFieldValue("")) }
     var builtInBaseUrl by remember { mutableStateOf("") }
     var builtInSupportsImageInput by remember { mutableStateOf(false) }
-    var builtInLoadLocalPlugins by remember { mutableStateOf(false) }
     var builtInModel by remember { mutableStateOf("") }
     var builtInSecretIdentity by remember { mutableStateOf<SharedBuiltInWriteOnlyIdentity?>(null) }
     var envVarEntries by remember {
@@ -1003,7 +1000,6 @@ internal fun SharedCreateAgentDialog(
         builtInApiKey = TextFieldValue("")
         builtInSecretIdentity = null
         builtInSupportsImageInput = false
-        builtInLoadLocalPlugins = false
         fastMode = false
         command = ""
         reasoningEffort = null
@@ -1108,7 +1104,6 @@ internal fun SharedCreateAgentDialog(
         builtInBaseUrl = ""
         builtInApiKey = TextFieldValue("")
         builtInSupportsImageInput = false
-        builtInLoadLocalPlugins = false
         builtInSecretIdentity = null
     }
 
@@ -1179,7 +1174,6 @@ internal fun SharedCreateAgentDialog(
                 apiKey = effectiveBuiltInApiKey.text,
                 baseUrl = builtInBaseUrl,
                 supportsImageInput = builtInSupportsImageInput,
-                loadLocalPlugins = builtInLoadLocalPlugins,
                 model = builtInModel,
                 envVars = createAgentRuntimeEnvVars(envVarEntries)
             )
@@ -1392,7 +1386,6 @@ internal fun SharedCreateAgentDialog(
                                     if (newRuntime != runtime) {
                                         builtInApiKey = TextFieldValue("")
                                         builtInSupportsImageInput = false
-                                        builtInLoadLocalPlugins = false
                                     }
                                     val nextCatalog =
                                         availableSelectedMachineId?.let { machineId ->
@@ -1424,7 +1417,6 @@ internal fun SharedCreateAgentDialog(
                                     if (it != builtInProviderId) builtInApiKey = TextFieldValue("")
                                     builtInProviderId = it
                                     builtInSupportsImageInput = false
-                                    builtInLoadLocalPlugins = false
                                 },
                                 apiKey = effectiveBuiltInApiKey,
                                 onApiKeyChange = {
@@ -1438,8 +1430,6 @@ internal fun SharedCreateAgentDialog(
                                 },
                                 supportsImageInput = builtInSupportsImageInput,
                                 onSupportsImageInputChange = { builtInSupportsImageInput = it },
-                                loadLocalPlugins = builtInLoadLocalPlugins,
-                                onLoadLocalPluginsChange = { builtInLoadLocalPlugins = it },
                                 model = builtInModel,
                                 onModelChange = { builtInModel = it },
                                 envVarEntries = envVarEntries,
@@ -1592,7 +1582,6 @@ internal fun SharedCreateAgentDialog(
                                 builtInApiKey = effectiveBuiltInApiKey,
                                 builtInBaseUrl = builtInBaseUrl,
                                 builtInSupportsImageInput = builtInSupportsImageInput,
-                                builtInLoadLocalPlugins = builtInLoadLocalPlugins,
                                 builtInModel = builtInModel,
                                 runtimeModelsOverride = runtimeModelsOverride,
                                 kimiSdkForm = resolvedKimiSdkForm
@@ -1779,8 +1768,6 @@ internal fun BuiltInRuntimeSection(
     onBaseUrlChange: (String) -> Unit,
     supportsImageInput: Boolean,
     onSupportsImageInputChange: (Boolean) -> Unit,
-    loadLocalPlugins: Boolean,
-    onLoadLocalPluginsChange: (Boolean) -> Unit,
     model: String,
     onModelChange: (String) -> Unit,
     envVarEntries: List<Pair<String, String>>,
@@ -1927,37 +1914,8 @@ internal fun BuiltInRuntimeSection(
                     focusManager.clearFocus(force = true)
                     onAdvancedOpenChange(!advancedOpen)
                 }
-                if (advancedOpen) {
-                    form.definition.uiSchema.advancedPointers.forEach { pointer ->
-                        val field = pointer.removePrefix("/")
-                        val copy = fieldCopy[field]
-                        when (field) {
-                            "loadLocalPlugins" -> {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    SlockCheckbox(
-                                        checked = loadLocalPlugins,
-                                        onCheckedChange = onLoadLocalPluginsChange,
-                                        enabled = enabled
-                                    )
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(
-                                            text = copy?.label ?: "Load local Pi plugins",
-                                            style = SlockType.Caption,
-                                            color = SlockColor.TextBlack
-                                        )
-                                        copy?.hint?.let {
-                                            Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
-                                        }
-                                    }
-                                }
-                            }
-                            "envVars" -> EnvVarsEditor(envVarEntries, onEnvVarEntriesChange, enabled)
-                        }
-                    }
+                if (advancedOpen && "/envVars" in form.definition.uiSchema.advancedPointers) {
+                    EnvVarsEditor(envVarEntries, onEnvVarEntriesChange, enabled)
                 }
             }
         }

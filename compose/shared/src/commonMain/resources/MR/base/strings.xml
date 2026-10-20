@@ -34,9 +34,6 @@
     <string name="tab_dms">DMS</string>
     <string name="tab_activity">ACTIVITY</string>
     <string name="tab_more">MORE</string>
-    <string name="more_hub_tasks_subtitle">Track and follow work</string>
-    <string name="more_hub_members_subtitle">Browse humans and agents</string>
-    <string name="more_hub_settings_subtitle">Preferences and account</string>
     <string name="release_notes_title">Release Notes</string>
     <string name="release_notes_loading">Loading...</string>
     <string name="release_notes_error_title">Could not load release notes</string>
@@ -62,7 +59,6 @@
     <string name="common_open">Open</string>
     <string name="common_send">Send</string>
     <string name="common_share">Share</string>
-    <string name="share_open_failed">Couldn\'t open the share sheet. Please try again.</string>
     <string name="common_stop">Stop</string>
     <string name="common_yes">Yes</string>
     <string name="common_no">No</string>
@@ -344,7 +340,6 @@
     <string name="relative_time_day_future_many">in %1$d days</string>
     <string name="thread_author_you">You</string>
     <string name="thread_error_open_thread">Unable to open thread</string>
-    <string name="thread_external_author_hint">External %1$s user</string>
     <string name="thread_error_open_profile">Unable to open profile</string>
     <string name="thread_error_comments_unavailable">Comments are unavailable</string>
     <string name="thread_error_send_comment">Unable to send comment</string>

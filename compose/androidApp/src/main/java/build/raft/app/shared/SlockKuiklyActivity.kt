@@ -3021,13 +3021,7 @@ internal object SlockKuiklyAdapters {
         SlockAndroidSqlDatabaseContext.init(context)
         SlockAndroidAvatarCacheProcess.install(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
-            // Transport failures must reach release-build feedback logs: avatar/image
-            // downloads otherwise fail silently in production (Hands 39eec0a3/d208b2f2).
-            if ("status=failed" in message || "status=canceled" in message) {
-                SlockAppLog.w(tag, message)
-            } else {
-                SlockAppLog.record(tag, message)
-            }
+            SlockAppLog.record(tag, message)
         }
         if (initialized) {
             return
@@ -3643,7 +3637,7 @@ internal class SlockKuiklyImageAdapter(
                         // Bundled asset paths carry no user data, so log the path itself:
                         // a missing/broken packaged asset is otherwise invisible (task #335
                         // reaction atlas debugging on artin's device hit exactly this).
-                        SlockAppLog.w(
+                        SlockAppLog.record(
                                 "SlockImageLoad",
                                 "source=assets status=failed type=${throwable::class.java.simpleName} " +
                                         "path=${imageLoadOption.src.removePrefix(HRImageLoadOption.SCHEME_ASSETS)} " +
@@ -3921,7 +3915,7 @@ internal class SlockKuiklyImageAdapter(
             byteCount: Int,
             contentType: String?
     ) {
-        SlockAppLog.w(
+        SlockAppLog.record(
                 "SlockImageLoad",
                 "source=network status=decode_failed bytes=$byteCount contentType=${contentType ?: "unknown"} " +
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
@@ -3930,7 +3924,7 @@ internal class SlockKuiklyImageAdapter(
     }
 
     private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
-        SlockAppLog.w(
+        SlockAppLog.record(
                 "SlockImageLoad",
                 "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
                         "message=${throwable.safeImageLoadMessage()} " +
@@ -4706,10 +4700,6 @@ internal class SlockKuiklyBridgeModule(
                             recycleProbeBitmap()
                             return@secondFrame
                         }
-                        if (hostActivity.isFinishing || hostActivity.isDestroyed) {
-                            finish(mapOf("status" to "failed", "message" to "Thread view is not ready"))
-                            return@secondFrame
-                        }
                         runCatching {
                             PixelCopy.request(
                                     hostActivity.window,
@@ -4868,36 +4858,26 @@ internal class SlockKuiklyBridgeModule(
             // ordering guarantee.
             container.postOnAnimation {
                 container.postOnAnimation {
-                    if (hostActivity.isFinishing || hostActivity.isDestroyed) {
-                        bitmap.recycle()
-                        onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
-                        return@postOnAnimation
-                    }
-                    runCatching {
-                        PixelCopy.request(
-                                hostActivity.window,
-                                sourceRect,
-                                bitmap,
-                                { copyResult ->
-                                    if (copyResult == PixelCopy.SUCCESS) {
-                                        onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
-                                    } else {
-                                        bitmap.recycle()
-                                        onResult(
-                                                mapOf(
-                                                        "status" to "failed",
-                                                        "message" to "Unable to capture image",
-                                                        "pixelCopyResult" to copyResult
-                                                )
-                                        )
-                                    }
-                                },
-                                Handler(Looper.getMainLooper())
-                        )
-                    }.onFailure {
-                        bitmap.recycle()
-                        onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
-                    }
+                    PixelCopy.request(
+                            hostActivity.window,
+                            sourceRect,
+                            bitmap,
+                            { copyResult ->
+                                if (copyResult == PixelCopy.SUCCESS) {
+                                    onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+                                } else {
+                                    bitmap.recycle()
+                                    onResult(
+                                            mapOf(
+                                                    "status" to "failed",
+                                                    "message" to "Unable to capture image",
+                                                    "pixelCopyResult" to copyResult
+                                            )
+                                    )
+                                }
+                            },
+                            Handler(Looper.getMainLooper())
+                    )
                 }
             }
             return
@@ -7129,13 +7109,15 @@ internal class SlockKuiklyBridgeModule(
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val uri = Uri.parse(url)
         val viewIntent = externalUrlIntent(uri, mimeType)
+        if (viewIntent == null) {
+            Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
+                    .show()
+            return null
+        }
         runCatching {
             appContext.startActivity(viewIntent)
         }.onFailure { throwable ->
             if (throwable is ActivityNotFoundException) {
-                if (openInAppBrowserFallback(url, mimeType)) {
-                    return@onFailure
-                }
                 Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
                         .show()
             } else {
@@ -7146,31 +7128,10 @@ internal class SlockKuiklyBridgeModule(
     }
 
     /**
-     * When no external activity accepts a web URL, keep the link usable by opening the shared
-     * in-app browser page instead of dropping the tap on the floor.
-     */
-    private fun openInAppBrowserFallback(url: String, mimeType: String?): Boolean {
-        val isWebUrl = mimeType == null && Uri.parse(url).scheme?.lowercase() in setOf("http", "https")
-        if (!isWebUrl) return false
-        val pageData =
-                JSONObject()
-                        .put("pageName", SlockKuiklyPages.IN_APP_BROWSER)
-                        .put("url", url)
-        return runCatching {
-            SlockKuiklyActivity.start(activity ?: appContext, SlockKuiklyPages.IN_APP_BROWSER, pageData)
-        }.onFailure { throwable ->
-            SlockAppLog.record(
-                    "SlockOpenUrl",
-                    "inAppBrowserFallback=failed type=${throwable::class.java.simpleName}"
-            )
-        }.isSuccess
-    }
-
-    /**
      * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this
      * application. Other schemes retain the platform's ordinary implicit-handler behavior.
      */
-    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent {
+    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent? {
         val isWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
         val implicit =
                 Intent(Intent.ACTION_VIEW).apply {
@@ -7187,21 +7148,11 @@ internal class SlockKuiklyBridgeModule(
         if (!isWebUrl) {
             return implicit
         }
-        // MATCH_DEFAULT_ONLY only lists apps the user picked as defaults; devices without a
-        // default browser (or that never show the disambiguation sheet) report an empty list.
-        // Retry without the flag before giving up on a target package.
-        var candidates =
+        val candidates =
                 appContext.packageManager.queryIntentActivities(
                         implicit,
                         PackageManager.MATCH_DEFAULT_ONLY
                 )
-        if (candidates.isEmpty()) {
-            candidates =
-                    appContext.packageManager.queryIntentActivities(
-                            implicit,
-                            PackageManager.MATCH_ALL
-                    )
-        }
         val defaultPackage =
                 appContext.packageManager
                         .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
@@ -7212,7 +7163,7 @@ internal class SlockKuiklyBridgeModule(
                         ownPackage = appContext.packageName,
                         defaultPackage = defaultPackage,
                         candidatePackages = candidates.map { it.activityInfo.packageName }
-                ) ?: return implicit
+                ) ?: return null
         return implicit.setPackage(selectedPackage)
     }
 

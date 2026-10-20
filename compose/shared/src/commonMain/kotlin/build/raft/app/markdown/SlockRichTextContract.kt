@@ -31,8 +31,7 @@ data class SlockRichTextInlineToken(
     val styleTokenId: String? = chrome?.styleToken?.id,
     val actionId: String? = null,
     val refKind: SlockRichTextRefKind? = null,
-    val trailingIndicator: String = "",
-    val active: Boolean = false
+    val trailingIndicator: String = ""
 )
 
 enum class SlockRichTextInlineKind(val wireValue: String) {
@@ -182,7 +181,6 @@ enum class SlockRichTextRefKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
     DirectMessageThread("directMessageThread"),
-    DirectMessage("directMessage"),
     Task("task"),
     UserMention("userMention")
 }
@@ -326,8 +324,7 @@ internal fun buildSlockRichTextDocumentFromMarkdownPlan(
                             ),
                         actionId = action.id,
                         refKind = tag.kind.toRichTextRefKind(),
-                        trailingIndicator = activeActionIndicator.takeIf { actionPending }.orEmpty(),
-                        active = actionPending
+                        trailingIndicator = activeActionIndicator.takeIf { actionPending }.orEmpty()
                     )
             }
         }
@@ -409,8 +406,6 @@ private fun SlockRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) -
             ThreadMarkdownTagKind.DirectMessageThread ->
                 directMessagePeerKeys.contains(tag.directMessagePeerName.orEmpty().trim().lowercase()) &&
                     !tag.threadShortId.isNullOrBlank()
-            ThreadMarkdownTagKind.DirectMessage ->
-                directMessagePeerKeys.contains(tag.directMessagePeerName.orEmpty().trim().lowercase())
             ThreadMarkdownTagKind.Channel ->
                 channelKeys.contains(tag.channelName.orEmpty().trim().lowercase())
             ThreadMarkdownTagKind.ChannelThread ->
@@ -451,15 +446,12 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
     active: Boolean
 ): SlockRichTextChromeKind =
     when {
-        active && (kind == ThreadMarkdownTagKind.ChannelThread || kind == ThreadMarkdownTagKind.DirectMessageThread) ->
-            SlockRichTextChromeKind.Thread
         active -> SlockRichTextChromeKind.Active
         kind == ThreadMarkdownTagKind.UserMention && highlighted -> SlockRichTextChromeKind.SelfMention
         kind == ThreadMarkdownTagKind.UserMention -> SlockRichTextChromeKind.OrdinaryMention
         kind == ThreadMarkdownTagKind.Channel -> SlockRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.ChannelThread -> SlockRichTextChromeKind.Thread
         kind == ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextChromeKind.Thread
-        kind == ThreadMarkdownTagKind.DirectMessage -> SlockRichTextChromeKind.Channel
         kind == ThreadMarkdownTagKind.Task -> SlockRichTextChromeKind.Task
         else -> SlockRichTextChromeKind.OrdinaryMention
     }
@@ -469,7 +461,6 @@ private fun ThreadMarkdownTagKind.toRichTextRefKind(): SlockRichTextRefKind =
         ThreadMarkdownTagKind.Channel -> SlockRichTextRefKind.Channel
         ThreadMarkdownTagKind.ChannelThread -> SlockRichTextRefKind.Thread
         ThreadMarkdownTagKind.DirectMessageThread -> SlockRichTextRefKind.DirectMessageThread
-        ThreadMarkdownTagKind.DirectMessage -> SlockRichTextRefKind.DirectMessage
         ThreadMarkdownTagKind.Task -> SlockRichTextRefKind.Task
         ThreadMarkdownTagKind.UserMention -> SlockRichTextRefKind.UserMention
     }

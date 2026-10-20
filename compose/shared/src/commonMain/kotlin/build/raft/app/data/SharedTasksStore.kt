@@ -1885,7 +1885,6 @@ private fun MemberKind.tasksIdentityFilterPrefix(): String =
         MemberKind.Agent -> "agent"
         MemberKind.Human -> "user"
         MemberKind.System -> "system"
-        MemberKind.External -> "external"
     }
 
 internal enum class TaskStatusUpdateSkipReason(val logValue: String) {

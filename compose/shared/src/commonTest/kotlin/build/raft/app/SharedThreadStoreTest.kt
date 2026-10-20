@@ -126,7 +126,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
@@ -154,9 +153,6 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import kotlin.test.fail
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 /**
  * Thread-safe append/snapshot log buffer for tests that run stores on
@@ -1198,7 +1194,7 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        val facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7, TimeSource.Monotonic.markNow()))
+        val facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
         fun replyCount(environmentId: String, principalId: String): Int =
             store.applyReplyCountFacts("server-1", "channel-1", environmentId, principalId, canonical)
                 .messages.single().replyCount
@@ -1218,138 +1214,6 @@ class SharedThreadStoreTest {
         assertEquals(0, replyCount("https://staging.example.test", ""))
         assertEquals(0, replyCount("https://staging.example.test", "user-1"))
         assertEquals(7, replyCount("https://prod.example.test", "user-1"))
-    }
-
-    @Test
-    fun replyCountFactsOverrideCanonicalValue() {
-        val store = SharedThreadPayloadStore()
-        fun canonical(replyCount: Int) =
-            basePayload().copy(
-                status = "content",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "parent",
-                            threadChannelId = null,
-                            replyCount = replyCount
-                        )
-                    )
-            )
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7, TimeSource.Monotonic.markNow()))
-        )
-        // The recorded fact is the freshest observation for this identity: it
-        // overrides the canonical value in both directions. A canonical payload
-        // reporting more replies (9) does not win, because facts are accepted by
-        // recency at record time — the older canonical projection is stale.
-        assertEquals(
-            7,
-            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(9))
-                .messages.single().replyCount
-        )
-        // A canonical value that missed replies is likewise corrected upward.
-        assertEquals(
-            7,
-            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(3))
-                .messages.single().replyCount
-        )
-    }
-
-    @Test
-    fun replyCountFactsRejectObservationsOlderThanTheRecordedFact() {
-        val store = SharedThreadPayloadStore()
-        fun canonical(replyCount: Int) =
-            basePayload().copy(
-                status = "content",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "parent",
-                            threadChannelId = null,
-                            replyCount = replyCount
-                        )
-                    )
-            )
-        fun apply(replyCount: Int) =
-            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(replyCount))
-                .messages.single().replyCount
-
-        val now = TimeSource.Monotonic.markNow()
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 5, now))
-        )
-
-        // A replayed projection observed before the recorded fact (e.g. a
-        // reprojection scheduled before a reply was deleted) must not win.
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 4, now - 1.seconds))
-        )
-        assertEquals(5, apply(4))
-
-        // A genuinely newer observation (the post-delete projection) is accepted
-        // and overrides both the prior fact and the canonical value.
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 4, now + 1.seconds))
-        )
-        assertEquals(4, apply(4))
-    }
-
-    @Test
-    fun replyCountFactsRejectCanonicalResponseMarkedAtRequestTime() {
-        val store = SharedThreadPayloadStore()
-        fun canonical(replyCount: Int) =
-            basePayload().copy(
-                status = "content",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "parent",
-                            threadChannelId = null,
-                            replyCount = replyCount
-                        )
-                    )
-            )
-        fun apply(replyCount: Int) =
-            store.applyReplyCountFacts("server-1", "channel-1", TestThreadEnvironmentId, "user-1", canonical(replyCount))
-                .messages.single().replyCount
-
-        // Interleaving: the canonical summaries request is issued while the
-        // server-side snapshot still says 5; while it is in flight a realtime
-        // event records 6; the response then lands carrying the stale 5. The
-        // response is observed at request-issue time, so the realtime fact must
-        // stay ahead.
-        val requestMark = TimeSource.Monotonic.markNow()
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 6, requestMark + 1.seconds))
-        )
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 5, requestMark))
-        )
-        assertEquals(6, apply(5))
-
-        // Converse: a canonical response issued after the realtime event (e.g.
-        // a fresh projection after a reply was deleted) is genuinely newer and
-        // still wins.
-        store.recordReplyCountFacts(
-            "server-1", "channel-1", TestThreadEnvironmentId, "user-1",
-            listOf("m1" to SharedThreadReplyCountFact("thread-m1", 4, requestMark + 2.seconds))
-        )
-        assertEquals(4, apply(4))
     }
 
     @Test
@@ -1422,13 +1286,12 @@ class SharedThreadStoreTest {
             )
 
         store.put("server-1", "channel-1", enriched, TestThreadOwnerScopeId)
-        val firstMark = TimeSource.Monotonic.markNow()
         store.recordReplyCountFacts(
             serverId = "server-1",
             threadId = "channel-1",
             environmentId = TestThreadEnvironmentId,
             principalId = "user-1",
-            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7, firstMark))
+            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
         )
         store.freshnessLedger.advance("server-1", "channel-1", TestThreadOwnerScopeId)
 
@@ -1454,7 +1317,7 @@ class SharedThreadStoreTest {
             threadId = "channel-1",
             environmentId = TestThreadEnvironmentId,
             principalId = "user-1",
-            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 3, firstMark + 1.seconds))
+            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 3))
         )
         assertEquals(
             3,
@@ -2755,8 +2618,7 @@ class SharedThreadStoreTest {
                     principalId = "u-b",
                     serverId = "server-1",
                     authGeneration = 2L,
-                    selectionGeneration = 1L,
-                    bindingGeneration = 2L
+                    selectionGeneration = 1L
                 )
             val ownerB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
             releaseAdmission.complete(Unit)
@@ -2787,195 +2649,6 @@ class SharedThreadStoreTest {
         } finally {
             releaseAdmission.complete(Unit)
             releaseLoading.complete(Unit)
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun authGenerationAdvanceDuringFetchStillDeliversContent() = runBlocking {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
-        val ownerASession =
-            sampleSession().copy(
-                user = StoredAuthUser(id = "u-a", email = "a@example.test", displayName = "Owner A"),
-                accessToken = "access-a",
-                refreshToken = "refresh-a"
-            )
-        var identity =
-            ThreadReplyCacheIdentitySnapshot(
-                session = ownerASession,
-                environmentId = "https://prod.example.test",
-                principalId = "u-a",
-                serverId = "server-1",
-                authGeneration = 1L,
-                selectionGeneration = 1L,
-                bindingGeneration = 1L
-            )
-        val api = FakeThreadApi()
-        api.channelMessagesStarted = CompletableDeferred()
-        api.releaseChannelMessages = CompletableDeferred()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                replyCacheIdentityAuthority = { identity },
-                payloadStore = payloadStore
-            )
-        val ownerA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        try {
-            store.dispatch(SharedThreadIntent.Start(basePayload()))
-            withTimeout(5_000) { api.channelMessagesStarted!!.await() }
-            // Same principal/server, only the token rotated -> authGeneration advanced.
-            identity =
-                ThreadReplyCacheIdentitySnapshot(
-                    session =
-                        ownerASession.copy(
-                            accessToken = "access-a2",
-                            refreshToken = "refresh-a2"
-                        ),
-                    environmentId = "https://prod.example.test",
-                    principalId = "u-a",
-                    serverId = "server-1",
-                    authGeneration = 2L,
-                    selectionGeneration = 1L,
-                    bindingGeneration = 1L
-                )
-            val ownerARotated =
-                requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-            api.releaseChannelMessages!!.complete(Unit)
-
-            withTimeout(5_000) {
-                while (store.state.value.payload.status != "content") {
-                    delay(10)
-                }
-            }
-            assertEquals(
-                "network body",
-                store.state.value.payload.messages.single().body
-            )
-            val cached =
-                listOfNotNull(
-                    payloadStore.get(
-                        "server-1",
-                        "channel-1",
-                        environmentId = ownerA.environmentId,
-                        principalId = ownerA.principalId,
-                        ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
-                    ),
-                    payloadStore.get(
-                        "server-1",
-                        "channel-1",
-                        environmentId = ownerARotated.environmentId,
-                        principalId = ownerARotated.principalId,
-                        ownerScopeId = ownerARotated.threadPayloadOwnerScopeId.orEmpty()
-                    )
-                )
-            assertEquals("network body", cached.single().messages.single().body)
-        } finally {
-            api.releaseChannelMessages?.complete(Unit)
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun ownerSwitchDuringFetchDropsResult() = runBlocking {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(scope, prewarmStartIntervalMillis = 0L)
-        val ownerASession =
-            sampleSession().copy(
-                user = StoredAuthUser(id = "u-a", email = "a@example.test", displayName = "Owner A"),
-                accessToken = "access-a",
-                refreshToken = "refresh-a"
-            )
-        val ownerBSession =
-            sampleSession().copy(
-                user = StoredAuthUser(id = "u-b", email = "b@example.test", displayName = "Owner B"),
-                accessToken = "access-b",
-                refreshToken = "refresh-b"
-            )
-        var identity =
-            ThreadReplyCacheIdentitySnapshot(
-                session = ownerASession,
-                environmentId = "https://prod.example.test",
-                principalId = "u-a",
-                serverId = "server-1",
-                authGeneration = 1L,
-                selectionGeneration = 1L,
-                bindingGeneration = 1L
-            )
-        val api = FakeThreadApi()
-        api.channelMessagesStarted = CompletableDeferred()
-        api.releaseChannelMessages = CompletableDeferred()
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                replyCacheIdentityAuthority = { identity },
-                payloadStore = payloadStore
-            )
-        val ownerA = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val diagnostics = ConcurrentTestLogBuffer()
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource,
-                scope = scope,
-                diagnosticsLogger = diagnostics::add
-            )
-
-        try {
-            store.dispatch(SharedThreadIntent.Start(basePayload()))
-            withTimeout(5_000) { api.channelMessagesStarted!!.await() }
-            identity =
-                ThreadReplyCacheIdentitySnapshot(
-                    session = ownerBSession,
-                    environmentId = "https://prod.example.test",
-                    principalId = "u-b",
-                    serverId = "server-1",
-                    authGeneration = 2L,
-                    selectionGeneration = 1L,
-                    bindingGeneration = 2L
-                )
-            val ownerB = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-            api.releaseChannelMessages!!.complete(Unit)
-
-            // The fetch result must be dropped post-transport: payload stays on the
-            // loading shell and nothing is persisted for either owner scope.
-            // Deterministic completion signal: dropForOwnerChange emits the
-            // `reason=owner_changed` diagnostic synchronously inside the refresh
-            // coroutine, so observing that line proves adjudication has run.
-            withTimeout(5_000) {
-                while (!diagnostics.any { it.contains("reason=owner_changed") }) {
-                    delay(5)
-                }
-            }
-            assertEquals("loading", store.state.value.payload.status)
-            assertTrue(store.state.value.payload.messages.isEmpty())
-            assertNull(
-                payloadStore.get(
-                    "server-1",
-                    "channel-1",
-                    environmentId = ownerA.environmentId,
-                    principalId = ownerA.principalId,
-                    ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
-                )
-            )
-            assertNull(
-                payloadStore.get(
-                    "server-1",
-                    "channel-1",
-                    environmentId = ownerB.environmentId,
-                    principalId = ownerB.principalId,
-                    ownerScopeId = ownerB.threadPayloadOwnerScopeId.orEmpty()
-                )
-            )
-        } finally {
-            api.releaseChannelMessages?.complete(Unit)
             scopeJob.cancelAndJoin()
         }
     }
@@ -3798,94 +3471,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmChannelCacheResolvesFooterFromHomeCandidateBeforeCanonicalFetch() = runBlocking {
-        // Task #1141: on a Channel route with renderable cached content, the Home directory
-        // candidate (joined + canSend) is the write authority; the footer must resolve when the
-        // directory answers, not after the first network refresh. Home releases first, the
-        // canonical fetch stays held.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val repository =
-            FakeConversationRepository(
-                threadResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            body = "network body",
-                            conversation = conversationSummary().copy(joined = true)
-                        )
-                    )
-            ).apply {
-                getThreadStarted = CompletableDeferred()
-                releaseGetThread = CompletableDeferred()
-            }
-        val homeRequested = CompletableDeferred<Unit>()
-        val releaseHome = CompletableDeferred<Unit>()
-        val channelRepository =
-            FakeChannelRepository {
-                homeRequested.complete(Unit)
-                releaseHome.await()
-                DataResult.Content(joinedHomeSnapshot())
-            }
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = repository,
-                channelRepository = channelRepository
-        )
-        // A real memory-cached payload was written from a canonical snapshot, which already
-        // carried the composer enabled for a joined + canSend conversation; model that here.
-        val cached = contentPayload("cached body")
-        dataSource.cachePayloadForTest(
-            cached.copy(joined = true, canSend = true, composer = cached.composer.copy(enabled = true))
-        )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-
-        store.dispatch(SharedThreadIntent.Start(basePayload()))
-        repository.getThreadStarted?.await()
-        homeRequested.await()
-
-        val cachedFrame = store.state.value
-        assertEquals("content", cachedFrame.payload.status)
-        assertEquals(ThreadAccessResolution.Loading, cachedFrame.accessResolution)
-        assertFalse(cachedFrame.writeActionsEnabled)
-
-        releaseHome.complete(Unit)
-        withTimeout(1_000) {
-            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
-                delay(10)
-            }
-        }
-        val homeResolved = store.state.value
-        assertFalse(homeResolved.canonicalAccessResolved)
-        assertEquals(ThreadAccessResolution.Resolved, homeResolved.accessResolution)
-        assertTrue(homeResolved.writeActionsEnabled)
-        assertTrue(homeResolved.payload.joined)
-        assertTrue(homeResolved.payload.canSend)
-        assertTrue(homeResolved.payload.composer.enabled)
-        assertTrue(
-            homeResolved.payload.isThreadPrimaryFooterReady(
-                timelineSlice = homeResolved.timelineSlice,
-                accessResolution = homeResolved.accessResolution
-            )
-        )
-
-        repository.releaseGetThread?.complete(Unit)
-        // The canonical body and the canonicalAccessResolved flag land in separate reduces;
-        // wait for the flag, then read one frame.
-        withTimeout(1_000) {
-            while (!store.state.value.canonicalAccessResolved) {
-                delay(10)
-            }
-        }
-        val canonicalFrame = store.state.value
-        assertEquals("network body", canonicalFrame.payload.messages.singleOrNull()?.body)
-        assertEquals(ThreadAccessResolution.Resolved, canonicalFrame.accessResolution)
-        assertTrue(canonicalFrame.writeActionsEnabled)
-        scope.cancel()
-    }
-
-    @Test
     fun warmChannelCacheKeepsFooterUnresolvedUntilInitialLookupCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val repository =
@@ -4136,17 +3721,12 @@ class SharedThreadStoreTest {
             }
         }
 
-        // Hands cd41d823: a positive parent candidate (joined + canSend) is the only
-        // write authority the reply surface ever consults — the canonical reply stream
-        // does not attest it. With renderable cached content the footer must therefore
-        // resolve when the directory answers, not after the held canonical fetch.
         val homeFirstFrame = store.state.value
-        assertEquals(ThreadAccessResolution.Resolved, homeFirstFrame.accessResolution)
+        assertEquals(ThreadAccessResolution.Loading, homeFirstFrame.accessResolution)
         assertTrue(homeFirstFrame.payload.joined)
         assertTrue(homeFirstFrame.payload.canSend)
         assertTrue(homeFirstFrame.payload.composer.enabled)
-        assertTrue(homeFirstFrame.writeActionsEnabled)
-        assertTrue(
+        assertFalse(
             homeFirstFrame.payload.isThreadPrimaryFooterReady(
                 timelineSlice = homeFirstFrame.timelineSlice,
                 accessResolution = homeFirstFrame.accessResolution
@@ -8943,11 +8523,7 @@ class SharedThreadStoreTest {
         assertEquals("reply-5", firstVisibleMessage.firstUnreadReplyMessageId)
         assertEquals(listOf("reply-5"), firstVisibleMessage.inlineReplies?.replies?.map { it.messageId })
         assertEquals("明启", firstVisibleMessage.inlineReplies?.replies?.single()?.senderDisplayName)
-        delay(1L)
-        assertEquals(
-            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
-            repository.getThreadReplySummariesRequests
-        )
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
         scope.cancel()
     }
 
@@ -9020,6 +8596,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
         store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
@@ -9182,6 +8759,10 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        assertTrue(
+            repository.getThreadReplySummariesRequests.isEmpty(),
+            "thread summaries must not race the first content frame or bottom anchor"
+        )
         store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
@@ -9197,81 +8778,6 @@ class SharedThreadStoreTest {
                     it.contains("emitted=false")
             }
         )
-        scope.cancel()
-    }
-
-    @Test
-    fun earlySummaryResultStashesUntilFirstContentReady() = runBlocking {
-        val repository =
-            FakeConversationRepository(
-                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
-                threadReplySummariesResult = replySummaries(replyCount = 7),
-            ).also {
-                it.threadReplySummariesStarted = CompletableDeferred()
-                it.releaseThreadReplySummaries = CompletableDeferred()
-                it.ignoreThreadReplySummariesCancellation = true
-            }
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    testSharedThreadDataSource(
-                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                        conversationRepository = repository,
-                    ),
-                scope = scope,
-            )
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        repository.threadReplySummariesStarted?.await()
-        assertEquals(
-            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
-            repository.getThreadReplySummariesRequests
-        )
-        repository.releaseThreadReplySummaries?.complete(Unit)
-        yield()
-        assertEquals(0, store.state.value.payload.messages.single().replyCount)
-
-        store.accept(SharedThreadIntent.FirstContentReady)
-        yield()
-        delay(1L)
-        assertEquals(7, store.state.value.payload.messages.single().replyCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun lateSummaryResultAppliesImmediatelyAfterFirstContentReady() = runBlocking {
-        val repository =
-            FakeConversationRepository(
-                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
-                threadReplySummariesResult = replySummaries(replyCount = 7),
-            ).also {
-                it.threadReplySummariesStarted = CompletableDeferred()
-                it.releaseThreadReplySummaries = CompletableDeferred()
-                it.ignoreThreadReplySummariesCancellation = true
-            }
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedThreadStore(
-                dataSource =
-                    testSharedThreadDataSource(
-                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                        cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                        conversationRepository = repository,
-                    ),
-                scope = scope,
-            )
-
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        store.accept(SharedThreadIntent.FirstContentReady)
-        repository.threadReplySummariesStarted?.await()
-        repository.releaseThreadReplySummaries?.complete(Unit)
-        yield()
-        delay(1L)
-        assertEquals(7, store.state.value.payload.messages.single().replyCount)
         scope.cancel()
     }
 
@@ -9947,31 +9453,6 @@ class SharedThreadStoreTest {
         }
         assertEquals("thread_parent_timeout", error.originErrorCode)
         assertNull(error.errorCode)
-        scope.cancel()
-    }
-
-    @Test
-    fun focusMessageUpdatesMessageIdAndIncrementsNonce() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
-            )
-        val initial = basePayload().copy(focusedMessageId = null, focusedMessageRequestNonce = 0)
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = initial)
-
-        store.accept(SharedThreadIntent.FocusMessage(messageId = "msg-1", switchToTab = null))
-        assertEquals("msg-1", store.state.value.payload.focusedMessageId)
-        val firstNonce = store.state.value.payload.focusedMessageRequestNonce
-        assertTrue(firstNonce > 0)
-
-        store.accept(SharedThreadIntent.FocusMessage(messageId = "msg-1", switchToTab = null))
-        assertEquals("msg-1", store.state.value.payload.focusedMessageId)
-        val secondNonce = store.state.value.payload.focusedMessageRequestNonce
-        assertTrue(secondNonce > firstNonce)
-
         scope.cancel()
     }
 
@@ -12386,126 +11867,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyCountGapRefetchesTailWhenDeltaSyncReturnsEmpty() = runBlocking {
-        // task #296: a reply thread whose delta `messageSync` returns empty
-        // (replies are stranded below the visible tail seq) must fall back to a
-        // full channel tail refetch, otherwise the thread shows "N replies" but
-        // only the messages that arrived via realtime.
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val allReplies =
-            (1..4).map { index ->
-                message(
-                    threadId = "thread-m1",
-                    channelId = "thread-m1",
-                    id = "reply-$index",
-                    seq = index.toLong(),
-                    body = "reply $index"
-                )
-            }
-        // The tail fallback calls `getReplyThread` (the reply-thread resolver),
-        // which the fake routes through `threadResultsById[thread-m1]` — first
-        // call returns the single newest reply, second returns all four.
-        var replyThreadFetchCount = 0
-        val repository =
-            FakeConversationRepository(
-                // Delta sync has nothing newer than the visible tail.
-                newerResult = DataResult.Empty(EmptyReason.NoMessages),
-                threadResultsById =
-                    mapOf(
-                        ThreadId("thread-m1") to
-                            DataResult.Content(
-                                threadSnapshot(
-                                    threadId = "thread-m1",
-                                    messages = allReplies.takeLast(1),
-                                    conversation =
-                                        replyConversation()
-                                )
-                            )
-                    ),
-                threadResultProvider = { _, _, _ ->
-                    replyThreadFetchCount += 1
-                    DataResult.Content(
-                        threadSnapshot(
-                            threadId = "thread-m1",
-                            messages = allReplies,
-                            conversation = replyConversation()
-                        )
-                    )
-                }
-            )
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = repository
-            )
-        val route =
-            basePayload().copy(
-                instanceId = "shared-shell-thread-thread-m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "thread-m1",
-                streamChannelId = "thread-m1",
-                parentChannelId = "channel-1",
-                parentMessageId = "m1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                parentChannelKind = KuiklyThreadSurfaceKind.Channel,
-                originParentMessageId = "m1",
-                showModeTabs = false
-            )
-        dataSource.cachePayloadForTest(
-            route.copy(
-                status = "content",
-                messages = listOf(
-                    KuiklyThreadMessageItem(
-                        id = "reply-4",
-                        authorId = "u2",
-                        authorName = "Cindy",
-                        body = "reply 4",
-                        seq = 4
-                    )
-                ),
-                originMessage =
-                    KuiklyThreadMessageItem(
-                        id = "m1",
-                        authorId = "u1",
-                        authorName = "Artin",
-                        body = "parent body",
-                        threadChannelId = "thread-m1",
-                        replyCount = 1
-                    ),
-                originStatus = "loaded"
-            )
-        )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(route))
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("m1"),
-                    threadChannelId = ChannelId("thread-m1"),
-                    replyCount = 4,
-                    lastReplyAt = "2026-08-02T00:00:00Z",
-                    participantIds = emptyList()
-                )
-            )
-        )
-
-        val payload = store.state.value.payload
-        assertEquals(
-            listOf("reply-1", "reply-2", "reply-3", "reply-4"),
-            payload.messages.map { it.id }
-        )
-        assertEquals("content", payload.status)
-        // The delta sync ran (returned empty), then the tail refetch produced
-        // the stranded replies via getThread.
-        assertEquals(1, repository.syncNewerRequests.size)
-        assertTrue(repository.getThreadRequests.size >= 1)
-        scope.cancel()
-    }
-
-    @Test
     fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
@@ -12875,76 +12236,6 @@ class SharedThreadStoreTest {
         assertEquals(1, message.replyCount)
         assertEquals(0, message.unreadReplyCount)
         assertNull(message.firstUnreadReplyMessageId)
-        scope.cancel()
-    }
-
-    @Test
-    fun realtimeThreadUpdatedReplyCountSurvivesCanonicalReprojection() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val payloadStore = SharedThreadPayloadStore()
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                payloadStore = payloadStore
-            )
-        dataSource.cachePayloadForTest(
-            contentPayload("parent").copy(
-                messages =
-                    listOf(contentPayload("parent").messages.single().copy(replyCount = 5))
-            )
-        )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        // Unconfined scope: Start has already rendered the cached parent. With the channel fetch
-        // failing, write actions stay disabled, so waiting on them would never finish.
-        assertEquals(5, store.state.value.payload.messages.single().replyCount)
-        val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("m1"),
-                    threadChannelId = ChannelId("reply-thread"),
-                    replyCount = 9,
-                    lastReplyAt = "2026-05-19T16:13:00Z",
-                    participantIds = emptyList(),
-                    unreadCount = 0,
-                    firstUnreadMessageId = null
-                )
-            )
-        )
-        assertEquals(9, store.state.value.payload.messages.single().replyCount)
-
-        // The realtime fact was recorded, so a stale canonical reprojection cannot erase it.
-        val staleCanonical =
-            basePayload().copy(
-                status = "content",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "parent",
-                            threadChannelId = null,
-                            replyCount = 5
-                        )
-                    )
-            )
-        assertEquals(
-            9,
-            payloadStore
-                .applyReplyCountFacts(
-                    provenance.serverId,
-                    "channel-1",
-                    provenance.environmentId,
-                    provenance.principalId,
-                    staleCanonical
-                )
-                .messages.single().replyCount
-        )
         scope.cancel()
     }
 
@@ -14504,13 +13795,7 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(30), repository.getThreadLimits)
         assertEquals(listOf(50), repository.olderLimits)
-        assertEquals(
-            listOf(
-                ThreadId("channel-1") to listOf(MessageId("m1")),
-                ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))
-            ),
-            repository.getThreadReplySummariesRequests
-        )
+        assertEquals(listOf(ThreadId("channel-1") to listOf(MessageId("m5"), MessageId("m1"))), repository.getThreadReplySummariesRequests)
         scope.cancel()
     }
 
@@ -15686,189 +14971,6 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
-    @Test
-    fun realtimeGapRecoveryWithNewArrivalsBackfillsSecondaryTimeline() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api =
-            FakeThreadApi(
-                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
-                newerBodyText = syncResponse("gap body", id = "m12", seq = 12)
-            )
-        val repository =
-            FakeConversationRepository(
-                threadResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            body = "current body",
-                            messages =
-                                listOf(
-                                    message(
-                                        threadId = "channel-1",
-                                        id = "m10",
-                                        seq = 10,
-                                        body = "current body",
-                                        threadChannelId = "thread-m10",
-                                        replyCount = 0
-                                    )
-                                )
-                        )
-                    ),
-                newerResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            body = "gap body",
-                            id = "m12",
-                            seq = 12
-                        )
-                    ),
-                threadReplySummariesResult =
-                    DataResult.Content(
-                        ThreadReplySummariesSnapshot(
-                            threads =
-                                listOf(
-                                    InboxItem(
-                                        key = "thread:m10",
-                                        kind = InboxItemKind.Thread,
-                                        channelId = ChannelId("thread-m10"),
-                                        channelName = "reply thread",
-                                        threadChannelId = ChannelId("thread-m10"),
-                                        parentChannelId = ChannelId("channel-1"),
-                                        parentMessageId = MessageId("m10"),
-                                        replyCount = 7,
-                                        unreadCount = 2,
-                                        firstUnreadMessageId = MessageId("reply-6"),
-                                        latestReplies =
-                                            listOf(
-                                                ReplyPreview(
-                                                    messageId = "reply-6",
-                                                    seq = 6,
-                                                    content = "first unread",
-                                                    senderId = "u2",
-                                                    senderType = "human",
-                                                    senderName = "cindy",
-                                                    senderAvatarUrl = null,
-                                                    createdAt = "2026-05-19T16:06:00Z",
-                                                    senderDisplayName = "Cindy",
-                                                )
-                                            )
-                                    )
-                                ),
-                            followedThreadKeys = setOf("thread:m10")
-                        )
-                    )
-            )
-        val logs = mutableListOf<String>()
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = repository,
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
-        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
-        store.accept(SharedThreadIntent.FirstContentReady)
-        delay(1L)
-
-        val summariesBefore = repository.getThreadReplySummariesRequests.size
-
-        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
-
-        try {
-            withTimeout(5_000) {
-                while (repository.syncNewerRequests.map { it.second } != listOf(10L)) delay(10)
-            }
-        } catch (e: TimeoutCancellationException) {
-            fail(
-                "timed out waiting for syncNewerMessages, " +
-                    "syncs=${repository.syncNewerRequests} logs=$logs"
-            )
-        }
-        val payload = store.state.value.payload
-        assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
-        assertEquals(listOf(10L), repository.syncNewerRequests.map { it.second })
-        withTimeout(5_000) {
-            while (
-                logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") }
-            ) {
-                delay(10)
-            }
-        }
-        withTimeout(5_000) {
-            while (repository.getThreadReplySummariesRequests.size <= summariesBefore) delay(10)
-        }
-        scope.cancel()
-    }
-
-    @Test
-    fun realtimeGapRecoveryStaleDropSkipsSecondaryBackfill() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api =
-            FakeThreadApi(
-                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
-                newerBodyText = syncResponse("stale gap body", id = "m11", seq = 11)
-            )
-        val repository =
-            FakeConversationRepository(
-                threadResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            body = "foreground body",
-                            messages =
-                                listOf(
-                                    message(
-                                        threadId = "channel-1",
-                                        id = "m20",
-                                        seq = 20,
-                                        body = "foreground body",
-                                        threadChannelId = "thread-m20",
-                                        replyCount = 0
-                                    )
-                                )
-                        )
-                    ),
-                threadReplySummariesResult =
-                    DataResult.Content(
-                        ThreadReplySummariesSnapshot(
-                            threads = emptyList(),
-                            followedThreadKeys = emptySet()
-                        )
-                    )
-            )
-        repository.syncNewerStarted = CompletableDeferred()
-        repository.releaseSyncNewer = CompletableDeferred()
-        val logs = mutableListOf<String>()
-        val dataSource =
-            testSharedThreadDataSource(
-                networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = repository,
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
-        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
-
-        val gapJob = launch {
-            store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
-        }
-        repository.syncNewerStarted?.await()
-        api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
-        store.accept(SharedThreadIntent.Refresh)
-        val summariesBefore = repository.getThreadReplySummariesRequests.size
-        repository.releaseSyncNewer?.complete(Unit)
-        withTimeout(10_000) { gapJob.join() }
-        delay(1L)
-
-        val summariesAfter = repository.getThreadReplySummariesRequests.size
-        assertTrue(logs.any { it.startsWith("thread_realtime_gap_stale_drop") && it.contains("reason=stale_token") })
-        assertTrue(
-            logs.none { it.startsWith("thread_secondary_backfill") && it.contains("trigger=resume_gap") },
-            "expected no secondary backfill after stale drop, got: $logs"
-        )
-        assertEquals(summariesBefore, summariesAfter)
-        scope.cancel()
-    }
-
     internal class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
@@ -16445,8 +15547,6 @@ class SharedThreadStoreTest {
     ) : ConversationRepository {
         var getThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetThread: CompletableDeferred<Unit>? = null
-        var syncNewerStarted: CompletableDeferred<Unit>? = null
-        var releaseSyncNewer: CompletableDeferred<Unit>? = null
         var threadReplySummariesStarted: CompletableDeferred<Unit>? = null
         var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
         var ignoreThreadReplySummariesCancellation: Boolean = false
@@ -16601,8 +15701,6 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             syncNewerRequests += threadId to sinceSeq
             syncNewerLimits += limit
-            syncNewerStarted?.complete(Unit)
-            releaseSyncNewer?.await()
             return newerResult
         }
 
@@ -17410,18 +16508,6 @@ class SharedThreadStoreTest {
                 channelId = ChannelId(threadId),
                 kind = ConversationKind.Channel,
                 name = "general"
-            )
-
-        private fun replyConversation(): ConversationSummary =
-            conversationSummary("thread-m1").copy(
-                kind = ConversationKind.Thread,
-                channelId = ChannelId("thread-m1"),
-                thread =
-                    ThreadConversation(
-                        parentChannelId = ChannelId("channel-1"),
-                        parentMessageId = MessageId("m1"),
-                        streamChannelId = ChannelId("thread-m1")
-                    )
             )
 
         private fun message(

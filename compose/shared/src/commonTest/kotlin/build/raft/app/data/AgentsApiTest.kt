@@ -330,7 +330,7 @@ class AgentsApiTest {
                     model = RuntimeModelConfig.Preset("deepseek/deepseek-v4-pro"),
                     hostUserState = RuntimeHostUserState.Forbidden
                 ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
             )
         )
         val json = Json.parseToJsonElement(body).jsonObject
@@ -344,7 +344,7 @@ class AgentsApiTest {
         val ref = json.getValue("formDefinitionRef").jsonObject
         assertEquals(1, ref.getValue("protocolVersion").jsonPrimitive.content.toInt())
         assertEquals("builtin", ref.getValue("runtimeId").jsonPrimitive.content)
-        assertEquals("builtin-pi.create.v3", ref.getValue("schemaVersion").jsonPrimitive.content)
+        assertEquals("builtin-pi.create.v2", ref.getValue("schemaVersion").jsonPrimitive.content)
     }
 
     @Test
@@ -364,7 +364,7 @@ class AgentsApiTest {
                     model = RuntimeModelConfig.Custom("vendor/model-v2"),
                     hostUserState = RuntimeHostUserState.Forbidden
                 ),
-                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
+                formDefinitionRef = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v2")
             )
         )
         val runtimeConfig = Json.parseToJsonElement(body).jsonObject.getValue("runtimeConfig").jsonObject

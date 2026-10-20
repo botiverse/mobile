@@ -11,17 +11,17 @@ import kotlin.test.assertTrue
 
 class SlockNetworkTransportControllerTest {
     @Test
-    fun unresolvedRemotePolicyDefaultsToCurlHttp2() {
+    fun unresolvedRemotePolicyDefaultsToCurlHttp3() {
         val controller = readyController(curlRequired = false)
 
         val request = NetworkRequest(url = "https://example.test/default")
         assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
-        assertEquals(false, request.curlHttp3EnabledOverride)
-        assertFalse(controller.getPreferenceSync().effectiveHttp3Enabled)
+        assertEquals(true, request.curlHttp3EnabledOverride)
+        assertTrue(controller.getPreferenceSync().effectiveHttp3Enabled)
     }
 
     @Test
-    fun presignedUploadHttp1OnlyOverridesDefaultCurlH2() {
+    fun presignedUploadHttp1OnlyOverridesGlobalCurlH3() {
         val controller = readyController(curlRequired = false)
 
         val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
@@ -120,16 +120,16 @@ class SlockNetworkTransportControllerTest {
     }
 
     @Test
-    fun disabledOrInvalidEvaluationKeepsDefaultCurlH2() {
+    fun disabledOrInvalidEvaluationKeepsDefaultCurlH3() {
         val controller = readyController(curlRequired = false)
         controller.updateRemoteEnvironment("production")
         controller.updateRemoteActiveSelection("shell-a", "server-a")
 
         controller.applyRemoteEvaluation("production", 1L, "server-a", false, "ktor")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
 
         controller.applyRemoteEvaluation("production", 2L, "server-a", true, "not-a-transport")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
     }
 
     @Test
@@ -150,7 +150,7 @@ class SlockNetworkTransportControllerTest {
 
         assertTrue(diagnostics.orEmpty().contains("applied=false"))
         assertEquals(0L, controller.getPreferenceSync().generation)
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
     }
 
     @Test
@@ -204,7 +204,7 @@ class SlockNetworkTransportControllerTest {
     private fun policy(curlRequired: Boolean): SlockNetworkTransportPlatformPolicy =
         SlockNetworkTransportPlatformPolicy(
             platformLabel = if (curlRequired) "OHOS" else "Android",
-            defaultHttp3Enabled = false,
+            defaultHttp3Enabled = true,
             curlRequired = curlRequired,
             appOwnedTrustRequired = !curlRequired,
             readyDetail = "ready"

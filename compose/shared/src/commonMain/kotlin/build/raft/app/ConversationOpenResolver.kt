@@ -312,11 +312,7 @@ private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIden
     if (kind == ConversationKind.Thread) {
         val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
         val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId) ?: return null
-        // task #304: parent kind may be unknown (activity row without
-        // parentChannelKind + parent not resolvable in directory). The builder
-        // tolerates null parent surface/channel kinds, so open the thread
-        // anyway instead of leaving it stuck at thread_parent_unresolved.
-        val typedParentKind = parentKind
+        val typedParentKind = parentKind ?: return null
         return buildThreadLaunchConversationIdentity(
             kind = ConversationKind.Thread,
             channelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: parentChannel,
