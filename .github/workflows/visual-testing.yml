@@ -42,6 +42,10 @@ on:
         description: "Allow the publish guard to accept a reduced case count (intentional retirement only, e.g. slock #4792/#4995) — never set for ordinary runs"
         type: boolean
         default: false
+      include_ios:
+        description: "Also run the iOS simulator capture (macOS runners are expensive: off for dispatched rounds, on for the nightly schedule)"
+        type: boolean
+        default: false
       ios_shards:
         description: "iOS capture parallelism: N job-owned simulators each take a slice of the case list. 1 = legacy serial behaviour. Suggested max on the single self-hosted Mac: 4."
         type: number
@@ -459,7 +463,9 @@ jobs:
   # lists everything else as pending — no silent coverage gaps.
   ios-capture:
     name: iOS capture (simulator)
-    if: ${{ !inputs.site_only }}
+    # macOS minutes are the expensive part: nightly runs always capture iOS,
+    # dispatched rounds only when include_ios is set (report degrades to react__android).
+    if: ${{ !inputs.site_only && (github.event_name == 'schedule' || inputs.include_ios) }}
     # Same macOS pool as ios-release.yml.
     runs-on: blacksmith-12vcpu-macos-latest
     timeout-minutes: 75
