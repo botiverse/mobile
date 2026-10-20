@@ -14,6 +14,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -39,12 +40,17 @@ private data class WireInboxItem(
     // discriminator (optional on thread-list endpoints; defaulted by callers)
     val kind: String? = null,
     // channel | dm
-    val id: String? = null,
     val channelId: String? = null,
     val channelName: String? = null,
     val channelType: String? = null,
     val lastMessageId: String? = null,
     val firstUnreadMessageId: String? = null,
+    val firstMentionMessageId: String? = null,
+    // Display content frontier and the storage-space Done frontier (decimal
+    // strings, channelService.ts InboxItem). `doneFrontierSeq` presence is read
+    // from the raw object: absent (older server) differs from present-null.
+    val latestActivitySeq: String? = null,
+    val doneFrontierSeq: String? = null,
     val lastMessageAt: String? = null,
     val lastMessagePreview: String? = null,
     val lastMessageSenderType: String? = null,
@@ -74,11 +80,7 @@ private data class WireInboxItem(
     val taskClaimedByName: String? = null,
     // thread follow state; only an explicit false means Unfollowed
     val isFollowing: Boolean? = null,
-    // mention_action
-    val messageId: String? = null,
-    val messagePreview: String? = null,
-    val createdAt: String? = null,
-    val pendingMentionActions: List<WireInboxPendingMentionAction> = emptyList(),
+    val unfollowedAt: String? = null,
     // common
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
@@ -122,26 +124,12 @@ private data class WireThreadReplyPreview(
 )
 
 @Serializable
-private data class WireInboxPendingMentionAction(
-    val resolutionId: String? = null,
-    val id: String? = null,
-    val messageId: String? = null,
-    val channelId: String? = null,
-    val channelName: String? = null,
-    val targetType: String = "unknown",
-    val targetHandle: String = "",
-    val targetAvatarUrl: String? = null,
-    val reason: String = "Mention target was not notified at send time.",
-    val availableActions: List<String> = emptyList(),
-    val expiresAt: String? = null,
-)
-
-@Serializable
 private data class WireInboxResponse(
     val items: List<WireInboxItem> = emptyList(),
     val hasMore: Boolean = false,
     val totalCount: Int? = null,
     val totalUnreadCount: Int? = null,
+    val activeUnreadCount: Int? = null,
 )
 
 @Serializable
@@ -239,52 +227,41 @@ data class SharedInboxSnapshot(
     val totalUnreadCount: Int,
     /** Number of server rows consumed for this page before client projection. */
     val rawItemCount: Int = items.size,
+    /** Wire `activeUnreadCount` (web rail dot); null on servers that omit it. */
+    val activeUnreadCount: Int? = null,
 )
 
 fun parseSharedInboxSnapshot(
     bodyText: String,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedInboxSnapshot? = runCatching {
-    val decoded = inboxJson.decodeFromString(WireInboxResponse.serializer(), bodyText)
-    val rawItems = decoded.items.mapNotNull { it.toDomain(diagnostics) }.distinctBy { it.key }
+    val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
+    val decoded = inboxJson.decodeFromJsonElement(WireInboxResponse.serializer(), root)
+    val rawItemObjects = root["items"] as? JsonArray
+    val rawItems =
+        decoded.items
+            .mapIndexedNotNull { index, wire ->
+                val doneFrontierPresent =
+                    (rawItemObjects?.getOrNull(index) as? JsonObject)?.containsKey("doneFrontierSeq") == true
+                wire.toDomain(diagnostics)?.copy(doneFrontierSeqPresent = doneFrontierPresent)
+            }
+            .distinctBy { it.key }
     val items = rawItems.map(InboxItem::withActivityFollowStateProjection)
-    val derivedCount = items.size
-    val derivedUnread = items.sumOf { it.unreadCount }
-    // Calculate the suppressed contribution from the same parsed rows that
-    // can reach the domain model. An invalid/duplicate wire row must not alter
-    // the aggregate for a row that was discarded by the strict parser.
-    val rawItemsUnread = rawItems.sumOf { it.unreadCount }
-    val rawUnfollowedUnread = rawItems
-        .asSequence()
-        .filter(InboxItem::isUnfollowedActivityThread)
-        .sumOf { it.unreadCount }
-    val wireUnread = decoded.totalUnreadCount
-    // A compliant server already reports zero attention for an unfollowed
-    // row. If an older/lagging serving path includes that row's raw unread
-    // value in the aggregate, remove just that projected contribution. When
-    // the aggregate is lower than the page's raw sum it is already an
-    // active-only aggregate, so retain it rather than subtracting twice.
-    val projectedUnread =
-        when {
-            wireUnread == null -> derivedUnread
-            rawUnfollowedUnread <= 0 -> maxOf(wireUnread, derivedUnread)
-            wireUnread >= rawItemsUnread ->
-                maxOf(derivedUnread, (wireUnread - rawUnfollowedUnread).coerceAtLeast(0))
-            else -> maxOf(wireUnread, derivedUnread)
-        }
+    // The server's aggregates are authoritative (it already zeroes unfollowed
+    // rows); derive them from the page only when an older server omits them.
     SharedInboxSnapshot(
         items = items,
         hasMore = decoded.hasMore,
-        totalCount = maxOf(decoded.totalCount ?: derivedCount, derivedCount),
-        totalUnreadCount = projectedUnread,
+        totalCount = decoded.totalCount ?: items.size,
+        totalUnreadCount = decoded.totalUnreadCount ?: items.sumOf { it.unreadCount },
         rawItemCount = decoded.items.size,
+        activeUnreadCount = decoded.activeUnreadCount,
     )
 }.getOrNull()
 
 private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = when (kind) {
     "channel", "dm" -> toChannelOrDmDomain(diagnostics)
     "thread" -> toThreadDomain(diagnostics)
-    "mention_action" -> toMentionActionDomain()
     else -> null
 }
 
@@ -323,6 +300,9 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
                 contract = MemberKindWireContract.InboxActor,
             ),
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
+        doneFrontierSeq = doneFrontierSeq,
+        firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
     )
 }
 
@@ -370,6 +350,10 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         taskClaimedByName = taskClaimedByName,
         isFollowing = isFollowing,
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
+        doneFrontierSeq = doneFrontierSeq,
+        firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        unfollowedAt = unfollowedAt?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -387,50 +371,6 @@ private fun WireThreadReplyPreview.toDomain(): ReplyPreview? {
         senderAvatarUrl = senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() },
         createdAt = createdAt.trim(),
         senderDisplayName = senderDisplayName?.trim()?.takeIf { it.isNotBlank() },
-    )
-}
-
-private fun WireInboxItem.toMentionActionDomain(): InboxItem? {
-    val actionId = id?.takeIf { it.isNotBlank() }
-        ?: pendingMentionActions.firstNotNullOfOrNull { action -> action.resolutionId ?: action.id }?.takeIf { it.isNotBlank() }
-        ?: return null
-    val targetChannelId = channelId?.takeIf { it.isNotBlank() }
-        ?: pendingMentionActions.firstNotNullOfOrNull { action -> action.channelId }?.takeIf { it.isNotBlank() }
-        ?: return null
-    val targetMessageId = messageId?.takeIf { it.isNotBlank() }
-        ?: pendingMentionActions.firstNotNullOfOrNull { action -> action.messageId }?.takeIf { it.isNotBlank() }
-    val mappedActions = pendingMentionActions.mapNotNull { it.toDomain() }
-    return InboxItem(
-        key = "mention_action:$actionId",
-        kind = InboxItemKind.MentionAction,
-        channelId = ChannelId(targetChannelId),
-        channelName = channelName?.takeIf { it.isNotBlank() }
-            ?: mappedActions.firstNotNullOfOrNull { action -> action.channelName?.takeIf { it.isNotBlank() } }
-            ?: targetChannelId,
-        channelKind = parseConversationKindOrNull(channelType),
-        unreadCount = 0,
-        hasMention = false,
-        lastMessageId = targetMessageId?.let(::MessageId),
-        lastMessagePreview = messagePreview,
-        lastMessageAt = createdAt,
-        mentionActionId = actionId,
-        pendingMentionActions = mappedActions,
-    )
-}
-
-private fun WireInboxPendingMentionAction.toDomain(): PendingMentionAction? {
-    val resolvedId = resolutionId?.takeIf { it.isNotBlank() } ?: id?.takeIf { it.isNotBlank() } ?: return null
-    return PendingMentionAction(
-        resolutionId = resolvedId,
-        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        channelId = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
-        channelName = channelName,
-        targetType = targetType,
-        targetHandle = targetHandle,
-        targetAvatarUrl = targetAvatarUrl.normalizedPendingMentionAvatarUrl(),
-        reason = reason,
-        availableActions = availableActions,
-        expiresAt = expiresAt,
     )
 }
 

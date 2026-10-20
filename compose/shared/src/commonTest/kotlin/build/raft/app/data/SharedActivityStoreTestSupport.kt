@@ -146,6 +146,7 @@ internal class FakeInboxRepository(
     val initialLoadLimits = mutableListOf<Int>()
     val loadMoreOffsets = mutableListOf<Int>()
     val doneChannelIds = mutableListOf<ChannelId>()
+    val doneFrontiers = mutableListOf<InboxDoneFrontier>()
 
     override suspend fun loadInitial(
         serverId: ServerId,
@@ -170,8 +171,9 @@ internal class FakeInboxRepository(
         return DataResult.Content(moreSnapshots.getOrElse(moreLoadCount++) { moreSnapshots.last() })
     }
 
-    override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> {
+    override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> {
         doneChannelIds += channelId
+        doneFrontiers += frontier
         return if (failDone) {
             DataResult.Error(ScreenError("done_failed"))
         } else {
@@ -212,6 +214,7 @@ internal class FakeReadReceiptRepository(
 
 internal class FakeConversationRepository : ConversationRepository {
     val doneThreadChannelIds = mutableListOf<ChannelId>()
+    val doneThreadFrontiers = mutableListOf<InboxDoneFrontier>()
     val followedParentMessageIds = mutableListOf<MessageId>()
     val unfollowedThreadChannelIds = mutableListOf<ChannelId>()
     var followResult: DataResult<ThreadActionResult> =
@@ -256,8 +259,9 @@ internal class FakeConversationRepository : ConversationRepository {
         return unfollowResult
     }
 
-    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
+    override suspend fun markThreadDone(threadChannelId: ChannelId, frontier: InboxDoneFrontier): DataResult<ThreadActionResult> {
         doneThreadChannelIds += threadChannelId
+        doneThreadFrontiers += frontier
         return DataResult.Content(ThreadActionResult(threadChannelId = threadChannelId, changed = true))
     }
 

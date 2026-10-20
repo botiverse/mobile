@@ -187,7 +187,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(false, item.hasMention)
         assertNull(item.firstUnreadMessageId)
         assertEquals(1, snapshot.totalCount)
-        assertEquals(0, snapshot.totalUnreadCount)
+        // The aggregate is the server's as-is (web parity); a compliant server
+        // already zeroes unfollowed rows, the row guard above is only a guard.
+        assertEquals(7, snapshot.totalUnreadCount)
     }
 
     @Test
@@ -271,7 +273,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertTrue(result.data.items.isEmpty())
         assertEquals(true, result.data.hasMore)
         assertEquals(31, result.data.nextOffset)
-        assertEquals(0, result.data.totalUnreadCount)
+        assertEquals(4, result.data.totalUnreadCount, "server aggregate is not re-derived locally")
     }
 
     @Test
@@ -360,7 +362,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun inboxRepositoryMapsReactMentionActionRowShape() = runBlocking {
+    fun inboxRepositoryIgnoresWebLocalMentionActionRows() = runBlocking {
         val network =
             FakeInboxNetworkClient(
                 inboxJson = """
@@ -403,26 +405,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
 
         val result = repository.loadInitial(ServerId("server-1"))
 
-        assertTrue(result is DataResult.Content)
-        val item = result.data.items.single()
-        assertEquals("mention_action:resolution-1", item.key)
-        assertEquals(InboxItemKind.MentionAction, item.kind)
-        assertEquals("resolution-1", item.mentionActionId)
-        assertEquals("channel-1", item.channelId.value)
-        assertEquals("android-dev", item.channelName)
-        assertEquals(ConversationKind.Channel, item.channelKind)
-        assertEquals("message-1", item.lastMessageId?.value)
-        assertEquals("Can someone ping @missing-human?", item.lastMessagePreview)
-        assertEquals("2026-06-26T02:40:00Z", item.lastMessageAt)
-        assertEquals(0, item.unreadCount)
-        assertEquals(false, item.hasMention)
-        val pending = item.pendingMentionActions.single()
-        assertEquals("resolution-1", pending.resolutionId)
-        assertEquals("message-1", pending.messageId?.value)
-        assertEquals("channel-1", pending.channelId?.value)
-        assertEquals("missing-agent", pending.targetHandle)
-        assertEquals("https://cdn.slock.ai/avatars/agents/missing-agent.webp", pending.targetAvatarUrl)
-        assertEquals(listOf("notify", "invite"), pending.availableActions)
+        // `mention_action` is web-local; GET /channels/inbox never emits it
+        // (channelService.ts InboxItem union @ slock 1bb70cbeb). It is not a row.
+        assertTrue(result is DataResult.Empty, "result=$result")
     }
 
     @Test

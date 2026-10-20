@@ -1641,12 +1641,19 @@ internal fun activityPresentationOwnerIdentity(
     filter: InboxFilter,
 ): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
 
-internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
-    // The destination store acknowledges the stable channel/thread identity after it is loaded
-    // and visible. Activity rows can reorder while navigation is in flight, so the list must not
-    // infer or write read state from its transient presentation snapshot.
-    return null
-}
+/**
+ * Opening an unread row marks it read immediately, like web `handleOpen`
+ * (botiverse/slock 1bb70cbeb, ThreadsInbox.tsx:830-833). The row passed here is
+ * the committed gesture's current row (resolved by key against the live list),
+ * so a reorder during navigation cannot redirect the read; the destination
+ * store's own acknowledgement still follows and is idempotent.
+ */
+internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? =
+    if (unreadCount > 0 && !isUnfollowedActivityThread && kind != InboxItemKind.MentionAction) {
+        SharedActivityIntent.MarkRead(this)
+    } else {
+        null
+    }
 
 /**
  * Menu membership is a pure projection of the row's server-owned follow
@@ -1656,9 +1663,9 @@ internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
 internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
     buildList {
         if (item.isUnfollowedActivityThread) {
-            // An unfollowed terminal row is historical context. It has no
-            // read/unread or Done affordance; the only valid action is an
-            // explicit Follow, which clears the server tombstone.
+            // Web InboxContextMenu: an unfollowed row has no read/unread toggle
+            // (the server zeroes its attention) but keeps Done, then Follow.
+            add("done")
             if (item.kind == InboxItemKind.Thread) add("follow-thread")
             return@buildList
         }
@@ -2038,7 +2045,13 @@ internal fun InboxItem.activityDoneClickIdentity(
     presentationOwnerIdentity: String = "",
 ): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
-internal fun InboxItem.activityShowsDoneAction(): Boolean = !isUnfollowedActivityThread
+/**
+ * Web always offers Done, including on an unfollowed thread row (slock
+ * 1bb70cbeb ThreadsInbox.tsx:375-392, InboxContextMenu.tsx:115-120): the server
+ * keeps such a row in All until it is marked Done, so it must stay clearable.
+ */
+@Suppress("UnusedReceiverParameter")
+internal fun InboxItem.activityShowsDoneAction(): Boolean = true
 
 @Composable
 private fun Modifier.activityRowGestures(

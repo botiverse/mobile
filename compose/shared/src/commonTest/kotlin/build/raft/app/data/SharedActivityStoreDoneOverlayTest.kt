@@ -673,7 +673,7 @@ class SharedActivityStoreDoneOverlayTest {
         override suspend fun loadMore(serverId: ServerId, filter: InboxFilter, offset: Int, limit: Int): DataResult<InboxSnapshot> =
             DataResult.Empty(EmptyReason.NoInboxItems)
 
-        override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> {
+        override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> {
             doneChannelIds += channelId
             doneGates[channelId]?.let { return it.await() }
             return if (failDone) DataResult.Error(ScreenError("done_failed")) else DataResult.Content(InboxDoneResult(channelId))

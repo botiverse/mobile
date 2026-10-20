@@ -5,6 +5,7 @@ import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
@@ -13,6 +14,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerId
@@ -689,7 +691,9 @@ class SharedActivityStore internal constructor(
                 }
             else -> Unit
         }
-        if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated) {
+        // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
+        // a brand-new DM row can only arrive through the canonical projection.
+        if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated || event is DirectMessageCreated) {
             // Only All has stable membership under a message-only payload. Unread
             // and Mentions depend on receiver-specific read/mention facts that are
             // not fully carried by every realtime frame; patching those filters
@@ -732,15 +736,15 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
-        val unreadIncrement =
-            if (existing.isUnfollowedActivityThread) {
-                0
-            } else if (message.author.id.value != current.ownerUserId) {
-                1
-            } else {
-                0
-            }
-        val nextUnreadCount = existing.unreadCount + unreadIncrement
+        // Web receiveThreadReply (slock 1bb70cbeb, inboxStore.ts:1712-1777): a row
+        // carrying a content frontier advances only on a strictly newer socket
+        // seq (fail closed when the frame has none); the canonical refetch
+        // supplies the row otherwise. Unread is never touched locally: the
+        // server owns it and the scheduled reconcile brings it.
+        val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString()
+        if (existing.latestActivitySeq != null && compareActivitySeq(incomingSeq, existing.latestActivitySeq) <= 0) {
+            return true
+        }
 
         val patched =
             existing.copy(
@@ -752,12 +756,9 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderKind = message.author.kind,
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
                 replyCount = existing.replyCount + 1,
-                unreadCount = nextUnreadCount,
-                firstUnreadMessageId =
-                    existing.firstUnreadMessageId
-                        ?: message.id.takeIf { unreadIncrement > 0 },
-                // Keep the Done/read overlay marker in step with the patched row:
-                // a Done clicked on this row must cover this message too.
+                latestActivitySeq = incomingSeq ?: existing.latestActivitySeq,
+                // Keep the Done/read overlay marker in step with the patched row
+                // (legacy Done only; see advancedActivityFrontier).
                 readStateLatestActivitySeq = existing.advancedActivityFrontier(message.seq)
             ).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
@@ -780,12 +781,8 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (event.replyCount < existing.replyCount) return true
-        val nextUnreadCount =
-            if (existing.isUnfollowedActivityThread) {
-                0
-            } else {
-                event.unreadCount ?: existing.unreadCount
-            }
+        // Web updateThreadActivityMeta (inboxStore.ts:1779-1795) moves only the
+        // reply count and time; the event's unread never overwrites the row.
         val patched =
             existing.copy(
                 replyCount = event.replyCount,
@@ -794,13 +791,6 @@ class SharedActivityStore internal constructor(
                         event.lastReplyAt
                     } else {
                         existing.latestActivityAt
-                    },
-                unreadCount = nextUnreadCount,
-                firstUnreadMessageId =
-                    if (nextUnreadCount > 0) {
-                        event.firstUnreadMessageId ?: existing.firstUnreadMessageId
-                    } else {
-                        null
                     },
                 // The reply this event counts carries its seq: keep the overlay
                 // marker in step so a Done on the patched row covers it.
@@ -826,6 +816,10 @@ class SharedActivityStore internal constructor(
      */
     private fun InboxItem.advancedActivityFrontier(realtimeSeq: Long?): String? {
         val existing = readStateLatestActivitySeq ?: return null
+        // A storage-frontier Done (`doneFrontierSeq` present) covers only the
+        // served frontier, so the marker stays on the served row (web never
+        // moves it on a socket patch); legacy Done covers latest-at-request.
+        if (doneFrontierSeqPresent) return existing
         val candidate = realtimeSeq?.takeIf { it >= 0L }?.toString() ?: return existing
         return if (compareActivitySeq(candidate, existing) > 0) candidate else existing
     }
@@ -957,6 +951,7 @@ class SharedActivityStore internal constructor(
         if (event.serverId != null && event.serverId != serverId) return
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         var acceptedHere = false
+        val reconcileJobs = mutableListOf<Job>()
         event.scopes.forEach { readScope ->
             val productionOwner =
                 readReceiptOwnerFactory
@@ -988,16 +983,85 @@ class SharedActivityStore internal constructor(
                     "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
                         "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
                 )
-                acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
+                if (result == PerReceiverReadStateFactResult.Accepted) {
+                    acceptedHere = true
+                    projectRemoteReadLocked(
+                        channelId = readScope.scopeId.value,
+                        maxReadSeq = maxReadSeq,
+                        intent = SharedActivityIntent.ApplyRealtimeEvent(event)
+                    )?.let(reconcileJobs::add)
+                }
             }
         }
-        if (acceptedHere) {
-            diagnosticsLogger("activity_read_state_patch result=checkpoint_only reason=identity_only_event")
-            onUnreadCountsChanged()
+        reconcileJobs.forEach(Job::start)
+        if (acceptedHere) onUnreadCountsChanged()
+    }
+
+    /**
+     * Cross-device / cross-tab read (web applyReadStateUpdate ->
+     * inboxStore.applyReadStateProjection, botiverse/slock 1bb70cbeb
+     * applyReadStateUpdate.ts:8-30, inboxStore.ts:1666-1707). Web projects a
+     * read only when it can prove what it covers; here that proof is the row's
+     * own authority frontier (`readState.latestActivity.seq`, same read-state
+     * domain as `maxReadSeq`). A covered row is cleared (and leaves Unread)
+     * with a read hold so a lagging refresh cannot resurrect it; a row the read
+     * may not fully cover gets a throttled canonical reconcile instead.
+     */
+    private fun projectRemoteReadLocked(
+        channelId: String,
+        maxReadSeq: Long,
+        intent: SharedActivityIntent
+    ): Job? {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
+        val matching =
+            snapshot.items.filter { item -> item.unreadCount > 0 && item.readReceiptChannelId()?.value == channelId }
+        if (matching.isEmpty()) return null
+        val readSeq = maxReadSeq.takeIf { it >= 0L }?.toString()
+        val (covered, uncovered) =
+            matching.partition { item ->
+                val frontier = item.readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+                frontier != null && compareActivitySeq(readSeq, frontier) >= 0
+            }
+        if (covered.isNotEmpty()) {
+            // The read is already persisted server-side: start the hold now.
+            val remoteReadOwner = overlayOwner(current)
+            readOverlay.confirmAll(remoteReadOwner, rememberUnreadCleared(remoteReadOwner, covered))
+            val coveredKeys = covered.mapTo(mutableSetOf(), InboxItem::key)
+            val keepsRows = current.selectedFilter.keepsReadActivityRows()
+            val items =
+                if (keepsRows) {
+                    snapshot.items.map { item ->
+                        if (item.key in coveredKeys) {
+                            item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                        } else {
+                            item
+                        }
+                    }
+                } else {
+                    snapshot.items.filterNot { item -> item.key in coveredKeys }
+                }
+            reduceState(
+                intent,
+                current.copy(
+                    snapshot =
+                        snapshot.copy(
+                            items = items,
+                            totalCount = if (keepsRows) snapshot.totalCount else maxOf(0, snapshot.totalCount - covered.size),
+                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - covered.sumOf(InboxItem::unreadCount))
+                        )
+                )
+            )
         }
+        diagnosticsLogger(
+            "activity_read_state_patch scopeId=$channelId maxReadSeq=$maxReadSeq " +
+                "projected=${covered.size} reconcile=${uncovered.isNotEmpty()}"
+        )
+        return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked() else null
     }
 
     internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
+        var reconcileJob: Job? = null
         val accepted = synchronized(realtimeOwnerLock) {
             val current = _state.value
             val serverId = current.ownerServerId ?: return@synchronized false
@@ -1012,8 +1076,28 @@ class SharedActivityStore internal constructor(
                 "activity_read_state_patch result=durable_v1_projection scopeId=${fact.channelId} " +
                     "version=${fact.readStateVersion} maxReadSeq=${fact.maxReadSeq}"
             )
+            reconcileJob =
+                projectRemoteReadLocked(
+                    channelId = fact.channelId,
+                    maxReadSeq = fact.maxReadSeq,
+                    intent =
+                        SharedActivityIntent.ApplyRealtimeEvent(
+                            PerReceiverReadStateChanged(
+                                serverId = ServerId(serverId),
+                                scopes =
+                                    listOf(
+                                        PerReceiverReadStateScope(
+                                            scopeId = ChannelId(fact.channelId),
+                                            maxReadSeq = fact.maxReadSeq,
+                                            readStateVersion = fact.readStateVersion
+                                        )
+                                    )
+                            )
+                        )
+                )
             true
         }
+        reconcileJob?.start()
         if (accepted) onUnreadCountsChanged()
     }
 
@@ -1063,7 +1147,7 @@ class SharedActivityStore internal constructor(
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
-                    val filter = previous.selectedFilter
+                    var filter = previous.selectedFilter
                     var refreshLimit = SharedActivityPageSize
                     try {
                         logActivityLoadStart(
@@ -1146,7 +1230,10 @@ class SharedActivityStore internal constructor(
                             }
                             val stateForOwner =
                                 if (ownerChanged) {
-                                    SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
+                                    // Web registerServerReset (slock 1bb70cbeb,
+                                    // inboxStore.ts:1854-1898) starts the new server on All.
+                                    filter = InboxFilter.All
+                                    SharedActivityState()
                                 } else {
                                     stateBeforeOwner
                                 }
@@ -1672,23 +1759,17 @@ class SharedActivityStore internal constructor(
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
-                if (canonical.replyCount > localVersion.replyCount) {
-                    if (preservePendingRealtimeUnread && canonical.unreadCount < current.unreadCount) {
-                        rememberRealtimeHighWater(canonical.withRealtimeUnreadProjection(current))
-                        preserveTotalUnreadFloor = true
-                        return@map canonical.withRealtimeUnreadProjection(current)
-                    }
-                    realtimeHighWater.remove(canonical.key)
-                    return@map canonical
-                }
+                // A canonical row that reached (or passed) the local patch wins
+                // outright, unread included: patches never invent unread, so
+                // there is no local unread to preserve (web takes the incoming
+                // row, preserveNewerThreadActivity, inboxStore.ts:813-870).
                 if (
-                    canonical.replyCount == localVersion.replyCount &&
-                    canonical.latestActivityMessageId == localVersion.marker
+                    canonical.replyCount > localVersion.replyCount ||
+                    (
+                        canonical.replyCount == localVersion.replyCount &&
+                            canonical.latestActivityMessageId == localVersion.marker
+                        )
                 ) {
-                    if (preservePendingRealtimeUnread && canonical.unreadCount < current.unreadCount) {
-                        preserveTotalUnreadFloor = true
-                        return@map canonical.withRealtimeUnreadProjection(current)
-                    }
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
@@ -1740,12 +1821,6 @@ class SharedActivityStore internal constructor(
             firstUnreadMessageId = current.firstUnreadMessageId
         ).withActivityFollowStateProjection()
 
-    private fun InboxItem.withRealtimeUnreadProjection(current: InboxItem): InboxItem =
-        copy(
-            unreadCount = current.unreadCount,
-            firstUnreadMessageId = current.firstUnreadMessageId
-        ).withActivityFollowStateProjection()
-
     private fun markAllRead() {
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
@@ -1789,6 +1864,10 @@ class SharedActivityStore internal constructor(
                 if (selected || result is DataResult.Content || result is DataResult.Empty) {
                     readOverlay.confirmAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
+                    // Web refreshes in the background after a successful read-all
+                    // (slock 1bb70cbeb, inboxStore.ts:1405-1408); the read hold keeps a
+                    // lagging copy from undoing the local clear.
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
                 } else {
                     readOverlay.forgetAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
@@ -1798,17 +1877,31 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun markDone(item: InboxItem) {
-        if (item.isUnfollowedActivityThread) return
+    private fun markDone(requestedItem: InboxItem) {
         val previous = _state.value
         if (previous.snapshot == null) return
         val overlayOwner = overlayOwner(previous)
-        if (item.kind == InboxItemKind.MentionAction) {
+        if (requestedItem.kind == InboxItemKind.MentionAction) {
             // Local-only resolution: there is no server write and no newer marker
             // that could ever retire it, so it lives outside the expiring overlay
             // (a 90s hold would let the unresolved row come back).
-            if (overlayOwner != null) rememberResolvedMentionAction(overlayOwner, item.key)
-            removeItemOptimistically(item)
+            if (overlayOwner != null) rememberResolvedMentionAction(overlayOwner, requestedItem.key)
+            removeItemOptimistically(requestedItem)
+            return
+        }
+        // Web inboxStore.markDone (slock 1bb70cbeb, inboxStore.ts:1417-1470):
+        // bind Done to the row this store currently holds and name its
+        // storage-space frontier. A row from a server that predates
+        // `doneFrontierSeq` takes the legacy body; a present-but-unusable
+        // frontier (or a row no longer held) refreshes and writes nothing.
+        val item = previous.items.firstOrNull { it.key == requestedItem.key }
+        val frontier = item?.activityDoneRequestFrontier()?.toInboxDoneFrontier()
+        if (item == null || frontier == null) {
+            diagnosticsLogger(
+                "activity_mark_done result=refused reason=${if (item == null) "row_not_held" else "invalid_done_frontier"} " +
+                    "itemKey=${requestedItem.key}"
+            )
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             return
         }
         val targetChannelId = item.readReceiptChannelId()
@@ -1828,16 +1921,20 @@ class SharedActivityStore internal constructor(
             withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
                 val result =
                     if (item.kind == InboxItemKind.Thread) {
-                        conversationRepository.markThreadDone(targetChannelId)
+                        conversationRepository.markThreadDone(targetChannelId, frontier)
                     } else {
-                        inboxRepository.markDone(targetChannelId)
+                        inboxRepository.markDone(targetChannelId, frontier)
                     }
                 if (result !is DataResult.Content && result !is DataResult.Empty) {
+                    // 409/412 (frontier moved / space required) land here too: like
+                    // web, drop the hold and take the refreshed row; never replay.
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
                     refreshAfterFailure(previous, "activity_mark_done_failed")
                 } else {
                     doneOverlay.confirmAll(overlayOwner, doneGenerations)
                     onUnreadCountsChanged()
+                    // Web refreshes after a confirmed Done with the hold still armed.
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
                 }
             }
         }
@@ -2659,8 +2756,14 @@ data class SharedActivityState(
         get() = snapshot?.nextOffset
 }
 
+/**
+ * Web `isUnreadInboxFilter` (slock 1bb70cbeb, inboxStore.ts:124): only Unread
+ * drops a row once it is read. The server keeps read rows in Mentions (an
+ * independent `message_mentions` EXISTS, channelService.ts:13136-13168), so a
+ * read / mark-all-read clears the row's attention there instead of removing it.
+ */
 private fun InboxFilter.keepsReadActivityRows(): Boolean =
-    this == InboxFilter.All
+    this != InboxFilter.Unread
 
 sealed interface SharedActivityIntent {
     data object ClearSummary : SharedActivityIntent
