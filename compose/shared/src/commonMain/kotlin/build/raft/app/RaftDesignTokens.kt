@@ -464,8 +464,10 @@ internal object RaftType {
         get() = raftTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
     val TabLabel: TextStyle
         get() = raftTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
+    /** Typed text is user content: Simplified Chinese Han forms, like the Web. */
     val Input: TextStyle
         get() = raftTextStyle(FontWeight.Normal, RaftTextSize.Content, RaftTextSize.ContentLineHeight, 0.sp)
+            .withRaftUserContentLocale()
     /** Sidebar conversation names: content size, button weights. */
     val ListItem: TextStyle
         get() = raftTextStyle(FontWeight.Medium, RaftTextSize.Content, RaftTextSize.ListItemLineHeight, 0.sp)

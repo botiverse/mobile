@@ -1950,7 +1950,7 @@ private fun SharedActivityRow(
                                 RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
                             } else {
                                 RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
-                            },
+                            }.withRaftUserContentLocale(),
                         color = if (mutedPrimaryContent) RaftColor.TextBlack.copy(alpha = 0.5f) else RaftColor.TextBlack,
                         maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
@@ -1966,7 +1966,7 @@ private fun SharedActivityRow(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = secondary.toAnnotatedString(),
-                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftUserContentLocale(),
                         color = if (item.unreadCount > 0) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.45f),
                         // react body is line-clamp-2 (#1039): the preview gets
                         // two lines before ellipsis, not one.

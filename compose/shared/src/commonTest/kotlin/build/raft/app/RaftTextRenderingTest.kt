@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.intl.LocaleList
+import build.raft.app.data.AppLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import build.raft.designsystem.theme.RaftTypography
@@ -53,5 +55,30 @@ class RaftTextRenderingTest {
         tokens.forEach { style -> assertEquals(raftPlatformTextMotion(), style.textMotion) }
         assertEquals(raftPlatformTextMotion(), TextStyle().withResolvedRaftFontFamily().textMotion)
         assertEquals(raftPlatformTextMotion(), raftTextRenderingStyle().textMotion)
+    }
+
+    @Test
+    fun uiTextFollowsTheAppLanguageForHanForms() {
+        val zhHans = LocaleList("zh-Hans")
+        val ja = LocaleList("ja")
+        assertEquals(ja, raftUiTextLocaleList(AppLocale.Japanese) { "en-US" })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.SimplifiedChinese) { "ja-JP" })
+        // English UI: the Web's sans stack (PingFang SC / Noto Sans SC) decides, whatever the device.
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.English) { "ja-JP" })
+        assertEquals(ja, raftUiTextLocaleList(AppLocale.System) { "ja-JP" })
+        assertEquals(ja, raftUiTextLocaleList(null) { "ja" })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { "zh-Hant-TW" })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { null })
+    }
+
+    @Test
+    fun userContentAlwaysUsesSimplifiedChineseForms() {
+        val zhHans = LocaleList("zh-Hans")
+        assertEquals(zhHans, raftMessageBodyTextStyle(null).localeList)
+        assertEquals(zhHans, raftMessageBodyTextStyle("lg").localeList)
+        assertEquals(zhHans, RaftType.Input.localeList)
+        assertEquals(zhHans, RaftType.Caption.withRaftUserContentLocale().localeList)
+        // A weight change keeps the content locale.
+        assertEquals(zhHans, raftMessageBodyTextStyle(null).withRaftFontWeight(FontWeight.Bold).localeList)
     }
 }

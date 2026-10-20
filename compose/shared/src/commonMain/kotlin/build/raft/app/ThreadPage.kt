@@ -24912,7 +24912,7 @@ private fun ThreadMessageCardContent(
                                     Text(
                                         text = localizedAuthorName,
                                         // raft-ui `MessageItemSender`: text-subhead (15/20) bold.
-                                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp),
+                                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack, fontSize = 15.sp, lineHeight = 20.sp).withRaftUserContentLocale(),
                                         color = RaftColor.TextBlack,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,

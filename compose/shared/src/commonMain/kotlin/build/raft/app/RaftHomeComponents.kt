@@ -278,11 +278,12 @@ internal fun homeChannelTitleTextStyle(
 ): TextStyle =
     // Channel names and DM / agent names in the sidebar read the same ListItem token so the rows
     // stay the same size (artin 2026-10-18: pinned DMs rendered larger than channels).
+    // Conversation names are user content (Simplified Chinese Han forms, like the Web).
     if (selected || (hasUnread && badgeTone == HomeSidebarBadgeTone.Loud)) {
         RaftType.ListItemBold
     } else {
         RaftType.ListItem
-    }
+    }.withRaftUserContentLocale()
 
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): RaftLucideIconName? =
     if (muted) RaftLucideIconName.BellOff else null
