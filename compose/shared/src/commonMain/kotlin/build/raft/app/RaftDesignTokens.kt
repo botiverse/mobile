@@ -389,7 +389,7 @@ private fun raftTextStyle(
         fontSize = fontSize,
         lineHeight = lineHeight,
         letterSpacing = letterSpacing
-    )
+    ).withRaftTextRendering()
 }
 
 internal fun TextStyle.withRaftFontWeight(fontWeight: FontWeight): TextStyle {
@@ -397,9 +397,11 @@ internal fun TextStyle.withRaftFontWeight(fontWeight: FontWeight): TextStyle {
     return copy(
         fontFamily = fontFamily,
         fontWeight = renderedSpaceGroteskWeight(fontFamily, fontWeight)
-    )
+    ).withRaftTextRendering()
 }
 
+// A SpanStyle carries no paragraph attributes (line height style, text motion): spans inherit
+// them from the paragraph style of the text they sit in, which the RaftType tokens set.
 internal fun raftSpanStyleForWeight(fontWeight: FontWeight): SpanStyle {
     val fontFamily = fontFamilyFor("sans", RaftFontFaceState.preference, fontWeight)
     return SpanStyle(
@@ -408,7 +410,9 @@ internal fun raftSpanStyleForWeight(fontWeight: FontWeight): SpanStyle {
     )
 }
 
-internal fun TextStyle.withResolvedRaftFontFamily(): TextStyle {
+internal fun TextStyle.withResolvedRaftFontFamily(): TextStyle = resolveRaftFontFamily().withRaftTextRendering()
+
+private fun TextStyle.resolveRaftFontFamily(): TextStyle {
     val requestedWeight = fontWeight
     return when {
         fontFamily == null ->
