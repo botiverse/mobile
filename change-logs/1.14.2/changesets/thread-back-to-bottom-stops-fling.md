@@ -3,6 +3,8 @@ type: fixed
 area: thread
 platforms:
   - android
+  - ios
+  - ohos
 pull_request: 3204
 rollout: full
 ---
