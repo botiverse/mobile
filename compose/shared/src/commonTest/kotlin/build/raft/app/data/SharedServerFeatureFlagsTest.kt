@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -159,22 +160,54 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun webviewOnboardingIsRegisteredAndRequiresExplicitResolvedEnablement() = runBlocking {
-        val enabled = SharedServerFeatureFlags(
-            FakeApi(ok("""{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":true}]}"""))
+    fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
+        // activity_conversation_list_v0 is the web key verbatim (slock serverFeatureFlags.ts
+        // ACTIVITY_CONVERSATION_LIST_FLAG_KEY; drizzle 0362 seeds it server-randomized, default off).
+        assertEquals("activity_conversation_list_v0", ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)
+        for (key in listOf(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY, ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)) {
+            assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)
+            val enabled = SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":true,"reason":"server_rule"}]}"""))
+            )
+            assertFalse(enabled.isEnabled(server, key), key)
+            enabled.prefetch(server)
+            assertTrue(enabled.isEnabled(server, key), key)
+            // Per server: another server stays off until it is evaluated itself.
+            assertFalse(enabled.isEnabled(ServerId("s2"), key), key)
+
+            val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+            missing.prefetch(server)
+            assertFalse(missing.isEnabled(server, key), key)
+
+            val defaultOff = SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":false,"reason":"default"}]}"""))
+            )
+            defaultOff.prefetch(server)
+            assertFalse(defaultOff.isEnabled(server, key), key)
+
+            val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+            assertFalse(failed.prefetch(server).resolved, key)
+            assertFalse(failed.isEnabled(server, key), key)
+        }
+    }
+
+    @Test
+    fun snapshotRevisionAdvancesOnlyWhenAnEvaluationIsAccepted() = runTest {
+        val accepted = SharedServerFeatureFlags(
+            FakeApi(ok("""{"evaluations":[{"key":"$ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY","enabled":true}]}"""))
         )
-        assertFalse(enabled.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
-        enabled.prefetch(server)
-        assertTrue(enabled.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
-        assertTrue(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertEquals(0L, accepted.snapshotRevision.value)
+        accepted.prefetch(server)
+        assertEquals(1L, accepted.snapshotRevision.value)
+        accepted.prefetch(server, forceRefresh = true)
+        assertEquals(2L, accepted.snapshotRevision.value)
 
-        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
-        missing.prefetch(server)
-        assertFalse(missing.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
-
-        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
-        assertFalse(failed.prefetch(server).resolved)
-        assertFalse(failed.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 503, bodyText = null)))
+        failed.prefetch(server)
+        assertEquals(0L, failed.snapshotRevision.value)
+        val malformed = SharedServerFeatureFlags(FakeApi(ok("not json")))
+        malformed.prefetch(server)
+        assertEquals(0L, malformed.snapshotRevision.value)
     }
 
     @Test

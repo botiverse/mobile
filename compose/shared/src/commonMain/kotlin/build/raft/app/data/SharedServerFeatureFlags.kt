@@ -14,6 +14,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -111,6 +114,14 @@ private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
  */
 const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
+/**
+ * Activity as a conversation list: one row per conversation with an avatar, a one-line preview and the
+ * unread count, sidebar-pinned conversations first. The same per-server key the web reads (slock
+ * `ACTIVITY_CONVERSATION_LIST_FLAG_KEY`, drizzle 0362: `randomization_unit = 'server'`, default off).
+ * Off (the default, and before the first evaluation) Activity keeps its card rows.
+ */
+const val ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY: String = "activity_conversation_list_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -129,6 +140,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
+    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
 )
 
 /**
@@ -267,6 +279,14 @@ class SharedServerFeatureFlags(
     // per-server prefetches from losing one another's snapshot updates.
     @Volatile
     private var snapshots: Map<String, ServerFeatureFlagSnapshot> = emptyMap()
+
+    private val snapshotRevisionState = MutableStateFlow(0L)
+
+    /**
+     * Bumped every time an evaluation is accepted into the per-server snapshots. UI that must follow a flag
+     * live (web `useServerFeatureFlag` re-renders when the snapshot lands) keys its [isEnabled] read on this.
+     */
+    val snapshotRevision: StateFlow<Long> = snapshotRevisionState.asStateFlow()
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
@@ -461,6 +481,7 @@ class SharedServerFeatureFlags(
             } else {
                 acceptedGenerationByServer[serverId.value] = requestGeneration
                 snapshots = snapshots + (serverId.value to snapshot)
+                snapshotRevisionState.value += 1
                 true
             }
         }
