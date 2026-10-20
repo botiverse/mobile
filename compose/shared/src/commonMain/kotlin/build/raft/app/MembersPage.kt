@@ -206,6 +206,8 @@ import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.addsListItem
+import build.raft.app.components.rememberRaftPullToRefreshStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -4878,6 +4880,7 @@ internal fun MembersListContent(
             inviteHumanError = null
         }
     }
+    val pullToRefreshStyle = rememberRaftPullToRefreshStyle()
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
@@ -4888,7 +4891,8 @@ internal fun MembersListContent(
                 groupedAgentMembers(agents)
                     .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
                     .toSet(),
-            showHumanDirectory = payload.showHumanDirectory
+            showHumanDirectory = payload.showHumanDirectory,
+            hasPullToRefreshItem = pullToRefreshStyle.addsListItem
         )
 
     val listState =
@@ -4943,6 +4947,7 @@ internal fun MembersListContent(
             },
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter,
+            style = pullToRefreshStyle,
         ) {
             LazyColumn(
                 state = listState,
@@ -4956,6 +4961,7 @@ internal fun MembersListContent(
                     .padding(horizontal = MembersListContainerInset),
                 verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             ) {
+                raftPullToRefreshItem()
                 item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
                 item {
                     RaftCollapsibleSectionHeader(
@@ -5276,9 +5282,12 @@ internal fun membersLazyItemCount(
     agentsExpanded: Boolean,
     humansExpanded: Boolean,
     collapsedAgentGroupKeys: Set<String> = emptySet(),
-    showHumanDirectory: Boolean = true
+    showHumanDirectory: Boolean = true,
+    /** The custom pull-to-refresh header item (see RaftPullToRefreshStyle.addsListItem). */
+    hasPullToRefreshItem: Boolean = false
 ): Int {
     val fixedItems =
+        (if (hasPullToRefreshItem) 1 else 0) +
         1 + // top spacer
             1 + // agents header
             (if (showHumanDirectory) 1 else 0) + // humans header

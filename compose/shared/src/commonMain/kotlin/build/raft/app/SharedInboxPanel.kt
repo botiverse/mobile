@@ -1413,6 +1413,7 @@ private fun SharedActivityList(
                         .padding(top = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                raftPullToRefreshItem()
                 items(items = renderedItems, key = { item -> item.key }) { item ->
                     SharedActivityRow(
                         item = item,
@@ -2319,6 +2320,7 @@ private fun SharedActivityRefreshableStateBody(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            raftPullToRefreshItem()
             item(key = "activity_state") {
                 SharedActivityStateBody(
                     title = title,
