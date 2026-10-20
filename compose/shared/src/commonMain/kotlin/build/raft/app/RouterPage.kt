@@ -1,11 +1,11 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
-import build.raft.app.components.RaftBrutalPanelShell
 import build.raft.app.data.KeyValueRouterPreferenceRepository
 import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.runtime.Composable
@@ -252,7 +252,7 @@ private fun DeveloperRouterJumpCard(
     onSuggestionSelected: (DeveloperRouteItem) -> Unit,
     onOpen: () -> Unit
 ) {
-    RaftBrutalPanelShell(modifier = Modifier.fillMaxWidth()) {
+    RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier =
                 Modifier

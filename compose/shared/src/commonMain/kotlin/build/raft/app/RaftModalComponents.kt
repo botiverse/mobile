@@ -7,8 +7,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalActionSheetRow
 import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalListSectionHeader
-import build.raft.app.components.RaftBrutalListShell
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.app.components.RaftBrutalModalHeader
 import build.raft.app.components.RaftBrutalModalLayer
 import build.raft.app.components.RaftActionSheetRowModel
@@ -667,7 +667,7 @@ internal fun RaftModalIconButton(
     icon: RaftLucideIconName,
     onClick: () -> Unit
 ) {
-    RaftBrutalIconButton(iconName = icon, onClick = onClick, size = 34.dp, shadowOffset = 0.dp)
+    RaftBrutalIconButton(iconName = icon, onClick = onClick, size = 34.dp)
 }
 
 @Composable
@@ -755,7 +755,6 @@ internal fun RaftModalSquareActionButton(
         enabled = enabled,
         backgroundColor = color,
         size = size,
-        shadowOffset = 3.dp,
         iconColor = iconColor,
         disabledIconColor = iconColor,
         iconSpinning = iconSpinning
@@ -769,17 +768,18 @@ internal fun RaftModalListShell(
     listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
-    RaftBrutalListShell(
-        height = height,
-        modifier = modifier,
-        listModifier = listModifier,
-        content = content
-    )
+    // A lazy list on the design-system card surface.
+    RaftListRowGroup(modifier = modifier.fillMaxWidth().height(height)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().height(height).then(listModifier),
+            content = content
+        )
+    }
 }
 
 @Composable
 internal fun RaftModalSectionHeader(label: String) {
-    RaftBrutalListSectionHeader(label = label)
+    RaftSectionEyebrow(text = label, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp))
 }
 
 @Composable

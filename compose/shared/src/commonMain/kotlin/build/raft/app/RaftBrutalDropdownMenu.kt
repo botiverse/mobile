@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import build.raft.app.components.RaftMetrics
-import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftMenuSurface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,7 +40,6 @@ import androidx.compose.ui.unit.sp
 
 private const val RaftBrutalDropdownMenuWidthValue = 200f
 private const val RaftBrutalDropdownMenuRowHeightValue = 40f
-private const val RaftBrutalDropdownMenuShadowOffsetValue = 4f
 
 /**
  * Single-action menu item rendered by [RaftBrutalDropdownMenu]. `id` is the stable
@@ -140,7 +142,6 @@ internal fun RaftBrutalDropdownMenuSurface(
     modifier: Modifier = Modifier,
     width: Dp? = RaftBrutalDropdownMenuWidthValue.dp,
     rowHeight: Dp = RaftBrutalDropdownMenuRowHeightValue.dp,
-    shadowOffset: Dp = RaftBrutalDropdownMenuShadowOffsetValue.dp,
     showDividers: Boolean = true,
     dividerBeforeIds: Set<String> = emptySet(),
     // Optional card header rendered above the rows inside the same border/shadow
@@ -170,13 +171,12 @@ internal fun raftMenuWidth(width: Dp): Dp =
     if (width < RaftMetrics.MenuMinWidth) RaftMetrics.MenuMinWidth else width
 
 /**
- * raft-ui 0.6.0 DropdownMenu / ContextMenu content: container radius, `--layer-popover`,
- * 1dp seam ring, float shadow, `p-1.5` inset, `min-w-60`. Only explicit separators are
- * drawn: raft menus do not rule every row. A separator is the menu's `-mx-1.5 my-1.5`
- * hairline, so it bleeds through the 6dp side inset to the popup edges while the rows
- * stay inset. A header (reaction bar) sits above a separator. The legacy 40dp row
- * default becomes raft's 36dp `min-h-9` row.
+ * The design-system menu popup ([RaftMenuSurface]: container radius, popover layer, seam
+ * ring, float shadow, `p-1.5`, `min-w-60`) with a row per item ([RaftBrutalDropdownMenuRow]).
+ * Only explicit separators are drawn ([RaftMenuSeparator]); a header (the message menu's
+ * reaction bar) sits above one. An empty list shows one disabled "No actions" row.
  */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun RaftDropdownMenuSurface(
     items: List<RaftBrutalDropdownMenuItem>,
@@ -189,70 +189,39 @@ private fun RaftDropdownMenuSurface(
     iconSize: Dp,
     onDismiss: () -> Unit
 ) {
-    val resolvedRowHeight =
-        if (rowHeight == RaftBrutalDropdownMenuRowHeightValue.dp) RaftMetrics.MenuRowHeight else rowHeight
-    val inset = Modifier.padding(horizontal = RaftMetrics.PopupPadding)
-    Column(
-        modifier = modifier
-            .let { base -> if (width != null) base.width(width) else base.fillMaxWidth() }
-            .raftFloatingContentClickTarget()
-            .raftLookOverlaySurface()
-            .padding(vertical = RaftMetrics.PopupPadding)
+    RaftMenuSurface(
+        modifier = modifier.raftFloatingContentClickTarget(),
+        width = width
     ) {
         headerContent?.let { header ->
-            Box(modifier = inset.fillMaxWidth()) { header() }
-            RaftLookMenuSeparator()
+            Box(modifier = Modifier.fillMaxWidth()) { header() }
+            RaftMenuSeparator()
         }
         if (items.isEmpty()) {
-            Row(
-                modifier = inset
-                    .fillMaxWidth()
-                    .height(resolvedRowHeight)
-                    .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(MR.strings.common_no_actions_available),
-                    style = RaftType.Body,
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            RaftMenuItem(
+                text = stringResource(MR.strings.common_no_actions_available),
+                onClick = {},
+                enabled = false
+            )
         } else {
             items.forEachIndexed { index, item ->
                 if (index > 0 && item.id in dividerBeforeIds) {
-                    RaftLookMenuSeparator()
+                    RaftMenuSeparator()
                 }
-                Box(modifier = inset.fillMaxWidth()) {
-                    RaftBrutalDropdownMenuRow(
-                        item = item,
-                        rowHeight = resolvedRowHeight,
-                        iconSize = iconSize,
-                        onClick = {
-                            if (item.enabled) {
-                                onSelect(item.id)
-                            }
-                            onDismiss()
+                RaftBrutalDropdownMenuRow(
+                    item = item,
+                    rowHeight = RaftMetrics.MenuRowHeight,
+                    iconSize = iconSize,
+                    onClick = {
+                        if (item.enabled) {
+                            onSelect(item.id)
                         }
-                    )
-                }
+                        onDismiss()
+                    }
+                )
             }
         }
     }
-}
-
-/** raft-ui menu separator: a full-bleed 1dp `--line-hairline` hairline with `my-1.5`. */
-@Composable
-private fun RaftLookMenuSeparator() {
-    Box(
-        modifier = Modifier
-            .padding(vertical = RaftMetrics.MenuSeparatorInset)
-            .fillMaxWidth()
-            .height(RaftAppStroke.Thin)
-            .background(RaftColor.BorderHairline)
-    )
 }
 
 /**
@@ -268,6 +237,20 @@ internal fun RaftBrutalDropdownMenuRow(
     emphasized: Boolean = false,
     onClick: () -> Unit
 ) {
+    // The design-system menu item (brand-soft highlight, bold + check for the current value,
+    // mono shortcut). It has no destructive ink and no trailing icon other than the check yet,
+    // so those rows keep the raft-look row below.
+    if (!item.destructive && (item.trailingIcon == null || item.trailingIcon == RaftLucideIconName.Check)) {
+        RaftMenuItem(
+            text = item.label,
+            onClick = onClick,
+            enabled = item.enabled,
+            checked = emphasized || item.trailingIcon == RaftLucideIconName.Check,
+            leadingIcon = item.icon?.let { icon -> { RaftSlotIcon(icon) } },
+            shortcut = item.trailing
+        )
+        return
+    }
     // Press feedback mirrors web MenuItem `hover:bg-palette-yellow/30` (artin,
     // #proj-uiux task #7): the row washes brand yellow while the finger is
     // down. Destructive rows keep their red wash.

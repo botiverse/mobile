@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.app.base.BridgeAttachmentDownloadProgress
@@ -3932,7 +3934,6 @@ internal fun RaftFilePreviewComposerImageActionBar(
                         contentSpacing = 8.dp,
                         minWidth = 0.dp,
                         minHeight = 32.dp,
-                        shadowOffset = 2.dp,
                         textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
                     )
                 RaftFilePreviewComposerImageActionSlot.OriginalImage -> {
@@ -3983,7 +3984,6 @@ internal fun RaftFilePreviewComposerImageActionBar(
                         backgroundColor = RaftColor.BrandYellow,
                         minWidth = 0.dp,
                         minHeight = 32.dp,
-                        shadowOffset = 2.dp,
                         textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
                     )
             }
@@ -4076,7 +4076,6 @@ private fun RaftFilePreviewImageEditorDoneButton(
         backgroundColor = RaftColor.BrandYellow,
         minWidth = 0.dp,
         minHeight = 32.dp,
-        shadowOffset = 2.dp,
         textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
     )
 }
@@ -4933,8 +4932,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         contentDescription = stringResource(MR.strings.common_add),
                         onClick = { addTextAnnotation() },
                         enabled = !saving && !editorFinishing && textDraft.text.isNotBlank(),
-                        backgroundColor = RaftColor.BrandYellow,
-                        shadowOffset = 2.dp
+                        backgroundColor = RaftColor.BrandYellow
                     )
                     Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
                 }
@@ -5170,27 +5168,18 @@ private fun RaftFilePreviewCropOptions(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.file_preview_crop_reset),
+        RaftButton(
+            text = stringResource(MR.strings.file_preview_crop_reset),
             onClick = onReset,
             enabled = enabled && canReset,
-            backgroundColor = RaftColor.SurfaceWhite,
-            minWidth = 0.dp,
-            minHeight = 32.dp,
-            shadowOffset = 2.dp,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
             modifier = Modifier.weight(1f),
         )
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.file_preview_crop_apply),
+        RaftButton(
+            text = stringResource(MR.strings.file_preview_crop_apply),
             onClick = onApply,
             enabled = enabled,
-            backgroundColor = RaftColor.BrandYellow,
-            minWidth = 0.dp,
-            minHeight = 32.dp,
-            shadowOffset = 2.dp,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
             modifier = Modifier.weight(1f),
+            variant = RaftButtonVariant.Primary,
         )
     }
 }
@@ -8143,7 +8132,6 @@ private fun RaftFilePreviewVideoControls(
                 onClick = { if (canPlay) onTogglePlay() },
                 enabled = canPlay,
                 size = 30.dp,
-                shadowOffset = 2.dp,
                 iconSize = 16.dp,
                 backgroundColor = RaftColor.SurfaceWhite
             )
@@ -9083,7 +9071,6 @@ internal fun RaftFilePreviewOverflowMenuButton(
             menuAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
         },
         size = 30.dp,
-        shadowOffset = 2.dp,
         modifier = modifier.raftCaptureLiveRootAnchor(menuAnchor)
     )
 }
@@ -9887,7 +9874,6 @@ private fun RaftFilePreviewDownloadControls(
             leadingIcon = if (paused) RaftLucideIconName.Play else RaftLucideIconName.Pause,
             minWidth = 92.dp,
             minHeight = 34.dp,
-            shadowOffset = 2.dp,
             textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
         )
         RaftBrutalActionButton(
@@ -9896,7 +9882,6 @@ private fun RaftFilePreviewDownloadControls(
             leadingIcon = RaftLucideIconName.Square,
             minWidth = 82.dp,
             minHeight = 34.dp,
-            shadowOffset = 2.dp,
             textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
         )
     }

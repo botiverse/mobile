@@ -190,13 +190,8 @@ internal object RaftAppSize {
 }
 
 // raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0); only
-// stickers keep a hard 4px offset and only overlays float. The brutal offsets are
-// therefore zero; [Sticker] is the one remaining hard offset.
+// stickers keep a hard 4px offset and only overlays float. [Sticker] is the one hard offset.
 internal object RaftShadow {
-    val Brutal = 0.dp
-    val BrutalSmall = 0.dp
-    val BrutalLarge = 0.dp
-    val BrutalActive = 0.dp
     val Sticker = 4.dp
 }
 

@@ -124,10 +124,6 @@ class RaftDesignTokensTest {
     fun shadowTokensMatchRaftUiScale() {
         // raft-ui 0.6.0: controls never cast a shadow (`--theme-shadow-xs/sm/md` are 0);
         // only stickers keep the hard 4px offset.
-        assertEquals(0.dp, RaftShadow.BrutalActive)
-        assertEquals(0.dp, RaftShadow.BrutalSmall)
-        assertEquals(0.dp, RaftShadow.Brutal)
-        assertEquals(0.dp, RaftShadow.BrutalLarge)
         assertEquals(4.dp, RaftShadow.Sticker)
     }
 

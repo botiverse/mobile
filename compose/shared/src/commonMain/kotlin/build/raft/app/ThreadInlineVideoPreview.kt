@@ -218,8 +218,7 @@ private fun ThreadInlineVideoSurface(
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(RaftAppSpacing.Sm),
                     backgroundColor = RaftColor.SurfaceWhite,
-                    size = 34.dp,
-                    shadowOffset = 0.dp
+                    size = 34.dp
                 )
             !firstFrameVisible ->
                 ThreadInlineVideoOverlay(
@@ -272,8 +271,7 @@ private fun ThreadInlineVideoOverlay(
                         onClick = onAction,
                         contentDescription = actionLabel,
                         backgroundColor = RaftColor.SurfaceWhite,
-                        size = 34.dp,
-                        shadowOffset = 0.dp
+                        size = 34.dp
                     )
                 }
                 secondaryActionIcon?.let { icon ->
@@ -282,8 +280,7 @@ private fun ThreadInlineVideoOverlay(
                         onClick = onSecondaryAction,
                         contentDescription = secondaryActionLabel,
                         backgroundColor = RaftColor.SurfaceWhite,
-                        size = 34.dp,
-                        shadowOffset = 0.dp
+                        size = 34.dp
                     )
                 }
             }

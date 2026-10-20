@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftFieldLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -348,7 +349,7 @@ private fun RuntimeFormV2FieldRow(
                                 }
                             )
                         } else {
-                            RaftBrutalSectionLabel(label = field.label, required = required)
+                            RaftFieldLabel(text = field.label, required = required)
                         }
                         RaftBrutalSelectField(
                             options = options,
@@ -412,7 +413,7 @@ private fun RuntimeFormV2FieldRow(
             }
         RuntimeFormV2FieldKind.Unsupported ->
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftBrutalSectionLabel(label = field.label, required = field.required)
+                RaftFieldLabel(text = field.label, required = field.required)
                 Text(
                     text = stringResource(MR.strings.runtime_form_v2_update_required),
                     style = RaftType.Caption,
@@ -527,7 +528,7 @@ internal fun RuntimeFormV2RuntimeSection(
         notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
         RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,

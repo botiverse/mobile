@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.raftOptionSurface
 import build.raft.app.designtokens.RaftUiPalette
 import build.raft.app.components.RaftBrutalActionButton
@@ -140,11 +143,12 @@ private fun AddComputerTypeStep(
             Text(it, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
         }
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
                 enabled = !state.registering,
-                backgroundColor = RaftColor.SurfaceWhite
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
             RaftBrutalActionButton(
                 label = if (state.registering) {
@@ -242,16 +246,17 @@ private fun AddComputerWaitingStep(
             Text(it, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
         }
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
-                backgroundColor = RaftColor.SurfaceWhite
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_done),
+            RaftButton(
+                text = stringResource(MR.strings.common_done),
                 onClick = {},
                 enabled = false,
-                backgroundColor = RaftColor.AccentLime
+                size = RaftButtonSize.Lg
             )
         }
     }
@@ -317,15 +322,15 @@ private fun AddComputerConnectedStep(
             enabled = !state.saving
         )
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = if (state.saving) {
+            RaftButton(
+                text = if (state.saving) {
                     stringResource(MR.strings.settings_computers_action_saving)
                 } else {
                     stringResource(MR.strings.common_done)
                 },
                 onClick = { onIntent(SharedSettingsIntent.CompleteAddComputerDialog) },
                 enabled = !state.saving,
-                backgroundColor = RaftColor.AccentLime
+                size = RaftButtonSize.Lg
             )
         }
     }
@@ -417,7 +422,6 @@ private fun AddComputerCommandRow(
             iconName = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
             onClick = { onIntent(SharedSettingsIntent.CopyAddComputerCommand(copyTarget)) },
             size = 30.dp,
-            shadowOffset = 2.dp,
             backgroundColor = RaftColor.SurfaceWhite
         )
     }

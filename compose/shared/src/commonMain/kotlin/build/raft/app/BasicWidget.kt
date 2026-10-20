@@ -1781,6 +1781,71 @@ internal class RaftTextFieldNativeEditingStateReader {
 internal val LocalRaftDialogKeyboardHeightChange =
     compositionLocalOf<(KeyboardParams) -> Unit> { {} }
 
+/**
+ * The app's editor behaviour as a modifier for the editor node itself: the IME enter action
+ * (systemNewlineAction / imeActionRequested were native-editor props; see [raftImeEnterAction] /
+ * [raftResolvedKeyboardOptions]), dialog keyboard-height events, [focusRequester], focus / blur
+ * callbacks and the global tap-outside focus-dismiss registry. [TextField] and the
+ * design-system `RaftTextField` adapters (`RaftBrutalInputField`, `RaftBrutalSearchField`) share
+ * it, so a field keeps the same behaviour whichever editor draws it.
+ */
+@Composable
+internal fun Modifier.raftAppEditorBehavior(
+    singleLine: Boolean,
+    resolvedKeyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    keyboardHeightChange: (KeyboardParams) -> Unit,
+    focusRequester: FocusRequester,
+    onFocus: () -> Unit,
+    onBlur: () -> Unit,
+    participatesInGlobalFocusDismiss: Boolean = true,
+): Modifier {
+    var lastFocus by remember { mutableStateOf(false) }
+    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
+    val focusOwner = remember { Any() }
+    val focusOwnerAnchor = remember { RaftInputFocusOwnerAnchor() }
+    val currentOnBlur by rememberUpdatedState(onBlur)
+    val currentOnFocus by rememberUpdatedState(onFocus)
+    val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
+    val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
+    DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
+        onDispose {
+            if (participatesInGlobalFocusDismiss) {
+                focusOwnerRegistry?.remove(focusOwner)
+            }
+        }
+    }
+    return this
+        .raftImeEnterAction(
+            singleLine = singleLine,
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+        )
+        .keyboardHeightChange { params ->
+            currentKeyboardHeightChange(params)
+            dialogKeyboardHeightChange(params)
+        }
+        .focusRequester(focusRequester)
+        .onGloballyPositioned(focusOwnerAnchor::update)
+        .onFocusChanged {
+            if (it.isFocused) {
+                if (!lastFocus) {
+                    if (participatesInGlobalFocusDismiss) {
+                        focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
+                    }
+                    currentOnFocus()
+                    lastFocus = true
+                }
+            } else if (lastFocus) {
+                if (participatesInGlobalFocusDismiss) {
+                    focusOwnerRegistry?.setFocused(focusOwner, false)
+                }
+                currentOnBlur()
+                lastFocus = false
+            }
+        }
+}
+
 @Composable
 internal fun TextField(
     modifier: Modifier = Modifier,
@@ -1818,58 +1883,23 @@ internal fun TextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart
 ) {
-    var lastFocus by remember { mutableStateOf(false) }
-    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
-    val focusOwner = remember { Any() }
-    val focusOwnerAnchor = remember { RaftInputFocusOwnerAnchor() }
 
-    val currentOnBlur by rememberUpdatedState(onBlur)
-    val currentOnFocus by rememberUpdatedState(onFocus)
-    val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
-    val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
-    DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
-        onDispose {
-            if (participatesInGlobalFocusDismiss) {
-                focusOwnerRegistry?.remove(focusOwner)
-            }
-        }
-    }
 
     val resolvedKeyboardOptions =
         raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
     val updatedModifier = modifier
-        // systemNewlineAction / imeActionRequested were native-editor props; see
-        // raftImeEnterAction / raftResolvedKeyboardOptions.
-        .raftImeEnterAction(
+        .raftAppEditorBehavior(
             singleLine = raftTextFieldSingleLine(maxLines),
-            keyboardOptions = resolvedKeyboardOptions,
+            resolvedKeyboardOptions = resolvedKeyboardOptions,
             keyboardActions = keyboardActions,
+            keyboardHeightChange = keyboardHeightChange,
+            focusRequester = focusRequester,
+            onFocus = onFocus,
+            onBlur = onBlur,
+            participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
         )
-        .keyboardHeightChange { params ->
-            currentKeyboardHeightChange(params)
-            dialogKeyboardHeightChange(params)
-        }
-        .focusRequester(focusRequester)
-        .onGloballyPositioned(focusOwnerAnchor::update)
-        .onFocusChanged {
-            if (it.isFocused) {
-                if (!lastFocus) {
-                    if (participatesInGlobalFocusDismiss) {
-                        focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
-                    }
-                    currentOnFocus()
-                    lastFocus = true
-                }
-            } else if (lastFocus) {
-                if (participatesInGlobalFocusDismiss) {
-                    focusOwnerRegistry?.setFocused(focusOwner, false)
-                }
-                currentOnBlur()
-                lastFocus = false
-            }
-        }
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
     // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
     // host's full-page back swipe.
@@ -1946,25 +1976,10 @@ internal fun TextField(
     contentAlignment: Alignment = Alignment.CenterStart,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader? = null,
 ) {
-    var lastFocus by remember { mutableStateOf(false) }
-    val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
-    val focusOwner = remember { Any() }
-    val focusOwnerAnchor = remember { RaftInputFocusOwnerAnchor() }
     val nativeEditingStateBindingOwner = remember { Any() }
 
-    val currentOnBlur by rememberUpdatedState(onBlur)
-    val currentOnFocus by rememberUpdatedState(onFocus)
-    val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
-    val dialogKeyboardHeightChange = LocalRaftDialogKeyboardHeightChange.current
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
-    DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
-        onDispose {
-            if (participatesInGlobalFocusDismiss) {
-                focusOwnerRegistry?.remove(focusOwner)
-            }
-        }
-    }
     DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
@@ -1972,36 +1987,16 @@ internal fun TextField(
     val resolvedKeyboardOptions =
         raftResolvedKeyboardOptions(keyboardOptions, raftTextFieldSingleLine(maxLines), imeActionRequested)
     val updatedModifier = modifier
-        // systemNewlineAction / imeActionRequested were native-editor props; see
-        // raftImeEnterAction / raftResolvedKeyboardOptions.
-        .raftImeEnterAction(
+        .raftAppEditorBehavior(
             singleLine = raftTextFieldSingleLine(maxLines),
-            keyboardOptions = resolvedKeyboardOptions,
+            resolvedKeyboardOptions = resolvedKeyboardOptions,
             keyboardActions = keyboardActions,
+            keyboardHeightChange = keyboardHeightChange,
+            focusRequester = focusRequester,
+            onFocus = onFocus,
+            onBlur = onBlur,
+            participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
         )
-        .keyboardHeightChange { params ->
-            currentKeyboardHeightChange(params)
-            dialogKeyboardHeightChange(params)
-        }
-        .focusRequester(focusRequester)
-        .onGloballyPositioned(focusOwnerAnchor::update)
-        .onFocusChanged {
-            if (it.isFocused) {
-                if (!lastFocus) {
-                    if (participatesInGlobalFocusDismiss) {
-                        focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)
-                    }
-                    currentOnFocus()
-                    lastFocus = true
-                }
-            } else if (lastFocus) {
-                if (participatesInGlobalFocusDismiss) {
-                    focusOwnerRegistry?.setFocused(focusOwner, false)
-                }
-                currentOnBlur()
-                lastFocus = false
-            }
-        }
     // CMP: the editing state lives in Compose, so the "native" read is the live value: the most
     // recent value seen by the field, including an IME edit delivered to onValueChange that the
     // caller has not recomposed with yet (an IME commit and Send within one frame), see

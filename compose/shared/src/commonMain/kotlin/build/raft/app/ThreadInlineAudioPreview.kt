@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -187,8 +189,7 @@ internal fun ThreadInlineAudioAttachmentCard(
                     onClick = onDownload,
                     contentDescription = stringResource(MR.strings.file_preview_action_download),
                     backgroundColor = RaftColor.SurfaceWhite,
-                    size = 32.dp,
-                    shadowOffset = 0.dp
+                    size = 32.dp
                 )
             }
 
@@ -223,27 +224,17 @@ private fun ThreadInlineAudioSurface(
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_retry),
+                RaftButton(
+                    text = stringResource(MR.strings.common_retry),
                     onClick = onRetry,
                     modifier = Modifier.weight(1f),
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    minWidth = 0.dp,
-                    minHeight = 32.dp,
-                    leadingIcon = RaftLucideIconName.RefreshCw,
-                    shadowOffset = 0.dp,
-                    textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                 )
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.file_preview_action_download),
+                RaftButton(
+                    text = stringResource(MR.strings.file_preview_action_download),
                     onClick = onDownload,
                     modifier = Modifier.weight(1f),
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    minWidth = 0.dp,
-                    minHeight = 32.dp,
-                    leadingIcon = RaftLucideIconName.Download,
-                    shadowOffset = 0.dp,
-                    textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Download) }
                 )
             }
         }
@@ -311,27 +302,17 @@ private fun ThreadInlineAudioSurface(
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_retry),
+                    RaftButton(
+                        text = stringResource(MR.strings.common_retry),
                         onClick = onRetry,
                         modifier = Modifier.weight(1f),
-                        backgroundColor = RaftColor.SurfaceWhite,
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                        leadingIcon = RaftLucideIconName.RefreshCw,
-                        shadowOffset = 0.dp,
-                        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                     )
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.file_preview_action_download),
+                    RaftButton(
+                        text = stringResource(MR.strings.file_preview_action_download),
                         onClick = onDownload,
                         modifier = Modifier.weight(1f),
-                        backgroundColor = RaftColor.SurfaceWhite,
-                        minWidth = 0.dp,
-                        minHeight = 32.dp,
-                        leadingIcon = RaftLucideIconName.Download,
-                        shadowOffset = 0.dp,
-                        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Download) }
                     )
                 }
             } else {
@@ -386,7 +367,6 @@ internal fun ThreadInlineAudioControls(
             enabled = canPlay,
             size = 28.dp,
             iconSize = 14.dp,
-            shadowOffset = 0.dp,
             backgroundColor = RaftColor.SurfaceWhite
         )
         ThreadInlineAudioSeekBar(

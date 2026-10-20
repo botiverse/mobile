@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
@@ -619,7 +622,6 @@ private fun RaftSettingsAccountPayload.profileSaveButtonLabel(): String =
 @Composable
 private fun SettingsAccountHardShadowCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     RaftBrutalCard(
-        shadowOffset = 3.dp,
         contentPadding = 16.dp,
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content
@@ -839,35 +841,28 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
             if (confirming.value) {
                 SettingsAccountWarning(payload.logoutConfirmMessage)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftBrutalActionButton(
-                        label = payload.logoutCancelLabel,
+                    RaftButton(
+                        text = payload.logoutCancelLabel,
                         onClick = { confirming.value = false },
                         enabled = true,
                         modifier = Modifier.weight(1f),
-                        backgroundColor = RaftColor.SurfaceWhite,
-                        minWidth = 0.dp,
-                        minHeight = 44.dp,
-                        shadowOffset = 0.dp
+                        size = RaftButtonSize.Lg
                     )
-                    RaftBrutalActionButton(
-                        label = payload.logoutConfirmLabel,
+                    RaftButton(
+                        text = payload.logoutConfirmLabel,
                         onClick = onConfirmLogout,
                         modifier = Modifier.weight(1f),
-                        backgroundColor = RaftColor.AccentRed,
-                        minWidth = 0.dp,
-                        minHeight = 44.dp,
-                        textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
+                        variant = RaftButtonVariant.Danger,
+                        size = RaftButtonSize.Lg
                     )
                 }
             } else {
-                RaftBrutalActionButton(
-                    label = payload.logoutLabel,
+                RaftButton(
+                    text = payload.logoutLabel,
                     onClick = { confirming.value = true },
                     modifier = Modifier.fillMaxWidth(),
-                    backgroundColor = RaftColor.AccentRed,
-                    minWidth = 0.dp,
-                    minHeight = 48.dp,
-                    textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg
                 )
             }
         }

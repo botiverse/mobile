@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSelectField
@@ -1380,8 +1384,7 @@ internal fun SharedCreateAgentDialog(
                                     enabled = dialogBuiltInFormRefreshState.retryAvailable && !submitting,
                                     leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
-                                    minHeight = 32.dp,
-                                    shadowOffset = RaftShadow.BrutalSmall
+                                    minHeight = 32.dp
                                 )
                             }
                         )
@@ -1495,8 +1498,7 @@ internal fun SharedCreateAgentDialog(
                                     enabled = !submitting,
                                     leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
-                                    minHeight = 32.dp,
-                                    shadowOffset = RaftShadow.BrutalSmall
+                                    minHeight = 32.dp
                                 )
                             }
                         )
@@ -1718,11 +1720,12 @@ internal fun SharedCreateAgentDialog(
                 }
             }
             RaftDialogFooter {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
                     enabled = !submitting,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    onClick = onDismiss
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
                 )
                 RaftBrutalActionButton(
                     label =
@@ -1863,7 +1866,7 @@ private fun MachinePicker(
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_computer), required = true)
+        RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_computer), required = true)
         when {
             machinesLoading -> Text(
                 text = stringResource(MR.strings.agent_create_state_computers_loading),
@@ -1892,8 +1895,7 @@ private fun MachinePicker(
                         enabled = enabled,
                         leadingIcon = RaftLucideIconName.RefreshCw,
                         minWidth = 72.dp,
-                        minHeight = 32.dp,
-                        shadowOffset = RaftShadow.BrutalSmall
+                        minHeight = 32.dp
                     )
                 }
             machines.isEmpty() -> Box(
@@ -1990,7 +1992,7 @@ internal fun BuiltInRuntimeSection(
     val fieldCopy = form?.definition?.uiSchema?.localization.orEmpty()
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
         RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
@@ -2015,7 +2017,7 @@ internal fun BuiltInRuntimeSection(
                 val copy = fieldCopy[field]
                 when (field) {
                     "providerId" -> {
-                        RaftBrutalSectionLabel(label = copy?.label ?: "Provider", required = true)
+                        RaftFieldLabel(text = copy?.label ?: "Provider", required = true)
                         RaftBrutalSelectField(
                             options = providerOptions.map { RaftBrutalSelectOption(it.value, it.label) },
                             selectedId = providerId,
@@ -2089,7 +2091,7 @@ internal fun BuiltInRuntimeSection(
                                 enabled = enabled
                             )
                         } else {
-                            RaftBrutalSectionLabel(label = copy?.label ?: "Model", required = true)
+                            RaftFieldLabel(text = copy?.label ?: "Model", required = true)
                             RaftBrutalSelectField(
                                 options = modelOptions.map { RaftBrutalSelectOption(it.value, it.label) },
                                 selectedId = model,
@@ -2215,7 +2217,7 @@ internal fun AdvancedRuntimeSection(
     val focusManager = LocalFocusManager.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
         RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
@@ -2245,7 +2247,7 @@ internal fun AdvancedRuntimeSection(
         }
         if (runtimeAvailabilityError == null) {
         if (supportsRuntimeApiUrl(runtime)) {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider), required = false)
+            RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_provider), required = false)
             val providerOptions =
                 createAgentProviderDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
@@ -2311,7 +2313,7 @@ internal fun AdvancedRuntimeSection(
             }
         }
         if (runtime == "pi") {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider))
+            RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_provider))
             RaftBrutalSelectField(
                 options =
                     listOf(
@@ -2411,7 +2413,7 @@ internal fun AdvancedRuntimeSection(
         if (supportsRuntimeReasoningEffort(runtime)) {
             val reasoningModel =
                 if (customModelMode) customModelName.trim() else model
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+            RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_reasoning))
             val reasoningOptions =
                 createAgentReasoningDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
@@ -2440,7 +2442,7 @@ internal fun AdvancedRuntimeSection(
         // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
         // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
         if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningCapability != null) {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+            RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_reasoning))
             val kimiReasoningOptions =
                 createAgentKimiSdkReasoningDropdownItems(
                     capability = kimiSdkReasoningCapability,
@@ -2465,7 +2467,7 @@ internal fun AdvancedRuntimeSection(
             )
         }
         if (supportsRuntimeFastMode(runtime)) {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
+            RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_mode))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2560,7 +2562,7 @@ internal fun CreateAgentSectionLabelWithAction(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftBrutalSectionLabel(label = label, required = required, modifier = Modifier.weight(1f))
+        RaftFieldLabel(text = label, required = required, modifier = Modifier.weight(1f))
         Box(
             modifier =
                 Modifier
@@ -2605,7 +2607,6 @@ private fun CreateAgentRandomNameButton(
         iconColor = RaftColor.TextBlackArgb,
         disabledIconColor = RaftColor.TextMutedGrayArgb,
         size = 22.dp,
-        shadowOffset = 0.dp,
         iconSize = 13.dp
     )
 }

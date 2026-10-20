@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -145,11 +148,12 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 }
             }
             RaftDialogFooter {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
                     enabled = !saving,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    onClick = onDismiss
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
                 )
                 RaftBrutalActionButton(
                     label =

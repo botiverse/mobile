@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftBrutalActionButton
@@ -94,14 +96,14 @@ internal fun UiButtonThemeVisualContent() {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             RaftThemeProvider(theme = raftLightTheme) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftBrutalActionButton(label = "Brutal", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
-                    RaftBrutalActionButton(label = "Save", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
+                    RaftButton(text = "Brutal", onClick = {})
+                    RaftButton(text = "Save", onClick = {}, variant = RaftButtonVariant.Primary)
                 }
             }
             RaftThemeProvider(theme = elegantTheme) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    RaftBrutalActionButton(label = "Elegant", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
-                    RaftBrutalActionButton(label = "Save", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
+                    RaftButton(text = "Elegant", onClick = {})
+                    RaftButton(text = "Save", onClick = {}, variant = RaftButtonVariant.Primary)
                 }
             }
         }
@@ -156,7 +158,6 @@ internal fun UiCardVisualContent() {
                 // (no offset-box), so it ignores shadowOffset and takes NO external reserve — its
                 // geometry (the accepted waiver capture) is unchanged.
                 modifier = Modifier.fillMaxWidth(),
-                shadowOffset = 2.dp,
                 backgroundColor = RaftColor.BrandYellow,
                 minHeight = 28.dp,
                 minWidth = 0.dp,
@@ -497,7 +498,7 @@ internal fun UiSectionHeaderVisualContent() {
                 count = 3,
                 modifier = Modifier.fillMaxWidth(),
                 action = {
-                    RaftBrutalActionButton(label = "Add", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
+                    RaftButton(text = "Add", onClick = {})
                 }
             )
             Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))

@@ -17,36 +17,6 @@ class RaftBrutalSelectLayoutTest {
     }
 
     @Test
-    fun longOptionListsCapAtConfiguredMenuHeight() {
-        assertEquals(
-            220.dp,
-            raftBrutalSelectListHeight(optionCount = 30, rowHeight = 36.dp, maxMenuHeight = 220.dp)
-        )
-        // 3 rows of 36dp + the 6dp popup inset top and bottom.
-        assertEquals(
-            120.dp,
-            raftBrutalSelectListHeight(optionCount = 3, rowHeight = 36.dp, maxMenuHeight = 220.dp)
-        )
-    }
-
-    @Test
-    fun raftSelectGroupLabelsTakeTheirOwnHeight() {
-        // 6 (p-1.5) + 28 (group label px-2.5 pt-2 pb-1) + 2 x 36 (min-h-9) + 6.
-        assertEquals(
-            112.dp,
-            raftSelectListHeight(
-                options =
-                    listOf(
-                        RaftBrutalSelectOption("group", "Group", header = true),
-                        RaftBrutalSelectOption("a", "A"),
-                        RaftBrutalSelectOption("b", "B")
-                    ),
-                maxMenuHeight = 220.dp
-            )
-        )
-    }
-
-    @Test
     fun selectPopoverKeepsTriggerWidthAndFlipsAboveBottomTrigger() {
         val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         val contentSize = Size(width = 358f, height = 224f)

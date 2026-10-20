@@ -7308,10 +7308,12 @@ private fun MembersLifecycleConfirmation(
             )
         }
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
-                onClick = onCancel
+                onClick = onCancel,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
             RaftBrutalActionButton(
                 label = if (isArchive) {
@@ -7553,10 +7555,12 @@ private fun MembersAgentArchiveSection(
                     color = RaftColor.TextBlack
                 )
                 RaftDialogFooter {
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_cancel),
+                    RaftButton(
+                        text = stringResource(MR.strings.common_cancel),
                         enabled = !deleting,
-                        onClick = { confirmDelete = false }
+                        onClick = { confirmDelete = false },
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Lg
                     )
                     RaftBrutalActionButton(
                         label = stringResource(MR.strings.member_archive_action_delete_workspace),
@@ -7774,11 +7778,12 @@ private fun MembersAgentIssueReportDialog(
             }
         }
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
-                backgroundColor = RaftColor.SurfaceWhite,
-                onClick = onDismiss
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
             RaftBrutalActionButton(
                 label =
@@ -7957,10 +7962,10 @@ private fun MembersAgentIssueReportReceiptDialog(
                 )
             }
             RaftDialogFooter {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_done),
-                    backgroundColor = RaftColor.AccentLime,
-                    onClick = onDismiss
+                RaftButton(
+                    text = stringResource(MR.strings.common_done),
+                    onClick = onDismiss,
+                    size = RaftButtonSize.Lg
                 )
             }
         }
@@ -8765,11 +8770,12 @@ private fun MembersServerRoleEditor(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
-            RaftBrutalActionButton(
-                label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+            RaftButton(
+                text = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                 onClick = onSave,
                 enabled = enabled && saveEnabled,
-                backgroundColor = RaftColor.BrandYellow
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg
             )
             RaftBrutalActionButton(
                 label = stringResource(MR.strings.common_cancel),
@@ -9731,11 +9737,12 @@ private fun MembersAgentProfileFieldsSection(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
-                    RaftBrutalActionButton(
-                        label = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                    RaftButton(
+                        text = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                         onClick = { saveDisplayName() },
                         enabled = !savingDisplayName,
-                        backgroundColor = RaftColor.BrandYellow
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg
                     )
                     RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_cancel),
@@ -9824,11 +9831,12 @@ private fun MembersAgentProfileFieldsSection(
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    RaftBrutalActionButton(
-                        label = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                    RaftButton(
+                        text = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
                         onClick = { saveRole() },
                         enabled = !savingRole,
-                        backgroundColor = RaftColor.BrandYellow
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg
                     )
                     RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_cancel),
@@ -11900,11 +11908,12 @@ private fun MembersAgentRuntimeConfigDialog(
                 }
             }
             RaftDialogFooter {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
                     enabled = !saving,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    onClick = onDismiss
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
                 )
                 RaftBrutalActionButton(
                     label = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
@@ -12193,10 +12202,11 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                 )
             }
             RaftDialogFooter {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    onClick = onCancel
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
+                    onClick = onCancel,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
                 )
                 RaftBrutalActionButton(
                     label = confirmation.confirmLabel.localized(),

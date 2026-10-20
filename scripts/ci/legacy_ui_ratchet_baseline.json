@@ -1,12 +1,12 @@
 {
   "totals": {
-    "legacyComponentCalls": 361,
-    "thickInkBorders": 59
+    "legacyComponentCalls": 254,
+    "thickInkBorders": 48
   },
   "files": {
     "compose/shared/src/commonMain/kotlin/build/raft/app/AddComputerDialog.kt": {
-      "legacyComponentCalls": 7,
-      "thickInkBorders": 4
+      "legacyComponentCalls": 3,
+      "thickInkBorders": 2
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/AnnouncementModal.kt": {
       "legacyComponentCalls": 3,
@@ -14,38 +14,30 @@
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/AppUpdatePage.kt": {
       "legacyComponentCalls": 1,
-      "thickInkBorders": 1
+      "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/AuthComponents.kt": {
       "legacyComponentCalls": 2,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/AuthPages.kt": {
-      "legacyComponentCalls": 1,
+      "legacyComponentCalls": 0,
       "thickInkBorders": 1
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/ChannelMembersCreateAgentDialog.kt": {
-      "legacyComponentCalls": 1,
-      "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/ChannelSettingsPage.kt": {
       "legacyComponentCalls": 6,
       "thickInkBorders": 1
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/InAppBrowserPage.kt": {
-      "legacyComponentCalls": 6,
+      "legacyComponentCalls": 3,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/MembersAgentRuntimeFormV2Dialog.kt": {
-      "legacyComponentCalls": 2,
-      "thickInkBorders": 0
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/MembersAgentRuntimeUsage.kt": {
       "legacyComponentCalls": 1,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt": {
-      "legacyComponentCalls": 28,
+      "legacyComponentCalls": 19,
       "thickInkBorders": 3
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/PrivateDeploymentSheet.kt": {
@@ -61,10 +53,6 @@
       "thickInkBorders": 2
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftDatabaseLaunchRecoveryContent.kt": {
-      "legacyComponentCalls": 2,
-      "thickInkBorders": 0
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/RaftEmptyState.kt": {
       "legacyComponentCalls": 1,
       "thickInkBorders": 0
     },
@@ -73,15 +61,15 @@
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftFilePreview.kt": {
-      "legacyComponentCalls": 13,
-      "thickInkBorders": 8
+      "legacyComponentCalls": 10,
+      "thickInkBorders": 7
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftFilterPopover.kt": {
       "legacyComponentCalls": 2,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt": {
-      "legacyComponentCalls": 9,
+      "legacyComponentCalls": 5,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt": {
@@ -93,75 +81,67 @@
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalComponents.kt": {
-      "legacyComponentCalls": 10,
+      "legacyComponentCalls": 7,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTabBar.kt": {
       "legacyComponentCalls": 0,
-      "thickInkBorders": 5
+      "thickInkBorders": 3
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTasksDetailOverlay.kt": {
-      "legacyComponentCalls": 1,
+      "legacyComponentCalls": 0,
       "thickInkBorders": 1
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt": {
       "legacyComponentCalls": 0,
       "thickInkBorders": 3
     },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/ReleaseNotesPage.kt": {
-      "legacyComponentCalls": 1,
-      "thickInkBorders": 0
-    },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RouterPage.kt": {
-      "legacyComponentCalls": 4,
+      "legacyComponentCalls": 3,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RuntimeFormV2Fields.kt": {
-      "legacyComponentCalls": 14,
+      "legacyComponentCalls": 11,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsAccountPage.kt": {
-      "legacyComponentCalls": 11,
-      "thickInkBorders": 7
+      "legacyComponentCalls": 8,
+      "thickInkBorders": 6
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsBillingPage.kt": {
-      "legacyComponentCalls": 4,
-      "thickInkBorders": 2
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt": {
-      "legacyComponentCalls": 86,
-      "thickInkBorders": 2
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneWebViewHost.kt": {
       "legacyComponentCalls": 3,
       "thickInkBorders": 1
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt": {
+      "legacyComponentCalls": 64,
+      "thickInkBorders": 3
+    },
+    "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneWebViewHost.kt": {
+      "legacyComponentCalls": 1,
+      "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStoragePage.kt": {
       "legacyComponentCalls": 1,
-      "thickInkBorders": 4
+      "thickInkBorders": 2
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/SharedCreateAgentDialog.kt": {
-      "legacyComponentCalls": 45,
+      "legacyComponentCalls": 33,
       "thickInkBorders": 1
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt": {
-      "legacyComponentCalls": 4,
-      "thickInkBorders": 0
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInviteHumanDialog.kt": {
-      "legacyComponentCalls": 9,
+      "legacyComponentCalls": 1,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt": {
-      "legacyComponentCalls": 3,
+      "legacyComponentCalls": 0,
       "thickInkBorders": 2
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt": {
-      "legacyComponentCalls": 6,
+      "legacyComponentCalls": 4,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadInlineAudioPreview.kt": {
-      "legacyComponentCalls": 6,
+      "legacyComponentCalls": 2,
       "thickInkBorders": 2
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadInlineVideoPreview.kt": {
@@ -169,7 +149,7 @@
       "thickInkBorders": 1
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt": {
-      "legacyComponentCalls": 31,
+      "legacyComponentCalls": 23,
       "thickInkBorders": 2
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt": {
@@ -177,7 +157,7 @@
       "thickInkBorders": 3
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftBrutalComponents.kt": {
-      "legacyComponentCalls": 11,
+      "legacyComponentCalls": 12,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftBrutalSelect.kt": {
@@ -190,10 +170,10 @@
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftUiLibraryPrimitives.kt": {
       "legacyComponentCalls": 5,
-      "thickInkBorders": 1
+      "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftUiPrimitives.kt": {
-      "legacyComponentCalls": 3,
+      "legacyComponentCalls": 2,
       "thickInkBorders": 0
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/components/SharedHomeSearchInput.kt": {

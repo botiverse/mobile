@@ -12,6 +12,9 @@ import build.raft.app.raftArgbHex
 import build.raft.app.RaftType
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -88,42 +91,45 @@ internal fun RaftBrutalBadge(
     leadingIcon: RaftLucideIconName? = null,
     contentColor: Color? = null
 ) {
-    RaftBrutalBadgeChrome(
-        label = label,
+    // raft-ui labels are soft badges; black (inverse), lavender (no raft variant) and a
+    // caller-set ink keep the raft-look chrome.
+    val variant = tone.raftBadgeVariant
+    if (variant == null || contentColor != null) {
+        RaftBrutalBadgeChrome(
+            label = label,
+            modifier = modifier,
+            tone = tone,
+            uppercase = uppercase,
+            leadingIcon = leadingIcon,
+            contentColor = contentColor
+        )
+        return
+    }
+    RaftBadge(
+        text = label,
         modifier = modifier,
-        tone = tone,
-        uppercase = uppercase,
-        leadingIcon = leadingIcon,
-        contentColor = contentColor
+        appearance = RaftBadgeAppearance.Soft,
+        variant = variant,
+        icon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
-@Composable
-internal fun RaftBrutalBadgeButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    tone: RaftBrutalTone = RaftBrutalTone.White,
-    uppercase: Boolean = true,
-    enabled: Boolean = true,
-    leadingIcon: RaftLucideIconName? = null
-) {
-    RaftAppButton(
-        onClick = onClick,
-        enabled = enabled,
-        pressFeedback = enabled,
-        // raft badges do not shift when pressed.
-        pressOffset = 0.dp,
-        modifier = modifier
-    ) {
-        RaftBrutalBadgeChrome(
-            label = label,
-            tone = tone,
-            uppercase = uppercase,
-            leadingIcon = leadingIcon
-        )
-    }
-}
+/** The raft-ui badge variant of a legacy tone; null where raft-ui has none (black, lavender). */
+internal val RaftBrutalTone.raftBadgeVariant: RaftBadgeVariant?
+    get() =
+        when (this) {
+            RaftBrutalTone.White -> RaftBadgeVariant.Default
+            RaftBrutalTone.Yellow -> RaftBadgeVariant.Primary
+            RaftBrutalTone.Pink -> RaftBadgeVariant.Accent
+            RaftBrutalTone.Cyan -> RaftBadgeVariant.Information
+            RaftBrutalTone.Lime -> RaftBadgeVariant.Success
+            RaftBrutalTone.Orange,
+            RaftBrutalTone.Warning -> RaftBadgeVariant.Warning
+            RaftBrutalTone.Red -> RaftBadgeVariant.Danger
+            RaftBrutalTone.Stone -> RaftBadgeVariant.Muted
+            RaftBrutalTone.Black,
+            RaftBrutalTone.Lavender -> null
+        }
 
 // [uppercase] is the retired brutal register's caps; raft-ui badges keep the source case.
 @Suppress("UNUSED_PARAMETER")

@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
@@ -3378,19 +3382,21 @@ private fun RaftStructuralHomeShellContent(
                         color = RaftColor.TextMutedGray
                     )
                     RaftDialogFooter {
-                        RaftBrutalActionButton(
-                            label = stringResource(MR.strings.common_cancel),
+                        RaftButton(
+                            text = stringResource(MR.strings.common_cancel),
                             onClick = { sectionDeleteConfirmId = null },
-                            backgroundColor = RaftColor.SurfaceWhite
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftButtonSize.Lg
                         )
-                        RaftBrutalActionButton(
-                            label = stringResource(MR.strings.common_delete),
+                        RaftButton(
+                            text = stringResource(MR.strings.common_delete),
                             onClick = {
                                 onSidebarSectionDelete(sectionDeleteSection.id)
                                 sectionDeleteConfirmId = null
                             },
-                            leadingIcon = RaftLucideIconName.Trash2,
-                            backgroundColor = RaftColor.AccentRed
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Trash2) },
+                            variant = RaftButtonVariant.Danger,
+                            size = RaftButtonSize.Lg
                         )
                     }
                 }
@@ -3915,16 +3921,18 @@ private fun RaftHomeSectionDialog(
             placeholder = "🙂"
         )
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
-                backgroundColor = RaftColor.SurfaceWhite
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label = submitLabel ?: stringResource(MR.strings.common_save),
+            RaftButton(
+                text = submitLabel ?: stringResource(MR.strings.common_save),
                 onClick = { onSubmit(trimmedName, emoji.text.trim().takeIf { it.isNotEmpty() }) },
                 enabled = trimmedName.isNotEmpty(),
-                backgroundColor = RaftColor.BrandYellow
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg
             )
         }
     }
@@ -5240,7 +5248,6 @@ private fun HomeNotificationActionButton(text: String, color: Color, onClick: ()
         backgroundColor = color,
         minWidth = 72.dp,
         minHeight = 32.dp,
-        shadowOffset = shadowOffset,
         textStyle = HomeNotificationActionButtonTextStyle
     )
 }
@@ -6127,7 +6134,6 @@ private fun HardShadowPanel(
         modifier = modifier,
         minWidth = minWidth,
         maxWidth = maxWidth,
-        shadowOffset = HomePanelShadowOffset,
         content = content
     )
 }

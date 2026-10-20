@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
@@ -72,12 +76,13 @@ internal fun RaftDatabaseLaunchRecoveryContent(
                 style = RaftType.Body,
                 color = RaftColor.TextMutedGray,
             )
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.database_recovery_action_retry),
+            RaftButton(
+                text = stringResource(MR.strings.database_recovery_action_retry),
                 onClick = onRetry,
                 modifier = Modifier.fillMaxWidth(),
-                leadingIcon = RaftLucideIconName.RefreshCw,
-                backgroundColor = RaftColor.BrandYellow,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
             )
         }
     }

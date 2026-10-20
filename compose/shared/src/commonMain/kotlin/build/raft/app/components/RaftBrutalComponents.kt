@@ -25,9 +25,9 @@ import build.raft.app.raftArgbHex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,10 +40,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,24 +51,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -78,6 +70,50 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.ui.KeyboardParams
+import build.raft.app.raftAppEditorBehavior
+import build.raft.app.raftResolvedKeyboardOptions
+import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftReadOnlyField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import com.tencent.tmm.kmmresource.compose.stringResource
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
+
+/*
+ * Legacy `RaftBrutal*` API -> compose/designsystem (raft-ui) map. Call counts are call
+ * sites in compose/shared at the start of the migration (origin/main 91cadf12e).
+ *
+ * | Legacy API (calls)                          | Design-system component                                   |
+ * | ------------------------------------------- | --------------------------------------------------------- |
+ * | RaftBrutalActionButton (143)                 | RaftButton (variant from the fill, size from minHeight)    |
+ * | RaftBrutalIconButton (22)                    | RaftIconButton (Md / Lg)                                   |
+ * | RaftBrutalTextField (45)                     | RaftField + RaftTextField                                  |
+ * | RaftBrutalInputField (20)                    | RaftTextField (single line, default chrome)                |
+ * | RaftBrutalSearchField (5)                    | RaftTextField with a leading search addon                  |
+ * | RaftBrutalSelectField (16)                   | RaftSelectTrigger + RaftDropdownMenu / RaftMenuItem        |
+ * | RaftBrutalSectionLabel (21)                  | RaftFieldLabel                                             |
+ * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField                           |
+ * | RaftBrutalCard (12)                          | RaftCard                                                   |
+ * | RaftBrutalListRow (2)                        | RaftListRowGroup + RaftListRow                             |
+ * | RaftBrutalBadge (3)                          | RaftBadge (soft); RaftBrutalBadgeButton (0) removed        |
+ * | RaftBrutalDropdownMenuSurface (3) / Row (2)  | RaftMenuSurface + RaftMenuItem                             |
+ * | RaftBrutalDropdownMenu (2)                   | app popover positioning around RaftMenuSurface             |
+ * | RaftBrutalModalLayer (2) / Header (2)        | dialog header from RaftText headline + ghost RaftIconButton |
+ * | RaftBrutalTextarea (2)                       | RaftTextarea (no TextFieldValue / focus-hook overload yet) |
+ * | RaftBrutalPanel (1)                          | no generic popover surface yet (raft-look kept)            |
+ * | RaftBrutalPanelShell (1) / ListShell (1)     | removed: RaftListRowGroup at the call sites                |
+ * | RaftBrutalListSectionHeader (1)              | removed: RaftSectionEyebrow at the call site               |
+ * | RaftBrutalActionSheetRow (1)                 | RaftListRow + RaftIconTile (no danger tone yet)            |
+ * | RaftShadow.Brutal* (48 refs, all 0dp)        | removed: raft-ui controls cast no shadow                   |
+ */
 
 internal data class RaftModalShellModel(
     val title: String,
@@ -287,6 +323,11 @@ internal fun RaftAnchoredMetaChip(
     }
 }
 
+/**
+ * Legacy-named field label; renders the design-system [RaftFieldLabel] (`sm` for
+ * [RaftFormFieldSize.Compact]). An optional label keeps [RaftLookFieldLabel]: the
+ * design-system label's "(optional)" suffix is not localised yet.
+ */
 @Composable
 internal fun RaftBrutalSectionLabel(
     label: String,
@@ -295,14 +336,26 @@ internal fun RaftBrutalSectionLabel(
     size: RaftFormFieldSize = RaftFormFieldSize.Default,
     modifier: Modifier = Modifier
 ) {
-    RaftLookFieldLabel(
-        label = label,
-        required = required,
-        optional = optional,
-        compact = size == RaftFormFieldSize.Compact,
-        modifier = modifier
-    )
+    if (optional && !required) {
+        RaftLookFieldLabel(
+            label = label,
+            required = false,
+            optional = true,
+            compact = size == RaftFormFieldSize.Compact,
+            modifier = modifier
+        )
+    } else {
+        RaftFieldLabel(
+            text = label,
+            modifier = modifier,
+            size = size.raftFieldLabelSize,
+            required = required
+        )
+    }
 }
+
+internal val RaftFormFieldSize.raftFieldLabelSize: RaftFieldLabelSize
+    get() = if (this == RaftFormFieldSize.Compact) RaftFieldLabelSize.Sm else RaftFieldLabelSize.Md
 
 @Composable
 internal fun RaftBrutalModalHeader(
@@ -310,8 +363,9 @@ internal fun RaftBrutalModalHeader(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // raft DialogHeader: px-5 pt-5, headline 17/22 bold title, subhead 15/20 muted
-    // description, ghost icon-md close (32dp, 18dp X) pulled into the corner.
+    // raft-ui DialogHeader (as RaftDialogSurface): px-5 pt-5, `headline` title, `subhead`
+    // muted description, the ghost `icon-md` close pulled into the corner. The body stays
+    // the caller's (lazy lists, own padding), so only the header is the dialog's.
     Row(
         modifier =
             modifier
@@ -324,30 +378,30 @@ internal fun RaftBrutalModalHeader(
             modifier = Modifier.weight(1f).padding(top = 6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Text(
+            RaftText(
                 text = model.title,
-                style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack,
+                style = RaftTheme.typography.headline,
+                color = RaftTheme.colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             if (model.subtitle.isNotBlank()) {
-                Text(
+                RaftText(
                     text = model.subtitle,
-                    style = RaftType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                    color = RaftColor.TextMuted,
+                    style = RaftTheme.typography.subhead,
+                    color = RaftTheme.colors.foregroundMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        RaftBrutalIconButton(
-            iconName = model.dismissIcon,
+        RaftIconButton(
             onClick = onDismiss,
-            backgroundColor = Color.Transparent,
-            size = 32.dp,
-            iconSize = 18.dp
-        )
+            tooltip = stringResource(MR.strings.common_close),
+            variant = RaftButtonVariant.Ghost
+        ) {
+            RaftSlotIcon(model.dismissIcon)
+        }
     }
 }
 
@@ -495,14 +549,15 @@ internal fun RaftBrutalTextField(
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
-    RaftFormField(
+    RaftBrutalFieldFrame(
         label = label,
         modifier = modifier,
         required = required,
         optional = optional,
         hint = hint,
         error = error,
-        size = labelSize,
+        labelSize = labelSize,
+        enabled = enabled,
         labelAccessory = labelAccessory
     ) {
         RaftBrutalInputField(
@@ -554,14 +609,15 @@ internal fun RaftBrutalTextField(
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
-    RaftFormField(
+    RaftBrutalFieldFrame(
         label = label,
         modifier = modifier,
         required = required,
         optional = optional,
         hint = hint,
         error = error,
-        size = labelSize,
+        labelSize = labelSize,
+        enabled = enabled,
         labelAccessory = labelAccessory
     ) {
         RaftBrutalInputField(
@@ -587,6 +643,51 @@ internal fun RaftBrutalTextField(
             onFocusChanged = onFocusChanged
         )
     }
+}
+
+/**
+ * The label / control / help column of a legacy form field: the design-system [RaftField]
+ * (label, required mark, help or error line, field state for the control). A label
+ * accessory or an optional label keeps [RaftFormField]: [RaftField] has no accessory slot
+ * and its "(optional)" suffix is not localised yet.
+ */
+@Composable
+internal fun RaftBrutalFieldFrame(
+    label: String,
+    modifier: Modifier,
+    required: Boolean,
+    optional: Boolean,
+    hint: String?,
+    error: String?,
+    labelSize: RaftFormFieldSize,
+    enabled: Boolean = true,
+    labelAccessory: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    if (labelAccessory != null || (optional && !required)) {
+        RaftFormField(
+            label = label,
+            modifier = modifier,
+            required = required,
+            optional = optional,
+            hint = hint,
+            error = error,
+            size = labelSize,
+            labelAccessory = labelAccessory,
+            content = content
+        )
+        return
+    }
+    RaftField(
+        label = label.takeIf { it.isNotBlank() },
+        modifier = modifier.fillMaxWidth(),
+        description = hint?.takeIf { it.isNotBlank() },
+        error = error?.takeIf { it.isNotBlank() },
+        enabled = enabled,
+        required = required,
+        labelSize = labelSize.raftFieldLabelSize,
+        content = content
+    )
 }
 
 /**
@@ -723,6 +824,45 @@ internal fun RaftBrutalInputField(
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     val focusPolicy = raftBrutalInputFocusPolicy(maxLines, enabled, readOnly, containerTapRequestsFocus)
+    if (
+        trailingContent == null &&
+        raftBrutalInputUsesDesignSystem(
+            maxLines, fieldMinHeight, horizontalPadding, verticalPadding,
+            borderColor, enabledBackgroundColor, disabledBackgroundColor
+        )
+    ) {
+        val editor =
+            rememberRaftDesignSystemEditor(
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                keyboardHeightChange = keyboardHeightChange,
+                focusRequester = focusRequester,
+                autoFocus = autoFocus && focusPolicy.acceptsFocus,
+                onFocus = { onFocusChanged(true) },
+                onBlur = { onFocusChanged(false) }
+            )
+        RaftTextField(
+            value = value,
+            onValueChange = { nextValue ->
+                raftBrutalInputForwardValueChange(focusPolicy = focusPolicy, nextValue = nextValue, onValueChange = onValueChange)
+            },
+            modifier = modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            enabled = enabled,
+            readOnly = readOnly,
+            invalid = borderColor == RaftColor.AccentRed,
+            trailing =
+                if (showClearWhenNotEmpty && value.isNotEmpty() && focusPolicy.acceptsFocus) {
+                    { RaftFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange("") }) }
+                } else {
+                    null
+                },
+            keyboardOptions = editor.keyboardOptions,
+            keyboardActions = keyboardActions,
+            visualTransformation = visualTransformation
+        )
+        return
+    }
     val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
@@ -809,8 +949,7 @@ internal fun RaftBrutalInputField(
                     iconName = RaftLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange("") },
                     backgroundColor = Color.Transparent,
-                    size = 18.dp,
-                    shadowOffset = 2.dp
+                    size = 18.dp
                 )
             }
             trailingContent?.invoke()
@@ -852,6 +991,45 @@ internal fun RaftBrutalInputField(
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     val focusPolicy = raftBrutalInputFocusPolicy(maxLines, enabled, readOnly, containerTapRequestsFocus)
+    if (
+        trailingContent == null &&
+        raftBrutalInputUsesDesignSystem(
+            maxLines, fieldMinHeight, horizontalPadding, verticalPadding,
+            borderColor, enabledBackgroundColor, disabledBackgroundColor
+        )
+    ) {
+        val editor =
+            rememberRaftDesignSystemEditor(
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                keyboardHeightChange = keyboardHeightChange,
+                focusRequester = focusRequester,
+                autoFocus = autoFocus && focusPolicy.acceptsFocus,
+                onFocus = { onFocusChanged(true) },
+                onBlur = { onFocusChanged(false) }
+            )
+        RaftTextField(
+            value = value,
+            onValueChange = { nextValue ->
+                raftBrutalInputForwardValueChange(focusPolicy = focusPolicy, nextValue = nextValue, onValueChange = onValueChange)
+            },
+            modifier = modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            enabled = enabled,
+            readOnly = readOnly,
+            invalid = borderColor == RaftColor.AccentRed,
+            trailing =
+                if (showClearWhenNotEmpty && value.text.isNotEmpty() && focusPolicy.acceptsFocus) {
+                    { RaftFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) }) }
+                } else {
+                    null
+                },
+            keyboardOptions = editor.keyboardOptions,
+            keyboardActions = keyboardActions,
+            visualTransformation = visualTransformation
+        )
+        return
+    }
     val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
@@ -938,13 +1116,86 @@ internal fun RaftBrutalInputField(
                     iconName = RaftLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
                     backgroundColor = Color.Transparent,
-                    size = 18.dp,
-                    shadowOffset = 2.dp
+                    size = 18.dp
                 )
             }
             trailingContent?.invoke()
         }
     }
+}
+
+/**
+ * True when a legacy input is the plain raft-ui field the design-system [RaftTextField]
+ * draws: one line, the legacy height / padding defaults and the default (or error) chrome.
+ * Multi-line inputs, a trailing control and custom chrome (a field inside another frame)
+ * keep [RaftBrutalInputFieldFrame]: the design system has no multi-line TextFieldValue
+ * field or trailing-action slot yet.
+ */
+internal fun raftBrutalInputUsesDesignSystem(
+    maxLines: Int,
+    fieldMinHeight: Dp,
+    horizontalPadding: Dp,
+    verticalPadding: Dp,
+    borderColor: Color,
+    enabledBackgroundColor: Color,
+    disabledBackgroundColor: Color
+): Boolean =
+    maxLines <= 1 &&
+        (fieldMinHeight == RaftMetrics.LegacyFieldHeight || fieldMinHeight == RaftMetrics.FieldHeight) &&
+        horizontalPadding == RaftBrutalInputLegacyHorizontalPadding &&
+        verticalPadding == 8.dp &&
+        (borderColor == RaftColor.BorderBlack || borderColor == RaftColor.AccentRed) &&
+        (enabledBackgroundColor == RaftColor.SurfaceWhite || enabledBackgroundColor == RaftFieldErrorTint) &&
+        disabledBackgroundColor == RaftColor.SurfaceCream
+
+internal class RaftDesignSystemEditor(val modifier: Modifier, val keyboardOptions: KeyboardOptions)
+
+/**
+ * The app editor behaviour ([raftAppEditorBehavior]: IME enter action, keyboard-height
+ * events, focus callbacks, tap-outside focus dismiss) for a single-line design-system
+ * [RaftTextField], plus the delayed [autoFocus] request of the app editor.
+ */
+@Composable
+internal fun rememberRaftDesignSystemEditor(
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    keyboardHeightChange: (KeyboardParams) -> Unit,
+    focusRequester: FocusRequester,
+    autoFocus: Boolean,
+    onFocus: () -> Unit,
+    onBlur: () -> Unit
+): RaftDesignSystemEditor {
+    val resolvedKeyboardOptions = raftResolvedKeyboardOptions(keyboardOptions, singleLine = true, imeActionRequested = true)
+    val modifier =
+        Modifier.raftAppEditorBehavior(
+            singleLine = true,
+            resolvedKeyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+            keyboardHeightChange = keyboardHeightChange,
+            focusRequester = focusRequester,
+            onFocus = onFocus,
+            onBlur = onBlur
+        )
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) {
+            delay(100)
+            focusRequester.requestFocus()
+        }
+    }
+    return RaftDesignSystemEditor(modifier, resolvedKeyboardOptions)
+}
+
+/** The clear (×) addon at the end of a design-system field: the addon ink, tappable. */
+@Composable
+private fun RaftFieldClearAction(onClear: () -> Unit) {
+    val clearLabel = stringResource(MR.strings.common_clear)
+    RaftSlotIcon(
+        RaftLucideIconName.X,
+        modifier =
+            Modifier
+                .clickable(onClick = onClear)
+                .semantics { contentDescription = clearLabel }
+    )
 }
 
 /** The brutal field type (14/18); raft swaps a field still on it for `text-field` 16/24. */
@@ -1008,6 +1259,14 @@ internal fun RaftBrutalReadOnlyField(
     textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
     textColor: Color = RaftColor.TextMutedGray
 ) {
+    if (maxLines <= 1) {
+        // raft-ui: the disabled-field value under a `sm` label (CopyableCode / read-only Input).
+        RaftField(label = label.takeIf { it.isNotBlank() }, modifier = modifier.fillMaxWidth(), labelSize = RaftFieldLabelSize.Sm) {
+            RaftReadOnlyField(text = value)
+        }
+        return
+    }
+    // RaftReadOnlyField is one line; a wrapping value keeps the legacy box.
     RaftFormField(label = label, modifier = modifier, size = RaftFormFieldSize.Compact) {
         RaftBrutalReadOnlyValueField(
             value = value,
@@ -1038,6 +1297,15 @@ internal fun RaftBrutalReadOnlyValueField(
     textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
     textColor: Color = RaftColor.TextMutedGray
 ) {
+    if (
+        maxLines <= 1 &&
+        (fieldMinHeight == RaftMetrics.LegacyFieldHeight || fieldMinHeight == RaftMetrics.FieldHeight) &&
+        backgroundColor == RaftReadOnlyFieldLegacyBackground &&
+        borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)
+    ) {
+        RaftReadOnlyField(text = value, modifier = modifier)
+        return
+    }
     val shape = RoundedCornerShape(RaftAppRadius.Control)
     // raft: a non-editable value is the disabled field pair (`--fill-muted` fill,
     // 1.5dp `--line-hairline` edge, muted ink) at the 44dp field height.
@@ -1064,6 +1332,12 @@ internal fun RaftBrutalReadOnlyValueField(
     }
 }
 
+/**
+ * Legacy-named search field; renders the design-system [RaftTextField] input group with a
+ * leading search addon and the clear addon, with the app editor behaviour
+ * ([rememberRaftDesignSystemEditor]). [textStyle] is ignored: fields use the `field` type.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalSearchField(
     value: String,
@@ -1078,28 +1352,20 @@ internal fun RaftBrutalSearchField(
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
-    RaftSearchFieldFrame(
-        modifier = modifier,
+    val editor = rememberRaftSearchEditor(onFocus, onBlur)
+    RaftTextField(
+        value = value,
+        onValueChange = { if (enabled) onValueChange(it) },
+        modifier = modifier.fillMaxWidth().then(editor.modifier),
+        placeholder = placeholder.ifEmpty { null },
         enabled = enabled,
-        leadingIcon = leadingIcon,
-        showClear = showClearWhenNotEmpty && value.isNotEmpty(),
-        onClear = onClear
-    ) {
-        TextField(
-            value = value,
-            onValueChange = { if (enabled) onValueChange(it) },
-            placeholder = placeholder,
-            placeholderColor = RaftColor.ForegroundHint,
-            autoFocus = false,
-            onFocus = { onFocus() },
-            onBlur = { onBlur() },
-            maxLines = 1,
-            textStyle = raftSearchTextStyle(textStyle, enabled),
-            modifier = Modifier.weight(1f)
-        )
-    }
+        leading = { RaftSlotIcon(leadingIcon) },
+        trailing = if (showClearWhenNotEmpty && value.isNotEmpty()) ({ RaftFieldClearAction(onClear) }) else null,
+        keyboardOptions = editor.keyboardOptions
+    )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalSearchField(
     value: TextFieldValue,
@@ -1114,86 +1380,43 @@ internal fun RaftBrutalSearchField(
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
-    RaftSearchFieldFrame(
-        modifier = modifier,
+    val editor = rememberRaftSearchEditor(onFocus, onBlur)
+    RaftTextField(
+        value = value,
+        onValueChange = { if (enabled) onValueChange(it) },
+        modifier = modifier.fillMaxWidth().then(editor.modifier),
+        placeholder = placeholder.ifEmpty { null },
         enabled = enabled,
-        leadingIcon = leadingIcon,
-        showClear = showClearWhenNotEmpty && value.text.isNotEmpty(),
-        onClear = onClear
-    ) {
-        TextField(
-            value = value,
-            onValueChange = { if (enabled) onValueChange(it) },
-            placeholder = placeholder,
-            placeholderColor = RaftColor.ForegroundHint,
-            autoFocus = false,
-            onFocus = { onFocus() },
-            onBlur = { onBlur() },
-            maxLines = 1,
-            textStyle = raftSearchTextStyle(textStyle, enabled),
-            modifier = Modifier.weight(1f)
-        )
-    }
+        leading = { RaftSlotIcon(leadingIcon) },
+        trailing = if (showClearWhenNotEmpty && value.text.isNotEmpty()) ({ RaftFieldClearAction(onClear) }) else null,
+        keyboardOptions = editor.keyboardOptions
+    )
+}
+
+@Composable
+private fun rememberRaftSearchEditor(onFocus: () -> Unit, onBlur: () -> Unit): RaftDesignSystemEditor {
+    val focusRequester = remember { FocusRequester() }
+    return rememberRaftDesignSystemEditor(
+        keyboardOptions = KeyboardOptions.Default,
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = focusRequester,
+        autoFocus = false,
+        onFocus = onFocus,
+        onBlur = onBlur
+    )
 }
 
 /** The brutal search type (13/16); raft swaps a field still on it for `text-field` 16/24. */
 internal val RaftBrutalSearchDefaultTextStyle: TextStyle
     get() = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = RaftColor.TextBlack)
 
-private fun raftSearchTextStyle(textStyle: TextStyle, enabled: Boolean): TextStyle {
-    val ink = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
-    return if (textStyle == RaftBrutalSearchDefaultTextStyle) {
-        RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = ink)
-    } else {
-        textStyle.copy(color = ink)
-    }
-}
-
 /**
- * raft-ui InputGroup with an inline-start search addon: 44dp, control radius, 1.5dp
- * `--line-strong` edge on the card layer, no shadow; the 18dp addon icon and the clear
- * affordance use the hint ink. Disabled is the opaque `--fill-muted` / `--line-hairline` pair.
- */
-@Composable
-private fun RaftSearchFieldFrame(
-    modifier: Modifier,
-    enabled: Boolean,
-    leadingIcon: RaftLucideIconName,
-    showClear: Boolean,
-    onClear: () -> Unit,
-    field: @Composable RowScope.() -> Unit
-) {
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    val hintArgb = raftArgbHex(if (enabled) RaftColor.ForegroundHint else RaftColor.ForegroundDisabled)
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(RaftMetrics.FieldHeight)
-                .background(if (enabled) RaftColor.Card else RaftColor.FillMuted, shape)
-                .border(RaftAppStroke.Control, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
-                .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftLucideIcon(leadingIcon, color = hintArgb, modifier = Modifier.size(18.dp))
-        field()
-        if (showClear) {
-            RaftLucideIcon(
-                RaftLucideIconName.X,
-                color = hintArgb,
-                modifier =
-                    Modifier
-                        .size(16.dp)
-                        .clickable(enabled = enabled, onClick = onClear)
-            )
-        }
-    }
-}
-
-/**
- * The disabled* colours, [leadingIconSize], [contentSpacing] and [shadowOffset] are ignored:
- * they only shaped the retired brutal register.
+ * Legacy-named button; renders the design-system [RaftButton]. The variant comes from
+ * [backgroundColor] ([raftButtonVariantFor]), the size from [minHeight]
+ * ([raftButtonSizeFor]). [textStyle], the disabled* colours, [leadingIconSize] and
+ * [contentSpacing] only shaped the retired brutal register and are
+ * ignored. Prefer `build.raft.designsystem.components.RaftButton` in new code.
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -1204,43 +1427,39 @@ internal fun RaftBrutalActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = RaftColor.SurfaceWhite,
-    // react bg-palette-stone #C0B9B1 @ .btn-brutal-sm:disabled opacity-40 over white = #E6E3E0 (visual-fix pilot, AI analysis 2026-07-09)
-    disabledBackgroundColor: Color = Color(0xFFE6E3E0), // raft-color: unused legacy parameter
-    // Same react rule as the fill above: .btn-brutal-sm:disabled is the WHOLE
-    // element at opacity-40, so every part composites over white - border black
-    // -> #999999, shadow ink #141111 -> #A1A0A0, text black -> #999999. Opaque
-    // values on purpose: alpha on the shadow Box is unreliable in this render
-    // path (the 0.40f below still drew black) and opaque matches the #508 fill
-    // precedent.
-    disabledBorderColor: Color = Color(0xFF999999), // raft-color: unused legacy parameter
-    disabledShadowColor: Color = Color(0xFFA1A0A0), // raft-color: unused legacy parameter
-    disabledContentColor: Color = Color(0xFF999999), // raft-color: unused legacy parameter
+    disabledBackgroundColor: Color = RaftColor.FillMuted,
+    disabledBorderColor: Color = RaftColor.BorderHairline,
+    disabledShadowColor: Color = RaftColor.BorderHairline,
+    disabledContentColor: Color = RaftColor.ForegroundDisabled,
     disabledIconColor: String = "#FF999999",
-    minWidth: Dp = 82.dp,
+    minWidth: Dp = RaftBrutalActionButtonLegacyMinWidth,
     minHeight: Dp = 40.dp,
     leadingIcon: RaftLucideIconName? = null,
     leadingIconSpinning: Boolean = leadingIcon == RaftLucideIconName.Loader || leadingIcon == RaftLucideIconName.LoaderCircle,
     leadingIconSize: Dp = 12.dp,
     contentSpacing: Dp = 6.dp,
-    shadowOffset: Dp? = null,
     textStyle: TextStyle = RaftBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    // Renders raft-ui 0.6.0's Button ([RaftActionButton]: control radius, 1.5dp edge,
-    // sticker/outline/ghost variants from [backgroundColor], press overlay, no shadow).
-    RaftActionButton(
-        label = label,
-        onClick = onClick,
-        onClick2 = onClick2,
-        modifier = modifier,
+    // An anchored click hands the caller the button's bottom-start corner (menus open under it).
+    val anchor = if (onClick2 != null) remember { RaftLiveRootAnchorRef(identity = "action_button:$label") } else null
+    val currentOnClick2 by rememberUpdatedState(onClick2)
+    RaftButton(
+        text = label,
+        onClick = {
+            onClick()
+            val anchored = currentOnClick2
+            if (anchored != null) anchor?.resolve(RaftPopoverLocalPoint.BottomStart)?.let(anchored)
+        },
+        modifier =
+            modifier
+                .then(if (anchor != null) Modifier.raftCaptureLiveRootAnchor(anchor) else Modifier)
+                .then(if (minWidth != RaftBrutalActionButtonLegacyMinWidth && minWidth > 0.dp) Modifier.widthIn(min = minWidth) else Modifier),
+        variant = raftButtonVariantFor(backgroundColor, inDialogFooter = LocalRaftDialogFooter.current),
+        size = raftButtonSizeFor(minHeight),
         enabled = enabled,
-        backgroundColor = backgroundColor,
-        minWidth = minWidth,
-        minHeight = minHeight,
-        leadingIcon = leadingIcon,
-        leadingIconSpinning = leadingIconSpinning,
-        textStyle = textStyle,
-        trailingContent = trailingContent
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon, spinning = leadingIconSpinning) } },
+        trailingIcon = trailingContent
     )
 }
 
@@ -1251,122 +1470,6 @@ internal val RaftBrutalActionButtonDefaultTextStyle: TextStyle
 
 // The brutal button's default min width; raft buttons have none (they hug the label).
 private val RaftBrutalActionButtonLegacyMinWidth = 82.dp
-
-/**
- * raft-ui 0.6.0 `Button` (dist/components button recipe):
- *  - sizes: `md` h-8 / px-3 / 13/18 bold / 16dp icons (raft renders `xs`/`sm` as `md`),
- *    `lg` h-11 / px-4 / 15/20, `xl` h-13 / px-5 / 16/24; control radius 8dp;
- *  - variants from the caller's fill ([raftButtonChrome]): pink accent / danger /
- *    warning stickers with a 1.5dp sticker-ink edge and ink type, or the paper outline
- *    button with a 1.5dp `--line-strong` edge, or ghost;
- *  - press lays `--sticker-pressed` / `--fill-pressed` over the fill (no offset, no
- *    shadow: controls never cast one);
- *  - disabled is opaque: `--fill-muted` fill, `--line-hairline` edge, `--foreground-disabled` ink.
- * A [minHeight] below 38dp picks `md`, up to 52dp `lg`, beyond that `xl`.
- */
-@Composable
-private fun RaftActionButton(
-    label: String,
-    onClick: () -> Unit,
-    onClick2: ((RaftPopoverAnchor) -> Unit)?,
-    modifier: Modifier,
-    enabled: Boolean,
-    backgroundColor: Color,
-    minWidth: Dp,
-    minHeight: Dp,
-    leadingIcon: RaftLucideIconName?,
-    leadingIconSpinning: Boolean,
-    textStyle: TextStyle,
-    trailingContent: (@Composable () -> Unit)?
-) {
-    // raft-ui dialog footers pair the primary sticker with a ghost Cancel; a
-    // paper (white) button inside RaftDialogFooter is that ghost secondary.
-    val chrome =
-        raftButtonChrome(
-            if (LocalRaftDialogFooter.current && backgroundColor == RaftColor.SurfaceWhite) {
-                Color.Transparent
-            } else {
-                backgroundColor
-            }
-        )
-    var pressed by remember { mutableStateOf(false) }
-    val height: Dp
-    val horizontalPadding: Dp
-    val fontSize: TextUnit
-    val lineHeight: TextUnit
-    val iconSize: Dp
-    when {
-        minHeight >= RaftMetrics.ControlHeightXl -> {
-            height = RaftMetrics.ControlHeightXl
-            horizontalPadding = 20.dp
-            fontSize = 16.sp
-            lineHeight = 24.sp
-            iconSize = 18.dp
-        }
-        minHeight >= 38.dp -> {
-            height = RaftMetrics.ControlHeightLg
-            horizontalPadding = 16.dp
-            fontSize = 15.sp
-            lineHeight = 20.sp
-            iconSize = 18.dp
-        }
-        else -> {
-            height = RaftMetrics.ControlHeightMd
-            horizontalPadding = 12.dp
-            fontSize = 13.sp
-            lineHeight = 18.sp
-            iconSize = 16.dp
-        }
-    }
-    // `has-data-[icon=inline-start]:pl-2.5` (md) / `pl-3.5` (lg): an icon pulls its edge in by 2dp.
-    val startPadding = if (leadingIcon != null) horizontalPadding - 2.dp else horizontalPadding
-    val fill =
-        when {
-            !enabled -> RaftColor.FillMuted
-            pressed -> raftOverlay(chrome.pressedOverlay, chrome.fill)
-            else -> chrome.fill
-        }
-    val border = if (enabled) chrome.border else RaftColor.BorderHairline
-    val content = if (enabled) chrome.content else RaftColor.ForegroundDisabled
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    RaftAnchorButton(
-        onClick = onClick,
-        onClick2 = onClick2,
-        enabled = enabled,
-        pressFeedback = enabled,
-        pressOffset = 0.dp,
-        onPressedChange = { pressed = it },
-        modifier =
-            modifier
-                .widthIn(min = if (minWidth == RaftBrutalActionButtonLegacyMinWidth) 0.dp else minWidth)
-                .heightIn(min = height)
-                .background(fill, shape)
-                .border(RaftAppStroke.Control, border, shape)
-                .padding(start = startPadding, end = horizontalPadding)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (leadingIcon != null) {
-                RaftLucideIcon(
-                    leadingIcon,
-                    modifier = Modifier.size(iconSize),
-                    color = raftArgbHex(content),
-                    spinning = leadingIconSpinning
-                )
-            }
-            Text(
-                text = label,
-                style = textStyle.copy(fontSize = fontSize, lineHeight = lineHeight).withRaftFontWeight(FontWeight.Bold),
-                color = content,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            trailingContent?.invoke()
-        }
-    }
-}
 
 @Composable
 internal fun SegmentedControl(
@@ -1653,10 +1756,13 @@ internal fun RaftAnchoredToolbarChip(
 }
 
 /**
- * Legacy-named icon button; renders the raft-ui icon button ([RaftLookIconButton]). The
- * border / shadow / disabled-colour parameters of the retired brutal look are accepted
- * and ignored so call sites keep compiling; prefer
- * `build.raft.designsystem.components.RaftIconButton` in new code.
+ * Legacy-named icon button; renders the design-system [RaftIconButton] (`icon-md` 32dp up to
+ * a 38dp [size], `icon-lg` 44dp above), its variant from [backgroundColor]
+ * ([raftIconButtonVariantFor]: the paper default is the ghost icon button). The design
+ * system has no long-press action, no unlabelled icon button (its tooltip is required) and
+ * no icon button under 24dp, so those callers keep the raft-look box ([RaftLookIconButton]).
+ * The border / shadow / disabled-colour parameters of the retired brutal look are ignored.
+ * Prefer `build.raft.designsystem.components.RaftIconButton` in new code.
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -1679,25 +1785,44 @@ internal fun RaftBrutalIconButton(
     iconColor: String = "#FF000000",
     disabledIconColor: String = "#FF000000",
     size: Dp = 32.dp,
-    shadowOffset: Dp = RaftShadow.BrutalSmall,
     iconSize: Dp = (size.value * 0.5f).dp,
     iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
 ) {
-    RaftLookIconButton(
-        iconName = iconName,
+    val tooltip = contentDescription?.takeIf { it.isNotBlank() }
+    if (onLongClick != null || tooltip == null || size < 24.dp) {
+        RaftLookIconButton(
+            iconName = iconName,
+            onClick = onClick,
+            onLongClick = onLongClick,
+            longClickLabel = longClickLabel,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            clickIdentity = clickIdentity,
+            enabled = enabled,
+            backgroundColor = backgroundColor,
+            iconColor = iconColor,
+            size = size,
+            iconSize = iconSize,
+            iconSpinning = iconSpinning
+        )
+        return
+    }
+    RaftIconButton(
         onClick = onClick,
-        onLongClick = onLongClick,
-        longClickLabel = longClickLabel,
-        contentDescription = contentDescription,
+        tooltip = tooltip,
         modifier = modifier,
-        clickIdentity = clickIdentity,
-        enabled = enabled,
-        backgroundColor = backgroundColor,
-        iconColor = iconColor,
-        size = size,
-        iconSize = iconSize,
-        iconSpinning = iconSpinning
-    )
+        variant = raftIconButtonVariantFor(backgroundColor),
+        size = raftIconButtonSizeFor(size),
+        enabled = enabled
+    ) {
+        // An explicit ink stays (media controls on a scrim); the legacy black follows the variant.
+        val explicitInk = iconColor.takeIf { enabled && it != RaftLegacyIconInkArgb }
+        if (explicitInk != null) {
+            RaftLucideIcon(iconName, color = explicitInk, modifier = Modifier.fillMaxSize(), spinning = iconSpinning)
+        } else {
+            RaftSlotIcon(iconName, spinning = iconSpinning)
+        }
+    }
 }
 
 /**
@@ -1777,72 +1902,3 @@ private fun RaftLookIconButton(
 
 // The brutal primitives' hard-coded black icon ink; raft swaps it for the themed ink.
 internal const val RaftLegacyIconInkArgb = "#FF000000"
-
-/** [shadowOffset] is ignored: the raft card casts no shadow. */
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftBrutalPanelShell(
-    modifier: Modifier = Modifier,
-    shadowOffset: Dp = RaftShadow.Brutal,
-    content: @Composable BoxScope.() -> Unit
-) {
-    // raft Card: container radius, card layer, hairline edge, no shadow.
-    Box(
-        modifier = modifier.fillMaxWidth().raftCardSurface(),
-        content = content
-    )
-}
-
-/** [shadowOffset] is ignored: the raft card casts no shadow. */
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftBrutalListShell(
-    height: Dp,
-    modifier: Modifier = Modifier,
-    shadowOffset: Dp = RaftShadow.Brutal,
-    listModifier: Modifier = Modifier,
-    content: LazyListScope.() -> Unit
-) {
-    // raft Card surface around the list: container radius, hairline, no shadow.
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(height)
-                .raftCardSurface()
-                .clipToBounds()
-    ) {
-        LazyColumn(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .then(listModifier),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-            content = content
-        )
-    }
-}
-
-@Composable
-internal fun RaftBrutalListSectionHeader(
-    label: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(Color.Transparent)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // raft section title (`rf-section`): 13/18 bold hint ink, sentence case.
-        Text(
-            text = label,
-            style = RaftType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.ForegroundHint
-        )
-    }
-}

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.data.SharedSettingsActionState
@@ -339,7 +340,6 @@ private fun CurrentPlanCard(
     onEvent: (String, String?) -> Unit
 ) {
     RaftBrutalCard(
-        shadowOffset = 2.dp,
         contentPadding = 0.dp,
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
@@ -473,14 +473,11 @@ private fun BillingActions(
 @Composable
 private fun BillingActionButton(action: RaftSettingsBillingAction, onClick: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBrutalActionButton(
-            label = action.status.ifBlank { action.label },
+        RaftButton(
+            text = action.status.ifBlank { action.label },
             onClick = onClick,
             enabled = action.enabled && !action.inProgress,
-            modifier = Modifier,
-            minWidth = 0.dp,
-            minHeight = 34.dp,
-            shadowOffset = 2.dp
+            modifier = Modifier
         )
         action.detail.takeIf { it.isNotBlank() }?.let { detail ->
             Text(detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
@@ -713,7 +710,6 @@ private fun SettingsBillingStatusPanel(title: String) {
 @Composable
 private fun HardShadowCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     RaftBrutalCard(
-        shadowOffset = 2.dp,
         contentPadding = 14.dp,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         content = content
