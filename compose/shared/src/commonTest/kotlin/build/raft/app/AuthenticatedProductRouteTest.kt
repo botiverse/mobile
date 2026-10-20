@@ -24,6 +24,7 @@ class AuthenticatedProductRouteTest {
                 SETTINGS_NATIVE_DETAIL_PAGE,
                 SETTINGS_WEB_VIEW_PAGE,
                 SETTINGS_STORAGE_PAGE,
+                SETTINGS_COMPUTERS_PAGE,
                 RELEASE_NOTES_PAGE,
             )
 

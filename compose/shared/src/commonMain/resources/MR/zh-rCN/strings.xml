@@ -1872,6 +1872,11 @@
     <string name="settings_computers_create_agent_error_empty">空响应</string>
     <string name="settings_computers_create_agent_error_failed">创建 Agent 失败：%1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">你没有创建 Agent 的权限。</string>
+    <string name="settings_computers_update_available">有可用更新</string>
+    <string name="settings_computers_last_seen">最后在线 %1$s</string>
+    <string name="settings_computers_online_count">%2$d 台中 %1$d 台在线</string>
+    <string name="settings_computers_workspace_status_active">活跃</string>
+    <string name="settings_computers_workspace_status_orphan">已孤立</string>
     <string name="settings_connected_apps_loading">正在加载集成、应用市场项目和 OAuth 客户端。</string>
     <string name="settings_connected_apps_empty">暂无已连接应用</string>
     <string name="settings_connected_apps_error">已连接应用出错</string>

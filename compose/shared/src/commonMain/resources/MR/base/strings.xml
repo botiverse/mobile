@@ -1872,6 +1872,11 @@
     <string name="settings_computers_create_agent_error_empty">Empty response</string>
     <string name="settings_computers_create_agent_error_failed">Failed to create agent: %1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">You do not have permission to create agents.</string>
+    <string name="settings_computers_update_available">Update available</string>
+    <string name="settings_computers_last_seen">Last seen %1$s</string>
+    <string name="settings_computers_online_count">%1$d of %2$d online</string>
+    <string name="settings_computers_workspace_status_active">Active</string>
+    <string name="settings_computers_workspace_status_orphan">Orphaned</string>
     <string name="settings_connected_apps_loading">Loading integrations, marketplace apps, and OAuth clients.</string>
     <string name="settings_connected_apps_empty">No Connected Apps</string>
     <string name="settings_connected_apps_error">Connected Apps Error</string>

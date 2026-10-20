@@ -26,6 +26,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     SettingsNativeDetail(SETTINGS_NATIVE_DETAIL_PAGE),
     SettingsWebView(SETTINGS_WEB_VIEW_PAGE),
     SettingsStorage(SETTINGS_STORAGE_PAGE),
+    SettingsComputers(SETTINGS_COMPUTERS_PAGE),
     ReleaseNotes(RELEASE_NOTES_PAGE),
 }
 

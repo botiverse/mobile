@@ -1872,6 +1872,11 @@
     <string name="settings_computers_create_agent_error_empty">空の応答です</string>
     <string name="settings_computers_create_agent_error_failed">エージェントを作成できませんでした: %1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">エージェントを作成する権限がありません。</string>
+    <string name="settings_computers_update_available">アップデートあり</string>
+    <string name="settings_computers_last_seen">最終接続 %1$s</string>
+    <string name="settings_computers_online_count">%2$d 台中 %1$d 台がオンライン</string>
+    <string name="settings_computers_workspace_status_active">アクティブ</string>
+    <string name="settings_computers_workspace_status_orphan">孤立</string>
     <string name="settings_connected_apps_loading">連携、マーケットプレイスアプリ、OAuth クライアントを読み込んでいます。</string>
     <string name="settings_connected_apps_empty">連携アプリはありません</string>
     <string name="settings_connected_apps_error">連携アプリのエラー</string>
