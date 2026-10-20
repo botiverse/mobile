@@ -3,15 +3,12 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalBadge
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftBrutalTone
 import build.raft.app.PixelAvatarActiveDefaultKey
 import build.raft.app.PixelAvatarPickerKeys
-import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerShape
@@ -12742,10 +12739,10 @@ private fun MembersAgentAppsTab(
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps), modifier = modifier) {
-        Text(
+        RaftText(
             text = stringResource(MR.strings.member_hint_connected_apps),
-            style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = RaftColor.TextMutedGray
+            style = RaftTheme.typography.callout,
+            color = RaftTheme.colors.foregroundMuted
         )
         val appLogins = detail?.appLogins
         when (appLogins?.loadState) {
@@ -12793,9 +12790,9 @@ private fun MembersAgentAppLoginCard(
     timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit
 ) {
-    RaftBrutalCard(
-        shadowOffset = 3.dp,
-        contentPadding = RaftAppSpacing.Md,
+    // raft-ui Card (default): no shadow, the hairline edge.
+    Column(
+        modifier = Modifier.fillMaxWidth().membersRaftCard().padding(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Row(
@@ -12807,31 +12804,31 @@ private fun MembersAgentAppLoginCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Text(
+                RaftText(
                     text = item.clientName,
-                    style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-                    color = RaftColor.TextBlack,
+                    style = RaftTheme.typography.cardTitle,
+                    color = RaftTheme.colors.foreground,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 item.createdAt?.let {
-                    Text(
+                    RaftText(
                         text = stringResource(
                             MR.strings.member_label_connected_since,
                             it.membersActivityDisplayTime(timeContext)
                         ),
-                        style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextMutedGray
+                        style = RaftTheme.typography.caption,
+                        color = RaftTheme.colors.foregroundHint
                     )
                 }
             }
             MembersAgentAppLoginStatusBadge(stringResource(MR.strings.member_label_active))
         }
         item.clientDescription?.takeIf { it.isNotBlank() }?.let {
-            Text(
+            RaftText(
                 text = it,
-                style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                color = RaftColor.TextBlack
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foregroundMuted
             )
         }
         item.clientAgentManifestUrl?.takeIf { it.isNotBlank() }?.let {
@@ -12850,13 +12847,12 @@ private fun MembersAgentAppLoginCard(
             }
         }
         item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.member_action_view_service),
-                leadingIcon = RaftLucideIconName.ExternalLink,
-                enabled = true,
-                backgroundColor = RaftColor.SurfaceWhite,
+            RaftButton(
+                text = stringResource(MR.strings.member_action_view_service),
+                onClick = { onOpenUrl(homepageUrl) },
                 modifier = Modifier.fillMaxWidth(),
-                onClick = { onOpenUrl(homepageUrl) }
+                size = RaftButtonSize.Lg,
+                leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.ExternalLink, size = 18.dp) }
             )
         }
     }
@@ -12864,12 +12860,12 @@ private fun MembersAgentAppLoginCard(
 
 @Composable
 private fun MembersAgentAppLoginStatusBadge(label: String) {
-    RaftBrutalBadge(label = label, tone = RaftBrutalTone.Lime)
+    RaftBadge(text = label, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Success)
 }
 
 @Composable
 private fun MembersAgentAppLoginScopeChip(scope: String) {
-    RaftBrutalBadge(label = scope, tone = RaftBrutalTone.White)
+    RaftBadge(text = scope, appearance = RaftBadgeAppearance.Outline)
 }
 
 @Composable
