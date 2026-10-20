@@ -969,7 +969,86 @@ internal fun threadVisualFixture(
                         enabled = false,
                     ),
             )
-        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION,
+        // web ThreadMessageShareSelectionVisualCaseView (SHARE_SELECTION_MESSAGES): Cindy's
+        // threadDefault message with a 👍 2 the owner joined, then the owner's composerSeed.
+        // The web case's channel store has no #product, so the ref stays plain text.
+        THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION ->
+            RaftThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#design",
+                subtitle = "Share selected messages fixture",
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                streamChannelId = "channel-design",
+                sourceThreadId = "channel-design",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                showReactionActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                                messages =
+                    listOf(
+                        RaftThreadMessageItem(
+                            id = "msg-share-selection-1",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "06/22 10:30",
+                            messageType = "Chat",
+                            body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                            reactions =
+                                listOf(
+                                    RaftThreadReactionItem(
+                                        emoji = "👍",
+                                        count = 2,
+                                        selected = true,
+                                        reactorIds = listOf("visual-user"),
+                                        reactorNames = listOf("artin")
+                                    )
+                                )
+                        ),
+                        RaftThreadMessageItem(
+                            id = "msg-share-selection-2",
+                            authorId = "visual-user",
+                            authorName = "artin",
+                            authorDescription = "Owner",
+                            authorKind = "human",
+                            avatarLabel = "AR",
+                            timestampLabel = "06/22 10:35",
+                            messageType = "Chat",
+                            body = "Review the Android composer crop before release."
+                        )
+                    ),
+                members =
+                    listOf(
+                        RaftThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
+                        ),
+                        RaftThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    RaftThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
             RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
