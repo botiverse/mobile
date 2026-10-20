@@ -75,5 +75,9 @@ class ThreadMarkdownTaskStatusesTest {
         assertFalse(threadMarkdownTaskSourceLoaded(partial, partial))
         assertTrue(threadMarkdownTaskSourceLoaded(loaded, idle))
         assertTrue(threadMarkdownTaskSourceLoaded(idle, loaded))
+        // A slice demoted to Partial (canonical conflict) that still holds tasks stays usable,
+        // so chips do not flip back to the legacy style while the refetch runs.
+        val demoted = SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Partial, tasks = listOf(task(1, TaskStatus.Done)))
+        assertTrue(threadMarkdownTaskSourceLoaded(demoted, idle))
     }
 }

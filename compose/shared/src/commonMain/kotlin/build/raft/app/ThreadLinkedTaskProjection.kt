@@ -304,10 +304,16 @@ internal fun threadMarkdownTaskStatusesByNumber(
     return statuses
 }
 
-/** Either task slice feeding the thread's inline task chips has finished loading. */
+/**
+ * Either task slice feeding the thread's inline task chips has loaded at least once. A slice that
+ * was demoted to [SharedTasksDataStoreStatus.Partial] (canonical conflict, refetch pending) but
+ * still holds tasks counts as loaded, so chips do not flip back to the legacy style meanwhile.
+ */
 internal fun threadMarkdownTaskSourceLoaded(
     channelProjectionSlice: SharedTasksProjectionSlice,
     serverProjectionSlice: SharedTasksProjectionSlice,
-): Boolean =
-    channelProjectionSlice.status == SharedTasksDataStoreStatus.Loaded ||
-        serverProjectionSlice.status == SharedTasksDataStoreStatus.Loaded
+): Boolean = channelProjectionSlice.hasUsableTasks() || serverProjectionSlice.hasUsableTasks()
+
+private fun SharedTasksProjectionSlice.hasUsableTasks(): Boolean =
+    status == SharedTasksDataStoreStatus.Loaded ||
+        (status == SharedTasksDataStoreStatus.Partial && tasks.isNotEmpty())
