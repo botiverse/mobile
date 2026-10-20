@@ -1,140 +1,36 @@
 package build.raft.app
 
-import build.raft.app.data.FontPreference
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertNotEquals
 
 /**
- * Task #179: these assert the RESOLVED face the renderer receives, not the option metadata.
- *
- * That distinction matters: the metadata can say "system" (no bundled family) while the resolver
- * still hands back a proportional face, and code blocks would render in it. Asserting only the
- * metadata is exactly how that class of bug slips through.
+ * The Raft Design System fixes the faces: Space Grotesk for text, Space Mono for mono. These
+ * assert the RESOLVED families the renderer receives.
  */
 class FontFaceResolutionTest {
-    // The face state is process-wide, so a test that leaves it switched would leak into unrelated
-    // tests that resolve RaftType/RaftMarkdown styles. Always restore the default.
-    @AfterTest
-    fun restoreDefaultFace() {
-        RaftFontFaceState.apply(FontPreference.Default)
-    }
-
-    private fun select(preference: FontPreference) {
-        RaftFontFaceState.apply(preference)
+    @Test
+    fun bodyAndMonoResolveBundledFaces() {
+        assertNotEquals(FontFamily.Default, raftFontFamilyForWeight(null))
+        assertNotEquals(FontFamily.Default, raftMonoFamilyForWeight(null))
+        assertNotEquals(raftFontFamilyForWeight(null), raftMonoFamilyForWeight(null))
     }
 
     @Test
-    fun systemOptionResolvesMonoToMonospaceNotProportional() {
-        select(FontPreference.System)
-
-        // The System option promises the host's own type "mono included". If the mono role fell
-        // back to FontFamily.Default it would be the platform sans face and code/timestamps would
-        // render proportionally.
-        assertEquals(
-            FontFamily.Monospace,
-            raftMonoFamilyForWeight(null),
-            "system mono must resolve to the platform monospace face"
-        )
-        assertTrue(
-            raftMonoFamilyForWeight(null) != FontFamily.Default,
-            "system mono must not be the default proportional face"
-        )
+    fun monoCollapsesToTheTwoShippedWeights() {
+        // Space Mono ships Regular and Bold only; a missing mono weight would fall back to sans.
+        assertEquals(raftMonoFamilyForWeight(FontWeight.Normal), raftMonoFamilyForWeight(FontWeight.Medium))
+        assertEquals(raftMonoFamilyForWeight(FontWeight.Normal), raftMonoFamilyForWeight(FontWeight.Light))
+        assertEquals(raftMonoFamilyForWeight(FontWeight.Bold), raftMonoFamilyForWeight(FontWeight.Black))
+        assertNotEquals(raftMonoFamilyForWeight(FontWeight.Normal), raftMonoFamilyForWeight(FontWeight.Bold))
+        assertEquals(RaftMonoFamily, raftMonoFamilyForWeight(null))
     }
 
     @Test
-    fun systemOptionResolvesBodyToTheDefaultHostFace() {
-        select(FontPreference.System)
-
-        // Body text has no bundled family either, and there the default face IS the host face.
-        assertEquals(FontFamily.Default, raftFontFamilyForWeight(null))
-    }
-
-    @Test
-    fun everyBundledOptionResolvesItsOwnFamilyForBodyAndMono() {
-        FontPreference.entries.filter { it.sansFamily != null }.forEach { preference ->
-            select(preference)
-            assertTrue(
-                raftFontFamilyForWeight(null) != FontFamily.Default,
-                "$preference must resolve a bundled body family"
-            )
-            assertTrue(
-                raftMonoFamilyForWeight(null) != FontFamily.Default,
-                "$preference must resolve a bundled mono family"
-            )
-        }
-    }
-
-    @Test
-    fun switchingTheFaceChangesWhatTheRendererResolves() {
-        // Changing the picker has to reach the renderer, otherwise the setting saves but nothing
-        // repaints. Compare the resolved family across a switch.
-        select(FontPreference.HankenGrotesk)
-        val hankenBody = raftFontFamilyForWeight(null)
-        val hankenMono = raftMonoFamilyForWeight(null)
-
-        select(FontPreference.SpaceGrotesk)
-        val spaceBody = raftFontFamilyForWeight(null)
-        val spaceMono = raftMonoFamilyForWeight(null)
-
-        assertTrue(hankenBody != spaceBody, "body face must change when the option changes")
-        assertTrue(hankenMono != spaceMono, "mono face must change when the option changes")
-    }
-
-    @Test
-    fun aFaceWithNoBundledMonoStillNeverResolvesMonoToProportional() {
-        // Guards the whole option list, not just System: any option whose mono family is absent
-        // must still land on monospace rather than silently going proportional.
-        FontPreference.entries.forEach { preference ->
-            select(preference)
-            listOf(null, FontWeight.Bold).forEach { weight ->
-                val resolved = raftMonoFamilyForWeight(weight)
-                assertTrue(
-                    resolved != FontFamily.Default || preference.monoFamily != null,
-                    "$preference mono at weight=$weight fell back to the proportional face"
-                )
-            }
-        }
-    }
-
-    @Test
-    fun theTypeTokensThemselvesFollowTheFaceNotAFrozenSnapshot() {
-        // Guards a bug this change actually shipped for one round: RaftType's members were `val`s,
-        // so they captured the face at object initialisation. Every ~970 call site reads RaftType,
-        // so switching the option wrote the preference and repainted nothing. Asserting the token
-        // (not just the resolver helper) is what catches that.
-        select(FontPreference.SpaceGrotesk)
-        val spaceBody = RaftType.Body.fontFamily
-
-        select(FontPreference.HankenGrotesk)
-        val hankenBody = RaftType.Body.fontFamily
-
-        assertTrue(
-            spaceBody != hankenBody,
-            "RaftType.Body must follow the selected face; it stayed on one snapshot"
-        )
-        assertEquals(RaftType.Body.fontFamily, raftFontFamilyForWeight(FontWeight.Normal))
-    }
-
-    // The Android host styles native EditTexts from raftInputFontFaceName(); it used to be a fixed
-    // Space Grotesk face, so the composer ignored Settings > Appearance.
-    @Test
-    fun nativeInputFaceFollowsTheSelectedFont() {
-        select(FontPreference.HankenGrotesk)
-        assertEquals("HankenGrotesk-Regular", raftInputFontFaceName())
-        select(FontPreference.GeistInter)
-        assertEquals("Geist-Regular", raftInputFontFaceName())
-        select(FontPreference.SpaceGrotesk)
-        assertEquals("SpaceGrotesk-Regular", raftInputFontFaceName())
-        select(FontPreference.System)
-        assertEquals(null, raftInputFontFaceName())
-    }
-
-    @Test
-    fun defaultNativeInputFaceFollowsTheDefaultFont() {
-        assertEquals("SpaceGrotesk-Regular", raftInputFontFaceName())
+    fun theTypeTokensUseTheDesignSystemFace() {
+        assertEquals(raftFontFamilyForWeight(FontWeight.Normal), RaftType.Body.fontFamily)
+        assertEquals(raftFontFamilyForWeight(FontWeight.Bold), RaftType.ButtonBold.fontFamily)
     }
 }

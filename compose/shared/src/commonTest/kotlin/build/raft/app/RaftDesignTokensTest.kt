@@ -6,26 +6,18 @@ import build.raft.app.components.RaftSpinnerPixelRestAlpha
 import build.raft.app.components.RaftAppSpinnerSize
 import build.raft.app.components.raftAppSpinnerLitCell
 import build.raft.app.components.raftSpinnerStepAt
-import build.raft.app.data.FontPreference
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.text.font.FontListFontFamily
 import androidx.compose.ui.text.font.FontWeight
 import build.raft.app.compat.ui.raftFontResourceName
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertNotEquals
 
 class RaftDesignTokensTest {
-    // The face state is process-wide; restore it so this suite cannot leak a face into others.
-    @AfterTest
-    fun restoreDefaultFace() {
-        RaftFontFaceState.apply(FontPreference.Default)
-    }
-
     private fun expectedRenderedWeight(weight: FontWeight): FontWeight =
         if (raftPlatformPreservesEncodedFontWeightForFallback()) weight else FontWeight.Normal
 
@@ -68,20 +60,9 @@ class RaftDesignTokensTest {
 
     @Test
     fun raftFontFamiliesUseIosRegisteredPostScriptNames() {
-        // The contract is: whatever face the default option resolves to, its per-weight names must
-        // be the PostScript names iOS has registered from Info.plist/UIAppFonts, because that is
-        // how the family resolves on iOS at all. It is NOT "the default is a particular typeface"
-        // -- task #179 moved the default from Space Grotesk to Hanken Grotesk to match web, and a
-        // test hardcoding the old face would have blocked that for the wrong reason.
-        val defaultFace = FontPreference.Default
-        val psPrefix =
-            when (defaultFace) {
-                FontPreference.HankenGrotesk -> "HankenGrotesk"
-                FontPreference.GeistInter -> "Geist"
-                FontPreference.SpaceGrotesk -> "SpaceGrotesk"
-                // The system option names no bundled family, so there is no PostScript name to check.
-                FontPreference.System -> return
-            }
+        // The per-weight names must be the PostScript names iOS registers from UIAppFonts, because
+        // that is how the family resolves on iOS at all. The design system fixes the face.
+        val psPrefix = "SpaceGrotesk"
         val expected =
             mapOf(
                 RaftType.Body to "$psPrefix-Regular",
@@ -90,7 +71,7 @@ class RaftDesignTokensTest {
                 RaftType.ButtonBold to "$psPrefix-Bold",
             )
         expected.forEach { (style, name) ->
-            assertEquals(raftFontResourceName(name), style.fontFamily.raftFontName(), "default face $defaultFace")
+            assertEquals(raftFontResourceName(name), style.fontFamily.raftFontName())
         }
     }
 
@@ -99,19 +80,11 @@ class RaftDesignTokensTest {
         // A variable font instanced per weight keeps ONE PostScript name unless the name table is
         // rewritten, and then iOS collapses every weight into a single face (all text renders at
         // Regular). Assert the names the renderer will actually ask for are pairwise distinct.
-        FontPreference.entries.filter { it.sansFamily != null }.forEach { preference ->
-            RaftFontFaceState.apply(preference)
-            val names =
-                listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
-                    .map { raftFontFamilyForWeight(it).raftFontName() }
-            assertEquals(
-                names.size,
-                names.toSet().size,
-                "$preference exposes duplicate PostScript names: $names"
-            )
-            assertTrue(names.none { it.isNullOrBlank() }, "$preference has an unnamed weight: $names")
-        }
-        RaftFontFaceState.apply(FontPreference.Default)
+        val names =
+            listOf(FontWeight.Light, FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold)
+                .map { raftFontFamilyForWeight(it).raftFontName() }
+        assertEquals(names.size, names.toSet().size, "duplicate PostScript names: $names")
+        assertTrue(names.none { it.isNullOrBlank() }, "unnamed weight: $names")
     }
 
     @Test

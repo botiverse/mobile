@@ -13,8 +13,6 @@ import build.raft.app.network.currentRaftNetworkTransportController
 import build.raft.app.data.KeyValueHttp3PreferenceStore
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
-import build.raft.app.data.PersistentFontPreferenceRepository
-import build.raft.app.data.KeyValueFontPreferenceStore
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.NotificationPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
@@ -160,8 +158,6 @@ internal fun rememberStandaloneSettingsEnvironment(
                 serverMembersStore = serverMembersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
-                fontPreferenceRepository =
-                    PersistentFontPreferenceRepository(KeyValueFontPreferenceStore(sharedPreferenceStore)),
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 linkOpenPreferenceRepository =
                     PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore)),

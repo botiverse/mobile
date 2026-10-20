@@ -10,8 +10,7 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVNetworkRecoveryKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
-import build.raft.app.data.raftReadStoredFontPreferenceForDiagnostics
-import build.raft.app.data.raftRestoreStoredFontPreferenceOnColdStart
+import build.raft.app.data.raftClearLegacyFontPreference
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.shared.RaftAndroidHostHooks
@@ -102,17 +101,8 @@ class RaftApplication : Application() {
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
-        // Task #521: publish the stored font face before the first composition. Without this the
-        // first frames render RaftFontFaceState's default and only correct once a settings
-        // snapshot loads (or never, on a slow cold start).
-        raftRestoreStoredFontPreferenceOnColdStart()
-        // Task #521 diagnostic (Codex): one cold start settles whether the store exposes the value
-        // to this process at all, versus the restore merely happening too late.
-        RaftAndroidLocalDiagnostics.recordLog(
-            level = "INFO",
-            tag = "font_preference",
-            message = raftReadStoredFontPreferenceForDiagnostics()
-        )
+        // The font picker is gone (the design system fixes the faces); drop its stored choice.
+        raftClearLegacyFontPreference()
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidThreadComposerTemporaryFileRetirement(this)
         installAndroidExternalShareInbox(this)

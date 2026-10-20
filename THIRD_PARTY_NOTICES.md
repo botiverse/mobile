@@ -58,13 +58,8 @@ MIT: console-error, console-info, console-warn, koa, koa-bodyparser, koa-router,
 | --- | --- | --- | --- |
 | Space Grotesk | 300/400/500/600/700 (+variable) | google/fonts ofl/spacegrotesk — https://fonts.googleapis.com/css2?family=Space+Grotesk | SIL OFL 1.1 (`compose/androidApp/SpaceGrotesk-OFL.txt`) |
 | Space Mono | 400/700 | google/fonts ofl/spacemono — https://fonts.googleapis.com/css2?family=Space+Mono | SIL OFL 1.1 (`compose/androidApp/SpaceMono-OFL.txt`) |
-| Hanken Grotesk | 300/400/500/600/700 | google/fonts ofl/hankengrotesk (`HankenGrotesk[wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/HankenGrotesk-OFL.txt`) |
-| Geist | 300/400/500/600/700 | google/fonts ofl/geist (`Geist[wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/Geist-OFL.txt`) |
-| Inter | 300/400/500/600/700 | google/fonts ofl/inter (`Inter[opsz,wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/Inter-OFL.txt`) |
-| Geist Mono | 400/700 | google/fonts ofl/geistmono (`GeistMono[wght].ttf`) | SIL OFL 1.1 (`compose/androidApp/GeistMono-OFL.txt`) |
 
-Sources were instanced to static weights with `fonttools varLib.instancer`. Details:
-`compose/androidApp/FONTS-PROVENANCE.md`.
+Details: `compose/androidApp/FONTS-PROVENANCE.md`.
 
 ## Bundled icon data (compose/designsystem)
 | Source | Use | License |

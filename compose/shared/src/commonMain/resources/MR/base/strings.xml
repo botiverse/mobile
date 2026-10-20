@@ -192,12 +192,6 @@
     <string name="settings_appearance_activity_sender_avatars_enabled">Shown</string>
     <string name="settings_appearance_activity_sender_avatars_disabled">Hidden</string>
     <string name="settings_appearance_subtitle">Message font size and reading density</string>
-    <string name="settings_appearance_font">Font</string>
-    <string name="settings_appearance_font_detail">Which typeface the app uses for text. Matches the web client options.</string>
-    <string name="settings_appearance_font_hanken">Hanken Grotesk</string>
-    <string name="settings_appearance_font_geist">Geist + Inter</string>
-    <string name="settings_appearance_font_space">Space Grotesk + Space Mono</string>
-    <string name="settings_appearance_font_system">System</string>
     <string name="settings_notifications_title">Notifications</string>
     <string name="settings_notifications_subtitle">Push status and workspace mute</string>
     <string name="settings_language_title">Language</string>
