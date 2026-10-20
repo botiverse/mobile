@@ -8,6 +8,21 @@
   changes, enable visible touches/pointer overlay and follow
   `docs/android-review-recording.md` before attaching evidence to a task thread.
 
+## Code Naming: Raft, not Slock
+
+- The product is Raft. New types, files and functions use the `Raft` prefix;
+  never introduce `Slock*` (or Kuikly-era `Kuikly*` model) names in code.
+- `scripts/rename_slock_to_raft.py` performs the Slock -> Raft identifier and
+  file rename. After a rebase that brings in old names, run it with `--apply`;
+  `--check` exits non-zero while anything is left to rename.
+- Persisted / contract strings intentionally keep their old spelling: storage
+  keys, MMKV namespaces, SharedPreferences names, wire fields, log tags used by
+  scripts, page/route names, `slock*` pageData keys, env vars and the
+  `slockVisualFixtures` Gradle property. The manifest keeps the old activity
+  component names as `<activity-alias>` entries, and the AppWidget provider
+  classes (`SlockActivityWidgetProvider`, `SlockAgentStatusWidgetProvider`)
+  keep their names because placed widgets persist the provider component.
+
 ## Slock server/source contract
 
 - The TypeScript server and React source are maintained in the separate private
