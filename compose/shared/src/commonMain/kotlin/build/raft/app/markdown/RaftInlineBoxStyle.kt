@@ -1,6 +1,8 @@
 package build.raft.app.markdown
 
 import androidx.compose.runtime.Immutable
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -11,6 +13,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -26,9 +30,12 @@ import androidx.compose.ui.unit.sp
  * style travels as a string annotation ([RAFT_INLINE_BOX_ANNOTATION_TAG]) over the boxed range and
  * [raftInlineDecorations] paints it behind the text from the [TextLayoutResult].
  *
- * TODO(cmp-switch): horizontal padding and margins are painted but no longer reserve advance
- * width (Kuikly widened the run), so a chip's padding can overlap an adjacent glyph; the vertical
- * extent is estimated from the span font size rather than real font metrics.
+ * Horizontal padding + margin reserve advance width through gap placeholders that
+ * [withRaftInlineChipGaps] puts on either side of the chip (Kuikly widened the run itself), so a
+ * chip's painted padding never overlaps a neighbouring glyph or chip, and the margin leaves a
+ * visible gap between two adjacent chips (web chips are `inline-flex` with real padding).
+ * TODO(cmp-switch): the vertical extent is estimated from the span font size rather than real
+ * font metrics.
  */
 @Immutable
 internal data class RaftInlineBoxStyle(
@@ -130,6 +137,94 @@ internal inline fun <R : Any> AnnotatedString.Builder.withRaftInlineBox(
     } finally {
         pop(index)
     }
+}
+
+/**
+ * Reserves [style]'s start/end padding + margin around one whole chip ([block] — its box, link
+ * and click annotations) as gap placeholders, glued to the chip with word joiners so a gap never
+ * wraps away from it. The painter draws the padding into the gaps and leaves the margin clear.
+ * The gaps sit outside every chip annotation (box, link, tag), so those ranges stay the label.
+ * Placeholders resolve through [raftInlineGapInlineContent]; [raftTextWithoutInlineGaps] drops them.
+ */
+internal inline fun <R : Any> AnnotatedString.Builder.withRaftInlineChipGaps(
+    style: RaftInlineBoxStyle?,
+    block: AnnotatedString.Builder.() -> R
+): R {
+    if (style == null) return block()
+    val leadingGap = style.raftInlineLeadingReservedWidth()
+    val trailingGap = style.raftInlineTrailingReservedWidth()
+    if (leadingGap > 0.dp) {
+        appendRaftInlineGap(leadingGap)
+        append(RaftInlineWordJoiner)
+    }
+    val result = block()
+    if (trailingGap > 0.dp) {
+        append(RaftInlineWordJoiner)
+        appendRaftInlineGap(trailingGap)
+    }
+    return result
+}
+
+internal const val RaftInlineWordJoiner = "\u2060"
+internal const val RaftInlineGapInlineIdPrefix = "raft-inline-gap:"
+
+/** Advance width reserved before a boxed range: start padding plus start margin. */
+internal fun RaftInlineBoxStyle.raftInlineLeadingReservedWidth(): Dp = paddingStart + marginStart
+
+/** Advance width reserved after a boxed range: end padding plus end margin. */
+internal fun RaftInlineBoxStyle.raftInlineTrailingReservedWidth(): Dp = paddingEnd + marginEnd
+
+internal fun raftInlineGapInlineId(width: Dp): String = RaftInlineGapInlineIdPrefix + width.value
+
+internal fun AnnotatedString.Builder.appendRaftInlineGap(width: Dp) {
+    appendInlineContent(raftInlineGapInlineId(width), "\uFFFC")
+}
+
+/** Width a gap placeholder id reserves, or null when [id] is not a gap. */
+internal fun raftInlineGapWidth(id: String): Dp? =
+    id.takeIf { it.startsWith(RaftInlineGapInlineIdPrefix) }
+        ?.removePrefix(RaftInlineGapInlineIdPrefix)
+        ?.toFloatOrNull()
+        ?.takeIf { it > 0f }
+        ?.dp
+
+/**
+ * The text without reserved chip gaps (each gap placeholder and the word joiner gluing it to its
+ * chip): exactly the characters the source rendered.
+ */
+internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
+    val gaps =
+        getStringAnnotations(RaftInlineContentAnnotationTag, 0, length)
+            .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) }
+    if (gaps.isEmpty()) return text
+    val drop = BooleanArray(length)
+    gaps.forEach { gap ->
+        for (i in gap.start until gap.end) drop[i] = true
+        if (gap.end < length && text[gap.end] == '\u2060') drop[gap.end] = true
+        if (gap.start > 0 && text[gap.start - 1] == '\u2060') drop[gap.start - 1] = true
+    }
+    return buildString(length) { text.forEachIndexed { i, c -> if (!drop[i]) append(c) } }
+}
+
+private const val RaftInlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"
+
+/** Empty spacer content for every gap placeholder id in [ids]. */
+internal fun raftInlineGapInlineContent(ids: Collection<String>): Map<String, InlineTextContent> {
+    var result: MutableMap<String, InlineTextContent>? = null
+    ids.forEach { id ->
+        val width = raftInlineGapWidth(id) ?: return@forEach
+        val map = result ?: LinkedHashMap<String, InlineTextContent>().also { result = it }
+        map[id] =
+            InlineTextContent(
+                placeholder =
+                    Placeholder(
+                        width = width.value.sp,
+                        height = 1.sp,
+                        placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                    )
+            ) {}
+    }
+    return result ?: emptyMap()
 }
 
 internal inline fun <R : Any> AnnotatedString.Builder.withRaftInlineUnderline(

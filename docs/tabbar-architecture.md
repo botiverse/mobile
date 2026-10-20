@@ -94,8 +94,25 @@ The contract lives in `RaftNativeTabBar.kt` (commonMain, exported to Swift):
   under the bar without a second safe-area padding.
 
 A tab key added to the shell's ordered tab keys appears natively with its
-label, icon (`raftNativeTabBarSymbol`) and badge (`badgeCountFor`). A compact
-`UITabBarController` shows at most 5 tabs; extra tabs are dropped and logged.
+label, icon (`raftNativeTabBarSymbol`) and badge (the payload's `badgeCount`;
+Activity carries the unread count from `appShellBottomTabs(activityBadgeCount)`).
+A compact `UITabBarController` shows at most 5 tabs; extra tabs are dropped and
+logged.
+
+### Overlays over the native bar
+
+The system bar sits above the whole Compose page and does not move with it.
+
+- Compose `Dialog`s (`Modal`, `RaftUnifiedDialog`, ...) need nothing: CMP
+  attaches its dialog/popup layers next to the window's root view, above this
+  controller, so their scrim covers the bar.
+- Overlays the page draws itself stay under the bar, the same as under the
+  Compose bar on Android (menus, popovers, the Tasks overlay).
+- A full-height panel the page draws itself — the server drawer, which slides
+  the shell and its Compose bar aside — hides the bar while it shows:
+  `RaftNativeTabBarCover(active)` marks the bridge, which then publishes
+  `visible = false` until every cover is released. The content inset keeps the
+  last reported band, so content does not jump.
 
 ## Host geometry & content inset
 

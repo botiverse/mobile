@@ -9,6 +9,8 @@ import build.raft.app.image.RaftManagedImageReader
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -84,6 +86,10 @@ internal suspend fun <T : Any> raftOpenRenderLease(
     val slot = AtomicReference<T?>(null)
     try {
         withContext(context + NonCancellable) { slot.set(open()) }
+        // A cancel can arrive after withContext returns but before the hand-over below.
+        // Observing it here makes "cancelled before the hand-over" deterministic: either
+        // this throws and the catch closes the lease, or the caller is still active.
+        currentCoroutineContext().ensureActive()
     } catch (failure: Throwable) {
         slot.getAndSet(null)?.let(close)
         throw failure

@@ -236,6 +236,7 @@ LUCIDE_ICONS = [
     "shield-check",
     "sliders-horizontal",
     "smartphone",
+    "smile-plus",
     "sparkles",
     "square",
     "square-check-big",

@@ -72,6 +72,43 @@ internal fun RaftThreadMessageItem.isTranslationEligible(settings: SharedMessage
         !hasLocalSendState() &&
         body.isNotBlank()
 
+/** The long-press menu's Translate entry (web MessageItem `showManualTranslationAction`). */
+internal enum class ThreadMessageMenuTranslateState {
+    Hidden,
+    Available,
+    /** Web renders the entry disabled with "Translating…" while the request is in flight. */
+    Pending
+}
+
+/**
+ * Web parity: the entry needs an eligible, non-empty, non-action-card message and disappears once
+ * the message already has a usable translation or the translation failed. A stale entry (the
+ * message was edited after it was produced) is ignored, as on web.
+ */
+internal fun threadMessageMenuTranslateState(
+    message: RaftThreadMessageItem,
+    translationState: SharedMessageTranslationState,
+    translationAvailable: Boolean
+): ThreadMessageMenuTranslateState {
+    if (!translationAvailable) return ThreadMessageMenuTranslateState.Hidden
+    if (!message.isTranslationEligible(translationState.settings)) return ThreadMessageMenuTranslateState.Hidden
+    if (message.body.isBlank() || message.isThreadActionCardMessage()) return ThreadMessageMenuTranslateState.Hidden
+    val entry =
+        translationState.entries[message.id]
+            ?.takeIf { it.originalContent.isEmpty() || it.originalContent == message.body }
+    return when (entry?.status) {
+        SharedMessageTranslationStatus.Pending -> ThreadMessageMenuTranslateState.Pending
+        SharedMessageTranslationStatus.Translated ->
+            if (entry.translatedContent.isNullOrBlank()) {
+                ThreadMessageMenuTranslateState.Available
+            } else {
+                ThreadMessageMenuTranslateState.Hidden
+            }
+        SharedMessageTranslationStatus.Failed -> ThreadMessageMenuTranslateState.Hidden
+        else -> ThreadMessageMenuTranslateState.Available
+    }
+}
+
 internal fun resolveThreadMessageTranslationUi(
     message: RaftThreadMessageItem,
     translationState: SharedMessageTranslationState,

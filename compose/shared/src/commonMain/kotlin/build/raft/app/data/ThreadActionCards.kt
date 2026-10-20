@@ -227,6 +227,10 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putBoolean("genericApprovalAllowed", genericApprovalAllowed)
     }
 
+/** True when the projected message metadata carries an action card (any type). */
+internal fun messageMetadataHasActionCard(metadata: Map<String, String>): Boolean =
+    metadata["${ActionCardMetadataPrefix}kind"] == "action-card"
+
 internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): ThreadActionCard? {
     if (metadata["${ActionCardMetadataPrefix}kind"] != "action-card") return null
     val type = metadata["${ActionCardMetadataPrefix}type"]?.takeIf { it.isNotBlank() } ?: return null

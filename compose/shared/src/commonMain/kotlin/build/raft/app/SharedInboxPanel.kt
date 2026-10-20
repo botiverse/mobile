@@ -26,6 +26,7 @@ import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
+import build.raft.app.data.ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealChannelRepository
@@ -107,6 +108,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
@@ -120,8 +125,11 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
 
@@ -318,6 +326,90 @@ internal fun SharedHomeActivityScreen(
     val sharedHomeStore = remember(sharedStores, storeScope) {
         sharedStores.sharedHomeStore(storeScope)
     }
+    // activity_conversation_list_v0 (web ThreadsInbox `layout="list"`): read per server like the web
+    // `useServerFeatureFlag`, and follow the evaluation live when it lands after the page opened.
+    val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val conversationListOverrideRevision by
+        ProcessDiagnosticFeatureFlagOverrides.registry
+            .revisionFor(ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)
+            .collectAsState()
+    val conversationListEnabled =
+        remember(activitySummaryServerId, featureFlagRevision, conversationListOverrideRevision) {
+            activitySummaryServerId.value.isNotBlank() &&
+                sharedStores.serverFeatureFlags.isEnabled(
+                    activitySummaryServerId,
+                    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
+                )
+        }
+    // Cold start: until this server's flag has a decision (an evaluation of this process, or the value
+    // remembered from the last session), Activity keeps its loading state instead of painting card rows
+    // and switching to the list when the evaluation lands. A failed evaluation ends the wait (flag off).
+    val conversationListFlagPending =
+        remember(activitySummaryServerId, featureFlagRevision) {
+            activitySummaryServerId.value.isNotBlank() &&
+                sharedStores.serverFeatureFlags.isDecisionPending(
+                    activitySummaryServerId,
+                    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
+                )
+        }
+    LaunchedEffect(sharedStores.serverFeatureFlags, activitySummaryServerId, conversationListFlagPending) {
+        if (conversationListFlagPending) {
+            // Joins the selected-server evaluation when one is in flight; otherwise starts the one the
+            // wait is bounded by.
+            try {
+                sharedStores.serverFeatureFlags.prefetch(activitySummaryServerId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                bridge.logWarn(
+                    "activity_conversation_list_flag_prefetch_failed reason=${error::class.simpleName ?: "unknown"}"
+                )
+            }
+        }
+    }
+    // Selector over the Home content: only the pins, mutes and DM peers of this server reach the list.
+    // Null while Home has not produced them yet (see nextActivityConversationListContext): pins and
+    // section labels never apply after the rows have painted.
+    val conversationListContextSource =
+        remember(sharedHomeStore, conversationListEnabled, activitySummaryServerId) {
+            val serverId = activitySummaryServerId.value
+            if (!conversationListEnabled) {
+                ActivityConversationListContext.Empty to flowOf(ActivityConversationListContext.Empty)
+            } else if (sharedHomeStore == null) {
+                val unavailable = nextActivityConversationListContext(null, null, serverId)
+                unavailable to flowOf(unavailable)
+            } else {
+                val initial = nextActivityConversationListContext(null, sharedHomeStore.state.value.content, serverId)
+                initial to
+                    sharedHomeStore.state
+                        .map { homeState -> homeState.content }
+                        .distinctUntilChanged()
+                        .runningFold(initial) { previous, content ->
+                            nextActivityConversationListContext(previous, content, serverId)
+                        }
+                        .distinctUntilChanged()
+            }
+        }
+    val conversationListContext by
+        conversationListContextSource.second.collectAsState(conversationListContextSource.first)
+    val conversationListPending =
+        conversationListFlagPending || (conversationListEnabled && conversationListContext == null)
+    val conversationListAgentStatusResolver =
+        remember(sharedStores.serverMembersStore, activitySummaryServerId) {
+            raftScopedAgentStatusResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
+        }
+    val conversationList =
+        remember(conversationListEnabled, conversationListContext, conversationListAgentStatusResolver) {
+            val context = conversationListContext
+            if (conversationListEnabled && context != null) {
+                ActivityConversationListPresentation(
+                    context = context,
+                    agentStatusResolver = conversationListAgentStatusResolver
+                )
+            } else {
+                null
+            }
+        }
     // t5/#419 A3: user-initiated opens resolve against the real conversation directory
     // (flow-based single source, #240) with the snapshot's real server id — the resolver is
     // the only exit; Pending is an explainable failure, never a guessed channel-shaped nav.
@@ -437,6 +529,8 @@ internal fun SharedHomeActivityScreen(
         foregroundEpoch = activitySummary.lastForegroundEpoch,
         externalSelectedThreadId = externalSelectedThreadId,
         mainTab = mainTab,
+        conversationList = conversationList,
+        conversationListPending = conversationListPending,
         modifier = modifier
     )
 }
@@ -618,7 +712,8 @@ internal fun SharedHomeActivityScreen(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
-    mainTab: Boolean = false
+    mainTab: Boolean = false,
+    conversationList: ActivityConversationListPresentation? = null
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -637,6 +732,7 @@ internal fun SharedHomeActivityScreen(
         foregroundEpoch = 0L,
         externalSelectedThreadId = externalSelectedThreadId,
         mainTab = mainTab,
+        conversationList = conversationList,
         modifier = modifier
     )
 }
@@ -660,7 +756,8 @@ internal fun SharedHomeActivityPanel(
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
-    externalSelectedThreadId: String? = null
+    externalSelectedThreadId: String? = null,
+    conversationList: ActivityConversationListPresentation? = null
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
     // recomposed on every state snapshot change; this marker tells us how much
@@ -689,6 +786,7 @@ internal fun SharedHomeActivityPanel(
             presentationStore = presentationStore,
             foregroundEpoch = foregroundEpoch,
             externalSelectedThreadId = externalSelectedThreadId,
+            conversationList = conversationList,
             modifier = modifier
         )
     }
@@ -726,7 +824,10 @@ private fun SharedActivityPanelContent(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
-    mainTab: Boolean = false
+    mainTab: Boolean = false,
+    conversationList: ActivityConversationListPresentation? = null,
+    /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
+    conversationListPending: Boolean = false
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     // task #232 (#2224 review blocker 1): the panel owns per-page scroll
@@ -793,7 +894,7 @@ private fun SharedActivityPanelContent(
         ) { page, active ->
             val pageFilter = filters[page]
             val pageState = projectActivityStateForFilterPage(state, pageFilter)
-            if (pageState.snapshot != null) {
+            if (pageState.snapshot != null && !conversationListPending) {
                 SharedActivityBodyContent(
                     active = active,
                     state = pageState,
@@ -811,6 +912,7 @@ private fun SharedActivityPanelContent(
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
+                    conversationList = conversationList,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -857,6 +959,7 @@ private fun SharedActivityBodyContent(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
+    conversationList: ActivityConversationListPresentation? = null,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -934,7 +1037,8 @@ private fun SharedActivityBodyContent(
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
-                    externalSelectedThreadId = externalSelectedThreadId
+                    externalSelectedThreadId = externalSelectedThreadId,
+                    conversationList = conversationList
                 )
         }
     }
@@ -1066,7 +1170,8 @@ private fun SharedActivityList(
     stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
-    externalSelectedThreadId: String? = null
+    externalSelectedThreadId: String? = null,
+    conversationList: ActivityConversationListPresentation? = null
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
@@ -1349,6 +1454,46 @@ private fun SharedActivityList(
             )
         }
     }
+    val conversationListEntries =
+        remember(renderedItems, conversationList?.context) {
+            conversationList?.let { activityConversationListEntries(renderedItems, it.context) }
+        }
+    // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture);
+    // the card rows and the conversation-list rows share these exact handlers.
+    fun committedRowItem(renderedItemKey: String): InboxItem? =
+        activityItemForCommittedGesture(
+            renderedItemKey = renderedItemKey,
+            renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+            renderedPresentationGeneration = renderedPresentationGeneration,
+            currentItems = presentedItemsState.value,
+            currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+            currentPresentationGeneration = presentationGenerationState.value,
+        )
+    fun openRow(renderedItemKey: String) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        selectedItemKey = currentItem.key
+        onIntent(
+            SharedActivityIntent.PrewarmActivityTail(
+                activityReplyThreadPrewarmNextAfterClick(
+                    // The next row the person sees: pins float first in the list layout.
+                    items = activityRowsInDisplayOrder(renderedItems, conversationListEntries),
+                    clickedKey = currentItem.key,
+                    serverId = snapshot.server.id.value
+                )
+            )
+        )
+        currentItem.activityOpenReadIntent()?.let(onIntent)
+        onOpenItem(currentItem)
+    }
+    fun markRowDone(renderedItemKey: String) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        onIntent(SharedActivityIntent.MarkDone(currentItem))
+    }
+    fun openRowMenu(renderedItemKey: String, anchor: RaftPopoverAnchor) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        activeMenuItem = currentItem
+        menuAnchor = anchor
+    }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
@@ -1363,10 +1508,55 @@ private fun SharedActivityList(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .padding(top = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(top = if (conversationList != null) 4.dp else 16.dp),
+                verticalArrangement = Arrangement.spacedBy(if (conversationList != null) 0.dp else 8.dp)
             ) {
                 raftPullToRefreshItem()
+                if (conversationListEntries != null) {
+                    // activity_conversation_list_v0: one compact row per conversation, pinned first.
+                    // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
+                    // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
+                    // theme token with the rest of Activity's dark-mode pass.
+                    items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
+                        when (entry) {
+                            is ActivityConversationListEntry.Section ->
+                                ActivityConversationListSectionLabel(section = entry.section, first = entry.first)
+                            is ActivityConversationListEntry.Row -> {
+                                val item = entry.item
+                                val model =
+                                    remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
+                                        item.activityConversationRowModel(
+                                            context = conversationList?.context ?: ActivityConversationListContext.Empty,
+                                            selectedFilter = selectedFilter,
+                                            senderProfiles = senderProfiles,
+                                            dmPeerNames = dmPeerNames,
+                                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                                        )
+                                    }
+                                ActivityConversationListRow(
+                                    item = item,
+                                    model = model,
+                                    divider = entry.divider,
+                                    selected = selectedItemKey == item.key,
+                                    timeContext = timeContext,
+                                    agentStatusResolver = conversationList?.agentStatusResolver ?: EmptyRaftAgentStatusResolver,
+                                    showDoneAction = item.activityShowsDoneAction(),
+                                    openGestureKey =
+                                        remember(item, renderedPresentationGeneration, renderedPresentationOwnerIdentity) {
+                                            item.activityOpenGestureKey(
+                                                presentationGeneration = renderedPresentationGeneration,
+                                                presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                            )
+                                        },
+                                    captureMenuAnchor = !listState.isScrollInProgress,
+                                    onOpen = { openRow(item.key) },
+                                    onDone = { markRowDone(item.key) },
+                                    onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
+                                )
+                            }
+                        }
+                    }
+                } else {
                 items(items = renderedItems, key = { item -> item.key }) { item ->
                     SharedActivityRow(
                         item = item,
@@ -1380,55 +1570,11 @@ private fun SharedActivityList(
                         captureMenuAnchor = !listState.isScrollInProgress,
                         presentationGeneration = renderedPresentationGeneration,
                         presentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                        onOpen = open@{
-                            val currentItem =
-                                activityItemForCommittedGesture(
-                                    renderedItemKey = item.key,
-                                    renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                    renderedPresentationGeneration = renderedPresentationGeneration,
-                                    currentItems = presentedItemsState.value,
-                                    currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
-                                    currentPresentationGeneration = presentationGenerationState.value,
-                                ) ?: return@open
-                            selectedItemKey = currentItem.key
-                            onIntent(
-                                SharedActivityIntent.PrewarmActivityTail(
-                                    activityReplyThreadPrewarmNextAfterClick(
-                                        items = renderedItems,
-                                        clickedKey = currentItem.key,
-                                        serverId = snapshot.server.id.value
-                                    )
-                                )
-                            )
-                            currentItem.activityOpenReadIntent()?.let(onIntent)
-                            onOpenItem(currentItem)
-                        },
-                        onDone = done@{
-                            val currentItem =
-                                activityItemForCommittedGesture(
-                                    renderedItemKey = item.key,
-                                    renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                    renderedPresentationGeneration = renderedPresentationGeneration,
-                                    currentItems = presentedItemsState.value,
-                                    currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
-                                    currentPresentationGeneration = presentationGenerationState.value,
-                                ) ?: return@done
-                            onIntent(SharedActivityIntent.MarkDone(currentItem))
-                        },
-                        onOpenMenu = menu@{ anchor ->
-                            val currentItem =
-                                activityItemForCommittedGesture(
-                                    renderedItemKey = item.key,
-                                    renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                    renderedPresentationGeneration = renderedPresentationGeneration,
-                                    currentItems = presentedItemsState.value,
-                                    currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
-                                    currentPresentationGeneration = presentationGenerationState.value,
-                                ) ?: return@menu
-                            activeMenuItem = currentItem
-                            menuAnchor = anchor
-                        }
+                        onOpen = { openRow(item.key) },
+                        onDone = { markRowDone(item.key) },
+                        onOpenMenu = { anchor -> openRowMenu(item.key, anchor) }
                     )
+                }
                 }
                 if (showLoadMoreFooter) {
                     item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
@@ -1693,6 +1839,7 @@ private fun SharedActivityRow(
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     val avatarPresentation = activitySenderAvatarPresentation(activitySenderAvatarsEnabled)
+    val openLabel = stringResource(MR.strings.common_open)
     SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
         Column(modifier = surfaceModifier) {
             Row(
@@ -1733,6 +1880,16 @@ private fun SharedActivityRow(
                                 onOpen,
                                 onOpenMenu
                             )
+                            // The card's content reads as one button; the accessibility click opens it
+                            // like a tap. The avatar and bottom strip stay pointer-only so a screen reader
+                            // meets each card once.
+                            .semantics(mergeDescendants = true) {
+                                role = Role.Button
+                                onClick(label = openLabel) {
+                                    onOpen()
+                                    true
+                                }
+                            }
                             .padding(start = avatarPresentation.contentStartPadding, top = 12.dp)
                 ) {
                 // Tag + timestamp share the top row — artin's ruling on #1039
@@ -1994,7 +2151,7 @@ internal fun InboxItem.activityDoneClickIdentity(
 internal fun InboxItem.activityShowsDoneAction(): Boolean = true
 
 @Composable
-private fun Modifier.activityRowGestures(
+internal fun Modifier.activityRowGestures(
     gestureKey: String,
     captureMenuAnchor: Boolean,
     onClick: () -> Unit,
@@ -2145,7 +2302,7 @@ private fun SharedActivityFooterDraftBadge(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SharedActivityFooterBadge(
+internal fun SharedActivityFooterBadge(
     label: String,
     slot: SharedActivityFooterSlot,
     taskStatus: TaskStatus? = null,
@@ -2378,7 +2535,7 @@ internal fun InboxItem.dmPeerLabelOrFallback(dmPeerNames: Map<String, String>): 
         ?: parentChannelName
         ?: channelName.ifBlank { channelId.value }
 
-private fun InboxItem.senderDisplayName(
+internal fun InboxItem.senderDisplayName(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): String? =
     if (kind == InboxItemKind.Thread) {

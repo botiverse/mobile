@@ -46,7 +46,14 @@ internal data class ThreadTimelineSlice(
     /** Task #1125: the frame is the offline durable stand-in (see [RaftThreadScreenPayload.durableLastKnown]). */
     val durableLastKnown: Boolean = false,
     /** Task #168: the stand-in reaches the conversation's start (see [RaftThreadScreenPayload.durableReachedOldest]). */
-    val durableReachedOldest: Boolean = false
+    val durableReachedOldest: Boolean = false,
+    /**
+     * Web `showForwardAction` (ChatPanel / ThreadPanel): the viewer is not a guest and the
+     * conversation resolves to a forward source channel. Set by the route from the session.
+     */
+    val showForwardAction: Boolean = false,
+    /** The viewer's role on this conversation's server is `guest` (web `currentUserServerRole`). */
+    val viewerIsGuest: Boolean = false
 )
 
 internal data class ThreadInlineSearchMatch(

@@ -1,7 +1,11 @@
 package build.raft.app.markdown
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.RaftAppAppearance
 import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftType
 import build.raft.app.raftFontFamilyForWeight
@@ -27,5 +31,28 @@ class RaftMarkdownWebParityTest {
     fun quoteTextIsForegroundMuted() {
         val typography = raftMarkdownTypography(RaftType.Body)
         assertEquals(RaftAppThemeState.colors.foregroundMuted, typography.quote.color)
+    }
+
+    @Test
+    fun tableMatchesWebChatTableInBothThemes() {
+        // web MarkdownContent th/td `px-2 py-1`.
+        assertEquals(PaddingValues(horizontal = 8.dp, vertical = 4.dp), RaftMarkdownTableCellPadding)
+        val initial = RaftAppThemeState.appearance
+        try {
+            listOf(RaftAppAppearance.Light, RaftAppAppearance.Dark).forEach { appearance ->
+                RaftAppThemeState.apply(appearance)
+                val theme = RaftAppThemeState.colors
+                val colors = RaftMarkdownColorsDefault
+                // th `bg-fill-muted text-foreground`, td inherits `text-foreground`.
+                assertEquals(theme.fillMuted, colors.tableHeaderBackground, "$appearance header")
+                assertEquals(theme.foreground, colors.tableText, "$appearance text")
+                // every cell and the table `border border-line-hairline` (1px).
+                assertEquals(theme.lineHairline, colors.tableStroke, "$appearance stroke")
+                // no fill of its own, no zebra.
+                assertEquals(Color.Transparent, colors.tableBackground, "$appearance background")
+            }
+        } finally {
+            RaftAppThemeState.apply(initial)
+        }
     }
 }

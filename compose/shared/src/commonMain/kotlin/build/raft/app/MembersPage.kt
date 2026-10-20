@@ -3764,7 +3764,7 @@ internal fun MemberDetailPageContent(
             }
         }
     // The overview gate follows a flag evaluation (or a local override) that lands after first frame.
-    val serverFeatureFlagRevision = provider.serverFeatureFlags?.revision?.collectAsState()?.value
+    val serverFeatureFlagRevision = provider.serverFeatureFlags?.snapshotRevision?.collectAsState()?.value
     val activityOverviewOverrideRevision by
         ProcessDiagnosticFeatureFlagOverrides.registry
             .revisionFor(ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)

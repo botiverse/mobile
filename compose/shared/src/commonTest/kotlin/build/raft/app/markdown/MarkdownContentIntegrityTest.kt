@@ -460,7 +460,7 @@ class MarkdownContentIntegrityTest {
         return paragraphs.map { paragraph ->
             buildAnnotatedString {
                 buildMarkdownAnnotatedString(parserContent, paragraph, settings)
-            }.text
+            }.raftTextWithoutInlineGaps()
         }
     }
 
@@ -485,7 +485,8 @@ class MarkdownContentIntegrityTest {
                     buildMarkdownAnnotatedString(parserContent, paragraph, settings)
                 }
             RenderedParagraph(
-                text = annotated.text,
+                // Reserved chip gaps are layout-only placeholders, not source characters.
+                text = annotated.raftTextWithoutInlineGaps(),
                 urls =
                     annotated
                         .getLinkAnnotations(0, annotated.length)
