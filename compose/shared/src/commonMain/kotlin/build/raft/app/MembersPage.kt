@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalActionButton
@@ -205,7 +204,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import androidx.compose.material3.Text
-import build.raft.app.compat.ui.rememberPullToRefreshState
+import build.raft.app.components.RaftPullToRefreshBox
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -4878,7 +4877,6 @@ internal fun MembersListContent(
             inviteHumanError = null
         }
     }
-    val showPullToRefreshItem = raftPlatformSupportsKuiklyPullToRefreshItem()
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
@@ -4889,8 +4887,7 @@ internal fun MembersListContent(
                 groupedAgentMembers(agents)
                     .mapNotNull { group -> group.key.takeIf { isAgentGroupCollapsed(it) } }
                     .toSet(),
-            showHumanDirectory = payload.showHumanDirectory,
-            hasPullToRefreshItem = showPullToRefreshItem
+            showHumanDirectory = payload.showHumanDirectory
         )
 
     val listState =
@@ -4925,7 +4922,6 @@ internal fun MembersListContent(
         }
     }
     val pullRefreshing = refreshing && pullRefreshActive
-    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
 
     Column(
         modifier = Modifier
@@ -4938,120 +4934,156 @@ internal fun MembersListContent(
             contentAlignment = Alignment.TopCenter,
         ) {
         val lazyMaxWidth = maxWidth
-        LazyColumn(
-            state = listState,
-            // React parity: the web members view pads the scroll container itself (Sidebar
-            // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
-            // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
-            // the missing half — without it the list sits 8dp from the screen edge (task #140).
-            modifier = Modifier
-                .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
-                .fillMaxSize()
-                .raftPullToRefresh(pullToRefreshState, enabled = showPullToRefreshItem)
-                .padding(horizontal = MembersListContainerInset),
-            verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
+        RaftPullToRefreshBox(
+            isRefreshing = pullRefreshing,
+            onRefresh = {
+                pullRefreshActive = true
+                onRefresh()
+            },
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter,
         ) {
-            if (showPullToRefreshItem) {
-                raftPullToRefreshItem(
-                    state = pullToRefreshState,
-                    scrollState = listState,
-                    onRefresh = {
-                        pullRefreshActive = true
-                        onRefresh()
-                    }
-                )
-            }
-            item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
-            item {
-                RaftCollapsibleSectionHeader(
-                    label = displayAgentsLabel,
-                    count = agents.size,
-                    expanded = agentsExpanded,
-                    onExpandedChange = { agentsExpanded = it },
-                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                    minHeight = MembersListSectionHeaderMinHeight,
-                    trailingContent = {
-                        if (canCreateAgents) {
-                            RaftSectionHeaderIconAction(
-                                icon = RaftLucideIconName.Plus,
-                                contentDescription = stringResource(MR.strings.agent_create_action_create),
-                                size = MembersListSectionAddActionSize,
-                                iconSize = MembersListSectionAddActionIconSize,
-                                onClick2 = { anchor ->
-                                    if (createAgentSubmit != null) {
-                                        createAgentMenuAnchor = anchor
-                                        createAgentMenuOpen = true
+            LazyColumn(
+                state = listState,
+                // React parity: the web members view pads the scroll container itself (Sidebar
+                // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
+                // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
+                // the missing half — without it the list sits 8dp from the screen edge (task #140).
+                modifier = Modifier
+                    .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
+                    .fillMaxSize()
+                    .padding(horizontal = MembersListContainerInset),
+                verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
+            ) {
+                item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
+                item {
+                    RaftCollapsibleSectionHeader(
+                        label = displayAgentsLabel,
+                        count = agents.size,
+                        expanded = agentsExpanded,
+                        onExpandedChange = { agentsExpanded = it },
+                        modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                        minHeight = MembersListSectionHeaderMinHeight,
+                        trailingContent = {
+                            if (canCreateAgents) {
+                                RaftSectionHeaderIconAction(
+                                    icon = RaftLucideIconName.Plus,
+                                    contentDescription = stringResource(MR.strings.agent_create_action_create),
+                                    size = MembersListSectionAddActionSize,
+                                    iconSize = MembersListSectionAddActionIconSize,
+                                    onClick2 = { anchor ->
+                                        if (createAgentSubmit != null) {
+                                            createAgentMenuAnchor = anchor
+                                            createAgentMenuOpen = true
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
-                    }
-                )
-            }
-            if (agentsExpanded) {
-                groupedAgentMembers(agents) { machineId ->
-                    createAgentMachines.firstOrNull { it.id == machineId }?.name
-                }.forEach { group ->
-                    item("group_${group.key}") {
-                        val groupExpanded = !isAgentGroupCollapsed(group.key)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = MembersListMachineLabelInset)
-                                .padding(top = RaftAppSpacing.Xs)
-                                .clickable {
-                                    // Slot stores *collapsed*; toggling writes !collapsed
-                                    // (writing !groupExpanded stored the old value and made the
-                                    // row a no-op — task #409 regression).
-                                    val collapseNow =
-                                        resolveAgentGroupCollapseToggle(
-                                            isAgentGroupCollapsed(group.key)
+                    )
+                }
+                if (agentsExpanded) {
+                    groupedAgentMembers(agents) { machineId ->
+                        createAgentMachines.firstOrNull { it.id == machineId }?.name
+                    }.forEach { group ->
+                        item("group_${group.key}") {
+                            val groupExpanded = !isAgentGroupCollapsed(group.key)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = MembersListMachineLabelInset)
+                                    .padding(top = RaftAppSpacing.Xs)
+                                    .clickable {
+                                        // Slot stores *collapsed*; toggling writes !collapsed
+                                        // (writing !groupExpanded stored the old value and made the
+                                        // row a no-op — task #409 regression).
+                                        val collapseNow =
+                                            resolveAgentGroupCollapseToggle(
+                                                isAgentGroupCollapsed(group.key)
+                                            )
+                                        agentGroupCollapseOverrides =
+                                            agentGroupCollapseOverrides + (group.key to collapseNow)
+                                        agentGroupCollapseStore?.setCollapsed(
+                                            membersCurrentUserId,
+                                            group.key,
+                                            collapseNow
                                         )
-                                    agentGroupCollapseOverrides =
-                                        agentGroupCollapseOverrides + (group.key to collapseNow)
-                                    agentGroupCollapseStore?.setCollapsed(
-                                        membersCurrentUserId,
-                                        group.key,
-                                        collapseNow
-                                    )
-                                },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-                        ) {
-                            RaftLucideIcon(
-                                RaftLucideIconName.ChevronRight,
-                                modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                color = RaftColor.TextMutedGrayArgb,
-                                rotationDegrees = if (groupExpanded) 90f else 0f,
-                                rotationAnimationDurationSeconds =
-                                    RaftCollapsibleSectionTokens.AnimationDurationSeconds
-                            )
-                            RaftLucideIcon(
-                                RaftLucideIconName.Monitor,
-                                modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                color = RaftColor.TextMutedGrayArgb
-                            )
-                            Text(
-                                text = membersListMachineLabel(group.label),
-                                style = MembersListMachineLabelTextStyle,
-                                color = RaftColor.TextMutedGray,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
-                            )
-                            Text(
-                                text = group.members.size.toString(),
-                                style = MembersListMachineLabelTextStyle,
-                                color = RaftColor.TextMutedGray
-                            )
+                                    },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+                            ) {
+                                RaftLucideIcon(
+                                    RaftLucideIconName.ChevronRight,
+                                    modifier = Modifier.size(MembersListMachineLabelIconSize),
+                                    color = RaftColor.TextMutedGrayArgb,
+                                    rotationDegrees = if (groupExpanded) 90f else 0f,
+                                    rotationAnimationDurationSeconds =
+                                        RaftCollapsibleSectionTokens.AnimationDurationSeconds
+                                )
+                                RaftLucideIcon(
+                                    RaftLucideIconName.Monitor,
+                                    modifier = Modifier.size(MembersListMachineLabelIconSize),
+                                    color = RaftColor.TextMutedGrayArgb
+                                )
+                                Text(
+                                    text = membersListMachineLabel(group.label),
+                                    style = MembersListMachineLabelTextStyle,
+                                    color = RaftColor.TextMutedGray,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Text(
+                                    text = group.members.size.toString(),
+                                    style = MembersListMachineLabelTextStyle,
+                                    color = RaftColor.TextMutedGray
+                                )
+                            }
+                        }
+                        if (!isAgentGroupCollapsed(group.key)) {
+                            items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
+                                val member = group.members[index]
+                                MembersListRow(
+                                    member = member,
+                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                                    onClick = { onOpenMember(member) }
+                                )
+                            }
                         }
                     }
-                    if (!isAgentGroupCollapsed(group.key)) {
-                        items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
-                            val member = group.members[index]
+                }
+                if (payload.showHumanDirectory) {
+                    item {
+                        Spacer(Modifier.height(RaftAppSpacing.Sm))
+                        RaftCollapsibleSectionHeader(
+                            label = displayHumansLabel,
+                            count = humans.size,
+                            expanded = humansExpanded,
+                            onExpandedChange = { humansExpanded = it },
+                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                            minHeight = MembersListSectionHeaderMinHeight,
+                            trailingContent = {
+                                if (canInviteHumans) {
+                                    RaftSectionHeaderIconAction(
+                                        icon = RaftLucideIconName.Plus,
+                                        contentDescription = stringResource(MR.strings.member_action_invite_human),
+                                        size = MembersListSectionAddActionSize,
+                                        iconSize = MembersListSectionAddActionIconSize,
+                                        onClick = { activeInviteHuman = true }
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    if (humansExpanded) {
+                        items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
+                            val member = humans[index]
                             MembersListRow(
                                 member = member,
-                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
@@ -5060,45 +5092,8 @@ internal fun MembersListContent(
                         }
                     }
                 }
+                item { Spacer(Modifier.height(bottomContentPadding)) }
             }
-            if (payload.showHumanDirectory) {
-                item {
-                    Spacer(Modifier.height(RaftAppSpacing.Sm))
-                    RaftCollapsibleSectionHeader(
-                        label = displayHumansLabel,
-                        count = humans.size,
-                        expanded = humansExpanded,
-                        onExpandedChange = { humansExpanded = it },
-                        modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                        minHeight = MembersListSectionHeaderMinHeight,
-                        trailingContent = {
-                            if (canInviteHumans) {
-                                RaftSectionHeaderIconAction(
-                                    icon = RaftLucideIconName.Plus,
-                                    contentDescription = stringResource(MR.strings.member_action_invite_human),
-                                    size = MembersListSectionAddActionSize,
-                                    iconSize = MembersListSectionAddActionIconSize,
-                                    onClick = { activeInviteHuman = true }
-                                )
-                            }
-                        }
-                    )
-                }
-                if (humansExpanded) {
-                    items(humans.size, key = { "human_${humans[it].id.value}" }) { index ->
-                        val member = humans[index]
-                        MembersListRow(
-                            member = member,
-                            selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                            onClick = { onOpenMember(member) }
-                        )
-                    }
-                }
-            }
-            item { Spacer(Modifier.height(bottomContentPadding)) }
         }
         }
     }
@@ -5280,12 +5275,10 @@ internal fun membersLazyItemCount(
     agentsExpanded: Boolean,
     humansExpanded: Boolean,
     collapsedAgentGroupKeys: Set<String> = emptySet(),
-    showHumanDirectory: Boolean = true,
-    hasPullToRefreshItem: Boolean = true
+    showHumanDirectory: Boolean = true
 ): Int {
     val fixedItems =
-        (if (hasPullToRefreshItem) 1 else 0) +
-            1 + // top spacer
+        1 + // top spacer
             1 + // agents header
             (if (showHumanDirectory) 1 else 0) + // humans header
             1 // bottom spacer

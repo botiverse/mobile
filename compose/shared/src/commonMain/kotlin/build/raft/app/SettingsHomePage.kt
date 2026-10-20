@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -538,7 +537,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
-import build.raft.app.compat.ui.rememberPullToRefreshState
+import build.raft.app.components.RaftPullToRefreshBox
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftMetrics
@@ -21384,7 +21383,6 @@ internal fun SharedHomeSavedPanel(
             activeMenu = null
         }
     }
-    val pullToRefreshState = rememberPullToRefreshState(state.pullRefreshing)
     val projectedItems =
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
@@ -21438,70 +21436,64 @@ internal fun SharedHomeSavedPanel(
                 onTitleClick = onTitleClick
             )
             RaftAppShellBodyTopBanner()
-            LazyColumn(
-                state = listState,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(RaftColor.SurfaceWhite)
-                        .raftPullToRefresh(
-                            pullToRefreshState,
-                            enabled = raftPlatformSupportsKuiklyPullToRefreshItem()
-                        ),
-                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+            RaftPullToRefreshBox(
+                isRefreshing = state.pullRefreshing,
+                onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
+                modifier = Modifier.fillMaxWidth().weight(1f),
             ) {
-                if (raftPlatformSupportsKuiklyPullToRefreshItem()) {
-                    raftPullToRefreshItem(
-                        state = pullToRefreshState,
-                        scrollState = listState,
-                        onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) }
-                    )
-                }
-                val hasSavedRows = projectedItems.isNotEmpty()
-                if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
-                    item {
-                        SharedHomePanelStatus(
-                            errorCode = state.errorCode,
-                            noPermissionCode = state.noPermissionCode,
-                            empty = false,
-                            emptyTitle = "",
-                            emptyDetail = "",
-                            onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                LazyColumn(
+                    state = listState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(RaftColor.SurfaceWhite),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                ) {
+                    val hasSavedRows = projectedItems.isNotEmpty()
+                    if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
+                        item {
+                            SharedHomePanelStatus(
+                                errorCode = state.errorCode,
+                                noPermissionCode = state.noPermissionCode,
+                                empty = false,
+                                emptyTitle = "",
+                                emptyDetail = "",
+                                onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                            )
+                        }
+                    } else if (state.empty || (state.loaded && projectedItems.isEmpty())) {
+                        item {
+                            SharedHomeSavedEmptyState()
+                        }
+                    }
+                    items(projectedItems.size, key = { index -> "saved-${projectedItems[index].key}" }) { index ->
+                        val item = projectedItems[index]
+                        SharedHomeSavedResultCard(
+                            item = item,
+                            selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
+                            cacheServerId = cacheServerId,
+                            memberAvatarResolver = memberAvatarResolver,
+                            onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
+                            onOpen = {
+                                selectedItemKey = item.key
+                                onOpenItem(item)
+                            },
+                            onContextMenu = { anchor -> activeMenu = SharedHomeSavedContextMenuState(item, anchor) },
+                            timeContext = timeContext
                         )
                     }
-                } else if (state.empty || (state.loaded && projectedItems.isEmpty())) {
-                    item {
-                        SharedHomeSavedEmptyState()
+                    if (state.hasMore) {
+                        item {
+                            SharedHomeLoadMoreRow(
+                                loading = state.loadingMore,
+                                label = stringResource(MR.strings.saved_action_load_more),
+                                onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
+                            )
+                        }
                     }
-                }
-                items(projectedItems.size, key = { index -> "saved-${projectedItems[index].key}" }) { index ->
-                    val item = projectedItems[index]
-                    SharedHomeSavedResultCard(
-                        item = item,
-                        selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
-                        cacheServerId = cacheServerId,
-                        memberAvatarResolver = memberAvatarResolver,
-                        onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
-                        onOpen = {
-                            selectedItemKey = item.key
-                            onOpenItem(item)
-                        },
-                        onContextMenu = { anchor -> activeMenu = SharedHomeSavedContextMenuState(item, anchor) },
-                        timeContext = timeContext
-                    )
-                }
-                if (state.hasMore) {
                     item {
-                        SharedHomeLoadMoreRow(
-                            loading = state.loadingMore,
-                            label = stringResource(MR.strings.saved_action_load_more),
-                            onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
-                        )
+                        Spacer(Modifier.height(bottomContentPadding))
                     }
-                }
-                item {
-                    Spacer(Modifier.height(bottomContentPadding))
                 }
             }
         }

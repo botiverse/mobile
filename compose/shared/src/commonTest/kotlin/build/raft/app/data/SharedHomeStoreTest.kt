@@ -7860,8 +7860,8 @@ class SharedHomeStoreTest {
             directMessagesExpanded = false,
             pinnedExpanded = false
         )
-        // 10 fixed (including pull refresh) + 0 joint section + 2 pinned section items = 12
-        assertEquals(12, collapsed)
+        // 9 fixed + 0 joint section + 2 pinned section items = 11
+        assertEquals(11, collapsed)
         val expanded = homeLazyItemCount(
             channelsCount = 3,
             jointCount = 0,
@@ -7872,7 +7872,7 @@ class SharedHomeStoreTest {
             directMessagesExpanded = false,
             pinnedExpanded = true
         )
-        assertEquals(14, expanded)
+        assertEquals(13, expanded)
     }
 
     private fun sourceWithSidebarOrder(

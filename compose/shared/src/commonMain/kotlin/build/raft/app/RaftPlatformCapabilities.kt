@@ -1,7 +1,5 @@
 package build.raft.app
 
-internal expect fun raftPlatformSupportsKuiklyPullToRefreshItem(): Boolean
-
 internal expect fun raftPlatformUsesNativeLucideIconRotation(): Boolean
 
 internal expect fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean

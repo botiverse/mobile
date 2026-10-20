@@ -122,8 +122,7 @@ class MembersAgentMachineGroupCollapseTest {
                 humansCount = 0,
                 agentsExpanded = true,
                 humansExpanded = false,
-                showHumanDirectory = false,
-                hasPullToRefreshItem = false
+                showHumanDirectory = false
             )
         )
         // Collapsing m1 drops its 2 member rows but keeps both headers: 6.
@@ -135,8 +134,7 @@ class MembersAgentMachineGroupCollapseTest {
                 agentsExpanded = true,
                 humansExpanded = false,
                 collapsedAgentGroupKeys = setOf("m1"),
-                showHumanDirectory = false,
-                hasPullToRefreshItem = false
+                showHumanDirectory = false
             )
         )
     }

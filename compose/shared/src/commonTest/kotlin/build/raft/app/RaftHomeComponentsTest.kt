@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.raftPullToRefreshIndicatorStep
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeChannelRow
@@ -1678,7 +1679,7 @@ class RaftHomeComponentsTest {
     @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
-            15,
+            14,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
@@ -1689,7 +1690,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            10,
+            9,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
@@ -1700,19 +1701,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            9,
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 0,
-                directMessagesCount = 2,
-                channelsExpanded = false,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = false,
-                hasPullToRefreshItem = false
-            )
-        )
-        assertEquals(
-            18,
+            17,
             homeLazyItemCount(
                 channelsCount = 0,
                 jointCount = 0,
@@ -1730,7 +1719,7 @@ class RaftHomeComponentsTest {
     @Test
     fun homeLazyItemCountTracksChannelAndJointSectionsIndependently() {
         assertEquals(
-            16,
+            15,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
@@ -1741,7 +1730,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            17,
+            16,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
@@ -1857,8 +1846,7 @@ class RaftHomeComponentsTest {
 
     @Test
     fun homePullToRefreshFollowsPayloadRefreshCapability() {
-        assertTrue(homePullToRefreshEnabled(contentRefreshEnabled = true, platformSupportsPullToRefresh = true))
-        assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = true, platformSupportsPullToRefresh = false))
+        assertTrue(homePullToRefreshEnabled(contentRefreshEnabled = true))
         assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = false))
     }
 
@@ -1871,15 +1859,16 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun pullRefreshIndicatorShowsDragProgressBeforeRefreshing() {
-        assertFalse(raftPullRefreshIndicatorVisible(pullProgress = 0f, isRefreshing = false))
-        assertTrue(raftPullRefreshIndicatorVisible(pullProgress = 0.1f, isRefreshing = false))
-        assertTrue(raftPullRefreshIndicatorVisible(pullProgress = 0f, isRefreshing = true))
-
-        assertEquals(0f, raftPullRefreshIndicatorRotationDegrees(pullProgress = 0f, isRefreshing = false))
-        assertEquals(180f, raftPullRefreshIndicatorRotationDegrees(pullProgress = 0.5f, isRefreshing = false))
-        assertEquals(360f, raftPullRefreshIndicatorRotationDegrees(pullProgress = 2f, isRefreshing = false))
-        assertEquals(0f, raftPullRefreshIndicatorRotationDegrees(pullProgress = 0.5f, isRefreshing = true))
+    fun pullToRefreshIndicatorStepWalksWithThePullUpToTheThreshold() {
+        assertEquals(0, raftPullToRefreshIndicatorStep(distanceFraction = 0f))
+        assertEquals(0, raftPullToRefreshIndicatorStep(distanceFraction = 0.2f))
+        assertEquals(1, raftPullToRefreshIndicatorStep(distanceFraction = 0.25f))
+        assertEquals(2, raftPullToRefreshIndicatorStep(distanceFraction = 0.6f))
+        assertEquals(3, raftPullToRefreshIndicatorStep(distanceFraction = 0.9f))
+        // At and past the threshold the last step stays lit.
+        assertEquals(3, raftPullToRefreshIndicatorStep(distanceFraction = 1f))
+        assertEquals(3, raftPullToRefreshIndicatorStep(distanceFraction = 1.8f))
+        assertEquals(0, raftPullToRefreshIndicatorStep(distanceFraction = -0.5f))
     }
 
     @Test
@@ -2175,7 +2164,7 @@ class RaftHomeComponentsTest {
                 testMember("agent-3", MemberKind.Agent, permissionBadges = listOf("computer:linux"))
             )
         assertEquals(
-            12,
+            11,
             membersLazyItemCount(
                 agents = agents,
                 humansCount = 2,
@@ -2184,7 +2173,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            5,
+            4,
             membersLazyItemCount(
                 agents = agents,
                 humansCount = 2,
@@ -2193,17 +2182,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            4,
-            membersLazyItemCount(
-                agents = agents,
-                humansCount = 2,
-                agentsExpanded = false,
-                humansExpanded = false,
-                hasPullToRefreshItem = false
-            )
-        )
-        assertEquals(
-            4,
+            3,
             membersLazyItemCount(
                 agents = agents,
                 humansCount = 2,

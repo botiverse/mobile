@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
@@ -120,7 +119,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import build.raft.app.compat.ui.rememberPullToRefreshState
+import build.raft.app.components.RaftPullToRefreshBox
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
@@ -693,11 +692,8 @@ private val homeConversationOpenBarrier = HomeConversationOpenBarrier()
 
 private const val HomePullToRefreshEnabled = true
 
-internal fun homePullToRefreshEnabled(
-    contentRefreshEnabled: Boolean,
-    platformSupportsPullToRefresh: Boolean = raftPlatformSupportsKuiklyPullToRefreshItem()
-): Boolean =
-    contentRefreshEnabled && HomePullToRefreshEnabled && platformSupportsPullToRefresh
+internal fun homePullToRefreshEnabled(contentRefreshEnabled: Boolean): Boolean =
+    contentRefreshEnabled && HomePullToRefreshEnabled
 
 internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullRefreshing: Boolean): Boolean =
     contentRefreshing || pullRefreshing
@@ -2065,7 +2061,6 @@ private fun RaftStructuralHomeShellContent(
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
             pinnedExpanded = pinnedExpanded,
-            hasPullToRefreshItem = pullToRefreshEnabled,
             hasInlineError = inlineError != null,
             channelSkeletonCount =
                 if (channelsExpanded && showLoadingSkeletons) HomeLoadingChannelSkeletonRows else 0,
@@ -2158,7 +2153,6 @@ private fun RaftStructuralHomeShellContent(
             notificationCenterExpanded = false
         }
     }
-    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val resolvedTopSafeArea = raftTopSafeAreaPadding()
@@ -2312,535 +2306,534 @@ private fun RaftStructuralHomeShellContent(
                         }
                     }
                     traceMarkdownSection(RaftHomeTraceNames.LIST_RENDER, lazyItemCount) {
-                        LazyColumn(
-                            state = listState,
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .raftPullToRefresh(pullToRefreshState, enabled = pullToRefreshEnabled)
-                                    .touchListener { type, _ ->
-                                        if (type == TouchType.Move) {
-                                            homeUserScrollGeneration.value += 1
-                                        }
-                                    }
-                                    .scrollToTop {
-                                        listScope.launch {
-                                            listState.animateScrollToTopExpressive()
-                                        }
-                                    },
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        RaftPullToRefreshBox(
+                            isRefreshing = pullRefreshing,
+                            onRefresh = {
+                                pullRefreshActive = true
+                                onRefresh()
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            enabled = pullToRefreshEnabled,
                         ) {
-                            if (pullToRefreshEnabled) {
-                                raftPullToRefreshItem(
-                                    state = pullToRefreshState,
-                                    scrollState = listState,
-                                    onRefresh = {
-                                        pullRefreshActive = true
-                                        onRefresh()
-                                    }
-                                )
-                            }
-                            item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
-                            item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
-                            item {
-                                val activityProjection =
-                                    homeActivitySidebarProjection(
-                                        activityUnreadCount = inboxUnreadCount,
-                                        activityTotalCount = inboxTotalCount
-                                    )
-                                SidebarActivityRow(
-                                    labels.inbox,
-                                    unreadCount = activityProjection.unreadLabel,
-                                    totalCount = activityProjection.totalLabel,
-                                    selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null
-                                )
-                            }
-                            item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
-                            inlineError?.let { error ->
+                            LazyColumn(
+                                state = listState,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .touchListener { type, _ ->
+                                            if (type == TouchType.Move) {
+                                                homeUserScrollGeneration.value += 1
+                                            }
+                                        }
+                                        .scrollToTop {
+                                            listScope.launch {
+                                                listState.animateScrollToTopExpressive()
+                                            }
+                                        },
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
+                                item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
                                 item {
-                                    HomeInlineErrorCard(
-                                        error = error,
-                                        modifier =
-                                            Modifier
-                                                .padding(horizontal = HomeListHorizontalPadding, vertical = RaftAppSpacing.Sm),
-                                        onAction = onInlineErrorAction
+                                    val activityProjection =
+                                        homeActivitySidebarProjection(
+                                            activityUnreadCount = inboxUnreadCount,
+                                            activityTotalCount = inboxTotalCount
+                                        )
+                                    SidebarActivityRow(
+                                        labels.inbox,
+                                        unreadCount = activityProjection.unreadLabel,
+                                        totalCount = activityProjection.totalLabel,
+                                        selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
+                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null
                                     )
                                 }
-                            }
-                        // Sections render in web's normalized sectionOrder: system and
-                        // custom sections interleave (web Sidebar.tsx renders every block
-                        // with CSS `order = sectionOrder.indexOf(id)`); empty sections hide.
-                        displayedSidebarSections.forEach { sidebarSection ->
-                            when (sidebarSection) {
-                                RaftHomeSidebarSection.Pinned -> {
-                                    item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                                item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
+                                inlineError?.let { error ->
                                     item {
-                                        RaftCollapsibleSectionHeader(
-                                            label = labels.pinned,
-                                            count = displayedPinned.size,
-                                            expanded = pinnedExpanded,
-                                            onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
-                                            showCollapsedUnreadDot = pinnedSectionHasUnread,
-                                            sortContentDescription = "${labels.sortChannels} ${labels.pinned}",
-                                            onSortClick = { anchor ->
-                                                if (sidebarInteractionsEnabled) {
-                                                    activeSortMenu = if (activeSortMenu == RaftHomeSortSection.Pinned) null else RaftHomeSortSection.Pinned
-                                                    sortMenuAnchor = anchor
-                                                }
-                                            },
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        HomeInlineErrorCard(
+                                            error = error,
+                                            modifier =
+                                                Modifier
+                                                    .padding(horizontal = HomeListHorizontalPadding, vertical = RaftAppSpacing.Sm),
+                                            onAction = onInlineErrorAction
                                         )
                                     }
-                                    if (pinnedExpanded) {
-                                        items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
-                                            val pinnedRow = displayedPinned[index]
-                                            val pinned = pinnedRow.conversation
-                                            val pinnedMember = pinnedRow.member
-                                            val isDirectMessage = pinned?.isDirectMessageConversation() == true || pinnedMember != null
-                                            // #211 React parity (revised by @artin 23:38): pinned copy and
-                                            // original-section copy of the same conversation both
-                                            // render Selected when their conversationId matches.
-                                            // Selected wins over pressed so the user never confuses
-                                            // "I'm pressing" with "this is the current conversation".
-                                            val rowInteractionState = when {
-                                                pinned != null && sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
-                                                pressedRowKey == "pinned:${pinnedRow.key}" -> ChannelRowInteractionState.Pressed
-                                                else -> ChannelRowInteractionState.Default
-                                            }
-                                            val handleLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
-                                                when {
-                                                    pinned != null -> {
-                                                        onChannelLongPressWithDismiss(pinned.id, anchor)
-                                                        activePinnedMemberMenuKey = null
-                                                        activePinMenuConversationId = pinned.id
-                                                        activeMenuSection = RaftHomeSortSection.Pinned
-                                                        pinMenuAnchor = anchor
+                                }
+                            // Sections render in web's normalized sectionOrder: system and
+                            // custom sections interleave (web Sidebar.tsx renders every block
+                            // with CSS `order = sectionOrder.indexOf(id)`); empty sections hide.
+                            displayedSidebarSections.forEach { sidebarSection ->
+                                when (sidebarSection) {
+                                    RaftHomeSidebarSection.Pinned -> {
+                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                                        item {
+                                            RaftCollapsibleSectionHeader(
+                                                label = labels.pinned,
+                                                count = displayedPinned.size,
+                                                expanded = pinnedExpanded,
+                                                onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
+                                                showCollapsedUnreadDot = pinnedSectionHasUnread,
+                                                sortContentDescription = "${labels.sortChannels} ${labels.pinned}",
+                                                onSortClick = { anchor ->
+                                                    if (sidebarInteractionsEnabled) {
+                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.Pinned) null else RaftHomeSortSection.Pinned
+                                                        sortMenuAnchor = anchor
                                                     }
-                                                    pinnedMember != null -> {
-                                                        // Typed pinned members can exist before a DM
-                                                        // conversation is materialized. They still own
-                                                        // a stable member id in the per-user pinned
-                                                        // order, so expose the section-level Sort action
-                                                        // without inventing conversation operations.
-                                                        dismissNotificationCenterForFocusLoss()
-                                                        activePinMenuConversationId = null
-                                                        activePinnedMemberMenuKey = pinnedRow.key
-                                                        activeMenuSection = RaftHomeSortSection.Pinned
-                                                        pinMenuAnchor = anchor
-                                                    }
+                                                },
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                            )
+                                        }
+                                        if (pinnedExpanded) {
+                                            items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
+                                                val pinnedRow = displayedPinned[index]
+                                                val pinned = pinnedRow.conversation
+                                                val pinnedMember = pinnedRow.member
+                                                val isDirectMessage = pinned?.isDirectMessageConversation() == true || pinnedMember != null
+                                                // #211 React parity (revised by @artin 23:38): pinned copy and
+                                                // original-section copy of the same conversation both
+                                                // render Selected when their conversationId matches.
+                                                // Selected wins over pressed so the user never confuses
+                                                // "I'm pressing" with "this is the current conversation".
+                                                val rowInteractionState = when {
+                                                    pinned != null && sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
+                                                    pressedRowKey == "pinned:${pinnedRow.key}" -> ChannelRowInteractionState.Pressed
+                                                    else -> ChannelRowInteractionState.Default
                                                 }
-                                                // Menu opens: clear press so the visual doesn't stick
-                                                // while the user reads it.
-                                                pressedRowKey = null
-                                            }
-                                            if (isDirectMessage) {
-                                                val badgeProjection = pinned?.homeConversationBadgeProjection()
-                                                DirectMessageRow(
-                                                    interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
-                                                    name = pinned?.name ?: pinnedMember?.name.orEmpty(),
-                                                    description = pinned?.description ?: pinnedMember?.description,
-                                                    avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
-                                                    peerType =
-                                                        pinned?.peerType
-                                                            ?: pinnedMember?.identity?.kind?.memberKindWireValue(),
-                                                    memberId =
-                                                        pinned?.presenceMemberId
-                                                            ?: pinnedMember?.identity?.memberId?.value,
-                                                    cacheServerId = currentServerId,
-                                                    agentStatusResolver = agentStatusResolver,
-                                                    memberAvatarResolver = memberAvatarResolver,
-                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                    hasDraft = pinned?.hasDraft == true,
-                                                    muted = pinned?.activityMuted == true,
-                                                    badge = badgeProjection?.label,
-                                                    badgeTone = badgeProjection?.tone ?: HomeSidebarBadgeTone.Loud,
-                                                    interactionState = rowInteractionState,
-                                                    captureLongPressAnchor = captureRowAnchors,
-                                                    onClick =
-                                                        if (sidebarInteractionsEnabled) {
-                                                            {
-                                                                when (val target = pinnedRow.clickTarget()) {
-                                                                    is RaftHomePinnedClickTarget.Conversation -> {
-                                                                        diagnosticsLogger(
-                                                                            "shared_home_pinned_click serverId=$currentServerId " +
-                                                                                "key=${pinnedRow.key} target=conversation " +
-                                                                                "conversationId=${target.conversationId}"
-                                                                        )
-                                                                        onChannelClickWithDismiss(target.conversationId)
+                                                val handleLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
+                                                    when {
+                                                        pinned != null -> {
+                                                            onChannelLongPressWithDismiss(pinned.id, anchor)
+                                                            activePinnedMemberMenuKey = null
+                                                            activePinMenuConversationId = pinned.id
+                                                            activeMenuSection = RaftHomeSortSection.Pinned
+                                                            pinMenuAnchor = anchor
+                                                        }
+                                                        pinnedMember != null -> {
+                                                            // Typed pinned members can exist before a DM
+                                                            // conversation is materialized. They still own
+                                                            // a stable member id in the per-user pinned
+                                                            // order, so expose the section-level Sort action
+                                                            // without inventing conversation operations.
+                                                            dismissNotificationCenterForFocusLoss()
+                                                            activePinMenuConversationId = null
+                                                            activePinnedMemberMenuKey = pinnedRow.key
+                                                            activeMenuSection = RaftHomeSortSection.Pinned
+                                                            pinMenuAnchor = anchor
+                                                        }
+                                                    }
+                                                    // Menu opens: clear press so the visual doesn't stick
+                                                    // while the user reads it.
+                                                    pressedRowKey = null
+                                                }
+                                                if (isDirectMessage) {
+                                                    val badgeProjection = pinned?.homeConversationBadgeProjection()
+                                                    DirectMessageRow(
+                                                        interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
+                                                        name = pinned?.name ?: pinnedMember?.name.orEmpty(),
+                                                        description = pinned?.description ?: pinnedMember?.description,
+                                                        avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
+                                                        peerType =
+                                                            pinned?.peerType
+                                                                ?: pinnedMember?.identity?.kind?.memberKindWireValue(),
+                                                        memberId =
+                                                            pinned?.presenceMemberId
+                                                                ?: pinnedMember?.identity?.memberId?.value,
+                                                        cacheServerId = currentServerId,
+                                                        agentStatusResolver = agentStatusResolver,
+                                                        memberAvatarResolver = memberAvatarResolver,
+                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        hasDraft = pinned?.hasDraft == true,
+                                                        muted = pinned?.activityMuted == true,
+                                                        badge = badgeProjection?.label,
+                                                        badgeTone = badgeProjection?.tone ?: HomeSidebarBadgeTone.Loud,
+                                                        interactionState = rowInteractionState,
+                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        onClick =
+                                                            if (sidebarInteractionsEnabled) {
+                                                                {
+                                                                    when (val target = pinnedRow.clickTarget()) {
+                                                                        is RaftHomePinnedClickTarget.Conversation -> {
+                                                                            diagnosticsLogger(
+                                                                                "shared_home_pinned_click serverId=$currentServerId " +
+                                                                                    "key=${pinnedRow.key} target=conversation " +
+                                                                                    "conversationId=${target.conversationId}"
+                                                                            )
+                                                                            onChannelClickWithDismiss(target.conversationId)
+                                                                        }
+                                                                        is RaftHomePinnedClickTarget.Member -> {
+                                                                            diagnosticsLogger(
+                                                                                "shared_home_pinned_click serverId=$currentServerId " +
+                                                                                    "key=${pinnedRow.key} target=member " +
+                                                                                    "memberId=${target.identity.memberId.value} " +
+                                                                                    "memberKind=${target.identity.kind.memberKindWireValue()}"
+                                                                            )
+                                                                            dismissNotificationCenterForFocusLoss()
+                                                                            onPinnedMemberClick(target.identity)
+                                                                        }
+                                                                        null -> Unit
                                                                     }
-                                                                    is RaftHomePinnedClickTarget.Member -> {
-                                                                        diagnosticsLogger(
-                                                                            "shared_home_pinned_click serverId=$currentServerId " +
-                                                                                "key=${pinnedRow.key} target=member " +
-                                                                                "memberId=${target.identity.memberId.value} " +
-                                                                                "memberKind=${target.identity.kind.memberKindWireValue()}"
-                                                                        )
-                                                                        dismissNotificationCenterForFocusLoss()
-                                                                        onPinnedMemberClick(target.identity)
-                                                                    }
-                                                                    null -> Unit
                                                                 }
-                                                            }
-                                                        } else {
-                                                            null
-                                                        },
-                                                    onLongPress = if (sidebarInteractionsEnabled && pinnedRow.supportsLongPress()) handleLongPress else null,
-                                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
-                                                    onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
-                                                )
-                                            } else if (pinned != null) {
-                                                val badgeProjection = pinned.homeConversationBadgeProjection()
+                                                            } else {
+                                                                null
+                                                            },
+                                                        onLongPress = if (sidebarInteractionsEnabled && pinnedRow.supportsLongPress()) handleLongPress else null,
+                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                        onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                    )
+                                                } else if (pinned != null) {
+                                                    val badgeProjection = pinned.homeConversationBadgeProjection()
+                                                    ChannelRow(
+                                                        content =
+                                                            ChannelRowContent(
+                                                                name = pinned.name,
+                                                                symbol = pinned.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
+                                                                joined = pinned.joined,
+                                                                hasDraft = pinned.hasDraft,
+                                                                muted = pinned.activityMuted,
+                                                                bridgeProvider = pinned.bridgeProvider,
+                                                                badge = badgeProjection.label,
+                                                                badgeTone = badgeProjection.tone
+                                                            ),
+                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        interaction =
+                                                            ChannelRowInteraction(
+                                                                identity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
+                                                                state = rowInteractionState,
+                                                                captureLongPressAnchor = captureRowAnchors,
+                                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
+                                                                onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                                onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                            )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    RaftHomeSidebarSection.JointChannels -> {
+                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                                        item {
+                                            RaftCollapsibleSectionHeader(
+                                                label = labels.jointChannels,
+                                                count = displayedJointChannels.size,
+                                                expanded = jointChannelsExpanded,
+                                                onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
+                                                showCollapsedUnreadDot = jointChannelSectionHasUnread,
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                            )
+                                        }
+                                        if (jointChannelsExpanded) {
+                                            items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
+                                                val channel = displayedJointChannels[index]
+                                                val badgeProjection = channel.homeConversationBadgeProjection()
+                                                val jointInteractionState = when {
+                                                    sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                                    pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
+                                                    else -> ChannelRowInteractionState.Default
+                                                }
                                                 ChannelRow(
                                                     content =
                                                         ChannelRowContent(
-                                                            name = pinned.name,
-                                                            symbol = pinned.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
-                                                            joined = pinned.joined,
-                                                            hasDraft = pinned.hasDraft,
-                                                            muted = pinned.activityMuted,
-                                                            bridgeProvider = pinned.bridgeProvider,
+                                                            name = channel.name,
+                                                            symbol = channel.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
+                                                            joined = channel.joined,
+                                                            hasDraft = channel.hasDraft,
+                                                            muted = channel.activityMuted,
+                                                            bridgeProvider = channel.bridgeProvider,
                                                             badge = badgeProjection.label,
                                                             badgeTone = badgeProjection.tone
                                                         ),
                                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                                     interaction =
                                                         ChannelRowInteraction(
-                                                            identity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
-                                                            state = rowInteractionState,
+                                                            identity = homeSidebarInteractionIdentity("joint", channel.id),
+                                                            state = jointInteractionState,
                                                             captureLongPressAnchor = captureRowAnchors,
-                                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
-                                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
-                                                            onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
+                                                            onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                                onChannelLongPressWithDismiss(channel.id, anchor)
+                                                                activePinMenuConversationId = channel.id
+                                                                activeMenuSection = RaftHomeSortSection.JointChannels
+                                                                pinMenuAnchor = anchor
+                                                                pressedRowKey = null
+                                                            }) else null,
+                                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                                            onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
                                                         )
                                                 )
                                             }
                                         }
                                     }
-                                }
 
-                                RaftHomeSidebarSection.JointChannels -> {
-                                    item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
-                                    item {
-                                        RaftCollapsibleSectionHeader(
-                                            label = labels.jointChannels,
-                                            count = displayedJointChannels.size,
-                                            expanded = jointChannelsExpanded,
-                                            onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
-                                            showCollapsedUnreadDot = jointChannelSectionHasUnread,
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                        )
-                                    }
-                                    if (jointChannelsExpanded) {
-                                        items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
-                                            val channel = displayedJointChannels[index]
-                                            val badgeProjection = channel.homeConversationBadgeProjection()
-                                            val jointInteractionState = when {
-                                                sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
-                                                pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
-                                                else -> ChannelRowInteractionState.Default
-                                            }
-                                            ChannelRow(
-                                                content =
-                                                    ChannelRowContent(
-                                                        name = channel.name,
-                                                        symbol = channel.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
-                                                        joined = channel.joined,
-                                                        hasDraft = channel.hasDraft,
-                                                        muted = channel.activityMuted,
-                                                        bridgeProvider = channel.bridgeProvider,
-                                                        badge = badgeProjection.label,
-                                                        badgeTone = badgeProjection.tone
-                                                    ),
-                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                interaction =
-                                                    ChannelRowInteraction(
-                                                        identity = homeSidebarInteractionIdentity("joint", channel.id),
-                                                        state = jointInteractionState,
-                                                        captureLongPressAnchor = captureRowAnchors,
-                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
-                                                        onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                                            onChannelLongPressWithDismiss(channel.id, anchor)
-                                                            activePinMenuConversationId = channel.id
-                                                            activeMenuSection = RaftHomeSortSection.JointChannels
-                                                            pinMenuAnchor = anchor
-                                                            pressedRowKey = null
-                                                        }) else null,
-                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                                        onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
-                                                    )
-                                            )
-                                        }
-                                    }
-                                }
-
-                                RaftHomeSidebarSection.Channels -> {
-                                    item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
-                                    item {
-                                        RaftCollapsibleSectionHeader(
-                                            label = labels.channels,
-                                            count = displayedChannels.size,
-                                            expanded = channelsExpanded,
-                                            onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
-                                            showCollapsedUnreadDot = channelSectionHasUnread,
-                                            sortContentDescription = "${labels.sortChannels} ${labels.channels}",
-                                            onSortClick = { anchor ->
-                                                if (sidebarInteractionsEnabled) {
-                                                    activeSortMenu = if (activeSortMenu == RaftHomeSortSection.Channels) null else RaftHomeSortSection.Channels
-                                                    sortMenuAnchor = anchor
-                                                }
-                                            },
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                        ) {
-                                            RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
-                                        }
-                                    }
-                                    if (channelsExpanded) {
-                                        items(displayedChannels.size, key = { index -> channelLazyKeys[index] }) { index ->
-                                            val channel = displayedChannels[index]
-                                            val badgeProjection = channel.homeConversationBadgeProjection()
-                                            // #211 review (Cindy): selected wins over pressed.
-                                            val channelInteractionState = when {
-                                                sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
-                                                pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
-                                                else -> ChannelRowInteractionState.Default
-                                            }
-                                            ChannelRow(
-                                                content =
-                                                    ChannelRowContent(
-                                                        name = channel.name,
-                                                        symbol = channel.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
-                                                        joined = channel.joined,
-                                                        hasDraft = channel.hasDraft,
-                                                        muted = channel.activityMuted,
-                                                        bridgeProvider = channel.bridgeProvider,
-                                                        badge = badgeProjection.label,
-                                                        badgeTone = badgeProjection.tone
-                                                    ),
-                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                interaction =
-                                                    ChannelRowInteraction(
-                                                        identity = homeSidebarInteractionIdentity("channel", channel.id),
-                                                        state = channelInteractionState,
-                                                        captureLongPressAnchor = captureRowAnchors,
-                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
-                                                        onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                                            onChannelLongPressWithDismiss(channel.id, anchor)
-                                                            activePinMenuConversationId = channel.id
-                                                            activeMenuSection = RaftHomeSortSection.Channels
-                                                            pinMenuAnchor = anchor
-                                                            pressedRowKey = null
-                                                        }) else null,
-                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                                        onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
-                                                    )
-                                            )
-                                        }
-                                    }
-                                    if (channelsExpanded && showLoadingSkeletons) {
-                                        items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
-                                            HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
-                                        }
-                                    }
-                                }
-
-                                RaftHomeSidebarSection.DirectMessages -> {
-                                    item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
-                                    item {
-                                        RaftCollapsibleSectionHeader(
-                                            label = labels.directMessages,
-                                            count = displayedDirectMessages.size,
-                                            expanded = directMessagesExpanded,
-                                            onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
-                                            showCollapsedUnreadDot = directMessageSectionHasUnread,
-                                            sortContentDescription = "${labels.sortChannels} ${labels.directMessages}",
-                                            onSortClick = { anchor ->
-                                                if (sidebarInteractionsEnabled) {
-                                                    activeSortMenu = if (activeSortMenu == RaftHomeSortSection.DirectMessages) null else RaftHomeSortSection.DirectMessages
-                                                    sortMenuAnchor = anchor
-                                                }
-                                            },
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                            trailingContent = null
-                                        )
-                                    }
-                                    if (directMessagesExpanded) {
-                                        items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
-                                            val dm = displayedDirectMessages[index]
-                                            val badgeProjection = dm.homeConversationBadgeProjection()
-                                            val dmInteractionState = when {
-                                                sidebarSelection.conversationId == dm.id -> ChannelRowInteractionState.Selected
-                                                pressedRowKey == "dms:${dm.id}" -> ChannelRowInteractionState.Pressed
-                                                else -> ChannelRowInteractionState.Default
-                                            }
-                                            DirectMessageRow(
-                                                interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
-                                                name = dm.name,
-                                                description = dm.description,
-                                                avatarLabel = dm.avatarLabel,
-                                                peerType = dm.peerType,
-                                                memberId = dm.presenceMemberId,
-                                                cacheServerId = currentServerId,
-                                                agentStatusResolver = agentStatusResolver,
-                                                memberAvatarResolver = memberAvatarResolver,
-                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                hasDraft = dm.hasDraft,
-                                                muted = dm.activityMuted,
-                                                badge = badgeProjection.label,
-                                                badgeTone = badgeProjection.tone,
-                                                interactionState = dmInteractionState,
-                                                captureLongPressAnchor = captureRowAnchors,
-                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
-                                                onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                                    onChannelLongPressWithDismiss(dm.id, anchor)
-                                                    activePinMenuConversationId = dm.id
-                                                    activeMenuSection = RaftHomeSortSection.DirectMessages
-                                                    pinMenuAnchor = anchor
-                                                    pressedRowKey = null
-                                                }) else null,
-                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "dms:${dm.id}" }) else null,
-                                                onPressEnd = { if (pressedRowKey == "dms:${dm.id}") pressedRowKey = null }
-                                            )
-                                        }
-                                    }
-                                    if (directMessagesExpanded && showLoadingSkeletons) {
-                                        items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
-                                            HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
-                                        }
-                                    }
-                                }
-
-                                // task #512: custom sections (web channel-sections port), each
-                                // with an emoji + name header; long-press (or the trailing
-                                // ellipsis) opens the section menu.
-                                is RaftHomeSidebarSection.Custom -> {
-                                    val sectionRows = sidebarSection.rows
-                                    val customSection = sectionRows.section
-                                    val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
-                                    item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
-                                        Spacer(Modifier.height(RaftAppSpacing.Xs))
-                                    }
-                                    item(key = "custom-section-header:$currentServerId:${customSection.id}") {
-                                        RaftCollapsibleSectionHeader(
-                                            label = customSection.sidebarSectionHeaderLabel(),
-                                            count = sectionRows.items.size,
-                                            expanded = customSectionExpanded,
-                                            onExpandedChange = { expanded ->
-                                                if (sidebarInteractionsEnabled) {
-                                                    collapsedCustomSectionIds =
-                                                        if (expanded) {
-                                                            collapsedCustomSectionIds - customSection.id
-                                                        } else {
-                                                            collapsedCustomSectionIds + customSection.id
-                                                        }
-                                                }
-                                            },
-                                            showCollapsedUnreadDot =
-                                                sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
-                                            uppercaseLabel = false,
-                                            onLongPress =
-                                                if (sidebarInteractionsEnabled) {
-                                                    { anchor ->
-                                                        activeSectionMenuId = customSection.id
-                                                        sectionMenuAnchor = anchor
-                                                        pressedRowKey = null
-                                                    }
-                                                } else {
-                                                    null
-                                                },
-                                            longPressAnchorIdentity = "$currentServerId:${customSection.id}",
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                        ) {
-                                            RaftSectionHeaderIconAction(
-                                                RaftLucideIconName.Ellipsis,
-                                                customSection.name,
-                                                onClick2 = { anchor ->
+                                    RaftHomeSidebarSection.Channels -> {
+                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                                        item {
+                                            RaftCollapsibleSectionHeader(
+                                                label = labels.channels,
+                                                count = displayedChannels.size,
+                                                expanded = channelsExpanded,
+                                                onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                                showCollapsedUnreadDot = channelSectionHasUnread,
+                                                sortContentDescription = "${labels.sortChannels} ${labels.channels}",
+                                                onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
-                                                        activeSectionMenuId = customSection.id
-                                                        sectionMenuAnchor = anchor
+                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.Channels) null else RaftHomeSortSection.Channels
+                                                        sortMenuAnchor = anchor
                                                     }
+                                                },
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                            ) {
+                                                RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
+                                            }
+                                        }
+                                        if (channelsExpanded) {
+                                            items(displayedChannels.size, key = { index -> channelLazyKeys[index] }) { index ->
+                                                val channel = displayedChannels[index]
+                                                val badgeProjection = channel.homeConversationBadgeProjection()
+                                                // #211 review (Cindy): selected wins over pressed.
+                                                val channelInteractionState = when {
+                                                    sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                                    pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
+                                                    else -> ChannelRowInteractionState.Default
                                                 }
-                                            )
+                                                ChannelRow(
+                                                    content =
+                                                        ChannelRowContent(
+                                                            name = channel.name,
+                                                            symbol = channel.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
+                                                            joined = channel.joined,
+                                                            hasDraft = channel.hasDraft,
+                                                            muted = channel.activityMuted,
+                                                            bridgeProvider = channel.bridgeProvider,
+                                                            badge = badgeProjection.label,
+                                                            badgeTone = badgeProjection.tone
+                                                        ),
+                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                    interaction =
+                                                        ChannelRowInteraction(
+                                                            identity = homeSidebarInteractionIdentity("channel", channel.id),
+                                                            state = channelInteractionState,
+                                                            captureLongPressAnchor = captureRowAnchors,
+                                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
+                                                            onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                                onChannelLongPressWithDismiss(channel.id, anchor)
+                                                                activePinMenuConversationId = channel.id
+                                                                activeMenuSection = RaftHomeSortSection.Channels
+                                                                pinMenuAnchor = anchor
+                                                                pressedRowKey = null
+                                                            }) else null,
+                                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                                            onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                                        )
+                                                )
+                                            }
+                                        }
+                                        if (channelsExpanded && showLoadingSkeletons) {
+                                            items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
+                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                     }
-                                    if (customSectionExpanded) {
-                                        items(
-                                            sectionRows.items.size,
-                                            key = { index -> "custom:$currentServerId:${customSection.id}:${sectionRows.items[index].id}" }
-                                        ) { index ->
-                                            val item = sectionRows.items[index]
-                                            val badgeProjection = item.homeConversationBadgeProjection()
-                                            val customRowKey = "custom:${customSection.id}:${item.id}"
-                                            val customInteractionState = when {
-                                                sidebarSelection.conversationId == item.id -> ChannelRowInteractionState.Selected
-                                                pressedRowKey == customRowKey -> ChannelRowInteractionState.Pressed
-                                                else -> ChannelRowInteractionState.Default
-                                            }
-                                            val customLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
-                                                onChannelLongPressWithDismiss(item.id, anchor)
-                                                activePinMenuConversationId = item.id
-                                                activeMenuSection = null
-                                                pinMenuAnchor = anchor
-                                                pressedRowKey = null
-                                            }
-                                            if (item.isDirectMessageConversation()) {
+
+                                    RaftHomeSidebarSection.DirectMessages -> {
+                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                                        item {
+                                            RaftCollapsibleSectionHeader(
+                                                label = labels.directMessages,
+                                                count = displayedDirectMessages.size,
+                                                expanded = directMessagesExpanded,
+                                                onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
+                                                showCollapsedUnreadDot = directMessageSectionHasUnread,
+                                                sortContentDescription = "${labels.sortChannels} ${labels.directMessages}",
+                                                onSortClick = { anchor ->
+                                                    if (sidebarInteractionsEnabled) {
+                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.DirectMessages) null else RaftHomeSortSection.DirectMessages
+                                                        sortMenuAnchor = anchor
+                                                    }
+                                                },
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                trailingContent = null
+                                            )
+                                        }
+                                        if (directMessagesExpanded) {
+                                            items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
+                                                val dm = displayedDirectMessages[index]
+                                                val badgeProjection = dm.homeConversationBadgeProjection()
+                                                val dmInteractionState = when {
+                                                    sidebarSelection.conversationId == dm.id -> ChannelRowInteractionState.Selected
+                                                    pressedRowKey == "dms:${dm.id}" -> ChannelRowInteractionState.Pressed
+                                                    else -> ChannelRowInteractionState.Default
+                                                }
                                                 DirectMessageRow(
-                                                    interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
-                                                    name = item.name,
-                                                    description = item.description,
-                                                    avatarLabel = item.avatarLabel,
-                                                    peerType = item.peerType,
-                                                    memberId = item.presenceMemberId,
+                                                    interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
+                                                    name = dm.name,
+                                                    description = dm.description,
+                                                    avatarLabel = dm.avatarLabel,
+                                                    peerType = dm.peerType,
+                                                    memberId = dm.presenceMemberId,
                                                     cacheServerId = currentServerId,
                                                     agentStatusResolver = agentStatusResolver,
                                                     memberAvatarResolver = memberAvatarResolver,
                                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                    hasDraft = item.hasDraft,
-                                                    muted = item.activityMuted,
+                                                    hasDraft = dm.hasDraft,
+                                                    muted = dm.activityMuted,
                                                     badge = badgeProjection.label,
                                                     badgeTone = badgeProjection.tone,
-                                                    interactionState = customInteractionState,
+                                                    interactionState = dmInteractionState,
                                                     captureLongPressAnchor = captureRowAnchors,
-                                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
-                                                    onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
-                                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
-                                                    onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
+                                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
+                                                    onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                        onChannelLongPressWithDismiss(dm.id, anchor)
+                                                        activePinMenuConversationId = dm.id
+                                                        activeMenuSection = RaftHomeSortSection.DirectMessages
+                                                        pinMenuAnchor = anchor
+                                                        pressedRowKey = null
+                                                    }) else null,
+                                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "dms:${dm.id}" }) else null,
+                                                    onPressEnd = { if (pressedRowKey == "dms:${dm.id}") pressedRowKey = null }
                                                 )
-                                            } else {
-                                                ChannelRow(
-                                                    content =
-                                                        ChannelRowContent(
-                                                            name = item.name,
-                                                            symbol = item.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
-                                                            joined = item.joined,
-                                                            hasDraft = item.hasDraft,
-                                                            muted = item.activityMuted,
-                                                            bridgeProvider = item.bridgeProvider,
-                                                            badge = badgeProjection.label,
-                                                            badgeTone = badgeProjection.tone
-                                                        ),
-                                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                    interaction =
-                                                        ChannelRowInteraction(
-                                                            identity = homeSidebarInteractionIdentity("custom", customRowKey),
-                                                            state = customInteractionState,
-                                                            captureLongPressAnchor = captureRowAnchors,
-                                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
-                                                            onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
-                                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
-                                                            onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
-                                                        )
+                                            }
+                                        }
+                                        if (directMessagesExpanded && showLoadingSkeletons) {
+                                            items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
+                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
+                                        }
+                                    }
+
+                                    // task #512: custom sections (web channel-sections port), each
+                                    // with an emoji + name header; long-press (or the trailing
+                                    // ellipsis) opens the section menu.
+                                    is RaftHomeSidebarSection.Custom -> {
+                                        val sectionRows = sidebarSection.rows
+                                        val customSection = sectionRows.section
+                                        val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
+                                        item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
+                                            Spacer(Modifier.height(RaftAppSpacing.Xs))
+                                        }
+                                        item(key = "custom-section-header:$currentServerId:${customSection.id}") {
+                                            RaftCollapsibleSectionHeader(
+                                                label = customSection.sidebarSectionHeaderLabel(),
+                                                count = sectionRows.items.size,
+                                                expanded = customSectionExpanded,
+                                                onExpandedChange = { expanded ->
+                                                    if (sidebarInteractionsEnabled) {
+                                                        collapsedCustomSectionIds =
+                                                            if (expanded) {
+                                                                collapsedCustomSectionIds - customSection.id
+                                                            } else {
+                                                                collapsedCustomSectionIds + customSection.id
+                                                            }
+                                                    }
+                                                },
+                                                showCollapsedUnreadDot =
+                                                    sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
+                                                uppercaseLabel = false,
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSectionMenuId = customSection.id
+                                                            sectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:${customSection.id}",
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                            ) {
+                                                RaftSectionHeaderIconAction(
+                                                    RaftLucideIconName.Ellipsis,
+                                                    customSection.name,
+                                                    onClick2 = { anchor ->
+                                                        if (sidebarInteractionsEnabled) {
+                                                            activeSectionMenuId = customSection.id
+                                                            sectionMenuAnchor = anchor
+                                                        }
+                                                    }
                                                 )
+                                            }
+                                        }
+                                        if (customSectionExpanded) {
+                                            items(
+                                                sectionRows.items.size,
+                                                key = { index -> "custom:$currentServerId:${customSection.id}:${sectionRows.items[index].id}" }
+                                            ) { index ->
+                                                val item = sectionRows.items[index]
+                                                val badgeProjection = item.homeConversationBadgeProjection()
+                                                val customRowKey = "custom:${customSection.id}:${item.id}"
+                                                val customInteractionState = when {
+                                                    sidebarSelection.conversationId == item.id -> ChannelRowInteractionState.Selected
+                                                    pressedRowKey == customRowKey -> ChannelRowInteractionState.Pressed
+                                                    else -> ChannelRowInteractionState.Default
+                                                }
+                                                val customLongPress: (RaftPopoverAnchor) -> Unit = { anchor ->
+                                                    onChannelLongPressWithDismiss(item.id, anchor)
+                                                    activePinMenuConversationId = item.id
+                                                    activeMenuSection = null
+                                                    pinMenuAnchor = anchor
+                                                    pressedRowKey = null
+                                                }
+                                                if (item.isDirectMessageConversation()) {
+                                                    DirectMessageRow(
+                                                        interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
+                                                        name = item.name,
+                                                        description = item.description,
+                                                        avatarLabel = item.avatarLabel,
+                                                        peerType = item.peerType,
+                                                        memberId = item.presenceMemberId,
+                                                        cacheServerId = currentServerId,
+                                                        agentStatusResolver = agentStatusResolver,
+                                                        memberAvatarResolver = memberAvatarResolver,
+                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        hasDraft = item.hasDraft,
+                                                        muted = item.activityMuted,
+                                                        badge = badgeProjection.label,
+                                                        badgeTone = badgeProjection.tone,
+                                                        interactionState = customInteractionState,
+                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
+                                                        onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
+                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
+                                                        onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
+                                                    )
+                                                } else {
+                                                    ChannelRow(
+                                                        content =
+                                                            ChannelRowContent(
+                                                                name = item.name,
+                                                                symbol = item.homeChannelSymbol(currentHomeHeaderServer.publicPageLive),
+                                                                joined = item.joined,
+                                                                hasDraft = item.hasDraft,
+                                                                muted = item.activityMuted,
+                                                                bridgeProvider = item.bridgeProvider,
+                                                                badge = badgeProjection.label,
+                                                                badgeTone = badgeProjection.tone
+                                                            ),
+                                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                        interaction =
+                                                            ChannelRowInteraction(
+                                                                identity = homeSidebarInteractionIdentity("custom", customRowKey),
+                                                                state = customInteractionState,
+                                                                captureLongPressAnchor = captureRowAnchors,
+                                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(item.id) }) else null,
+                                                                onLongPress = if (sidebarInteractionsEnabled) customLongPress else null,
+                                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = customRowKey }) else null,
+                                                                onPressEnd = { if (pressedRowKey == customRowKey) pressedRowKey = null }
+                                                            )
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                            item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
                         }
-                        item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
-                    }
+                        }
                 }
             }
             }
@@ -3369,14 +3362,12 @@ internal fun homeLazyItemCount(
     jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
     pinnedExpanded: Boolean = false,
-    hasPullToRefreshItem: Boolean = true,
     hasInlineError: Boolean = false,
     channelSkeletonCount: Int = 0,
     directMessageSkeletonCount: Int = 0
 ): Int {
     val fixedItems =
-        (if (hasPullToRefreshItem) 1 else 0) +
-            1 + // top spacer
+        1 + // top spacer
             1 + // search
             1 + // activity
             1 + // saved

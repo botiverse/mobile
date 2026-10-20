@@ -4,8 +4,6 @@ import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
 
-internal actual fun raftPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
-
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = true
 
 internal actual fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean = true

@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.compat.ui.raftPullToRefresh
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -99,7 +98,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
-import build.raft.app.compat.ui.rememberPullToRefreshState
+import build.raft.app.components.RaftPullToRefreshBox
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -1098,7 +1097,6 @@ private fun SharedActivityList(
     }
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
-    val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     // Viewport recovery (#997) is only armed right after the panel becomes
     // active again (returning from read navigation) or the app returns to the
     // foreground, and disarms as soon as the reader starts scrolling. A data
@@ -1281,7 +1279,6 @@ private fun SharedActivityList(
             latestOnIntent(SharedActivityIntent.DetachPrewarmViewport)
         }
     }
-    val showPullToRefreshItem = raftPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
     val presentationOwnerIdentity =
         activityPresentationOwnerIdentity(
@@ -1319,115 +1316,113 @@ private fun SharedActivityList(
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        LazyColumn(
-            state = listState,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .raftPullToRefresh(pullToRefreshState, enabled = showPullToRefreshItem)
-                    .padding(top = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        RaftPullToRefreshBox(
+            isRefreshing = refreshPresentation.pullRefreshing,
+            onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
+            modifier = Modifier.fillMaxSize(),
         ) {
-            if (showPullToRefreshItem) {
-                raftPullToRefreshItem(
-                    state = pullToRefreshState,
-                    scrollState = listState,
-                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
-                )
-            }
-            items(items = renderedItems, key = { item -> item.key }) { item ->
-                SharedActivityRow(
-                    item = item,
-                    senderProfiles = senderProfiles,
-                    dmPeerNames = dmPeerNames,
-                    selected = selectedItemKey == item.key,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    timeContext = timeContext,
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-                    captureMenuAnchor = !listState.isScrollInProgress,
-                    presentationGeneration = renderedPresentationGeneration,
-                    presentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                    onOpen = open@{
-                        val currentItem =
-                            activityItemForCommittedGesture(
-                                renderedItemKey = item.key,
-                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                renderedPresentationGeneration = renderedPresentationGeneration,
-                                currentItems = presentedItemsState.value,
-                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
-                                currentPresentationGeneration = presentationGenerationState.value,
-                            ) ?: return@open
-                        selectedItemKey = currentItem.key
-                        onIntent(
-                            SharedActivityIntent.PrewarmActivityTail(
-                                activityReplyThreadPrewarmNextAfterClick(
-                                    items = renderedItems,
-                                    clickedKey = currentItem.key,
-                                    serverId = snapshot.server.id.value
+            LazyColumn(
+                state = listState,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(top = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(items = renderedItems, key = { item -> item.key }) { item ->
+                    SharedActivityRow(
+                        item = item,
+                        senderProfiles = senderProfiles,
+                        dmPeerNames = dmPeerNames,
+                        selected = selectedItemKey == item.key,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        timeContext = timeContext,
+                        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
+                        captureMenuAnchor = !listState.isScrollInProgress,
+                        presentationGeneration = renderedPresentationGeneration,
+                        presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                        onOpen = open@{
+                            val currentItem =
+                                activityItemForCommittedGesture(
+                                    renderedItemKey = item.key,
+                                    renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                    renderedPresentationGeneration = renderedPresentationGeneration,
+                                    currentItems = presentedItemsState.value,
+                                    currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                    currentPresentationGeneration = presentationGenerationState.value,
+                                ) ?: return@open
+                            selectedItemKey = currentItem.key
+                            onIntent(
+                                SharedActivityIntent.PrewarmActivityTail(
+                                    activityReplyThreadPrewarmNextAfterClick(
+                                        items = renderedItems,
+                                        clickedKey = currentItem.key,
+                                        serverId = snapshot.server.id.value
+                                    )
                                 )
                             )
-                        )
-                        currentItem.activityOpenReadIntent()?.let(onIntent)
-                        onOpenItem(currentItem)
-                    },
-                    onDone = done@{
-                        val currentItem =
-                            activityItemForCommittedGesture(
-                                renderedItemKey = item.key,
-                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                renderedPresentationGeneration = renderedPresentationGeneration,
-                                currentItems = presentedItemsState.value,
-                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
-                                currentPresentationGeneration = presentationGenerationState.value,
-                            ) ?: return@done
-                        onIntent(SharedActivityIntent.MarkDone(currentItem))
-                    },
-                    onOpenMenu = menu@{ anchor ->
-                        val currentItem =
-                            activityItemForCommittedGesture(
-                                renderedItemKey = item.key,
-                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                renderedPresentationGeneration = renderedPresentationGeneration,
-                                currentItems = presentedItemsState.value,
-                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
-                                currentPresentationGeneration = presentationGenerationState.value,
-                            ) ?: return@menu
-                        activeMenuItem = currentItem
-                        menuAnchor = anchor
-                    }
-                )
-            }
-            if (showLoadMoreFooter) {
-                item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
-                    val shouldRequest = activityShouldRequestLoadMore(
-                        hasMore = snapshot.hasMore,
-                        refreshing = refreshing,
-                        loadingMore = loadingMore,
-                        loadMoreErrorCode = loadMoreErrorCode
+                            currentItem.activityOpenReadIntent()?.let(onIntent)
+                            onOpenItem(currentItem)
+                        },
+                        onDone = done@{
+                            val currentItem =
+                                activityItemForCommittedGesture(
+                                    renderedItemKey = item.key,
+                                    renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                    renderedPresentationGeneration = renderedPresentationGeneration,
+                                    currentItems = presentedItemsState.value,
+                                    currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                    currentPresentationGeneration = presentationGenerationState.value,
+                                ) ?: return@done
+                            onIntent(SharedActivityIntent.MarkDone(currentItem))
+                        },
+                        onOpenMenu = menu@{ anchor ->
+                            val currentItem =
+                                activityItemForCommittedGesture(
+                                    renderedItemKey = item.key,
+                                    renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                    renderedPresentationGeneration = renderedPresentationGeneration,
+                                    currentItems = presentedItemsState.value,
+                                    currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                    currentPresentationGeneration = presentationGenerationState.value,
+                                ) ?: return@menu
+                            activeMenuItem = currentItem
+                            menuAnchor = anchor
+                        }
                     )
-                    // The footer is the tail sentinel. Entering composition is a stronger and
-                    // more portable signal than observing LazyList layoutInfo: the latter did not
-                    // emit on the affected Kuikly/Android build, leaving the user at the end of
-                    // the first page with neither a request nor failure feedback (task #539).
-                    // Keep page appends stable so one composed footer cannot cascade through every
-                    // remaining page. A refresh is different: it replaces the appended tail with
-                    // the first page while this keyed footer can remain composed. Re-key on the
-                    // refresh lifecycle so its terminal transition can request the lost tail again.
-                    LaunchedEffect(refreshing) {
-                        if (shouldRequest) {
-                            latestOnIntent(SharedActivityIntent.LoadMore)
+                }
+                if (showLoadMoreFooter) {
+                    item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
+                        val shouldRequest = activityShouldRequestLoadMore(
+                            hasMore = snapshot.hasMore,
+                            refreshing = refreshing,
+                            loadingMore = loadingMore,
+                            loadMoreErrorCode = loadMoreErrorCode
+                        )
+                        // The footer is the tail sentinel. Entering composition is a stronger and
+                        // more portable signal than observing LazyList layoutInfo: the latter did not
+                        // emit on the affected Kuikly/Android build, leaving the user at the end of
+                        // the first page with neither a request nor failure feedback (task #539).
+                        // Keep page appends stable so one composed footer cannot cascade through every
+                        // remaining page. A refresh is different: it replaces the appended tail with
+                        // the first page while this keyed footer can remain composed. Re-key on the
+                        // refresh lifecycle so its terminal transition can request the lost tail again.
+                        LaunchedEffect(refreshing) {
+                            if (shouldRequest) {
+                                latestOnIntent(SharedActivityIntent.LoadMore)
+                            }
+                        }
+                        when (activityLoadMoreFooterMode(loadingMore, loadMoreErrorCode)) {
+                            ActivityLoadMoreFooterMode.Sentinel -> Spacer(Modifier.fillMaxWidth().height(1.dp))
+                            ActivityLoadMoreFooterMode.Loading -> SharedActivityLoadingMoreRow()
+                            ActivityLoadMoreFooterMode.Retry ->
+                                SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
                         }
                     }
-                    when (activityLoadMoreFooterMode(loadingMore, loadMoreErrorCode)) {
-                        ActivityLoadMoreFooterMode.Sentinel -> Spacer(Modifier.fillMaxWidth().height(1.dp))
-                        ActivityLoadMoreFooterMode.Loading -> SharedActivityLoadingMoreRow()
-                        ActivityLoadMoreFooterMode.Retry ->
-                            SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
-                    }
                 }
+                item { Spacer(Modifier.height(bottomContentPadding)) }
             }
-            item { Spacer(Modifier.height(bottomContentPadding)) }
         }
         if (stableOrderEnabled && updateTracking.pendingCount > 0) {
             RaftBrutalActionButton(
@@ -2230,31 +2225,26 @@ private fun SharedActivityRefreshableStateBody(
     onAction: () -> Unit = {}
 ) {
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
-    val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
-    LazyColumn(
-        state = listState,
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .raftPullToRefresh(pullToRefreshState, enabled = raftPlatformSupportsKuiklyPullToRefreshItem()),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    RaftPullToRefreshBox(
+        isRefreshing = refreshPresentation.pullRefreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize(),
     ) {
-        if (raftPlatformSupportsKuiklyPullToRefreshItem()) {
-            raftPullToRefreshItem(
-                state = pullToRefreshState,
-                scrollState = listState,
-                onRefresh = onRefresh
-            )
-        }
-        item(key = "activity_state") {
-            SharedActivityStateBody(
-                title = title,
-                detail = detail,
-                actionLabel = actionLabel,
-                bottomContentPadding = bottomContentPadding,
-                onAction = onAction,
-                modifier = Modifier.fillParentMaxSize()
-            )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item(key = "activity_state") {
+                SharedActivityStateBody(
+                    title = title,
+                    detail = detail,
+                    actionLabel = actionLabel,
+                    bottomContentPadding = bottomContentPadding,
+                    onAction = onAction,
+                    modifier = Modifier.fillParentMaxSize()
+                )
+            }
         }
     }
 }
