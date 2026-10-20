@@ -804,6 +804,11 @@
     <string name="activity_replies_many">%1$d replies</string>
     <string name="activity_mention_you">you</string>
     <string name="activity_new_count">%1$d new</string>
+    <string name="activity_list_pinned">Pinned</string>
+    <string name="activity_list_all_conversations">All conversations</string>
+    <string name="activity_list_system_sender">System</string>
+    <string name="activity_list_thread_channel">%1$s ·</string>
+    <string name="activity_list_mentioned_you">Mentioned you</string>
     <string name="activity_fallback_thread_update">Thread update</string>
     <string name="activity_fallback_action_required">Action required</string>
     <string name="activity_fallback_conversation_update">Conversation update</string>

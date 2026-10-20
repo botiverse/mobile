@@ -810,6 +810,11 @@
     <string name="activity_replies_many">%1$d 件の返信</string>
     <string name="activity_mention_you">あなた</string>
     <string name="activity_new_count">新着 %1$d 件</string>
+    <string name="activity_list_pinned">ピン留め</string>
+    <string name="activity_list_all_conversations">すべての会話</string>
+    <string name="activity_list_system_sender">システム</string>
+    <string name="activity_list_thread_channel">%1$s ·</string>
+    <string name="activity_list_mentioned_you">あなたへのメンション</string>
     <string name="activity_fallback_thread_update">スレッドの更新</string>
     <string name="activity_fallback_action_required">対応が必要です</string>
     <string name="activity_fallback_conversation_update">会話の更新</string>
