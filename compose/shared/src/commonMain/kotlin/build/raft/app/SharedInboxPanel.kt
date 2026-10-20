@@ -979,9 +979,10 @@ private fun SharedActivityFilterBar(
                     .height(52.dp)
                     .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // raft-ui 0.8.0 SegmentedControl hugs its items; the tray never stretches.
+            // Weighted without fill, it only gives way when Mark All Read needs the room.
             SegmentedControl(
                 selectedValue = selectedFilter.wireValue,
                 options =
@@ -990,9 +991,9 @@ private fun SharedActivityFilterBar(
                     },
                 onValueSelected = { value ->
                     InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
-                }
+                },
+                modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)
             )
-            Spacer(Modifier.weight(1f))
             if (totalUnreadCount > 0) {
                 RaftBrutalActionButton(
                     label = stringResource(MR.strings.inbox_action_mark_all_read),
