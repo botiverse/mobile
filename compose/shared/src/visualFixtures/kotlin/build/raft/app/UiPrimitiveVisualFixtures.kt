@@ -2,10 +2,8 @@ package build.raft.app
 
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftAvatarListRow
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalBadge
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
 import build.raft.app.components.RaftAttentionDot
@@ -15,7 +13,6 @@ import build.raft.app.components.RaftFormFieldLabelStyle
 import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.components.RaftProgressBar
 import build.raft.app.components.RaftProgressBarTone
-import build.raft.app.components.RaftBrutalTone
 import build.raft.app.components.RaftSectionHeader
 import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.RaftAppSelectTrigger
@@ -596,40 +593,6 @@ internal fun UiSurfaceListItemVisualContent() {
                     Text("Selected list item state", style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp), color = RaftColor.TextMuted, maxLines = 1)
                 }
             }
-        }
-    }
-}
-
-@Composable
-internal fun UiAvatarListRowVisualContent() {
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(168.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftAvatarListRow(
-                avatarWireValue = null,
-                avatarLabel = "Cindy",
-                name = "Cindy",
-                subtitle = "Claude Code",
-                rightContent = {
-                    RaftBrutalBadge("Online", tone = RaftBrutalTone.Lime, uppercase = false)
-                }
-            )
-            RaftAvatarListRow(
-                avatarWireValue = null,
-                avatarLabel = "Product UX Designer",
-                name = "Product UX Designer",
-                subtitle = "product@slock.ai",
-                selected = true,
-                rightContent = {
-                    RaftBrutalActionButton(label = "Open", onClick = {}, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
-                }
-            )
         }
     }
 }
