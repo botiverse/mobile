@@ -84,6 +84,52 @@ class AndroidUnreadNotificationPosterPreviewTest {
     }
 
     @Test
+    fun aHiddenDeviceOverridesASenderOnlyPushTheServerSentBeforeItCaughtUp() {
+        for (mentioned in listOf(false, true)) {
+            val shown = render(fcmRedacted(PushPreviewMode.SenderOnly, mentioned), PushPreviewMode.Hidden)
+            assertEquals("Raft", shown.title)
+            val expected = if (mentioned) "You were mentioned" else "You have a new message"
+            assertEquals(expected, shown.text)
+            assertEquals(expected, shown.bigText)
+            for (surface in shown.all + shown.public) {
+                for (name in listOf(MESSAGE_TEXT, SENDER, CHANNEL, SERVER)) {
+                    assertFalse("mentioned=$mentioned leaked '$name': $surface", surface.contains(name))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun aSenderOnlyDeviceRedactsAFullContentPush() {
+        // FCM data has no senderName, so the local sender_only branch cannot name anyone: content-free body.
+        val fcm = render(raftFcmUnreadNotificationRequest(fcmFull()), PushPreviewMode.SenderOnly)
+        assertEquals("#$CHANNEL", fcm.title)
+        assertEquals("You have a new message", fcm.text)
+        assertEquals("You have a new message", fcm.bigText)
+        // A full-content request that names its sender gets the sender_only wording.
+        val named = render(raftFcmUnreadNotificationRequest(fcmFull()).put("senderName", SENDER), PushPreviewMode.SenderOnly)
+        assertEquals("#$CHANNEL", named.title)
+        assertEquals("$SENDER sent a message", named.text)
+        assertEquals("$SENDER sent a message", named.bigText)
+        for (surface in fcm.all + named.all) {
+            assertFalse(surface, surface.contains(MESSAGE_TEXT))
+        }
+    }
+
+    @Test
+    fun aStricterServerRedactionWinsOverAFullDevice() {
+        val shown = render(fcmRedacted(PushPreviewMode.Hidden, mentioned = false), PushPreviewMode.Full)
+        assertEquals("Raft", shown.title)
+        assertEquals("You have a new message", shown.text)
+        assertEquals("You have a new message", shown.bigText)
+        val senderOnly = render(fcmRedacted(PushPreviewMode.SenderOnly, mentioned = false), PushPreviewMode.Full)
+        assertEquals("$SENDER sent a message", senderOnly.text)
+        for (surface in shown.all + senderOnly.all) {
+            assertFalse(surface, surface.contains(MESSAGE_TEXT))
+        }
+    }
+
+    @Test
     @Config(qualifiers = "zh-rCN")
     fun redactedKeysResolveInTheDeviceLanguage() {
         val shown = render(fcmRedacted(PushPreviewMode.SenderOnly, mentioned = true), PushPreviewMode.Full)

@@ -57,11 +57,13 @@ internal data class UnreadNotificationText(
 /**
  * The text of one unread notification.
  *
- * - A request the server already redacted (it carries `bodyKey`) is rendered from its keys in the
- *   device language, falling back to its `title` / `body` for an absent or unknown key. The device
- *   choice is not applied on top: the server redacted for this registration's previewMode.
- * - Any other request carries raw content (the no-GMS realtime path, or an FCM push sent before the
- *   server learned the current choice); [devicePreviewMode] redacts it the same way the server would:
+ * The stricter of [devicePreviewMode] and the push's own redaction wins (full < sender_only <
+ * hidden). The server's mode can lag the device: a re-registration in flight, an offline failure, a
+ * pending retry, or the no-GMS realtime path that never goes through the server's redaction.
+ *
+ * - When the push is at least as strict as the device (it carries `bodyKey`), it is rendered from
+ *   its keys in the device language, falling back to its `title` / `body` for an unknown key.
+ * - When the device is stricter, the device choice redacts locally the same way the server would:
  *   `hidden` replaces title and body, `sender_only` keeps the title and shows only the sender.
  */
 internal fun resolveUnreadNotificationText(
@@ -84,7 +86,8 @@ internal fun resolveUnreadNotificationText(
     val publicBody =
         strings.resolve(if (mentioned) PushPreviewKeys.HIDDEN_MENTION else PushPreviewKeys.HIDDEN_MESSAGE, emptyList())
             ?: defaultBody
-    if (bodyKey != null) {
+    val pushMode = pushRedactionMode(bodyKey, request.optString("previewMode"))
+    if (bodyKey != null && pushMode.ordinal >= devicePreviewMode.ordinal) {
         val title =
             request.optString("titleKey").takeIf { it.isNotBlank() }
                 ?.let { titleKey -> strings.resolve(titleKey, emptyList()) }
@@ -92,10 +95,12 @@ internal fun resolveUnreadNotificationText(
         val body = strings.resolve(bodyKey, parseBodyArgs(request.optString("bodyArgs"))) ?: rawBody
         return UnreadNotificationText(title, body, publicTitle, publicBody)
     }
+    // The device is stricter than what arrived (raw content, or a sender_only push on a hidden device).
     return when (devicePreviewMode) {
         PushPreviewMode.Full -> UnreadNotificationText(rawTitle, rawBody, publicTitle, publicBody)
         PushPreviewMode.Hidden -> UnreadNotificationText(publicTitle, publicBody, publicTitle, publicBody)
         PushPreviewMode.SenderOnly -> {
+            // Only reached for raw content (a sender_only or hidden push is at least as strict).
             val sender = request.optString("senderName").trim().takeIf { it.isNotEmpty() }
             val body =
                 sender?.let {
@@ -107,6 +112,24 @@ internal fun resolveUnreadNotificationText(
             UnreadNotificationText(rawTitle, body, publicTitle, publicBody)
         }
     }
+}
+
+/**
+ * How strictly the push itself is redacted. Entry order of [PushPreviewMode] is the strictness order
+ * (full < sender_only < hidden). Without `bodyKey` the push carries raw content. With one, the key
+ * and the `previewMode` field are both honoured and the stricter counts; an unknown key from a newer
+ * server without a usable `previewMode` is treated as hidden, since its text is a redacted fallback.
+ */
+private fun pushRedactionMode(bodyKey: String?, previewMode: String?): PushPreviewMode {
+    bodyKey ?: return PushPreviewMode.Full
+    val fromKey =
+        when (bodyKey) {
+            PushPreviewKeys.HIDDEN_MESSAGE, PushPreviewKeys.HIDDEN_MENTION -> PushPreviewMode.Hidden
+            PushPreviewKeys.SENDER_ONLY_MESSAGE, PushPreviewKeys.SENDER_ONLY_MENTION -> PushPreviewMode.SenderOnly
+            else -> null
+        }
+    val fromField = PushPreviewMode.fromWire(previewMode?.trim())
+    return listOfNotNull(fromKey, fromField).maxByOrNull { it.ordinal } ?: PushPreviewMode.Hidden
 }
 
 /** `bodyArgs` is a JSON array of strings on the FCM wire; anything else means no arguments. */
