@@ -436,11 +436,13 @@ private fun AttachmentCommentComposer(
             onValueChange = onDraftChange,
             enabled = enabled,
             // CSS wraps greedily (a break after `-` included); Compose's default paragraph
-            // strategy would re-balance the lines instead.
+            // strategy would re-balance the lines instead. Use the common `LineBreak.Simple`
+            // preset: the Strategy/Strictness/WordBreak constructor is Android-only and breaks
+            // the iOS (Kotlin/Native) compile of commonMain.
             textStyle =
                 RaftType.Input.copy(
                     color = if (enabled) colors.foreground else colors.foregroundDisabled,
-                    lineBreak = LineBreak(LineBreak.Strategy.Simple, LineBreak.Strictness.Loose, LineBreak.WordBreak.Default)
+                    lineBreak = LineBreak.Simple
                 ),
             placeholderColor = colors.foregroundHint,
             cursorBrush = SolidColor(colors.foreground),
