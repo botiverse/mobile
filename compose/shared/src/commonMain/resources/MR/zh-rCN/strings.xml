@@ -801,6 +801,7 @@
     <string name="activity_list_mentioned_you">提到了你</string>
     <string name="activity_list_unread_count_description">%1$d 条新消息</string>
     <string name="activity_list_draft_description">消息列有未发送的草稿</string>
+    <string name="activity_list_marked_done">已标记为完成</string>
     <string name="activity_fallback_thread_update">消息列更新</string>
     <string name="activity_fallback_action_required">需要处理</string>
     <string name="activity_fallback_conversation_update">会话更新</string>

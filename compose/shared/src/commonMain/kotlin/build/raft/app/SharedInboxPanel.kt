@@ -122,12 +122,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import build.raft.designsystem.components.RaftToast
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.runningFold
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
@@ -1454,9 +1456,16 @@ private fun SharedActivityList(
             )
         }
     }
+    // Rule L swipe-to-Done: the swiped row is hidden while its undo toast is up; the Done itself is
+    // committed when the window ends (ActivityConversationSwipe.kt).
+    var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
+    val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     val conversationListEntries =
-        remember(renderedItems, conversationList?.context) {
-            conversationList?.let { activityConversationListEntries(renderedItems, it.context) }
+        remember(renderedItems, conversationList?.context, swipeDoneHiddenKey) {
+            conversationList?.let {
+                val listed = if (swipeDoneHiddenKey == null) renderedItems else renderedItems.filterNot { item -> item.key == swipeDoneHiddenKey }
+                activityConversationListEntries(listed, it.context)
+            }
         }
     // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture);
     // the card rows and the conversation-list rows share these exact handlers.
@@ -1493,6 +1502,28 @@ private fun SharedActivityList(
         val currentItem = committedRowItem(renderedItemKey) ?: return
         activeMenuItem = currentItem
         menuAnchor = anchor
+    }
+    fun commitSwipeDone(swiped: InboxItem) {
+        val current = presentedItemsState.value.firstOrNull { it.key == swiped.key }
+        activitySwipeDoneCommitItem(swiped, current)?.let { item -> latestOnIntent(SharedActivityIntent.MarkDone(item)) }
+    }
+    fun applySwipeDone(transition: ActivitySwipeDoneTransition) {
+        swipeDoneUndo = transition.state
+        transition.commit?.let(::commitSwipeDone)
+    }
+    fun swipeRowDone(renderedItemKey: String) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        applySwipeDone(swipeDoneUndo.swipe(currentItem))
+    }
+    val swipeDonePendingToken = swipeDoneUndo.pending?.token
+    LaunchedEffect(swipeDonePendingToken) {
+        val token = swipeDonePendingToken ?: return@LaunchedEffect
+        delay(ActivitySwipeDoneUndoWindowMillis)
+        applySwipeDone(swipeDoneUndo.expire(token))
+    }
+    // A new account, server or filter (or leaving Activity) commits a waiting Done instead of losing it.
+    DisposableEffect(presentationOwnerIdentity) {
+        onDispose { applySwipeDone(swipeDoneUndo.flush()) }
     }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
@@ -1552,6 +1583,7 @@ private fun SharedActivityList(
                                     onOpen = { openRow(item.key) },
                                     onDone = { markRowDone(item.key) },
                                     onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
+                                    onSwipeDone = { swipeRowDone(item.key) },
                                 )
                             }
                         }
@@ -1635,6 +1667,17 @@ private fun SharedActivityList(
                 minWidth = 0.dp,
                 shadowOffset = 2.dp,
                 textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            )
+        }
+        swipeDoneUndo.pending?.let { pending ->
+            RaftToast(
+                title = stringResource(MR.strings.activity_list_marked_done),
+                actionLabel = stringResource(MR.strings.common_undo),
+                onAction = { swipeDoneUndo = swipeDoneUndo.undo(pending.token) },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 8.dp),
             )
         }
         activeMenuItem?.let { item ->

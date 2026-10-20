@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -57,6 +59,7 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftMentionMarker
+import build.raft.designsystem.components.RaftTouchTargetSize
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
@@ -71,7 +74,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  * name, a one-line preview, the time and the unread count, sidebar-pinned conversations first.
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
- * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied.
+ * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
+ * touch rules (Rule L: persistent Done, swipe-to-Done with undo) are in ActivityConversationSwipe.kt.
  */
 
 /** The Home sidebar facts a conversation row needs: who a DM is with, and whether the place is muted. */
@@ -427,6 +431,8 @@ internal fun ActivityConversationListRow(
     onDone: () -> Unit,
     onOpenMenu: (RaftPopoverAnchor) -> Unit,
     modifier: Modifier = Modifier,
+    /** Rule L swipe shortcut (ActivitySwipeToDoneBox); null: no swipe. */
+    onSwipeDone: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -445,123 +451,132 @@ internal fun ActivityConversationListRow(
             InboxItemKind.MentionAction -> actionFallback
             else -> conversationFallback
         }
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .then(if (selected) Modifier.background(colors.infoSoft) else Modifier)
-                .then(
-                    if (divider) {
-                        Modifier.drawBehind {
-                            val start = ConversationDividerStart.toPx()
-                            drawLine(hairline, Offset(start, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
-                        }
-                    } else {
-                        Modifier
-                    }
-                ),
-        verticalAlignment = Alignment.CenterVertically,
+    ActivitySwipeToDoneBox(
+        gestureKey = openGestureKey,
+        onSwipeDone = onSwipeDone.takeIf { showDoneAction },
+        modifier = modifier.fillMaxWidth(),
     ) {
         Row(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
-                    // One focusable button per row for screen readers: title, preview and marks read
-                    // together, and the accessibility click opens the row like a tap.
-                    .semantics(mergeDescendants = true) {
-                        role = Role.Button
-                        onClick(label = openLabel) {
-                            onOpen()
-                            true
+                    .fillMaxWidth()
+                    .then(if (selected) Modifier.background(colors.infoSoft) else Modifier)
+                    .then(
+                        if (divider) {
+                            Modifier.drawBehind {
+                                val start = ConversationDividerStart.toPx()
+                                drawLine(hairline, Offset(start, 0f), Offset(size.width, 0f), strokeWidth = 1.dp.toPx())
+                            }
+                        } else {
+                            Modifier
                         }
-                    }
-                    // With Done, its 48dp touch slot supplies the 8dp gap that used to be padding here.
-                    .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = if (showDoneAction) 0.dp else 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ActivityConversationLeading(model, item, agentStatusResolver)
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                        // One focusable button per row for screen readers: title, preview and marks read
+                        // together, and the accessibility click opens the row like a tap.
+                        .semantics(mergeDescendants = true) {
+                            role = Role.Button
+                            onClick(label = openLabel) {
+                                onOpen()
+                                true
+                            }
+                        }
+                        // With Done, its 44dp touch slot supplies 6dp of the 8dp gap that used to be padding here.
+                        .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = if (showDoneAction) 2.dp else 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ActivityConversationLeading(model, item, agentStatusResolver)
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftText(
+                            text = model.title ?: fallback,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
+                            color = titleColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (model.taskNumber != null && model.taskStatus != null) {
+                            SharedActivityFooterBadge(
+                                label = "#${model.taskNumber}",
+                                slot = SharedActivityFooterSlot.Task,
+                                taskStatus = model.taskStatus,
+                            )
+                        }
+                    }
+                    // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
+                    // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
+                    // starving the preview to zero width. The sender face rides inline as a placeholder.
+                    val senderAvatar = (model.sender as? ActivityConversationSender.Named)?.avatar
+                    val density = LocalDensity.current
+                    val inlineContent =
+                        remember(senderAvatar, density) {
+                            senderAvatar?.let { identity ->
+                                val width = with(density) { (ConversationSenderAvatar + 4.dp).toSp() }
+                                val height = with(density) { ConversationSenderAvatar.toSp() }
+                                mapOf(
+                                    ActivityConversationSenderAvatarInlineId to
+                                        InlineTextContent(
+                                            Placeholder(width, height, PlaceholderVerticalAlign.TextCenter)
+                                        ) {
+                                            RaftAppAvatar(
+                                                avatarWireValue = identity.avatarWireValue,
+                                                label = identity.label,
+                                                modifier = Modifier.padding(end = 4.dp),
+                                                avatarSize = ConversationSenderAvatar,
+                                                borderWidth = 1.dp,
+                                                cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
+                                            )
+                                        }
+                                )
+                            }.orEmpty()
+                        }
                     RaftText(
-                        text = model.title ?: fallback,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
-                        color = titleColor,
+                        text =
+                            activityConversationBodyText(
+                                channelLabel = threadChannelText,
+                                sender =
+                                    when (val sender = model.sender) {
+                                        ActivityConversationSender.System -> systemLabel
+                                        is ActivityConversationSender.Named -> sender.name
+                                        null -> null
+                                    },
+                                preview = model.preview ?: fallback,
+                                senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
+                                senderAvatar = senderAvatar != null,
+                            ),
+                        style = typography.callout,
+                        color = bodyColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        inlineContent = inlineContent,
                     )
-                    if (model.taskNumber != null && model.taskStatus != null) {
-                        SharedActivityFooterBadge(
-                            label = "#${model.taskNumber}",
-                            slot = SharedActivityFooterSlot.Task,
-                            taskStatus = model.taskStatus,
-                        )
+                }
+                ActivityConversationTrailing(item, model, timeContext)
+            }
+            if (showDoneAction) {
+                // Rule L (touch): the row's primary action is always on screen, never hover-only, with a
+                // 44dp end touch target (raft-ui's `::after`). The 32dp button keeps its look inside that
+                // slot; its 6dp on each side plus 2dp / 10dp of padding keep the button where it was.
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides RaftTouchTargetSize) {
+                    RaftIconButton(
+                        onClick = onDone,
+                        tooltip = stringResource(MR.strings.thread_action_mark_done),
+                        modifier = Modifier.padding(end = 10.dp).minimumInteractiveComponentSize(),
+                    ) {
+                        RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
                     }
                 }
-                // One AnnotatedString for "#channel · [face] Sender: preview" so the line truncates as a
-                // whole like web's InboxItemBody: a long channel name ellipsizes the line instead of
-                // starving the preview to zero width. The sender face rides inline as a placeholder.
-                val senderAvatar = (model.sender as? ActivityConversationSender.Named)?.avatar
-                val density = LocalDensity.current
-                val inlineContent =
-                    remember(senderAvatar, density) {
-                        senderAvatar?.let { identity ->
-                            val width = with(density) { (ConversationSenderAvatar + 4.dp).toSp() }
-                            val height = with(density) { ConversationSenderAvatar.toSp() }
-                            mapOf(
-                                ActivityConversationSenderAvatarInlineId to
-                                    InlineTextContent(
-                                        Placeholder(width, height, PlaceholderVerticalAlign.TextCenter)
-                                    ) {
-                                        RaftAppAvatar(
-                                            avatarWireValue = identity.avatarWireValue,
-                                            label = identity.label,
-                                            modifier = Modifier.padding(end = 4.dp),
-                                            avatarSize = ConversationSenderAvatar,
-                                            borderWidth = 1.dp,
-                                            cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
-                                        )
-                                    }
-                            )
-                        }.orEmpty()
-                    }
-                RaftText(
-                    text =
-                        activityConversationBodyText(
-                            channelLabel = threadChannelText,
-                            sender =
-                                when (val sender = model.sender) {
-                                    ActivityConversationSender.System -> systemLabel
-                                    is ActivityConversationSender.Named -> sender.name
-                                    null -> null
-                                },
-                            preview = model.preview ?: fallback,
-                            senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
-                            senderAvatar = senderAvatar != null,
-                        ),
-                    style = typography.callout,
-                    color = bodyColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    inlineContent = inlineContent,
-                )
-            }
-            ActivityConversationTrailing(item, model, timeContext)
-        }
-        if (showDoneAction) {
-            RaftIconButton(
-                onClick = onDone,
-                tooltip = stringResource(MR.strings.thread_action_mark_done),
-                // The 32dp button keeps its look inside a 48dp touch target; the 8dp of the slot on each
-                // side replaces 8dp of the old row padding, so nothing moves.
-                modifier = Modifier.padding(end = 8.dp).minimumInteractiveComponentSize(),
-            ) {
-                RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
             }
         }
     }
