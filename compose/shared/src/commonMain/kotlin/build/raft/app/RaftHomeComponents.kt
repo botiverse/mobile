@@ -594,7 +594,8 @@ data class RaftHomeShellLabels(
     val noServersAvailable: String = "No servers available",
     val joinChineseCommunityServer: String = "Join Chinese Community",
     val joinCommunityServer: String = "Join community server",
-    val switchOrCreateServer: String = "Switch or create server"
+    val switchOrCreateServer: String = "Switch or create server",
+    val inviteHuman: String = "Invite Human"
 ) {
     companion object {
         @Composable
@@ -643,7 +644,8 @@ data class RaftHomeShellLabels(
             noServersAvailable = stringResource(MR.strings.home_state_no_servers),
             joinChineseCommunityServer = stringResource(MR.strings.home_server_switcher_join_chinese_community),
             joinCommunityServer = stringResource(MR.strings.home_server_switcher_join_community),
-            switchOrCreateServer = stringResource(MR.strings.home_server_switcher_switch_or_create)
+            switchOrCreateServer = stringResource(MR.strings.home_server_switcher_switch_or_create),
+            inviteHuman = stringResource(MR.strings.home_server_switcher_invite_human)
         )
     }
 }
@@ -1529,6 +1531,8 @@ internal class RaftStructuralHomeShellCallbacks(
     val onServerSelected: (String) -> Unit = {},
     val onServerOrderChange: (List<String>) -> Unit = {},
     val onCreateServerClick: () -> Unit = {},
+    /** Server switcher "Invite Human"; null hides it (web gates on `inviteMembers`). */
+    val onInviteHumanClick: (() -> Unit)? = null,
     val onCreateChannelClick: () -> Unit = {},
     val onTabSelected: (String) -> Unit = {},
     val onInboxClick: () -> Unit = {},
@@ -1630,6 +1634,7 @@ internal fun RaftStructuralHomeShell(
     onServerSelected: (String) -> Unit = {},
     onServerOrderChange: (List<String>) -> Unit = {},
     onCreateServerClick: () -> Unit = {},
+    onInviteHumanClick: (() -> Unit)? = null,
     onCreateChannelClick: () -> Unit = {},
     onTabSelected: (String) -> Unit = {},
     onInboxClick: () -> Unit = {},
@@ -1736,6 +1741,7 @@ internal fun RaftStructuralHomeShell(
                 onServerSelected = onServerSelected,
                 onServerOrderChange = onServerOrderChange,
                 onCreateServerClick = onCreateServerClick,
+                onInviteHumanClick = onInviteHumanClick,
                 onCreateChannelClick = onCreateChannelClick,
                 onTabSelected = onTabSelected,
                 onInboxClick = onInboxClick,
@@ -1841,6 +1847,7 @@ private fun RaftStructuralHomeShellContent(
     val onServerSelected = callbacks.onServerSelected
     val onServerOrderChange = callbacks.onServerOrderChange
     val onCreateServerClick = callbacks.onCreateServerClick
+    val onInviteHumanClick = callbacks.onInviteHumanClick
     val onCreateChannelClick = callbacks.onCreateChannelClick
     val onTabSelected = callbacks.onTabSelected
     val onInboxClick = callbacks.onInboxClick
@@ -3050,7 +3057,8 @@ private fun RaftStructuralHomeShellContent(
                             onServerClick = onServerSelected,
                             onSectionToggle = onServerDrawerSectionToggle,
                             onRetry = onServerDrawerRetry,
-                            onCreateServerClick = onCreateServerClick
+                            onCreateServerClick = onCreateServerClick,
+                            onInviteHumanClick = onInviteHumanClick
                         )
                     }
                 } else {
@@ -3070,6 +3078,7 @@ private fun RaftStructuralHomeShellContent(
                             onServerSelected = onServerSelected,
                             onServerOrderChange = onServerOrderChange,
                             onCreateServerClick = onCreateServerClick,
+                            onInviteHumanClick = onInviteHumanClick,
                             modifier =
                                 Modifier
                                     .padding(
@@ -5312,7 +5321,8 @@ private fun HomeServerDrawerPanel(
     onServerClick: (String) -> Unit,
     onSectionToggle: (String) -> Unit,
     onRetry: (String) -> Unit,
-    onCreateServerClick: () -> Unit
+    onCreateServerClick: () -> Unit,
+    onInviteHumanClick: (() -> Unit)? = null
 ) {
     val rows = remember(sections) { homeServerDrawerRows(sections) }
     val density = LocalDensity.current
@@ -5411,6 +5421,7 @@ private fun HomeServerDrawerPanel(
             }
             Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
             ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
+            onInviteHumanClick?.let { ServerSwitcherActionRow(labels.inviteHuman, it, RaftLucideIconName.UserPlus) }
         }
     }
 }
@@ -5879,6 +5890,7 @@ internal fun ServerSwitcherPanel(
     onServerSelected: (String) -> Unit,
     onServerOrderChange: (List<String>) -> Unit,
     onCreateServerClick: () -> Unit,
+    onInviteHumanClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val joinCommunityActions =
@@ -6098,6 +6110,9 @@ internal fun ServerSwitcherPanel(
             ServerSwitcherActionRow(action.label, onCreateServerClick)
         }
         ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
+        // Web ServerSwitcherMenu: "Invite Human" sits last, under "Switch or create
+        // server", only for viewers holding `inviteMembers` (owner/admin).
+        onInviteHumanClick?.let { ServerSwitcherActionRow(labels.inviteHuman, it, RaftLucideIconName.UserPlus) }
     }
 }
 
@@ -6333,7 +6348,11 @@ private fun ServerSwitcherAvatarPrewarmSurface(
 }
 
 @Composable
-private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
+private fun ServerSwitcherActionRow(
+    label: String,
+    onClick: () -> Unit,
+    iconName: RaftLucideIconName = RaftLucideIconName.Plus
+) {
     androidx.compose.foundation.layout.Row(
         modifier =
             Modifier
@@ -6345,7 +6364,7 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
-        RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(14.dp))
+        RaftLucideIcon(iconName, Modifier.size(14.dp))
         Text(label, style = RaftType.ButtonBold, color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

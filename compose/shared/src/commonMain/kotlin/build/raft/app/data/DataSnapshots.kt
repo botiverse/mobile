@@ -1491,7 +1491,13 @@ data class SettingsServerJoinLinkSnapshot(
     val url: String? = null,
     val maxUsesLabel: String? = null,
     val usageLabel: String? = null,
-    val expiresAtLabel: String? = null
+    val expiresAtLabel: String? = null,
+    /** Wire `maxUses` (null = unlimited); the invite dialog's "keep current" limit. */
+    val maxUses: Int? = null,
+    /** Wire `expiresAt` ISO timestamp (null = never). */
+    val expiresAt: String? = null,
+    /** Wire `useCount`. */
+    val useCount: Int? = null
 )
 
 data class SettingsServerAgreementSnapshot(

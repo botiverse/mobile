@@ -28,7 +28,10 @@ import build.raft.app.model.MemberKind
 internal class SharedMembersDataSource(
     private val memberRepository: MemberRepository,
     private val settingsRepository: SettingsRepository,
-    private val serverMembersStore: SharedServerMembersStore? = null
+    private val serverMembersStore: SharedServerMembersStore? = null,
+    /** Join-link revoke (`DELETE /servers/{id}/join-links/{linkId}`) for the invite dialog. */
+    private val settingsActionRepository: SettingsServerActionRepository? =
+        settingsRepository as? SettingsServerActionRepository
 ) {
     suspend fun loadServerMembers(
         serverId: String
@@ -137,19 +140,35 @@ internal class SharedMembersDataSource(
      * Create a server join link with no expiry / no max-uses. Returns
      * the new link snapshot with its URL populated.
      */
-    suspend fun ensureJoinLink(serverId: String): DataResult<SettingsServerJoinLinkSnapshot> {
-        return settingsRepository.createServerJoinLinkForInvite(
-            SettingsServerJoinLinkCreateRequest(expiresAt = null, maxUses = null)
+    suspend fun ensureJoinLink(serverId: String): DataResult<SettingsServerJoinLinkSnapshot> =
+        createJoinLink(serverId, maxUses = null, expiresAt = null)
+
+    /** Create a join link with the invite dialog's usage cap / expiry (null = unlimited / never). */
+    suspend fun createJoinLink(
+        serverId: String,
+        maxUses: Int?,
+        expiresAt: String?
+    ): DataResult<SettingsServerJoinLinkSnapshot> =
+        settingsRepository.createServerJoinLinkForInvite(
+            SettingsServerJoinLinkCreateRequest(expiresAt = expiresAt, maxUses = maxUses)
         )
-    }
+
+    /** Revoke a join link: its token stops working (web InviteHumanDialog "Update" / "Revoke"). */
+    suspend fun revokeJoinLink(serverId: String, linkId: String): DataResult<SettingsServerActionResult> =
+        settingsActionRepository?.revokeServerJoinLink(linkId)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     /**
      * Send an invite email to one address. Returns success on 2xx,
      * NoPermission if the active session can't manage invites.
      */
-    suspend fun sendInvite(serverId: String, email: String): DataResult<SettingsServerActionResult> {
+    suspend fun sendInvite(
+        serverId: String,
+        email: String,
+        role: String? = null
+    ): DataResult<SettingsServerActionResult> {
         return settingsRepository.createServerInvite(
-            SettingsServerInviteCreateRequest(email = email)
+            SettingsServerInviteCreateRequest(email = email, role = role)
         )
     }
 }

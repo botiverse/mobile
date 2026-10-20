@@ -128,10 +128,10 @@ class KmmResourceI18nTest {
     }
 
     @Test
-    fun translationTargetSystemLanguageStringResourceIsGenerated() {
+    fun translationTargetFollowDisplayLanguageStringResourceIsGenerated() {
         assertTrue(
-            MR.strings.settings_translation_target_system_language.desc() is ResourceStringDesc,
-            "translation-target System language label must use the shared localized resource"
+            MR.strings.settings_translation_target_follow_display_language.desc() is ResourceStringDesc,
+            "translation-target Same as display language label must use the shared localized resource"
         )
     }
 

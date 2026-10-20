@@ -44,6 +44,8 @@ data class ServerPermissions(
 internal fun serverPermissionsForRole(role: String?): ServerPermissions {
     val canAdministerServer = role == "owner" || role == "admin"
     return ServerPermissions(
+        // Web `serverPermissions.ts`: `inviteMembers` is owner/admin only.
+        canInviteMember = canAdministerServer,
         canManageSettings = canAdministerServer,
         canManageMachines = canAdministerServer
     )

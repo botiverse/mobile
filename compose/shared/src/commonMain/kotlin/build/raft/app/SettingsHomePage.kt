@@ -2255,6 +2255,9 @@ private fun RaftAppShellReadyContent(
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
+    // Server switcher "Invite Human" (web ServerSwitcherMenu): the server whose
+    // invite dialog is open, or null.
+    var serverSwitcherInviteServerId by remember { mutableStateOf<String?>(null) }
     // task #13 (three-pane contract): while the wide LeftRail is active, Search is a rail
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
@@ -6479,12 +6482,41 @@ private fun RaftAppShellReadyContent(
                                             pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
                                     )
                                 },
+                                onInviteHumanClick =
+                                    homeServerSwitcherInviteClick(
+                                        railSwitcherContent.snapshot.server,
+                                        { serverId -> serverSwitcherInviteServerId = serverId }
+                                    ) { railServerSwitcherOpen = false },
                                 modifier =
                                     Modifier
                                         .padding(top = shellScope.topSafeArea + RaftAppSpacing.Sm, start = RaftAppSpacing.Sm)
                                         .clickable(onClick = {})
                             )
                         }
+                    }
+                    serverSwitcherInviteServerId?.let { inviteServerId ->
+                        val inviteMembersDataSource =
+                            remember(memberRepository, settingsRepository, appShellServerMembersStore) {
+                                SharedMembersDataSource(
+                                    memberRepository = memberRepository,
+                                    settingsRepository = settingsRepository,
+                                    serverMembersStore = appShellServerMembersStore
+                                )
+                            }
+                        SharedServerInviteHumanDialogHost(
+                            serverId = inviteServerId,
+                            membersDataSource = inviteMembersDataSource,
+                            loadWebBaseUrl = {
+                                (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
+                            },
+                            canOfferGuest =
+                                sharedStores.serverFeatureFlags.isEnabled(
+                                    ServerId(inviteServerId),
+                                    InviteHumanGuestFeatureFlagKey
+                                ),
+                            copyToPasteboard = bridge::copyToPasteboard,
+                            onDismiss = { serverSwitcherInviteServerId = null }
+                        )
                     }
                     // task #180: SHELL-RENDERED MENUS. A Kuikly @Page child (thread column, detail
                     // pane) is its own composition, so a Modal opened inside it is clipped to that
@@ -7011,6 +7043,7 @@ private fun RaftAppShellReadyContent(
                                         documentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
                                     )
                                 },
+                                onInviteHuman = { serverId -> serverSwitcherInviteServerId = serverId },
                                 onCreateChannel = { openCreateChannelDialog() },
                                 onOpenConversation = { conversationIdentity ->
                                     openHomeConversation(conversationIdentity, "home")
@@ -7110,6 +7143,10 @@ private fun RaftAppShellReadyContent(
                         SharedMembersScreen(
                             bridge = bridge,
                             storeScope = navigationStoreScope,
+                            sharedStores = sharedStores,
+                            loadInviteWebBaseUrl = {
+                                (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
+                            },
                             session = readySession,
                             memberRepository = memberRepository,
                             settingsRepository = settingsRepository,
@@ -11377,7 +11414,7 @@ private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
 
 @Composable
 private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): List<RaftBrutalSelectOption> {
-    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_system_language)
+    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_follow_display_language)
     return options.map { option ->
         RaftBrutalSelectOption(
             option.key,
@@ -11390,7 +11427,7 @@ private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): 
 private fun SettingsMobileSelectionSnapshot.translationTargetLabelFor(key: String): String {
     val selectedKey = key.ifBlank { this.selectedKey }
     return if (selectedKey == TranslationTargetLanguages.System) {
-        stringResource(MR.strings.settings_translation_target_system_language)
+        stringResource(MR.strings.settings_translation_target_follow_display_language)
     } else {
         labelFor(selectedKey)
     }
@@ -18629,6 +18666,9 @@ internal fun AppShellEmailVerificationGateContent(
 private fun SharedMembersScreen(
     bridge: build.raft.app.base.BridgeModule,
     storeScope: RaftShellStoreScope,
+    sharedStores: RaftSharedStoreProvider,
+    /** Developer environment web URL the invite link is built from. */
+    loadInviteWebBaseUrl: suspend () -> String?,
     session: StoredAuthSession?,
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
@@ -18656,8 +18696,6 @@ private fun SharedMembersScreen(
     val errorStrings = localizedErrorPresentationStrings()
     val membersTitle = stringResource(MR.strings.tab_members)
     val membersLoadFailedMessage = stringResource(MR.strings.thread_composer_load_members_failed)
-    val invitePermissionMessage = stringResource(MR.strings.member_error_manage_invites_forbidden)
-    val joinLinkLoadFailedPrefix = stringResource(MR.strings.settings_error_join_link_load_prefix)
     val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var selectedDetail by detailSelection
@@ -18892,67 +18930,33 @@ private fun SharedMembersScreen(
                     serverMembersStore = serverMembersStore
                 )
             }
-            val inviteScope = rememberCoroutineScope()
-            var inviteJoinLinkLoading by remember { mutableStateOf(false) }
-            var inviteJoinLinkUrl by remember { mutableStateOf<String?>(null) }
-            var inviteJoinLinkCopied by remember { mutableStateOf(false) }
-            fun loadInviteJoinLink() {
-                if (serverId.isBlank() || inviteJoinLinkLoading) return
-                inviteJoinLinkLoading = true
-                inviteScope.launch {
-                    val listed = settingsMembersDataSource.loadJoinLinks(serverId)
-                    val existing = (listed as? DataResult.Content)?.data.orEmpty().firstOrNull()
-                    val result = if (existing != null) {
-                        DataResult.Content(existing)
-                    } else {
-                        settingsMembersDataSource.ensureJoinLink(serverId)
-                    }
-                    inviteJoinLinkLoading = false
-                    when (result) {
-                        is DataResult.Content -> inviteJoinLinkUrl = result.data.url
-                        is DataResult.NoPermission ->
-                            bridge.toast(invitePermissionMessage)
-                        is DataResult.Error ->
-                            bridge.toast(joinLinkLoadFailedPrefix + result.error.userFacingMessage(errorStrings))
-                        is DataResult.Empty -> Unit
-                    }
+            val inviteGuestFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+            val inviteCanOfferGuest =
+                remember(serverId, inviteGuestFlagRevision) {
+                    serverId.isNotBlank() &&
+                        sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), InviteHumanGuestFeatureFlagKey)
                 }
-            }
-            val inviteHumanSubmitHandler: suspend (List<String>) -> DataResult<Unit> =
-                remember(settingsMembersDataSource, serverId) {
-                    { emails ->
-                        onForegroundActivity("invite_submit")
-                        if (serverId.isBlank()) {
-                            DataResult.Error(ScreenError(code = "server_id_missing", retryable = false))
-                        } else {
-                            val results = emails.map { email ->
-                                settingsMembersDataSource.sendInvite(serverId, email.trim())
-                            }
-                            when {
-                                results.isEmpty() ->
-                                    DataResult.Empty(EmptyReason.NoSettingsAvailable)
-                                results.all { it is DataResult.Content } ->
-                                    DataResult.Content(Unit)
-                                else -> {
-                                    val firstNoPermission = results.firstNotNullOfOrNull {
-                                        (it as? DataResult.NoPermission)?.blocker?.code
-                                    }
-                                    val firstError = results.firstNotNullOfOrNull {
-                                        (it as? DataResult.Error)?.error?.code
-                                    }
-                                    DataResult.Error(
-                                        ScreenError(
-                                            code = firstNoPermission ?: firstError ?: "invite_send_failed",
-                                            retryable = true
-                                        )
-                                    )
-                                }
-                            }
-                        }
+            val inviteHumanDialog: (@Composable (() -> Unit) -> Unit)? =
+                if (membersPayload.canInviteHumans && serverId.isNotBlank()) {
+                    { onDismiss ->
+                        SharedServerInviteHumanDialogHost(
+                            serverId = serverId,
+                            membersDataSource = settingsMembersDataSource,
+                            canOfferGuest = inviteCanOfferGuest,
+                            loadWebBaseUrl = {
+                                onForegroundActivity("load_invite_link")
+                                loadInviteWebBaseUrl()
+                            },
+                            copyToPasteboard = { url ->
+                                onForegroundActivity("copy_invite_link")
+                                bridge.copyToPasteboard(url)
+                            },
+                            onDismiss = onDismiss
+                        )
                     }
+                } else {
+                    null
                 }
-            val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
-                inviteHumanSubmitHandler.takeIf { membersPayload.canInviteHumans }
             val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
                 onForegroundActivity("create_agent_submit")
                 val result =
@@ -19015,10 +19019,7 @@ private fun SharedMembersScreen(
                         payload = renderMembersPayload,
                         refreshing = refreshing,
                         paneLayout = paneLayout,
-                        onAddHuman = {
-                            onForegroundActivity("add_human")
-                            loadInviteJoinLink()
-                        },
+                        onAddHuman = { onForegroundActivity("add_human") },
                         agentStatusResolver = agentStatusResolver,
                         onOpenMemberDetail = { member ->
                             onForegroundActivity("open_member")
@@ -19092,21 +19093,7 @@ private fun SharedMembersScreen(
                             createAgentServerId = serverId,
                             createAgentTakenAgentNames = current.members.takenAgentNames()
                         ),
-                        inviteHuman = MembersInviteHumanInputs(
-                            inviteHumanSubmit = inviteHumanSubmit,
-                            inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-                            inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-                            inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-                            inviteHumanJoinLinkCopy = { url ->
-                                onForegroundActivity("copy_invite_link")
-                                bridge.copyToPasteboard(url)
-                                inviteJoinLinkCopied = true
-                            },
-                            inviteHumanLoadJoinLink = {
-                                onForegroundActivity("load_invite_link")
-                                loadInviteJoinLink()
-                            }
-                        ),
+                        inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
                         bottomContentPadding = bottomContentPadding,
                         scrollToTopRequest = scrollToTopRequest,
                         initialListState = initialListState,
@@ -19420,6 +19407,8 @@ private fun SharedHomeScreen(
     onOpenComputers: () -> Unit = {},
     onOpenUrl: (String) -> Unit = bridge::openUrl,
     onOpenServerSelection: () -> Unit,
+    /** Server switcher "Invite Human" for the given server; null hides the entry. */
+    onInviteHuman: ((serverId: String) -> Unit)? = null,
     onCreateChannel: () -> Unit,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
@@ -19522,6 +19511,7 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.ReorderServers(order))
                     },
                     onCreateServerClick = onOpenServerSelection,
+                    onInviteHuman = onInviteHuman,
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
@@ -19558,6 +19548,7 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.ReorderServers(order))
                 },
                 onCreateServerClick = onOpenServerSelection,
+                onInviteHuman = onInviteHuman,
                 onCreateChannelClick = onCreateChannel
             )
         is SharedHomeContentState.Error ->
@@ -19594,6 +19585,7 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.ReorderServers(order))
                     },
                     onCreateServerClick = onOpenServerSelection,
+                    onInviteHuman = onInviteHuman,
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
@@ -19815,6 +19807,10 @@ private fun SharedHomeScreen(
                     onIntent(SharedHomeIntent.ReorderServers(order))
                 },
                 onCreateServerClick = onOpenServerSelection,
+                onInviteHumanClick =
+                    homeServerSwitcherInviteClick(snapshot.server, onInviteHuman) {
+                        onIntent(SharedHomeIntent.DismissServerSwitcher)
+                    },
                 onCreateChannelClick = onCreateChannel,
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
@@ -23783,6 +23779,7 @@ private fun SharedHomeSessionShell(
     onServerSelected: (String) -> Unit,
     onServerOrderChange: (List<String>) -> Unit = {},
     onCreateServerClick: () -> Unit,
+    onInviteHuman: ((serverId: String) -> Unit)? = null,
     onCreateChannelClick: () -> Unit
 ) {
     val currentServer = session.currentServerSummary()
@@ -23822,9 +23819,28 @@ private fun SharedHomeSessionShell(
         onServerSelected = onServerSelected,
         onServerOrderChange = onServerOrderChange,
         onCreateServerClick = onCreateServerClick,
+        onInviteHumanClick = homeServerSwitcherInviteClick(currentServer, onInviteHuman, onServerSwitcherDismiss),
         onCreateChannelClick = onCreateChannelClick,
         scrollToTopRequest = scrollToTopRequest,
     )
+}
+
+/**
+ * The server switcher's "Invite Human" action for [server], or null when the
+ * viewer lacks `inviteMembers` (web `ServerSwitcherMenu`). Like web, it closes
+ * the switcher before opening the dialog.
+ */
+internal fun homeServerSwitcherInviteClick(
+    server: ServerSummary?,
+    onInviteHuman: ((serverId: String) -> Unit)?,
+    onDismissSwitcher: () -> Unit
+): (() -> Unit)? {
+    if (onInviteHuman == null || server == null || !serverSwitcherShowsInviteHuman(server)) return null
+    val serverId = server.id.value
+    return {
+        onDismissSwitcher()
+        onInviteHuman(serverId)
+    }
 }
 
 internal fun StoredAuthSession.currentServerSummary(): ServerSummary? {
