@@ -2536,6 +2536,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     )
                 },
                 statusOf = { result -> result?.optString("status") },
+                errorKindOf = { result -> result?.optString("errorKind") },
                 trace = bridge::log
             )
         val result =
@@ -9242,6 +9243,19 @@ internal fun raftAttachmentOpenDiagnosticStatus(status: String?): String {
     }
 }
 
+/**
+ * The host's failure category (e.g. `http_status`, `storage_prepare`) for diagnostics. Only a short
+ * identifier is logged; anything else (free text, URLs) collapses to `other`.
+ */
+internal fun raftAttachmentOpenDiagnosticErrorKind(errorKind: String?): String {
+    val normalized = errorKind?.trim()?.lowercase().orEmpty()
+    return when {
+        normalized.isEmpty() -> "none"
+        normalized.length <= 40 && normalized.all { it in 'a'..'z' || it in '0'..'9' || it == '_' } -> normalized
+        else -> "other"
+    }
+}
+
 internal fun raftFilePreviewExternalOpenRejectionReason(
     canOpenWith: Boolean,
     exportInProgress: Boolean,
@@ -9287,6 +9301,7 @@ internal suspend fun <T> runRaftFilePreviewExternalOpenTraceFlow(
     onUrlResolved: suspend (String) -> Unit,
     openHost: suspend (String) -> T,
     statusOf: (T) -> String?,
+    errorKindOf: (T) -> String? = { null },
     trace: (String) -> Unit
 ): RaftFilePreviewExternalOpenTraceResult<T> {
     val resolvedUrl = resolveUrl()
@@ -9311,7 +9326,10 @@ internal suspend fun <T> runRaftFilePreviewExternalOpenTraceFlow(
             "committedRequired=${policy.requirePublicDownload} trackProgress=${policy.trackProgress}"
     )
     val result = openHost(url)
-    trace("file_preview_open stage=host_terminal status=${raftAttachmentOpenDiagnosticStatus(statusOf(result))}")
+    trace(
+        "file_preview_open stage=host_terminal status=${raftAttachmentOpenDiagnosticStatus(statusOf(result))} " +
+            "errorKind=${raftAttachmentOpenDiagnosticErrorKind(errorKindOf(result))}"
+    )
     return RaftFilePreviewExternalOpenTraceResult.HostTerminal(result)
 }
 
