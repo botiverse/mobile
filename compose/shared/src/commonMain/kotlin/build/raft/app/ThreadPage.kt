@@ -15601,14 +15601,15 @@ private fun ThreadPageContentContent(
                             .padding(
                                 start = RaftAppSpacing.Sm,
                                 top = 12.dp,
-                                end = RaftAppSpacing.Sm,
-                                bottom =
-                                    threadComposerBottomPadding(
-                                        keyboardInsetDp = composerKeyboardInsetDp,
-                                        bottomSafeArea = composerBottomSafeArea,
-                                        keyboardInsetExcludesBottomSafeArea =
-                                            composerKeyboardInsetExcludesBottomSafeArea
-                                    )
+                                end = RaftAppSpacing.Sm
+                            )
+                            // Bottom padding follows WindowInsets.ime in the layout phase of the
+                            // same frame; composerKeyboardInsetDp (two frames late) only feeds the
+                            // page's decision state (see RaftThreadImeLayout.kt).
+                            .raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea =
+                                    composerKeyboardInsetExcludesBottomSafeArea
                             )
                     ) {
                         CompositionLocalProvider(
@@ -20945,6 +20946,29 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    // The forward layout keeps the newest message on the composer in the same
+                    // measure pass as an IME/composer resize or a realtime tail append, instead
+                    // of a correction one frame later (see RaftThreadImeLayout.kt).
+                    .raftThreadTailLayoutAnchor(
+                        listState = listState,
+                        inputs =
+                            ThreadTailLayoutAnchorInputs(
+                                reverseLayout = reverseLayout,
+                                followingLatest =
+                                    viewportControllerState.intent == LazyViewportIntent.FollowingLatest,
+                                itemCount = lazyItemCount,
+                                firstMessageId = renderPayload.messages.firstOrNull()?.id,
+                                lastMessageId = renderPayload.messages.lastOrNull()?.id,
+                                newerPagingActive = newerPageCycleActive || renderPayload.canLoadMoreAfter
+                            ),
+                        onAnchored = { state ->
+                            diagnosticsLogger(
+                                "thread_tail_layout_anchor action=pin_tail " +
+                                    "viewport=${state.previousViewportPx}->${state.nextViewportPx} " +
+                                    "items=${state.previousItemCount}->${state.nextItemCount}"
+                            )
+                        }
+                    )
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     .touchListenerWithConfiguration { type, position, touchSlop ->
