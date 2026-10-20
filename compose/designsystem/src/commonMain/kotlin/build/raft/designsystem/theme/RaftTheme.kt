@@ -122,8 +122,9 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
 
 /**
  * Root of every Raft CMP surface. Resolves light/dark from [state] (and the OS setting
- * under [RaftAppearance.System]), loads the bundled fonts and provides colours,
- * typography, shapes, the content colour and the text selection colours (`brand-soft`).
+ * under [RaftAppearance.System]), loads the bundled fonts (unless the host passes its own
+ * [fonts]) and provides colours, typography, shapes, the content colour and the text
+ * selection colours (`brand-soft`).
  *
  * This is not a Material theme: components read [RaftTheme], never `MaterialTheme`.
  */
@@ -131,13 +132,16 @@ val LocalRaftSurfaceColor = staticCompositionLocalOf { Color.Unspecified }
 fun RaftTheme(
     state: RaftThemeState = RaftThemeState.App,
     systemDark: Boolean = isSystemInDarkTheme(),
+    fonts: RaftFonts? = null,
     content: @Composable () -> Unit,
 ) {
     SideEffect { state.onSystemDarkChanged(systemDark) }
     val dark = if (state.appearance == RaftAppearance.System) systemDark else state.isDark
     val colors = if (dark) RaftUiThemeColors.RaftDark else RaftUiThemeColors.RaftLight
-    val fonts = rememberRaftFonts()
-    val typography = remember(fonts) { RaftTypography.from(fonts) }
+    // A host with its own faces (the app's Settings > Appearance face) passes them in, so the
+    // bundled Space Grotesk / Space Mono are never loaded just to be replaced.
+    val resolvedFonts = fonts ?: rememberRaftFonts()
+    val typography = remember(resolvedFonts) { RaftTypography.from(resolvedFonts) }
     CompositionLocalProvider(
         LocalRaftColors provides colors,
         LocalRaftTypography provides typography,
@@ -153,15 +157,19 @@ fun RaftTheme(
     )
 }
 
-/** Pins an [appearance] for a subtree (previews, fixtures, screenshot tests). */
+/**
+ * Pins an [appearance] for a subtree (previews, fixtures, screenshot tests, an app screen
+ * hosting designsystem components). [fonts] replaces the bundled faces when given.
+ */
 @Composable
 fun RaftTheme(
     appearance: RaftAppearance,
     systemDark: Boolean = isSystemInDarkTheme(),
+    fonts: RaftFonts? = null,
     content: @Composable () -> Unit,
 ) {
     val state = remember(appearance) { RaftThemeState(appearance) }
-    RaftTheme(state = state, systemDark = systemDark, content = content)
+    RaftTheme(state = state, systemDark = systemDark, fonts = fonts, content = content)
 }
 
 /** Read access to the enclosing [RaftTheme]. */
