@@ -103,3 +103,6 @@ internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 
 /** Native pop arbitration yields to paging while it can consume the drag. */
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
+
+/** Cupertino rubber band can stick at an offset when its spring is cancelled; see expect. */
+internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false

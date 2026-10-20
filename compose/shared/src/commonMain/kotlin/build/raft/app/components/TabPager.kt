@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.rememberOverscrollEffect
+import build.raft.app.raftPlatformTabPagerOverscrollEnabled
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -238,6 +240,9 @@ fun TabPager(
                 key = { page -> page },
                 // Kuikly keepItemAlive kept every page composed.
                 beyondViewportPageCount = if (keepItemAlive) pageCount else 0,
+                // Kuikly's pager had no edge bounce; on iOS the CMP rubber band could stay
+                // stuck at an offset (see raftPlatformTabPagerOverscrollEnabled).
+                overscrollEffect = if (raftPlatformTabPagerOverscrollEnabled()) rememberOverscrollEffect() else null,
             ) { page ->
                 // currentPage, not settledPage: the latter is frozen on the
                 // iOS port (round-4 evidence), which would leave every

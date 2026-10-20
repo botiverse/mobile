@@ -138,3 +138,12 @@ internal expect fun raftFeedbackWebViewClientKind(): String
  * The shared component never hardcodes a platform's back-gesture geometry.
  */
 internal expect fun raftPlatformTabPagerStartEdgeInsetDp(): Float
+
+/**
+ * Whether a [build.raft.app.components.TabPager] keeps the platform's edge overscroll. Android
+ * keeps its stretch (drawn in place). iOS returns false: CMP's Cupertino overscroll TRANSLATES the
+ * pager content (rubber band, unclipped) and only returns it to rest at the end of its spring; when
+ * that spring is cancelled (a programmatic page sync, an interrupted fling) the offset stays, and
+ * the whole Chat tab was left shifted sideways with its messages running off the screen edge.
+ */
+internal expect fun raftPlatformTabPagerOverscrollEnabled(): Boolean
