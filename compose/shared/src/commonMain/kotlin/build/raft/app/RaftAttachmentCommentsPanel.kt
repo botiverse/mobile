@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +54,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 // web AttachmentCommentsPanel (packages/web/src/components/message/AttachmentCommentsPanel.tsx):
 // a `min-h-10 px-3 py-1.5` header over a `line-seam`, the comment cards in a `px-3 py-2`
 // list with `gap-3`, and the compact composer docked under one seam with `p-3` around it.
+// The translucent lines (`line-seam`, `line-hairline`) are drawn pre-composited on the opaque
+// surface under them, so they come out as the browser blends them (rounded, not truncated).
 private val CommentsHeaderMinHeight = 40.dp
 private val CommentsEdge = 12.dp
 private val CommentsHeaderPaddingVertical = 6.dp
@@ -126,7 +129,7 @@ private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
         ) {
             RaftText(
                 text = stringResource(MR.strings.thread_comments_header, filename),
-                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold).withRaftTextRendering(),
                 color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -148,7 +151,7 @@ private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().heightIn(min = RaftStroke.Hairline, max = RaftStroke.Hairline).background(colors.lineSeam))
+        Box(Modifier.fillMaxWidth().heightIn(min = RaftStroke.Hairline, max = RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
     }
 }
 
@@ -179,7 +182,7 @@ private fun AttachmentCommentsList(
                             labels = labels,
                             genericMessage = stringResource(MR.strings.thread_comments_load_failed)
                         ),
-                    style = RaftTheme.typography.footnote,
+                    style = RaftTheme.typography.footnote.withRaftTextRendering(),
                     color = colors.foregroundMuted
                 )
                 build.raft.designsystem.components.RaftButton(
@@ -192,7 +195,7 @@ private fun AttachmentCommentsList(
             Column(modifier = Modifier.fillMaxSize().padding(horizontal = CommentsEdge, vertical = CommentsListPaddingVertical)) {
                 RaftText(
                     text = stringResource(MR.strings.thread_comments_empty_hint, state.attachment.name),
-                    style = RaftTheme.typography.footnote,
+                    style = RaftTheme.typography.footnote.withRaftTextRendering(),
                     color = colors.foregroundMuted,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp)
                 )
@@ -224,7 +227,7 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
                 .fillMaxWidth()
                 .clip(shape)
                 .background(colors.layerCard, shape)
-                .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                .border(RaftStroke.Hairline, colors.lineHairline.compositeOver(colors.layerCard), shape)
                 .padding(
                     horizontal = CommentsEdge + RaftStroke.Hairline,
                     vertical = CommentCardPaddingVertical + RaftStroke.Hairline
@@ -258,7 +261,7 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
             )
             RaftText(
                 text = comment.senderName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
-                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold).withRaftTextRendering(),
                 color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -268,7 +271,7 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
             if (time.isNotBlank()) {
                 RaftText(
                     text = time,
-                    style = RaftTheme.typography.monoMeta,
+                    style = RaftTheme.typography.monoMeta.withRaftTextRendering(),
                     color = colors.foregroundHint,
                     maxLines = 1
                 )
@@ -313,7 +316,7 @@ private fun AttachmentCommentChip(
         RaftLucideIcon(icon, modifier = Modifier.size(CommentChipIconSize), color = raftArgbHex(colors.foreground))
         RaftText(
             text = label,
-            style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
+            style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold).withRaftTextRendering(),
             color = colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -349,7 +352,7 @@ private fun AttachmentCommentsDock(
     val viewer = state.page?.viewer
     val canComment = viewer?.canComment ?: true
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().heightIn(min = RaftStroke.Hairline, max = RaftStroke.Hairline).background(colors.lineSeam))
+        Box(Modifier.fillMaxWidth().heightIn(min = RaftStroke.Hairline, max = RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
         Column(
             modifier = Modifier.fillMaxWidth().padding(CommentsEdge),
             verticalArrangement = Arrangement.spacedBy(CommentComposerGap)
@@ -357,7 +360,7 @@ private fun AttachmentCommentsDock(
             if (!canComment) {
                 RaftText(
                     text = threadAttachmentCommentBlockedCopy(viewer?.reason),
-                    style = RaftTheme.typography.footnote,
+                    style = RaftTheme.typography.footnote.withRaftTextRendering(),
                     color = colors.foregroundHint,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
                 )
@@ -392,7 +395,7 @@ private fun AttachmentCommentsDock(
                             labels = threadUserFacingErrorLabels(),
                             genericMessage = stringResource(MR.strings.common_error)
                         ),
-                    style = RaftTheme.typography.caption,
+                    style = RaftTheme.typography.caption.withRaftTextRendering(),
                     color = colors.dangerStrong,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -437,7 +440,7 @@ private fun AttachmentCommentComposer(
             textStyle =
                 RaftType.Input.copy(
                     color = if (enabled) colors.foreground else colors.foregroundDisabled,
-                    lineBreak = LineBreak.Simple
+                    lineBreak = LineBreak(LineBreak.Strategy.Simple, LineBreak.Strictness.Loose, LineBreak.WordBreak.Default)
                 ),
             placeholderColor = colors.foregroundHint,
             cursorBrush = SolidColor(colors.foreground),
