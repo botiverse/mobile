@@ -33,8 +33,25 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         }
     }
 
+    func testAttentionDotIsAnEmptyBadgeAndANumberStillWins() {
+        XCTAssertEqual(RaftIosTabBarItemMapping.badgeValue(fromShared: nil, attentionDot: true), "")
+        XCTAssertEqual(RaftIosTabBarItemMapping.badgeValue(fromShared: "3", attentionDot: true), "3")
+        XCTAssertNil(RaftIosTabBarItemMapping.badgeValue(fromShared: nil, attentionDot: false))
+        let dotted = RaftIosTabBarItemSpec(
+            key: "activity",
+            title: "Activity",
+            systemImageName: "waveform.path.ecg",
+            selectedSystemImageName: "waveform.path.ecg",
+            badgeValue: nil,
+            enabled: true,
+            attentionDot: true
+        )
+        XCTAssertEqual(dotted.badgeValue, "")
+    }
+
     func testDisplayItemsKeepSharedOrderIncludingAFifthTab() {
-        let keys = ["home", "activity", "tasks", "members", "settings"]
+        // Phone bar: four tabs plus the Search action as the fifth item.
+        let keys = ["home", "activity", "tasks", "more", "search"]
 
         let shown = RaftIosTabBarItemMapping.displayItems(keys.map { spec($0) })
 

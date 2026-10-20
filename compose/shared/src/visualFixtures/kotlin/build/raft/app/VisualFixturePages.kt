@@ -291,56 +291,28 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
             var selectedKey by remember { mutableStateOf(initialSelectedKey) }
             RaftAppBottomTabBarHost(
                 items =
-                    listOf(
-                        RaftBottomTabItemPayload(
-                            "home",
-                            "Home",
-                            RaftLucideIconName.House,
-                            selected = selectedKey == "home",
-                            enabled = disabledKey != "home"
-                        ),
-                        RaftBottomTabItemPayload(
-                            "activity",
-                            "Activity",
-                            RaftLucideIconName.Activity,
-                            selected = selectedKey == "activity",
-                            enabled = disabledKey != "activity",
-                            badgeCount = 12
-                        ),
-                        RaftBottomTabItemPayload(
-                            "tasks",
-                            "Tasks",
-                            RaftLucideIconName.SquareCheckBig,
-                            selected = selectedKey == "tasks",
-                            enabled = disabledKey != "tasks"
-                        ),
-                        RaftBottomTabItemPayload(
-                            "members",
-                            "Members",
-                            RaftLucideIconName.Users,
-                            selected = selectedKey == "members",
-                            enabled = disabledKey != "members"
-                        ),
-                        RaftBottomTabItemPayload(
-                            "settings",
-                            "Settings",
-                            RaftLucideIconName.Settings,
-                            selected = selectedKey == "settings",
-                            enabled = disabledKey != "settings"
-                        )
-                    ),
-                onSelect = { selectedKey = it },
+                    appShellPhoneBottomTabs(
+                        selectedTab = selectedKey,
+                        homeLabel = "Home",
+                        activityLabel = "Activity",
+                        tasksLabel = "Tasks",
+                        moreLabel = "More",
+                        activityUnreadCount = 12
+                    ).map { it.copy(enabled = it.key != disabledKey) },
+                onSelect = { if (it != AppShellSearchActionKey) selectedKey = it },
                 modifier = Modifier.width(390.dp),
-                bottomSafeArea = bottomSafeArea
+                bottomSafeArea = bottomSafeArea,
+                accessory = appShellSearchAction("Search")
             )
         }
     }
 }
 
 /**
- * The approved activity-tab mockup A bottom bar: 首页 · 动态 · 任务 · 成员 · 设置, rendered by the
- * shared Compose bar at 390dp. Top: 动态 selected with its count on the pill corner; bottom: 任务
- * selected with the count on the unselected 动态 tab.
+ * The phone bottom bar (xxchan 2026-10-20): 主页 · 动态 · 任务 · 更多 with the round Search action
+ * beside them, rendered by the shared Compose bar at 390dp. Top: 动态 selected (no dot on the
+ * selected tab); middle: 任务 selected with the unread dot on 动态; bottom: a page pushed from
+ * 更多 (成员) keeps 更多 selected.
  */
 @Page("compose_bottom_tabbar_mockup_visual", supportInLocal = true)
 internal class ComposeBottomTabBarMockupVisualPage : BasePager() {
@@ -351,17 +323,20 @@ internal class ComposeBottomTabBarMockupVisualPage : BasePager() {
                 modifier = Modifier.background(RaftColor.Canvas).padding(vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                listOf("activity" to 51, "tasks" to 16).forEach { (selectedKey, count) ->
+                listOf("activity", "tasks", "members").forEach { selectedTab ->
                     RaftBottomTabBar(
-                        items = listOf(
-                            RaftBottomTabItemPayload("home", "首页", RaftLucideIconName.House, selected = selectedKey == "home"),
-                            RaftBottomTabItemPayload("activity", "动态", RaftLucideIconName.Activity, selected = selectedKey == "activity", badgeCount = count),
-                            RaftBottomTabItemPayload("tasks", "任务", RaftLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
-                            RaftBottomTabItemPayload("members", "成员", RaftLucideIconName.Users, selected = selectedKey == "members"),
-                            RaftBottomTabItemPayload("settings", "设置", RaftLucideIconName.Settings, selected = selectedKey == "settings")
-                        ),
+                        items =
+                            appShellPhoneBottomTabs(
+                                selectedTab = selectedTab,
+                                homeLabel = "主页",
+                                activityLabel = "动态",
+                                tasksLabel = "任务",
+                                moreLabel = "更多",
+                                activityUnreadCount = 51
+                            ),
                         onSelect = {},
-                        modifier = Modifier.width(390.dp)
+                        modifier = Modifier.width(390.dp),
+                        accessory = appShellSearchAction("搜索")
                     )
                 }
             }

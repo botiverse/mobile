@@ -1457,27 +1457,77 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun appShellBottomTabsUseLocalizedLabelsAndRetainSelection() {
-        val tabs =
-            appShellBottomTabs(
-                selectedKey = "members",
+    fun appShellPhoneBottomTabsUseLocalizedLabelsAndKeepMoreSelectedForItsPages() {
+        val build = { selectedTab: String ->
+            appShellPhoneBottomTabs(
+                selectedTab = selectedTab,
                 homeLabel = "localized-home",
                 activityLabel = "localized-activity",
                 tasksLabel = "localized-tasks",
-                membersLabel = "localized-members",
-                settingsLabel = "localized-settings",
-                activityBadgeCount = 7
+                moreLabel = "localized-more",
+                activityUnreadCount = 7
             )
-
-        // artin 2026-10-20: five tabs, Activity second, badge only on Activity.
-        assertEquals(listOf("home", "activity", "tasks", "members", "settings"), tabs.map { it.key })
+        }
+        // xxchan 2026-10-20: Home · Activity · Tasks · More; Search is an action, not a tab.
+        val tabs = build("home")
+        assertEquals(listOf("home", "activity", "tasks", "more"), tabs.map { it.key })
         assertEquals(
-            listOf("localized-home", "localized-activity", "localized-tasks", "localized-members", "localized-settings"),
+            listOf("localized-home", "localized-activity", "localized-tasks", "localized-more"),
             tabs.map { it.label }
         )
-        assertEquals(listOf(false, false, false, true, false), tabs.map { it.selected })
-        assertEquals(listOf(0, 7, 0, 0, 0), tabs.map { it.badgeCount })
-        assertEquals(RaftLucideIconName.Activity, tabs[1].iconName)
+        assertEquals(RaftLucideIconName.Ellipsis, tabs[3].iconName)
+        assertEquals(listOf(0, 0, 0, 0), tabs.map { it.badgeCount })
+        // Members and Settings are pages pushed from More: More stays the selected tab.
+        listOf("members", "settings", "more").forEach { selected ->
+            assertEquals(listOf(false, false, false, true), build(selected).map { it.selected }, "selected=$selected")
+        }
+        assertEquals(listOf(false, false, true, false), build("tasks").map { it.selected })
+        // A stale/unknown selection (and the Search action key) never selects anything but Home.
+        assertEquals(listOf(true, false, false, false), build(AppShellSearchActionKey).map { it.selected })
+    }
+
+    @Test
+    fun searchActionIsNotATabAndNeverSelected() {
+        val search = appShellSearchAction("localized-search")
+        assertEquals(AppShellSearchActionKey, search.key)
+        assertEquals("localized-search", search.label)
+        assertEquals(RaftLucideIconName.Search, search.iconName)
+        assertFalse(search.selected)
+        assertFalse(AppShellSearchActionKey in AppShellPhoneBottomTabKeys)
+        // It is not a shell tab key: a stray selection clamps to Home.
+        assertEquals("home", retainedAppShellSelectedTab(AppShellSearchActionKey))
+    }
+
+    @Test
+    fun morePagesGoBackToMoreOnlyOnThePhoneLayout() {
+        assertEquals("more", appShellMoreChildBackTarget("members", navRailActive = false))
+        assertEquals("more", appShellMoreChildBackTarget("settings", navRailActive = false))
+        // The wide rail lists Members and Settings as roots.
+        assertNull(appShellMoreChildBackTarget("members", navRailActive = true))
+        assertNull(appShellMoreChildBackTarget("settings", navRailActive = true))
+        listOf("home", "activity", "tasks", "more", "unknown").forEach { tab ->
+            assertNull(appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
+        }
+    }
+
+    @Test
+    fun moreRowsAreMembersComputersSettings() {
+        assertEquals(listOf("members", "computers", "settings"), RaftMoreRows.map { it.key })
+        // Rows that open a shell page use the shell child-tab key.
+        assertEquals("members", appShellActiveChildPagerTab(RaftMoreRow.Members.key))
+        assertEquals("settings", appShellActiveChildPagerTab(RaftMoreRow.Settings.key))
+    }
+
+    @Test
+    fun railTabsKeepWebLeftRailEntries() {
+        val tabs =
+            appShellBottomTabs(
+                selectedKey = "members",
+                orderedTabKeys = AppShellRailTabKeys,
+                labelFor = { it }
+            )
+        assertEquals(listOf("home", "activity", "tasks", "members"), tabs.map { it.key })
+        assertEquals(listOf(false, false, false, true), tabs.map { it.selected })
     }
 
     @Test

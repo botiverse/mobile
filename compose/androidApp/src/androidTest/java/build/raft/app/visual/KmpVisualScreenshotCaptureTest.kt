@@ -263,7 +263,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("slockNativeTabBarRenderer", "androidFloating")
-                    .put("disabledKey", "settings"),
+                    .put("disabledKey", "more"),
             crop = ANDROID_FLOATING_TABBAR_CROP
         )
         captureKmpComponentCase(

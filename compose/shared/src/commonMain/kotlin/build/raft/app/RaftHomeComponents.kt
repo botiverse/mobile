@@ -3442,26 +3442,8 @@ private fun RaftStructuralHomeShellContent(
             }
         }
         if (showBottomBar && !bottomBarOverlaysContent) {
-            val homeTabLabel = stringResource(MR.strings.tab_home)
-            val tasksTabLabel = stringResource(MR.strings.tab_tasks)
-            val membersTabLabel = stringResource(MR.strings.tab_members)
-            val settingsTabLabel = stringResource(MR.strings.tab_settings)
-            val bottomTabItems = remember(
-                selectedTabKey,
-                homeTabLabel,
-                tasksTabLabel,
-                membersTabLabel,
-                settingsTabLabel
-            ) {
-                listOf(
-                    RaftBottomTabItemPayload("home", homeTabLabel, RaftLucideIconName.House, selected = selectedTabKey == "home"),
-                    RaftBottomTabItemPayload("tasks", tasksTabLabel, RaftLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
-                    RaftBottomTabItemPayload("members", membersTabLabel, RaftLucideIconName.Users, selected = selectedTabKey == "members"),
-                    RaftBottomTabItemPayload("settings", settingsTabLabel, RaftLucideIconName.Settings, selected = selectedTabKey == "settings")
-                )
-            }
-            RaftAppBottomTabBarHost(
-                items = bottomTabItems,
+            RaftHomePreviewBottomTabBar(
+                selectedTabKey = selectedTabKey,
                 onSelect = onBottomTabSelected,
                 modifier = Modifier.fillMaxWidth(),
                 bottomSafeArea = bottomSafeArea
@@ -3469,32 +3451,45 @@ private fun RaftStructuralHomeShellContent(
         }
         }
         if (bottomBarOverlaysContent) {
-            val homeTabLabel = stringResource(MR.strings.tab_home)
-            val tasksTabLabel = stringResource(MR.strings.tab_tasks)
-            val membersTabLabel = stringResource(MR.strings.tab_members)
-            val settingsTabLabel = stringResource(MR.strings.tab_settings)
-            val bottomTabItems = remember(
-                selectedTabKey,
-                homeTabLabel,
-                tasksTabLabel,
-                membersTabLabel,
-                settingsTabLabel
-            ) {
-                listOf(
-                    RaftBottomTabItemPayload("home", homeTabLabel, RaftLucideIconName.House, selected = selectedTabKey == "home"),
-                    RaftBottomTabItemPayload("tasks", tasksTabLabel, RaftLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
-                    RaftBottomTabItemPayload("members", membersTabLabel, RaftLucideIconName.Users, selected = selectedTabKey == "members"),
-                    RaftBottomTabItemPayload("settings", settingsTabLabel, RaftLucideIconName.Settings, selected = selectedTabKey == "settings")
-                )
-            }
-            RaftAppBottomTabBarHost(
-                items = bottomTabItems,
+            RaftHomePreviewBottomTabBar(
+                selectedTabKey = selectedTabKey,
                 onSelect = onBottomTabSelected,
                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                 bottomSafeArea = bottomSafeArea
             )
         }
     }
+}
+
+/** Stand-in for the app-shell bottom bar (visual fixtures): the same phone tabs and Search action. */
+@Composable
+private fun RaftHomePreviewBottomTabBar(
+    selectedTabKey: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier,
+    bottomSafeArea: Dp,
+) {
+    val homeTabLabel = stringResource(MR.strings.tab_home)
+    val activityTabLabel = stringResource(MR.strings.tab_activity)
+    val tasksTabLabel = stringResource(MR.strings.tab_tasks)
+    val moreTabLabel = stringResource(MR.strings.tab_more)
+    val searchLabel = stringResource(MR.strings.home_nav_search)
+    val items = remember(selectedTabKey, homeTabLabel, activityTabLabel, tasksTabLabel, moreTabLabel) {
+        appShellPhoneBottomTabs(
+            selectedTab = selectedTabKey,
+            homeLabel = homeTabLabel,
+            activityLabel = activityTabLabel,
+            tasksLabel = tasksTabLabel,
+            moreLabel = moreTabLabel,
+        )
+    }
+    RaftAppBottomTabBarHost(
+        items = items,
+        onSelect = onSelect,
+        modifier = modifier,
+        bottomSafeArea = bottomSafeArea,
+        accessory = remember(searchLabel) { appShellSearchAction(searchLabel) }
+    )
 }
 
 private fun Dp.max(other: Dp): Dp =

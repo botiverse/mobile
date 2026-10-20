@@ -9,7 +9,7 @@ struct RaftIosTabBarItemSpec: Equatable {
     let title: String
     let systemImageName: String
     let selectedSystemImageName: String
-    /// `UITabBarItem.badgeValue`: nil hides the badge.
+    /// `UITabBarItem.badgeValue`: nil hides the badge, "" draws the dot-only badge.
     let badgeValue: String?
     let enabled: Bool
 
@@ -19,13 +19,14 @@ struct RaftIosTabBarItemSpec: Equatable {
         systemImageName: String,
         selectedSystemImageName: String,
         badgeValue: String?,
-        enabled: Bool
+        enabled: Bool,
+        attentionDot: Bool = false
     ) {
         self.key = key
         self.title = title
         self.systemImageName = systemImageName
         self.selectedSystemImageName = selectedSystemImageName
-        self.badgeValue = RaftIosTabBarItemMapping.badgeValue(fromShared: badgeValue)
+        self.badgeValue = RaftIosTabBarItemMapping.badgeValue(fromShared: badgeValue, attentionDot: attentionDot)
         self.enabled = enabled
     }
 }
@@ -41,11 +42,14 @@ enum RaftIosTabBarItemMapping {
     static let fallbackSystemImageName = "circle"
 
     /// Shared already formats the badge (nil at 0, "99+" cap); blank or "0" still hides it.
-    static func badgeValue(fromShared value: String?) -> String? {
+    /// A tab-bar attention dot (raft-design MobileNav / Badge: a dot, never a number; shared
+    /// never sets it on the selected tab) becomes an empty `badgeValue`, which UIKit draws as
+    /// the small dot-only badge.
+    static func badgeValue(fromShared value: String?, attentionDot: Bool = false) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty,
               trimmed != "0" else {
-            return nil
+            return attentionDot ? "" : nil
         }
         return trimmed
     }
