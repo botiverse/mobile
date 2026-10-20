@@ -19,7 +19,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 ## Build-time dependencies — Maven (Android / KMP)
 | Component | Version | License |
 |---|---|---|
-| com.tencent.kuikly-open:core / compose / core-render-android / core-annotations / core-ksp (Botiverse-built fork on maven.artifacts.botiverse.dev) | 2.28.0-raft.16-2.1.21 (Android) · 2.28.0-raft.16-2.0.21-ohos (OHOS) | KuiklyUI license — MIT-style grant; prohibits derivative work for dynamic code loading / live update without Tencent consent (Raft Mobile adds none) |
+| com.tencent.kuikly-open:core / compose / core-render-android / core-annotations / core-ksp (Botiverse-built fork on maven.artifacts.botiverse.dev) | 2.28.0-raft.17-2.1.21 (Android) · 2.28.0-raft.17-2.0.21-ohos (OHOS) | KuiklyUI license — MIT-style grant; prohibits derivative work for dynamic code loading / live update without Tencent consent (Raft Mobile adds none) |
 | com.tencent.kuiklybase:network | 0.1.0-raft.47 | Apache-2.0 |
 | com.tencent.kuiklybase:resource-core | 0.1.0-raft.5 | Apache-2.0 |
 | build.raft.kuiklybase:datetime | 0.1.0-raft.0 | Apache-2.0 |
@@ -44,7 +44,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 ## iOS — CocoaPods
 | Pod | Version | License |
 |---|---|---|
-| OpenKuiklyIOSRender (Botiverse-built podspec) | 2.28.0-raft.16-2.1.21 | KuiklyUI license |
+| OpenKuiklyIOSRender (Botiverse-built podspec) | 2.28.0-raft.17-2.1.21 | KuiklyUI license |
 | Hands (oranix-io/hands, tag ios-v0.2.1) | 0.2.1 | MIT |
 | MMKV / MMKVCore | 2.4.0 | BSD-3-Clause |
 | SDWebImage | 5.21.7 | MIT |
@@ -55,7 +55,7 @@ published package metadata (Maven POM `<licenses>`, npm/OHPM registry `license`,
 ## HarmonyOS — OHPM
 | Package | Version | License |
 |---|---|---|
-| @kuikly-open/render (Botiverse-built .har) | 2.28.0-raft.16-2.0.21-ohos | KuiklyUI license |
+| @kuikly-open/render (Botiverse-built .har) | 2.28.0-raft.17-2.0.21-ohos | KuiklyUI license |
 | @botiverse/hands | 0.3.5 | MIT |
 | @ohos/apng | ^1.0.0-rc.8 | MIT |
 | @kuiklybase/knoi | 0.0.4 | Apache-2.0 |
