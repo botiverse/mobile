@@ -293,8 +293,11 @@ fun AgentActivityTurnTrigger?.describe(): AgentActivityTriggerDescription? {
 sealed interface AgentActivityTurnReply {
     data class Loaded(val content: String, val createdAtEpochMillis: Long?) : AgentActivityTurnReply
 
-    /** Not found, not readable by this viewer, or the request failed: web shows one line for all. */
+    /** Not found or not readable by this viewer: web shows one line for these (and for failures). */
     data object Unavailable : AgentActivityTurnReply
+
+    /** The request failed for a passing reason (network, 5xx, empty body): worth asking again. */
+    data object Failed : AgentActivityTurnReply
 }
 
 const val AGENT_ACTIVITY_OVERVIEW_PAGE_SIZE: Int = 30
@@ -349,8 +352,11 @@ class RealAgentActivityOverviewRepository(
             path = "messages/context/${messageId.value}",
             query = listOf("before" to "0", "after" to "0"),
         )
+        if (response.code == 401 || response.code == 403 || response.code == 404) {
+            return AgentActivityTurnReply.Unavailable
+        }
         val body = response.bodyText?.takeIf { response.isSuccessful && it.isNotBlank() }
-            ?: return AgentActivityTurnReply.Unavailable
+            ?: return AgentActivityTurnReply.Failed
         val payload = parseSharedMessageContext(body, fallbackThreadId = ThreadId(messageId.value))
         val targetId = payload.targetMessageId ?: messageId
         val message = payload.messages.firstOrNull { it.id == targetId } ?: return AgentActivityTurnReply.Unavailable

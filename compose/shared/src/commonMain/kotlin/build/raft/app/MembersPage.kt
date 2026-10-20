@@ -136,6 +136,7 @@ import build.raft.app.model.getModelLabel
 import build.raft.app.model.getDefaultModel
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.MemberId
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.model.MessageId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -284,6 +285,7 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -2624,11 +2626,10 @@ internal fun memberDetailFailureResolution(
 /** Flag on and allowed: the overview binding for the Activity tab; otherwise the raw log only. */
 private fun membersAgentActivityOverviewBindingOrNull(
     store: build.raft.app.data.SharedAgentActivityOverviewStore?,
-    state: build.raft.app.data.AgentActivityOverviewState?,
     enabled: Boolean
 ): MembersAgentActivityOverviewBinding? {
-    if (!enabled || store == null || state == null) return null
-    return MembersAgentActivityOverviewBinding(state = state, onIntent = store::dispatch)
+    if (!enabled || store == null) return null
+    return MembersAgentActivityOverviewBinding(state = store.state, onIntent = store::dispatch)
 }
 
 private data class MemberDetailVisualSeed(
@@ -3632,7 +3633,12 @@ internal fun MemberDetailPageContent(
                 )
             }
         }
-    val activityOverviewState = activityOverviewStore?.state?.collectAsState()?.value
+    // The overview gate follows a flag evaluation (or a local override) that lands after first frame.
+    val serverFeatureFlagRevision = provider.serverFeatureFlags?.revision?.collectAsState()?.value
+    val activityOverviewOverrideRevision by
+        ProcessDiagnosticFeatureFlagOverrides.registry
+            .revisionFor(ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
+            .collectAsState()
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
     val serverMembersState by provider.serverMembersStore.state.collectAsState()
@@ -4158,15 +4164,21 @@ internal fun MemberDetailPageContent(
                         activityOverview =
                             membersAgentActivityOverviewBindingOrNull(
                                 store = activityOverviewStore,
-                                state = activityOverviewState,
                                 enabled =
                                     current.accessMode.allowsPrivateAgentSurfaces &&
                                         (current.server.permissions.canManageSettings ||
                                             selectedAgentDetail?.summary?.creatorId == current.currentUserId) &&
-                                        provider.serverFeatureFlags?.isEnabled(
+                                        remember(
+                                            provider.serverFeatureFlags,
                                             current.server.id,
-                                            ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
-                                        ) == true
+                                            serverFeatureFlagRevision,
+                                            activityOverviewOverrideRevision
+                                        ) {
+                                            provider.serverFeatureFlags?.isEnabled(
+                                                current.server.id,
+                                                ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
+                                            ) == true
+                                        }
                             ),
                         runtimeModels = MembersAgentRuntimeModelInputs(
                             agentMachineRuntimes =
@@ -4487,7 +4499,12 @@ private fun MemberDetailVisualSeedContent(
         currentUserId = "visual-owner",
         currentServerId = "visual-server",
         agentDetailState = seed.agentDetailState,
-        activityOverview = seed.activityOverview?.let { MembersAgentActivityOverviewBinding(state = it, onIntent = {}) },
+        activityOverview =
+            remember(seed.activityOverview) {
+                seed.activityOverview?.let {
+                    MembersAgentActivityOverviewBinding(state = MutableStateFlow(it), onIntent = {})
+                }
+            },
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
         machineStatusRow = membersVisualFixtureMachineStatusRow,
@@ -13017,15 +13034,12 @@ private fun MembersAgentActivityTab(
     if (overview != null && detail != null) {
         val agentId = detail.agentId
         LaunchedEffect(agentId) { overview.onIntent(AgentActivityOverviewIntent.Open(agentId)) }
-        // A finished turn arrives with the agent's live status change (web reloads on the
-        // agent:activity push); the store debounces and coalesces.
+        // A finished turn arrives with the agent leaving a busy state (web reloads on the
+        // agent:activity push). The store keeps the last-seen activity, so a revisit after the
+        // pager dropped this page still sees the edge; it debounces and coalesces the reload.
         val liveActivity = detail.summary?.activity
-        var seenLiveActivity by remember(agentId) { mutableStateOf(liveActivity) }
         LaunchedEffect(agentId, liveActivity) {
-            if (seenLiveActivity != liveActivity) {
-                seenLiveActivity = liveActivity
-                overview.onIntent(AgentActivityOverviewIntent.LiveActivityChanged)
-            }
+            overview.onIntent(AgentActivityOverviewIntent.LiveActivityObserved(agentId, liveActivity))
         }
     }
     // raft-ui agent page Activity tab: the activity log as a Timeline under a section head

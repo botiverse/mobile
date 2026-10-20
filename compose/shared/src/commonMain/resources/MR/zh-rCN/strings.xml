@@ -2328,6 +2328,7 @@
     <string name="settings_public_visibility_failed_search_update">无法更新搜索引擎收录设置</string>
     <string name="channel_public_page_readable">任何人都能在公开页阅读这个频道</string>
     <string name="layout_server_public_page_live">已公开：任何人不登录也能阅读公开的频道</string>
+    <string name="member_activity_overview_view_label">动态视图</string>
     <string name="member_activity_overview_view_overview">概览</string>
     <string name="member_activity_overview_view_raw">原始日志</string>
     <string name="member_activity_overview_now_last_turn">上一轮 %1$s 结束</string>

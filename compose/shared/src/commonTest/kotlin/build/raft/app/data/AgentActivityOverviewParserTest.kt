@@ -178,7 +178,9 @@ class AgentActivityOverviewParserTest {
                 "agents/agent-1/activity-summaries" to HomeNetworkResponse(403, null, """{"error":"The `editAgents` capability"}"""),
                 "agents/agent-2/activity-summaries" to HomeNetworkResponse(500, null),
                 "agents/agent-3/activity-summaries" to HomeNetworkResponse(200, """{"rows":[]}"""),
-                "messages/context/hidden" to HomeNetworkResponse(403, null)
+                "messages/context/hidden" to HomeNetworkResponse(403, null),
+                "messages/context/flaky" to HomeNetworkResponse(503, null),
+                "messages/context/offline" to HomeNetworkResponse(0, null)
             )
         )
         val repository = RealAgentActivityOverviewRepository(client)
@@ -188,6 +190,11 @@ class AgentActivityOverviewParserTest {
         val mismatch = assertIs<DataResult.Error>(repository.loadTurns(DataRequestPriority.Visible, MemberId("agent-3")))
         assertEquals("activity_summaries_contract_mismatch", mismatch.error.code)
         assertEquals(AgentActivityTurnReply.Unavailable, repository.loadReply(DataRequestPriority.Visible, MessageId("hidden")))
+        // Unmapped path: the recording client answers 404, a deleted reply.
+        assertEquals(AgentActivityTurnReply.Unavailable, repository.loadReply(DataRequestPriority.Visible, MessageId("gone")))
+        // Passing failures are not "unavailable": the store asks again.
+        assertEquals(AgentActivityTurnReply.Failed, repository.loadReply(DataRequestPriority.Visible, MessageId("flaky")))
+        assertEquals(AgentActivityTurnReply.Failed, repository.loadReply(DataRequestPriority.Visible, MessageId("offline")))
     }
 
     private fun <T : Any> assertIsNotNull(value: T?): T {

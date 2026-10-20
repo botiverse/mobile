@@ -23,6 +23,12 @@ sealed interface AgentActivityOverviewStatus {
 sealed interface AgentActivityReplyState {
     data object Loading : AgentActivityReplyState
     data class Ready(val reply: AgentActivityTurnReply) : AgentActivityReplyState
+
+    /**
+     * The request failed for a passing reason (network, 5xx). Shown like an unreadable reply, but
+     * never cached: the next [AgentActivityOverviewIntent.LoadReply] or a Refresh asks again.
+     */
+    data object Failed : AgentActivityReplyState
 }
 
 data class AgentActivityOverviewState(
@@ -36,17 +42,23 @@ data class AgentActivityOverviewState(
 )
 
 sealed interface AgentActivityOverviewIntent {
-    /** The overview is on screen for [agentId]; loads the latest page once per agent. */
+    /**
+     * The overview is on screen for [agentId]. The first Open loads the latest page; a repeated
+     * Open for the same agent once it is loaded (the tab was left and revisited) schedules a
+     * debounced silent reload, since live changes were not observed while the tab was away.
+     */
     data class Open(val agentId: MemberId) : AgentActivityOverviewIntent
 
     /** Retry or pull-to-refresh: reload the latest page now. */
     data object Refresh : AgentActivityOverviewIntent
 
     /**
-     * The agent's live activity moved (a finished turn arrives with it). Debounced and coalesced
-     * like web `registerActivityTrajectoryLiveReload`.
+     * The agent's live activity as the UI sees it now (`working`, `thinking`, `online`, ...). The
+     * store keeps the last one per agent; a turn finishes only when the agent leaves a busy state,
+     * so only that edge schedules a reload (debounced and coalesced like web
+     * `registerActivityTrajectoryLiveReload`). working <-> thinking is the same turn: no reload.
      */
-    data object LiveActivityChanged : AgentActivityOverviewIntent
+    data class LiveActivityObserved(val agentId: MemberId, val activity: String?) : AgentActivityOverviewIntent
 
     /** "Show Earlier Turns": the page after `next`. */
     data object LoadMore : AgentActivityOverviewIntent
@@ -77,11 +89,17 @@ class SharedAgentActivityOverviewStore(
     private var latestPendingPriority = DataRequestPriority.Background
     private var liveReloadJob: Job? = null
 
+    /** The `before` cursor of the "load earlier" request in flight; null when none is. */
+    private var loadMoreCursor: String? = null
+
+    /** Last live activity observed for the current agent; null until the first observation. */
+    private var lastLiveActivity: String? = null
+
     fun dispatch(intent: AgentActivityOverviewIntent) {
         when (intent) {
             is AgentActivityOverviewIntent.Open -> open(intent.agentId)
-            AgentActivityOverviewIntent.Refresh -> loadLatest(DataRequestPriority.Visible)
-            AgentActivityOverviewIntent.LiveActivityChanged -> scheduleLiveReload()
+            AgentActivityOverviewIntent.Refresh -> refresh()
+            is AgentActivityOverviewIntent.LiveActivityObserved -> observeLiveActivity(intent.agentId, intent.activity)
             AgentActivityOverviewIntent.LoadMore -> loadMore()
             is AgentActivityOverviewIntent.LoadReply -> loadReply(intent.messageId)
         }
@@ -89,14 +107,37 @@ class SharedAgentActivityOverviewStore(
 
     private fun open(agentId: MemberId) {
         val current = _state.value
-        if (current.agentId == agentId && current.status != AgentActivityOverviewStatus.Idle) return
+        if (current.agentId == agentId && current.status != AgentActivityOverviewStatus.Idle) {
+            // Revisit: what is shown may be stale. Loading or Error already has its own path.
+            if (current.status == AgentActivityOverviewStatus.Loaded) scheduleLiveReload()
+            return
+        }
         generation += 1
         liveReloadJob?.cancel()
         liveReloadJob = null
         latestInFlight = false
         latestPending = false
+        latestPendingPriority = DataRequestPriority.Background
+        loadMoreCursor = null
+        lastLiveActivity = null
         _state.value = AgentActivityOverviewState(agentId = agentId, status = AgentActivityOverviewStatus.Loading)
         loadLatest(DataRequestPriority.Visible)
+    }
+
+    private fun refresh() {
+        if (_state.value.agentId == null) return
+        // Retry from the error screen shows the loading state while it runs.
+        _state.update { if (it.status is AgentActivityOverviewStatus.Error) it.copy(status = AgentActivityOverviewStatus.Loading) else it }
+        loadLatest(DataRequestPriority.Visible)
+        // Replies that failed for a passing reason are asked again.
+        _state.value.replies.filterValues { it == AgentActivityReplyState.Failed }.keys.forEach(::loadReply)
+    }
+
+    private fun observeLiveActivity(agentId: MemberId, activity: String?) {
+        if (_state.value.agentId != agentId) return
+        val previous = lastLiveActivity
+        lastLiveActivity = activity
+        if (isAgentActivityBusy(previous) && !isAgentActivityBusy(activity)) scheduleLiveReload()
     }
 
     private fun scheduleLiveReload() {
@@ -141,16 +182,27 @@ class SharedAgentActivityOverviewStore(
         when (result) {
             is DataResult.Content ->
                 _state.update {
+                    val head = if (it.status == AgentActivityOverviewStatus.Loaded) {
+                        mergeAgentActivityHead(it.turns, it.next, result.data)
+                    } else {
+                        result.data
+                    }
                     it.copy(
-                        turns = result.data.turns,
-                        next = result.data.next,
+                        turns = head.turns,
+                        next = head.next,
                         status = AgentActivityOverviewStatus.Loaded,
-                        loadingMore = false,
+                        // A "load earlier" still in flight keeps its spinner.
+                        loadingMore = loadMoreCursor != null,
                     )
                 }
             is DataResult.Empty ->
                 _state.update {
-                    it.copy(turns = emptyList(), next = null, status = AgentActivityOverviewStatus.Loaded)
+                    it.copy(
+                        turns = emptyList(),
+                        next = null,
+                        status = AgentActivityOverviewStatus.Loaded,
+                        loadingMore = loadMoreCursor != null,
+                    )
                 }
             is DataResult.Error -> failLatest(result.error.code)
             is DataResult.NoPermission -> failLatest(result.blocker.code)
@@ -169,11 +221,16 @@ class SharedAgentActivityOverviewStore(
         val current = _state.value
         val agentId = current.agentId ?: return
         val cursor = current.next ?: return
-        if (current.loadingMore || current.status != AgentActivityOverviewStatus.Loaded) return
+        if (loadMoreCursor != null || current.status != AgentActivityOverviewStatus.Loaded) return
+        loadMoreCursor = cursor
         _state.update { it.copy(loadingMore = true) }
         val requestGeneration = generation
         scope.launch {
-            val result = repository.loadTurns(DataRequestPriority.Visible, agentId, before = cursor)
+            val result = try {
+                repository.loadTurns(DataRequestPriority.Visible, agentId, before = cursor)
+            } finally {
+                if (requestGeneration == generation) loadMoreCursor = null
+            }
             if (requestGeneration != generation) return@launch
             _state.update { state ->
                 // A reload that landed meanwhile replaced the list; this page no longer follows it.
@@ -196,13 +253,21 @@ class SharedAgentActivityOverviewStore(
     }
 
     private fun loadReply(messageId: MessageId) {
-        if (_state.value.agentId == null || messageId in _state.value.replies) return
+        if (_state.value.agentId == null) return
+        val known = _state.value.replies[messageId]
+        if (known != null && known != AgentActivityReplyState.Failed) return
         _state.update { it.copy(replies = it.replies + (messageId to AgentActivityReplyState.Loading)) }
         val requestGeneration = generation
         scope.launch {
             val reply = repository.loadReply(DataRequestPriority.Visible, messageId)
             if (requestGeneration != generation) return@launch
-            _state.update { it.copy(replies = it.replies + (messageId to AgentActivityReplyState.Ready(reply))) }
+            val replyState = if (reply == AgentActivityTurnReply.Failed) {
+                logger("agent_activity_overview_reply_failed")
+                AgentActivityReplyState.Failed
+            } else {
+                AgentActivityReplyState.Ready(reply)
+            }
+            _state.update { it.copy(replies = it.replies + (messageId to replyState)) }
         }
     }
 
@@ -210,4 +275,32 @@ class SharedAgentActivityOverviewStore(
         /** Web `registerActivityTrajectoryLiveReload` debounce. */
         const val LIVE_RELOAD_DEBOUNCE_MILLIS: Long = 250L
     }
+}
+
+/** `working` and `thinking` are a turn in progress (web agent activity). */
+internal fun isAgentActivityBusy(activity: String?): Boolean =
+    when (activity?.trim()?.lowercase()) {
+        "working", "thinking" -> true
+        else -> false
+    }
+
+/**
+ * A reload's latest page laid over what is loaded: the new page, then the already-loaded older
+ * turns past the new page's last row, deduplicated by key, keeping the deeper cursor. When the
+ * new page does not reach any loaded row (more turns finished than a page holds), or it is the
+ * whole history, the new page replaces the list: splicing would leave a gap.
+ */
+internal fun mergeAgentActivityHead(
+    loaded: List<AgentActivityTurn>,
+    loadedNext: String?,
+    latest: AgentActivityTurnPage,
+): AgentActivityTurnPage {
+    val last = latest.turns.lastOrNull() ?: return latest
+    if (latest.next == null) return latest
+    val anchor = loaded.indexOfFirst { it.key == last.key }
+    if (anchor < 0) return latest
+    val newKeys = latest.turns.mapTo(HashSet()) { it.key }
+    val older = loaded.drop(anchor + 1).filter { it.key !in newKeys }
+    if (older.isEmpty()) return latest
+    return AgentActivityTurnPage(turns = latest.turns + older, next = loadedNext)
 }

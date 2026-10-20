@@ -2328,6 +2328,7 @@
     <string name="settings_public_visibility_failed_search_update">検索エンジンの設定を更新できませんでした</string>
     <string name="channel_public_page_readable">誰でも公開ページでこのチャンネルを閲覧できます</string>
     <string name="layout_server_public_page_live">公開中：サインインしなくても誰でも公開チャンネルを閲覧できます</string>
+    <string name="member_activity_overview_view_label">アクティビティ表示</string>
     <string name="member_activity_overview_view_overview">概要</string>
     <string name="member_activity_overview_view_raw">生ログ</string>
     <string name="member_activity_overview_now_last_turn">前回のターンは %1$s に終了</string>

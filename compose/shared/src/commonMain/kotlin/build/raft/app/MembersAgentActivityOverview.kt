@@ -15,9 +15,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,6 +60,7 @@ import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.flow.StateFlow
 
 /*
  * Agent Activity tab "Overview" (web packages/web/src/components/agent/AgentActivityOverview.tsx,
@@ -63,9 +68,13 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  * turn, newest first. Detail stays in the raw log, one segment away.
  */
 
-/** The overview's state and intent sink, owned by [build.raft.app.data.SharedAgentActivityOverviewStore]. */
+/**
+ * The overview's state and intent sink, owned by [build.raft.app.data.SharedAgentActivityOverviewStore].
+ * The flow is collected only where the overview is drawn, so its updates recompose the Activity
+ * tab's overview and nothing above it.
+ */
 internal data class MembersAgentActivityOverviewBinding(
-    val state: AgentActivityOverviewState,
+    val state: StateFlow<AgentActivityOverviewState>,
     val onIntent: (AgentActivityOverviewIntent) -> Unit,
 )
 
@@ -78,7 +87,9 @@ internal fun MembersAgentActivityViewSwitch(
     onViewChange: (MembersAgentActivityView) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    RaftSegmentedControl(modifier = modifier) {
+    // Web: the SegmentedControl's aria-label "Activity view".
+    val groupLabel = stringResource(MR.strings.member_activity_overview_view_label)
+    RaftSegmentedControl(modifier = modifier.semantics { contentDescription = groupLabel }) {
         RaftSegment(
             text = stringResource(MR.strings.member_activity_overview_view_overview),
             selected = view == MembersAgentActivityView.Overview,
@@ -118,7 +129,7 @@ internal fun MembersAgentActivityOverview(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val state = binding.state
+    val state by binding.state.collectAsState()
     val status = state.status
     if (status is AgentActivityOverviewStatus.Error) {
         RaftEmptyState(
@@ -324,7 +335,7 @@ private fun MembersAgentActivityTurnSection(
             )
         }
         turn.lastReplyMessageId?.let { messageId ->
-            // Idempotent: the store loads each reply id once.
+            // Idempotent: the store loads each reply id once (a failed one again on the next view).
             LaunchedEffect(messageId) { onIntent(AgentActivityOverviewIntent.LoadReply(messageId)) }
             MembersAgentActivityLastReply(
                 state = replies[messageId] ?: AgentActivityReplyState.Loading,
@@ -414,6 +425,7 @@ private fun MembersAgentActivityLastReply(
     val typography = RaftTheme.typography
     val reply = (state as? AgentActivityReplyState.Ready)?.reply
     val loadedReply = reply as? AgentActivityTurnReply.Loaded
+    val loading = state == AgentActivityReplyState.Loading
     val label = loadedReply?.createdAtEpochMillis?.let { createdAt ->
         stringResource(MR.strings.member_activity_overview_reply_label_at, membersActivityOverviewClock(createdAt, timeContext))
     } ?: stringResource(MR.strings.member_activity_overview_reply_label)
@@ -438,7 +450,7 @@ private fun MembersAgentActivityLastReply(
             RaftText(
                 text = when {
                     loadedReply != null -> loadedReply.content
-                    reply == null -> stringResource(MR.strings.member_activity_overview_reply_loading)
+                    loading -> stringResource(MR.strings.member_activity_overview_reply_loading)
                     else -> stringResource(MR.strings.member_activity_overview_reply_unavailable)
                 },
                 style = typography.callout,
