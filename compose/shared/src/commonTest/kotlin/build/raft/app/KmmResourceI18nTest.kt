@@ -175,7 +175,10 @@ class KmmResourceI18nTest {
             MR.strings.tab_home,
             MR.strings.tab_tasks,
             MR.strings.tab_members,
-            MR.strings.tab_settings
+            MR.strings.tab_settings,
+            MR.strings.tab_activity,
+            MR.strings.tab_more,
+            MR.strings.tab_activity_unread_dot
         )
 
         tabResources.forEach { resource ->

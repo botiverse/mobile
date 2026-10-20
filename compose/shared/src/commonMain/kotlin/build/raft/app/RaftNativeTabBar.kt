@@ -52,6 +52,16 @@ data class RaftNativeTabBarItem(
     /** Display badge text, already capped like the rest of the app ("99+"); null = no badge. */
     val badgeValue: String?,
     val enabled: Boolean,
+    /**
+     * Attention dot instead of a number (raft-design MobileNav / Badge); never on the selected
+     * tab. The host draws a dot-only badge when [badgeValue] is null.
+     */
+    val attentionDot: Boolean = false,
+    /**
+     * True for the Search action (last item): a tap opens search over the current tab and it is
+     * never the selected item. The host may render it apart from the tabs (iOS 26 search role).
+     */
+    val searchAction: Boolean = false,
 )
 
 /** Everything the host needs to render the bar. Exported to Swift. */
@@ -216,11 +226,12 @@ internal fun RaftNativeTabBarPublisher(
     bridge: RaftNativeTabBarBridge,
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
+    accessory: RaftBottomTabItemPayload? = null,
 ) {
     val token = remember(bridge) { Any() }
     val currentOnSelect by rememberUpdatedState(onSelect)
     val selectHandler = remember(bridge) { { key: String -> currentOnSelect(key) } }
-    val state = remember(items) { raftNativeTabBarState(items, visible = true) }
+    val state = remember(items, accessory) { raftNativeTabBarState(items, visible = true, accessory = accessory) }
     DisposableEffect(bridge, state) {
         bridge.publish(token, state, selectHandler)
         onDispose { }
@@ -233,9 +244,12 @@ internal fun RaftNativeTabBarPublisher(
 internal fun raftNativeTabBarState(
     items: List<RaftBottomTabItemPayload>,
     visible: Boolean,
+    accessory: RaftBottomTabItemPayload? = null,
 ): RaftNativeTabBarState =
     RaftNativeTabBarState(
-        items = items.map(::raftNativeTabBarItem),
+        items =
+            items.map(::raftNativeTabBarItem) +
+                listOfNotNull(accessory?.let { raftNativeTabBarItem(it).copy(searchAction = true) }),
         selectedKey = items.firstOrNull { it.selected }?.key,
         visible = visible,
     )
@@ -251,6 +265,7 @@ internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTab
         badgeCount = badgeCount,
         badgeValue = raftNativeTabBarBadgeValue(badgeCount),
         enabled = item.enabled,
+        attentionDot = item.attentionDot && badgeCount == 0,
     )
 }
 

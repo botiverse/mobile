@@ -55,6 +55,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import build.raft.designsystem.components.raftUnreadCountDescription
 import build.raft.designsystem.components.raftUnreadCountText
 import kotlinx.serialization.Serializable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.RowScope
+import build.raft.app.components.RaftAttentionDot
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Serializable
 internal data class RaftTabItemPayload(
@@ -76,7 +81,12 @@ internal data class RaftBottomTabItemPayload(
     val selected: Boolean = false,
     val enabled: Boolean = true,
     /** Unread count drawn as the pink raft-ui count on the tab icon; 0 draws nothing. */
-    val badgeCount: Int = 0
+    val badgeCount: Int = 0,
+    /**
+     * Attention dot on the tab icon (raft-design MobileNav / Badge: tab-bar icons carry a dot,
+     * never a number). The shell never sets it on the selected tab.
+     */
+    val attentionDot: Boolean = false,
 )
 
 internal enum class RaftTabBarPresentation {
@@ -219,7 +229,8 @@ internal fun RaftVerticalTabBar(
 internal fun RaftBottomTabBar(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accessory: RaftBottomTabItemPayload? = null
 ) {
     // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
     // Tab switches are #191 hot path; this marker measures per-tab-item composition.
@@ -248,6 +259,7 @@ internal fun RaftBottomTabBar(
                     modifier = Modifier.weight(1f).fillMaxHeight()
                 )
             }
+            RaftBottomTabAccessorySlot(accessory = accessory, onSelect = onSelect)
         }
         Box(
             modifier = Modifier
@@ -284,6 +296,73 @@ internal object RaftBottomTabBarSpec {
     val BadgeRadius = 5.dp
     val BadgeBorder = 1.5.dp
     val BadgeFontSize = 11.sp
+    // Attention dot, positioned like the count from the pill slot's top-left corner: it sits
+    // on the pill's top-right corner (web MobileNav `top-1 right-2`).
+    val DotOffsetX = 44.dp
+    val DotOffsetY = (-2).dp
+    // Search action beside the tabs: a round button as tall as the tab cell's pill + label.
+    val AccessorySize = 46.dp
+    val AccessoryBorder = 2.dp
+    val AccessoryIconSize = 22.dp
+    val AccessoryEndPadding = 12.dp
+}
+
+/** The attention dot on a tab icon, announced as unread activity. */
+@Composable
+private fun RaftTabAttentionDot(modifier: Modifier = Modifier) {
+    val description = stringResource(MR.strings.tab_activity_unread_dot)
+    RaftAttentionDot(modifier = modifier.zIndex(1f).semantics { contentDescription = description })
+}
+
+/**
+ * Search action beside the bottom tabs (xxchan 2026-10-20, iOS 26 system-app style): a round
+ * button with the bar's surface and ink edge, outside the tab row. It is an action, never a
+ * selected tab. Drawn as a trailing slot so it can later move into the tab row as a plain item.
+ */
+@Composable
+private fun RowScope.RaftBottomTabAccessorySlot(
+    accessory: RaftBottomTabItemPayload?,
+    onSelect: (String) -> Unit,
+) {
+    if (accessory == null) return
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .padding(end = RaftBottomTabBarSpec.AccessoryEndPadding),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        RaftBottomTabAccessoryButton(accessory = accessory, onSelect = onSelect)
+    }
+}
+
+@Composable
+internal fun RaftBottomTabAccessoryButton(
+    accessory: RaftBottomTabItemPayload,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed = pressSource.collectIsPressedAsState().value
+    Box(
+        modifier = modifier
+            .size(RaftBottomTabBarSpec.AccessorySize)
+            .semantics { contentDescription = accessory.label }
+            .background(if (pressed) RaftColor.FillPressed else RaftColor.Card, CircleShape)
+            .border(RaftBottomTabBarSpec.AccessoryBorder, RaftColor.StickerInk, CircleShape)
+            .clickable(
+                interactionSource = pressSource,
+                indication = null,
+                enabled = accessory.enabled
+            ) { onSelect(accessory.key) },
+        contentAlignment = Alignment.Center
+    ) {
+        RaftLucideIcon(
+            name = accessory.iconName,
+            color = raftArgbHex(RaftColor.StickerInk),
+            strokeWidth = RaftBottomTabBarSpec.IconStroke,
+            modifier = Modifier.size(RaftBottomTabBarSpec.AccessoryIconSize)
+        )
+    }
 }
 
 internal fun raftBottomTabLabelWeight(selected: Boolean): FontWeight =
@@ -372,6 +451,13 @@ private fun RaftBottomTabItem(
                     .offset(x = RaftBottomTabBarSpec.BadgeOffsetX, y = RaftBottomTabBarSpec.BadgeOffsetY)
                     .wrapContentSize(align = Alignment.TopStart, unbounded = true)
             )
+            if (item.attentionDot) {
+                RaftTabAttentionDot(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = RaftBottomTabBarSpec.DotOffsetX, y = RaftBottomTabBarSpec.DotOffsetY)
+                )
+            }
         }
         Spacer(Modifier.height(RaftBottomTabBarSpec.LabelGap))
         val labelColor = when {
@@ -437,14 +523,15 @@ internal fun RaftAppBottomTabBarHost(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
-    bottomSafeArea: Dp = 0.dp
+    bottomSafeArea: Dp = 0.dp,
+    accessory: RaftBottomTabItemPayload? = null
 ) {
     val hostModifier = modifier.zIndex(RaftAppBottomTabBarHostZIndex)
     val nativeTabBar = raftNativeTabBarBridge()
     if (nativeTabBar != null) {
         // The host draws the system tab bar; Compose only publishes the tabs. Leaving
         // composition (the shell hides its bar) hides the native bar too.
-        RaftNativeTabBarPublisher(bridge = nativeTabBar, items = items, onSelect = onSelect)
+        RaftNativeTabBarPublisher(bridge = nativeTabBar, items = items, accessory = accessory, onSelect = onSelect)
         return
     }
     when (raftAppTabBarRenderer()) {
@@ -458,7 +545,8 @@ internal fun RaftAppBottomTabBarHost(
                 onSelect = onSelect,
                 modifier = hostModifier,
                 bottomSafeArea = bottomSafeArea,
-                seatDockAtHostBottom = true
+                seatDockAtHostBottom = true,
+                accessory = accessory
             )
             return
         }
@@ -467,7 +555,8 @@ internal fun RaftAppBottomTabBarHost(
                 items = items,
                 onSelect = onSelect,
                 modifier = hostModifier,
-                bottomSafeArea = bottomSafeArea
+                bottomSafeArea = bottomSafeArea,
+                accessory = accessory
             )
             return
         }
@@ -485,7 +574,8 @@ internal fun RaftAppBottomTabBarHost(
             onSelect = onSelect,
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter)
+                .align(Alignment.TopCenter),
+            accessory = accessory
         )
     }
 }
@@ -495,16 +585,18 @@ private fun RaftSharedAndroidFloatingBottomTabBarHost(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
-    bottomSafeArea: Dp = 0.dp
+    bottomSafeArea: Dp = 0.dp,
+    accessory: RaftBottomTabItemPayload? = null
 ) {
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(raftFloatingDockBottomTabBarHostHeight(bottomSafeArea))
+            .height(raftFloatingDockBottomTabBarHostHeight(bottomSafeArea)),
+        verticalAlignment = Alignment.Top
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 // The old Android ComposeView received the dock band's exact
                 // 92dp parent constraint, so its nominal 56dp Row expanded to
                 // the full band. Preserve that rendered geometry in Kuikly.
@@ -525,6 +617,17 @@ private fun RaftSharedAndroidFloatingBottomTabBarHost(
                 )
             }
         }
+        // Search sits beside the pill, vertically centred on the dock band.
+        if (accessory != null) {
+            Box(
+                modifier = Modifier
+                    .height(RaftFloatingDockBottomTabBarHostHeight)
+                    .padding(end = 18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                RaftBottomTabAccessoryButton(accessory = accessory, onSelect = onSelect)
+            }
+        }
     }
 }
 
@@ -534,7 +637,8 @@ private fun RaftNativeFloatingBottomTabBarHost(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp,
-    seatDockAtHostBottom: Boolean = false
+    seatDockAtHostBottom: Boolean = false,
+    accessory: RaftBottomTabItemPayload? = null
 ) {
     // The dock band is a fixed 92dp. By default it sits at the top of the host
     // and the bottom safe area is empty space below it. When the host already
@@ -549,6 +653,7 @@ private fun RaftNativeFloatingBottomTabBarHost(
         RaftNativeFloatingTabBar(
             items = items,
             onSelect = onSelect,
+            accessory = accessory,
             bottomSafeArea = 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -587,7 +692,8 @@ private fun RaftNativeFloatingTabBar(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     bottomSafeArea: Dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accessory: RaftBottomTabItemPayload? = null
 ) {
     // TODO(cmp-switch): the native floating tab bars (iOS liquid glass / Android floating) were
     // Kuikly native views; render the shared Compose floating dock until a CMP interop exists.
@@ -595,7 +701,8 @@ private fun RaftNativeFloatingTabBar(
         items = items,
         onSelect = onSelect,
         modifier = modifier,
-        bottomSafeArea = bottomSafeArea
+        bottomSafeArea = bottomSafeArea,
+        accessory = accessory
     )
 }
 
@@ -604,7 +711,8 @@ internal fun RaftFloatingDockTabBar(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
-    bottomSafeArea: Dp = 0.dp
+    bottomSafeArea: Dp = 0.dp,
+    accessory: RaftBottomTabItemPayload? = null
 ) {
     Box(
         modifier = modifier
@@ -622,7 +730,8 @@ internal fun RaftFloatingDockTabBar(
             RaftBottomTabBar(
                 items = items,
                 onSelect = onSelect,
-                modifier = Modifier.fillMaxWidth().border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                modifier = Modifier.fillMaxWidth().border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                accessory = accessory
             )
         }
     }
@@ -782,6 +891,9 @@ private fun RaftNavigationRailTabItem(
                 count = item.badgeCount,
                 modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp)
             )
+            if (item.attentionDot) {
+                RaftTabAttentionDot(modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp))
+            }
         }
     }
 }

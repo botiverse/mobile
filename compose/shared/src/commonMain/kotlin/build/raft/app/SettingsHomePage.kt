@@ -752,8 +752,10 @@ private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
 private val SearchPopoverShadowColor: Color get() = RaftColor.ShadowBlack
 private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.62f)
 
-// artin 2026-10-20: Activity is the second bottom tab — 首页 · 动态 · 任务 · 成员 · 设置.
-private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", "members", "settings")
+// xxchan 2026-10-20: the phone bar is 主页 · 动态 · 任务 · 更多 (+ the Search action); Members and
+// Settings are pushed from More. They stay shell child pages so the wide rail, deep links and
+// old launch values keep selecting them directly.
+private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", "more", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
@@ -1210,11 +1212,12 @@ private val settingsPageVisualPayload: RaftSharedSettingsPayload
 
 private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
-    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, badgeCount = 12),
+    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
     RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
-    RaftBottomTabItemPayload("members", "Members", RaftLucideIconName.Users),
-    RaftBottomTabItemPayload("settings", "Settings", RaftLucideIconName.Settings)
+    RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
 )
+
+private val bottomTabBarSmokeSearchAction = appShellSearchAction("Search")
 
 /** Rail-only inline destination key (task #13 three-pane): Search renders in the AppShell
  *  middle pane under the wide LeftRail; it is not a persisted tab key. */
@@ -1223,29 +1226,39 @@ internal const val AppShellRailSearchKey = "rail_search"
 /** Saved opened from the Home sidebar in desktop mode: an inline list pane, like rail Search. */
 internal const val AppShellRailSavedKey = "rail_saved"
 
-internal fun appShellBottomTabs(
-    selectedKey: String,
+/**
+ * The phone bottom bar tabs (Home, Activity, Tasks, More) for [selectedTab]; a page pushed from
+ * More keeps More selected. Search is not among them: see [appShellSearchAction].
+ */
+internal fun appShellPhoneBottomTabs(
+    selectedTab: String,
     homeLabel: String,
     activityLabel: String,
     tasksLabel: String,
-    membersLabel: String,
-    settingsLabel: String,
-    activityBadgeCount: Int = 0
+    moreLabel: String,
+    activityUnreadCount: Int = 0
 ): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
-        selectedKey = selectedKey,
-        orderedTabKeys = AppShellChildPageTabKeys,
-        activityBadgeCount = activityBadgeCount,
+        selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab),
+        orderedTabKeys = AppShellPhoneBottomTabKeys,
+        activityUnreadCount = activityUnreadCount,
         labelFor = { key ->
             when (key) {
                 "home" -> homeLabel
                 "activity" -> activityLabel
                 "tasks" -> tasksLabel
-                "members" -> membersLabel
-                "settings" -> settingsLabel
+                "more" -> moreLabel
                 else -> key.uppercase()
             }
         }
+    )
+
+/** The Search action beside the phone tabs: opens search over the current tab, never selected. */
+internal fun appShellSearchAction(label: String): RaftBottomTabItemPayload =
+    RaftBottomTabItemPayload(
+        key = AppShellSearchActionKey,
+        label = label,
+        iconName = appShellTabIcon(AppShellSearchActionKey),
     )
 
 /**
@@ -1255,21 +1268,23 @@ internal fun appShellBottomTabs(
  *
  * This list is the single source of truth for every bottom-bar renderer, including the
  * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
- * appears there with its label, icon and badge count (Activity: [activityBadgeCount]).
+ * appears there with its label and icon. Activity unread is an attention dot, hidden while
+ * Activity is the selected tab ([appShellActivityTabShowsDot]); tabs carry no numbers.
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
     orderedTabKeys: List<String>,
-    activityBadgeCount: Int = 0,
+    activityUnreadCount: Int = 0,
     labelFor: (String) -> String
 ): List<RaftBottomTabItemPayload> =
     orderedTabKeys.map { key ->
+        val selected = selectedKey == key
         RaftBottomTabItemPayload(
             key = key,
             label = labelFor(key),
             iconName = appShellTabIcon(key),
-            selected = selectedKey == key,
-            badgeCount = if (key == "activity") activityBadgeCount.coerceAtLeast(0) else 0
+            selected = selected,
+            attentionDot = key == "activity" && appShellActivityTabShowsDot(activityUnreadCount, selected)
         )
     }
 
@@ -1400,7 +1415,7 @@ internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: Strin
  * while armed. While OFF the user may reopen those surfaces, so a persistent
  * predicate would wipe them; a cold start that begins OFF must not clear state
  * it never created. Returns true when the caller should reset
- * `railInlineSecondaryDestination`/`slackNavMoreMenuVisible` now, and the next
+ * `railInlineSecondaryDestination` now, and the next
  * armed latch value.
  */
 internal fun desktopModeOffCleanupDecision(
@@ -2251,15 +2266,7 @@ private fun RaftAppShellReadyContent(
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
-    // task #401: Slack-nav More tab = action menu, not a hub page. The chosen destination is
-    // hoisted so every More tap reopens the menu instead of re-landing on a sticky sub-page.
-    var slackNavMoreDestination by remember { mutableStateOf(RaftSlackNavMoreDestination.Settings) }
-    var slackNavMoreMenuVisible by remember { mutableStateOf(false) }
-    // More keeps selectedTab at "more" while rendering its destination inline.
-    val tasksSurfaceActive =
-        selectedTab == "tasks" ||
-            (selectedTab == "more" &&
-                slackNavMoreDestination == RaftSlackNavMoreDestination.Tasks)
+    val tasksSurfaceActive = selectedTab == "tasks"
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
@@ -3265,7 +3272,7 @@ private fun RaftAppShellReadyContent(
     val tasksViewModel = tasksRoute.viewModel
     val tasksState = tasksBinding.state
     // Slack-aligned navigation was retired; persisted/flagged Slack tabs are ignored. The live
-    // ordered tab set is the app-shell bottom bar: Home, Activity, Tasks, Members, Settings.
+    // child-page set is Home, Activity, Tasks, More plus the More pages Members and Settings.
     val slackNavTabKeys = AppShellChildPageTabKeys
     val slackNavMode = false
     // Clamp a deep link / stale selection onto the active ordered key set: with the gate off
@@ -3331,11 +3338,10 @@ private fun RaftAppShellReadyContent(
         if (shouldCleanup) {
             bridge.log(
                 "desktop_mode_off_cleanup edge inline=${railInlineSecondaryDestination.orEmpty()} " +
-                    "moreMenu=$slackNavMoreMenuVisible selectedTab=$selectedTab"
+                    "selectedTab=$selectedTab"
             )
-            if (railInlineSecondaryDestination != null || slackNavMoreMenuVisible) {
+            if (railInlineSecondaryDestination != null) {
                 railInlineSecondaryDestination = null
-                slackNavMoreMenuVisible = false
             }
             railServerSwitcherOpen = false
         }
@@ -5179,6 +5185,19 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
+        // A page pushed from More (Members, Settings) goes back to More on the phone layout.
+        appShellMoreChildBackTarget(
+            selectedTab = selectedTab,
+            navRailActive =
+                raftAdaptiveNavRailActive(
+                    desktopModeEnabled = desktopModeOnLargeScreen,
+                    paneState = shellScope.adaptivePane
+                ),
+        )?.let { target ->
+            selectAppShellTab(target, directChildSwitch = true)
+            retainedAppShellTabs = retainedAppShellTabs + target
+            return true
+        }
         if (selectedTab != "home") {
             selectAppShellTab("home")
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
@@ -5218,6 +5237,18 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // xxchan 2026-10-20: the bar's Search action pushes the search page over the current tab
+    // (the tab stays selected; Back returns to it). The pushed page covers the bar, so a second
+    // tap cannot reach here while search is open; the guard only drops a duplicate push.
+    fun openSearchOverCurrentTab(source: String) {
+        if (retainedHomeSecondaryDestination(selectedHomeDestination) == HomeDestinationSearch) {
+            bridge.log("app_shell_search_open_skip reason=already_open source=$source tab=$selectedTab")
+            return
+        }
+        bridge.log("app_shell_search_open source=$source tab=$selectedTab")
+        openHomeSecondaryDestination(HomeDestinationSearch)
+    }
+
     val handleAppShellBack by rememberUpdatedState {
         if (popMainRoute()) {
             bridge.log(
@@ -5242,7 +5273,7 @@ private fun RaftAppShellReadyContent(
         }
     ) { handleAppShellBack() }
 
-    LaunchedEffect(tasksRoute, selectedTab, slackNavMoreDestination, tasksSurfaceActive, authoritativeHomeStartAllowed) {
+    LaunchedEffect(tasksRoute, selectedTab, tasksSurfaceActive, authoritativeHomeStartAllowed) {
         if (tasksSurfaceActive && authoritativeHomeStartAllowed) {
             val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
@@ -5259,7 +5290,7 @@ private fun RaftAppShellReadyContent(
             tasksRoute.start()
         }
     }
-    LaunchedEffect(selectedTab, slackNavMoreDestination, tasksSurfaceActive, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
+    LaunchedEffect(selectedTab, tasksSurfaceActive, readyServerId, appShellServerMembersStore, authoritativeHomeStartAllowed) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return@LaunchedEffect
@@ -5267,7 +5298,7 @@ private fun RaftAppShellReadyContent(
             appShellServerMembersStore.refreshMembers(serverId, DataRequestPriority.Visible)
         }
     }
-    LaunchedEffect(selectedTab, slackNavMoreDestination, tasksSurfaceActive, tasksState.loadState, tasksState.refreshing) {
+    LaunchedEffect(selectedTab, tasksSurfaceActive, tasksState.loadState, tasksState.refreshing) {
         if (!tasksSurfaceActive) {
             tasksFirstRenderLoggedKey = null
             return@LaunchedEffect
@@ -5929,32 +5960,44 @@ private fun RaftAppShellReadyContent(
     val moreTabLabel = stringResource(MR.strings.tab_more)
     // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
     // notification center keeps its own Bell dot in the Home head (task #18).
-    val activityTabBadgeCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
+    val activityTabUnreadCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
         tasksTabLabel,
-        membersTabLabel,
-        settingsTabLabel,
-        dmsTabLabel,
         activityTabLabel,
         moreTabLabel,
-        slackNavTabKeys,
-        activityTabBadgeCount
+        activityTabUnreadCount
+    ) {
+        appShellPhoneBottomTabs(
+            selectedTab = selectedTab,
+            homeLabel = homeTabLabel,
+            activityLabel = activityTabLabel,
+            tasksLabel = tasksTabLabel,
+            moreLabel = moreTabLabel,
+            activityUnreadCount = activityTabUnreadCount
+        )
+    }
+    val appShellSearchActionItem = remember(searchTabLabel) { appShellSearchAction(searchTabLabel) }
+    // The wide rail keeps the web LeftRail entries (Members is a rail root there).
+    val appShellRailTabItems = remember(
+        selectedTab,
+        homeTabLabel,
+        tasksTabLabel,
+        membersTabLabel,
+        activityTabLabel,
+        activityTabUnreadCount
     ) {
         appShellBottomTabs(
-            selectedKey = selectedTab,
-            orderedTabKeys = slackNavTabKeys,
-            activityBadgeCount = activityTabBadgeCount,
+            selectedKey = retainedAppShellSelectedTab(selectedTab),
+            orderedTabKeys = AppShellRailTabKeys,
+            activityUnreadCount = activityTabUnreadCount,
             labelFor = { key ->
                 when (key) {
                     "home" -> homeTabLabel
+                    "activity" -> activityTabLabel
                     "tasks" -> tasksTabLabel
                     "members" -> membersTabLabel
-                    "settings" -> settingsTabLabel
-                    "dms" -> dmsTabLabel
-                    "activity" -> activityTabLabel
-                    "more" -> moreTabLabel
                     else -> key.uppercase()
                 }
             }
@@ -6233,13 +6276,11 @@ private fun RaftAppShellReadyContent(
 
     val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
-                val nextTab = retainedAppShellSelectedTab(it)
-                if (raftSlackNavMoreTapOpensMenu(slackNavMode, nextTab)) {
-                    // Every More tap (also when More is already selected) reopens the menu;
-                    // the tab only switches once a destination is picked.
-                    slackNavMoreMenuVisible = true
+                if (it == AppShellSearchActionKey) {
+                    openSearchOverCurrentTab(source = "bottom_bar")
                     return@onBottomTabSelected
                 }
+                val nextTab = retainedAppShellSelectedTab(it)
                 when (
                     bottomTabTapTracker.onTap(
                         selectedTab = selectedTab,
@@ -6291,6 +6332,7 @@ private fun RaftAppShellReadyContent(
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
+            bottomTabAccessory = appShellSearchActionItem,
             onBottomTabSelected = onAppShellTabSelected,
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
@@ -6302,25 +6344,15 @@ private fun RaftAppShellReadyContent(
             leadingNavigation =
                 if (navRailActive) {
                     // task #31: Web LeftRail parity — yellow 64dp column, server header wired to
-                    // the real switcher, icon-only tabs, settings pinned to the bottom. The
-                    // settings entry must map to a real destination in both nav modes: legacy
-                    // keeps a first-class "settings" tab; Slack-nav routes through More.
+                    // the real switcher, icon-only tabs, settings pinned to the bottom.
                     val railBottomItems =
-                        remember(slackNavMode, settingsTabLabel, selectedTab) {
-                            val settingsTab =
-                                if (slackNavMode) "more" else "settings"
+                        remember(settingsTabLabel, selectedTab) {
                             listOf(
                                 RaftBottomTabItemPayload(
-                                    key = settingsTab,
+                                    key = "settings",
                                     label = settingsTabLabel,
                                     iconName = RaftLucideIconName.Settings,
-                                    selected =
-                                        retainedAppShellSelectedTab(selectedTab) == "settings" ||
-                                            (
-                                                slackNavMode &&
-                                                    retainedAppShellSelectedTab(selectedTab) == "more" &&
-                                                    slackNavMoreDestination == RaftSlackNavMoreDestination.Settings
-                                            ),
+                                    selected = retainedAppShellSelectedTab(selectedTab) == "settings",
                                 )
                             )
                         }
@@ -6350,11 +6382,9 @@ private fun RaftAppShellReadyContent(
                             )
                         } ?: false
                     {
-                        // task #13 (three-pane): Search and (in legacy nav mode) Activity
-                        // rail entries sit alongside the resolved tabs only while the wide
-                        // rail is active. Search is an inline middle-pane destination (no
-                        // page push), so it lives outside slackNavTabKeys and never
-                        // participates in retained-tab state.
+                        // task #13 (three-pane): the Search rail entry is an inline middle-pane
+                        // destination (no page push), so it lives outside the tab keys and
+                        // never participates in retained-tab state.
                         val railSearchItem =
                             remember(searchTabLabel, railInlineSecondaryDestination) {
                                 RaftBottomTabItemPayload(
@@ -6365,28 +6395,7 @@ private fun RaftAppShellReadyContent(
                                 )
                             }
                         val railItems =
-                            appShellBottomTabItems
-                                .filter { it.key != "settings" }
-                                .toMutableList()
-                                .apply {
-                                    // Legacy nav has no Activity tab; the rail must still
-                                    // expose it so wide screens can reach the three-pane
-                                    // surface directly.
-                                    if (none { it.key == "activity" }) {
-                                        add(
-                                            RaftBottomTabItemPayload(
-                                                key = "activity",
-                                                label = activityTabLabel,
-                                                iconName = appShellTabIcon("activity"),
-                                                badgeCount = activityTabBadgeCount,
-                                                selected =
-                                                    railInlineSecondaryDestination == null &&
-                                                        retainedAppShellSelectedTab(selectedTab) == "activity",
-                                            )
-                                        )
-                                    }
-                                    add(railSearchItem)
-                                }
+                            (appShellRailTabItems + railSearchItem)
                                 // task #49: same order as the web LeftRail.
                                 .orderedLikeWebRail { it.key }
                         RaftNavigationRailTabBar(
@@ -6436,32 +6445,7 @@ private fun RaftAppShellReadyContent(
                             bottomItems = railBottomItems,
                             onBottomItemSelect = { key ->
                                 railServerSwitcherOpen = false
-                                if (slackNavMode && key == "more") {
-                                    // The rail's settings gear must land on the real Settings
-                                    // destination — bypass the More tap→menu interception the
-                                    // bottom bar path performs.
-                                    slackNavMoreDestination = RaftSlackNavMoreDestination.Settings
-                                    if (shouldHandleAppShellTabSelection(selectedTab, key)) {
-                                        if (
-                                            shouldDismissHomeNotificationCenterForAppShellTabSelection(
-                                                selectedTab,
-                                                key
-                                            )
-                                        ) {
-                                            homeFocusLossDismissEpoch += 1
-                                            serverDrawerProgrammaticCloseFence?.invoke("bottom_tab")
-                                            homeShellStore.dispatch(
-                                                SharedHomeShellIntent.Home(
-                                                    SharedHomeIntent.DismissServerSwitcher
-                                                )
-                                            )
-                                        }
-                                        selectAppShellTab(key, directChildSwitch = true)
-                                        retainedAppShellTabs = retainedAppShellTabs + key
-                                    }
-                                } else {
-                                    onAppShellTabSelected(key)
-                                }
+                                onAppShellTabSelected(key)
                             },
                             topSafeArea = shellScope.topSafeArea,
                             bottomSafeArea = shellScope.bottomSafeArea
@@ -6623,34 +6607,6 @@ private fun RaftAppShellReadyContent(
                                 onDismiss = dismissShellOverlay
                             )
                         }
-                    }
-                    if (slackNavMode && slackNavMoreMenuVisible) {
-                        RaftSlackNavMoreMenu(
-                            selected =
-                                slackNavMoreDestination.takeIf {
-                                    retainedAppShellSelectedTab(selectedTab) == "more"
-                                },
-                            bottomInset = shellScope.globalDialogBottomInset(showAppShellBottomTabs),
-                            onDismiss = { slackNavMoreMenuVisible = false },
-                            onSelect = { destination ->
-                                slackNavMoreMenuVisible = false
-                                prewarmAdmissionGate.invalidate("more_menu_select:${destination.name}")
-                                bridge.log("app_shell_more_menu_select destination=${destination.name} from=$selectedTab")
-                                slackNavMoreDestination = destination
-                                val moreTab = "more"
-                                if (shouldHandleAppShellTabSelection(selectedTab, moreTab)) {
-                                    if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, moreTab)) {
-                                        homeFocusLossDismissEpoch += 1
-                                        serverDrawerProgrammaticCloseFence?.invoke("bottom_tab")
-                                        homeShellStore.dispatch(
-                                            SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
-                                        )
-                                    }
-                                    selectAppShellTab(moreTab, directChildSwitch = true)
-                                    retainedAppShellTabs = retainedAppShellTabs + moreTab
-                                }
-                            }
-                        )
                     }
                     // task #34: the shared workspace detail child, hosted by the list + detail split
                     // (Home, Activity, DMs, Search) and by the Tasks board overlay.
@@ -7168,8 +7124,18 @@ private fun RaftAppShellReadyContent(
                             true,
                         )
                     }
+                    // Members and Settings are pages pushed from More on the phone layout: their
+                    // header gets a back button to More. On the wide rail they are rail roots.
+                    val moreChildBack: (() -> Unit)? =
+                        appShellMoreChildBackTarget(selectedTab, navRailActive)?.let { target ->
+                            {
+                                selectAppShellTab(target, directChildSwitch = true)
+                                retainedAppShellTabs = retainedAppShellTabs + target
+                            }
+                        }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         SharedMembersScreen(
+                            onBack = moreChildBack,
                             bridge = bridge,
                             storeScope = navigationStoreScope,
                             sharedStores = sharedStores,
@@ -7212,6 +7178,7 @@ private fun RaftAppShellReadyContent(
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
                         SettingsAppShellHomeContent(
+                            onBack = moreChildBack,
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
                             bottomContentPadding = appShellBottomContentInset,
                             onSettingsHeaderClick = {
@@ -7252,14 +7219,22 @@ private fun RaftAppShellReadyContent(
                         )
                     }
                     val currentChildTab = retainedAppShellSelectedTab(selectedTab)
-                    // task #401: the Slack-nav More tab renders the destination picked from the
-                    // More menu directly (no intermediate hub page, no sub-page back bar).
                     val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        when (slackNavMoreDestination) {
-                            RaftSlackNavMoreDestination.Tasks -> tasksTabContent(active)
-                            RaftSlackNavMoreDestination.Members -> membersTabContent(active)
-                            RaftSlackNavMoreDestination.Settings -> settingsTabContent(active)
-                        }
+                        PerformanceSceneEffect(bridge, "kuikly_more", active = active)
+                        RaftMorePage(
+                            bottomContentPadding = appShellBottomContentInset,
+                            onSelect = { row ->
+                                prewarmAdmissionGate.invalidate("more_open:${row.key}")
+                                bridge.log("app_shell_more_open row=${row.key} from=$selectedTab")
+                                when (row) {
+                                    RaftMoreRow.Members, RaftMoreRow.Settings -> {
+                                        selectAppShellTab(row.key, directChildSwitch = true)
+                                        retainedAppShellTabs = retainedAppShellTabs + row.key
+                                    }
+                                    RaftMoreRow.Computers -> pager.openSettingsComputersPage(storeScope)
+                                }
+                            }
+                        )
                     }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
@@ -7972,12 +7947,14 @@ private fun SettingsAppShellHomeContent(
     bottomContentPadding: Dp,
     onSettingsHeaderClick: () -> Unit,
     onSelect: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     SettingsHomeContent(
         payload = appShellSettingsHomePayload(session),
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,
         onSelect = onSelect,
+        onBack = onBack,
     )
 }
 
@@ -18712,6 +18689,8 @@ internal fun AppShellEmailVerificationGateContent(
 
 @Composable
 private fun SharedMembersScreen(
+    /** Back to More when Members is a page pushed from it; null on the wide rail. */
+    onBack: (() -> Unit)? = null,
     bridge: build.raft.app.base.BridgeModule,
     storeScope: RaftShellStoreScope,
     sharedStores: RaftSharedStoreProvider,
@@ -18882,13 +18861,14 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-                MembersPageHeader(title = membersTitle)
+                MembersPageHeader(title = membersTitle, onBack = onBack)
                 RaftCenteredLoading()
         }
         is SharedMembersUiState.Error ->
             MembersPageErrorContent(
                 message = membersLoadFailedMessage,
                 code = current.code,
+                onBack = onBack,
                 onRetry = {
                     membersRetryForce = true
                     membersRetryNonce += 1
@@ -25222,13 +25202,14 @@ internal fun PageErrorContent(
 private fun MembersPageErrorContent(
     message: String,
     code: String,
-    onRetry: (() -> Unit)?
+    onRetry: (() -> Unit)?,
+    onBack: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        MembersPageHeader(title = stringResource(MR.strings.tab_members))
+        MembersPageHeader(title = stringResource(MR.strings.tab_members), onBack = onBack)
         PageErrorBody(
             message = message,
             code = code,
@@ -25322,7 +25303,7 @@ internal fun BottomTabBarSmokeContent() {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            RaftBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
+            RaftBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth(), accessory = bottomTabBarSmokeSearchAction)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Floating Dock",
@@ -25331,7 +25312,7 @@ internal fun BottomTabBarSmokeContent() {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            RaftFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth())
+            RaftFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth(), accessory = bottomTabBarSmokeSearchAction)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Navigation Rail",
@@ -25385,7 +25366,8 @@ internal fun BottomTabBarVisualContent() {
         RaftBottomTabBar(
             items = bottomTabBarSmokeItems,
             onSelect = {},
-            modifier = Modifier.width(390.dp)
+            modifier = Modifier.width(390.dp),
+            accessory = bottomTabBarSmokeSearchAction
         )
     }
 }
@@ -26459,17 +26441,17 @@ internal fun RaftActivityTabVisualContent() {
         }
         RaftBottomTabBar(
             items =
-                appShellBottomTabs(
-                    selectedKey = "activity",
+                appShellPhoneBottomTabs(
+                    selectedTab = "activity",
                     homeLabel = "Home",
                     activityLabel = "Activity",
                     tasksLabel = "Tasks",
-                    membersLabel = "Members",
-                    settingsLabel = "Settings",
-                    activityBadgeCount = homeActivityTabVisualSnapshot.totalUnreadCount
+                    moreLabel = "More",
+                    activityUnreadCount = homeActivityTabVisualSnapshot.totalUnreadCount
                 ),
             onSelect = {},
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            accessory = appShellSearchAction("Search")
         )
     }
 }
@@ -27226,6 +27208,7 @@ internal fun SettingsHomeContent(
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
     applyTopSafeArea: Boolean = true,
     onHeaderClick: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
     onSelect: (String) -> Unit
 ) {
     val headerModifier =
@@ -27240,7 +27223,8 @@ internal fun SettingsHomeContent(
             title = payload.title,
             subtitle = null,
             modifier = headerModifier,
-            applyTopSafeArea = applyTopSafeArea
+            applyTopSafeArea = applyTopSafeArea,
+            onBack = onBack
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -27278,81 +27262,3 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
         value = value,
         section = section,
     )
-
-
-// task #386/#401: Slack-nav More tab destinations. Tasks/Members/Settings live behind the More
-// action menu; gate-off keeps the legacy four-tab bar where they stay first-class tabs.
-internal enum class RaftSlackNavMoreDestination {
-    Tasks,
-    Members,
-    Settings
-}
-
-/** task #401: in Slack-nav mode every More tap (including re-taps while More is selected)
- *  opens the destination menu instead of switching straight to a sticky sub-page. */
-internal fun raftSlackNavMoreTapOpensMenu(slackNavMode: Boolean, tappedTab: String): Boolean =
-    slackNavMode && tappedTab == "more"
-
-@Composable
-private fun RaftSlackNavMoreMenu(
-    selected: RaftSlackNavMoreDestination?,
-    bottomInset: Dp,
-    onDismiss: () -> Unit,
-    onSelect: (RaftSlackNavMoreDestination) -> Unit
-) {
-    val tasksTitle = stringResource(MR.strings.tab_tasks)
-    val membersTitle = stringResource(MR.strings.tab_members)
-    val settingsTitle = stringResource(MR.strings.tab_settings)
-    val tasksSubtitle = stringResource(MR.strings.more_hub_tasks_subtitle)
-    val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
-    val settingsSubtitle = stringResource(MR.strings.more_hub_settings_subtitle)
-    val rows =
-        listOf(
-            Triple(RaftSlackNavMoreDestination.Tasks, tasksTitle to tasksSubtitle, RaftLucideIconName.ClipboardList),
-            Triple(RaftSlackNavMoreDestination.Members, membersTitle to membersSubtitle, RaftLucideIconName.Users),
-            Triple(RaftSlackNavMoreDestination.Settings, settingsTitle to settingsSubtitle, RaftLucideIconName.Settings)
-        )
-    Modal(onWillDismiss = { onDismiss() }) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            RaftModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss)
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(start = RaftAppSpacing.Md, end = RaftAppSpacing.Md, bottom = bottomInset + RaftAppSpacing.Sm)
-                        .widthIn(min = RaftMetrics.MenuMinWidth, max = 320.dp)
-                        .raftDialogContentPointerBarrier()
-            ) {
-                // raft-ui menu popup: `p-1.5` inset, rows flush (no inter-row gap), the
-                // current destination on the `--brand-soft` highlight at control radius.
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .raftLookOverlaySurface()
-                            .padding(RaftMetrics.PopupPadding)
-                ) {
-                    rows.forEach { (destination, labels, icon) ->
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        if (destination == selected) RaftColor.BrandSoft else Color.Transparent,
-                                        RoundedCornerShape(RaftAppRadius.Control)
-                                    )
-                        ) {
-                            RaftActionSheetRow(
-                                title = labels.first,
-                                subtitle = labels.second,
-                                icon = icon,
-                                menuItemPadding = true,
-                                onClick = { onSelect(destination) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}

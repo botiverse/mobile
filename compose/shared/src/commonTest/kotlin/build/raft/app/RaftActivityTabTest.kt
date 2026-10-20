@@ -14,10 +14,10 @@ class RaftActivityTabTest {
     fun activityIsAKeptAliveChildTabInSecondPosition() {
         assertEquals("activity", appShellActiveChildPagerTab("activity"))
         assertEquals(
-            listOf("home", "activity", "tasks", "members", "settings"),
+            listOf("home", "activity", "tasks", "more", "members", "settings"),
             appShellRetainedChildTabs(
                 activeChildTab = "home",
-                mountedTabs = setOf("settings", "members", "tasks", "activity", "home")
+                mountedTabs = setOf("settings", "members", "more", "tasks", "activity", "home")
             )
         )
         assertEquals("kuikly_activity", appShellBottomTabPerformanceRoute("activity"))
@@ -44,23 +44,50 @@ class RaftActivityTabTest {
     }
 
     @Test
-    fun tabBadgeIsOnlyOnActivity() {
-        val tabs =
+    fun activityUnreadIsADotNeverANumberAndNeverOnTheSelectedTab() {
+        // raft-design MobileNav / Badge + web MainLayout ActivityTabUnreadDot.
+        val unselected =
             appShellBottomTabs(
                 selectedKey = "home",
                 orderedTabKeys = listOf("home", "activity", "tasks"),
-                activityBadgeCount = 5,
+                activityUnreadCount = 5,
                 labelFor = { it }
             )
-        assertEquals(listOf(0, 5, 0), tabs.map { it.badgeCount })
-        assertEquals(
-            0,
+        assertEquals(listOf(false, true, false), unselected.map { it.attentionDot })
+        assertEquals(listOf(0, 0, 0), unselected.map { it.badgeCount })
+        val selected =
             appShellBottomTabs(
-                selectedKey = "home",
-                orderedTabKeys = listOf("activity"),
-                activityBadgeCount = -1,
+                selectedKey = "activity",
+                orderedTabKeys = listOf("home", "activity"),
+                activityUnreadCount = 5,
                 labelFor = { it }
-            ).single().badgeCount
-        )
+            )
+        assertEquals(listOf(false, false), selected.map { it.attentionDot })
+        listOf(0, -1).forEach { count ->
+            assertEquals(
+                false,
+                appShellBottomTabs(
+                    selectedKey = "home",
+                    orderedTabKeys = listOf("activity"),
+                    activityUnreadCount = count,
+                    labelFor = { it }
+                ).single().attentionDot,
+                "count=$count"
+            )
+        }
+    }
+
+    @Test
+    fun oldMembersAndSettingsLaunchValuesStillOpenThosePages() {
+        // Deep links / notifications / account + diagnostics entry points still pass
+        // slockInitialTab=members|settings: they land on the page (pushed from More, bar on More).
+        listOf("members", "settings").forEach { tab ->
+            val selection = JSONObject().put("slockInitialTab", tab).appShellLaunchSelection()
+            assertEquals(tab, selection.selectedTab)
+            assertEquals("more", appShellPhoneBottomBarSelectedKey(selection.selectedTab))
+        }
+        assertEquals("more", JSONObject().put("slockInitialTab", "more").appShellLaunchSelection().selectedTab)
+        // Search is an action, not a launch tab.
+        assertEquals("home", JSONObject().put("slockInitialTab", "search").appShellLaunchSelection().selectedTab)
     }
 }

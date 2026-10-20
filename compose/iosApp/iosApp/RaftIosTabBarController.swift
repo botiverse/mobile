@@ -3,7 +3,7 @@ import UIKit
 
 /// App-shell page content on iOS: the shell's Compose controller plus the system tab bar.
 ///
-/// The app shell is one Compose page whose tabs (Home, Tasks, Members, Settings, ...) are
+/// The app shell is one Compose page whose tabs (Home, Activity, Tasks, More, ...) are
 /// retained inside a single composition with shared stores, realtime ingest and adaptive
 /// panes, so the tabs cannot be split into one Compose controller per tab without duplicating
 /// the shell. Instead this controller layers a real `UITabBarController` over the full-screen
@@ -195,7 +195,8 @@ private extension RaftIosTabBarItemSpec {
             systemImageName: item.systemImageName,
             selectedSystemImageName: item.selectedSystemImageName,
             badgeValue: item.badgeValue,
-            enabled: item.enabled
+            enabled: item.enabled,
+            attentionDot: item.attentionDot
         )
     }
 }
