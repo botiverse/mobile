@@ -14,7 +14,9 @@ import build.raft.app.model.MessageId
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
@@ -80,7 +82,31 @@ private data class WireInboxItem(
     // common
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
+    // SSOT per-scope read state (#632): InboxScopeReadFrontier in
+    // packages/shared/src/inboxScopeReadFrontier.ts. Kept as raw JSON and read
+    // per row so a malformed frontier only drops that row's marker, never the
+    // whole response.
+    val readState: JsonElement? = null,
 )
+
+/**
+ * `InboxScopeReadFrontier` (`{kind:"absent"} | {kind:"corrupt"} |
+ * {kind:"present", readStateVersion, maxReadSeq, latestActivity}`). Only the
+ * present frontier's `latestActivity` pair is consumed: the same-source pair or
+ * nothing. Fails closed to null on absent/corrupt/half pairs and on any
+ * malformed shape (non-object, numeric seq, string latestActivity, ...).
+ */
+private fun JsonElement.latestActivitySeqOrNull(): String? {
+    val frontier = this as? JsonObject ?: return null
+    if (frontier.stringFieldOrNull("kind") != "present") return null
+    val pair = frontier["latestActivity"] as? JsonObject ?: return null
+    if (pair.stringFieldOrNull("messageId").isNullOrBlank()) return null
+    return pair.stringFieldOrNull("seq")?.takeIf(::isCanonicalActivitySeq)
+}
+
+/** A JSON string value only: numbers, booleans, null and containers yield null. */
+private fun JsonObject.stringFieldOrNull(name: String): String? =
+    (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 @Serializable
 private data class WireThreadReplyPreview(
@@ -296,6 +322,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
                 diagnostics = diagnostics,
                 contract = MemberKindWireContract.InboxActor,
             ),
+        readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
     )
 }
 
@@ -342,6 +369,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
                 ?.strictTaskStatusOrNull("inbox_task", diagnostics),
         taskClaimedByName = taskClaimedByName,
         isFollowing = isFollowing,
+        readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
     )
 }
 

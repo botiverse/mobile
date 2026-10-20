@@ -55,7 +55,15 @@ data class InboxItem(
      */
     val isFollowing: Boolean? = null,
     val mentionActionId: String? = null,
-    val pendingMentionActions: List<PendingMentionAction> = emptyList()
+    val pendingMentionActions: List<PendingMentionAction> = emptyList(),
+    /**
+     * Authority activity frontier for this row's own scope: wire
+     * `readState.latestActivity.seq` (canonical decimal string) when
+     * `readState.kind == "present"`, else null. Not the display
+     * `latestActivitySeq`, which keeps a zero-reply parent fallback in another
+     * seq domain. Used as the local Done/read overlay marker.
+     */
+    val readStateLatestActivitySeq: String? = null
 )
 
 /** True only for an explicitly server-projected, unfollowed thread row. */
