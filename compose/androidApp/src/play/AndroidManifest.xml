@@ -11,6 +11,9 @@
         prompt out of the Play build (both need Play Console declarations).
     -->
     <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
+    <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING"
         tools:node="remove" />
     <uses-permission
