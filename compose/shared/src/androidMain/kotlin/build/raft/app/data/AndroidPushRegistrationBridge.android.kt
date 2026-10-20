@@ -121,6 +121,7 @@ object RaftAndroidPushRegistrationBridge {
             currentEnvironmentId = {
                 RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
             },
+            previewModeProvider = raftPushPreviewModeProvider(),
             infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },
             warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, "$message provider=fcm") }
         )

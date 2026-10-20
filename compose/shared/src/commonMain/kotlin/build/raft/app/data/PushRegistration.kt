@@ -30,6 +30,9 @@ internal const val PUSH_LOG_TAG = "SlockPushRegistration"
 
 private val pushRegistrationJson = Json {
     encodeDefaults = true
+    // previewMode is always set on a new payload; a payload persisted by an older build has none and
+    // is never sent with an explicit null (the server rejects anything outside its three values).
+    explicitNulls = false
 }
 
 private val pushDeliveryStatusJson = Json {
@@ -44,8 +47,16 @@ internal data class RaftPushRegistrationPayload(
     val deviceToken: String,
     val topic: String,
     val env: String,
-    val appVersion: String
-)
+    val appVersion: String,
+    /**
+     * How much message content this device's pushes may carry (`full`, `sender_only`, `hidden`), read
+     * from [PushPreviewModePreferenceStore]. The server redacts per registration from it.
+     */
+    val previewMode: String? = null
+) {
+    /** The registration without its preview choice: what identifies the token binding itself. */
+    fun identity(): RaftPushRegistrationPayload = copy(previewMode = null)
+}
 
 /**
  * The provider half of an RFC 045 registration. APNs and FCM share one
@@ -199,6 +210,9 @@ internal interface RaftPushRegistrationLifecycleSink {
 
     fun onSessionInvalidated(reason: AuthSessionClearReason)
     suspend fun unbindBeforeLogout()
+
+    /** The device's push preview choice changed: re-send the registration so the server redacts accordingly. */
+    fun onPreviewModeChanged() {}
 }
 
 internal object RaftPushRegistrationLifecycle {
@@ -236,6 +250,10 @@ internal object RaftPushRegistrationLifecycle {
 
     suspend fun unbindBeforeLogout() {
         sink?.unbindBeforeLogout()
+    }
+
+    fun onPreviewModeChanged() {
+        sink?.onPreviewModeChanged()
     }
 
     internal fun clearForTests() {
@@ -299,6 +317,13 @@ internal class RaftPushRegistrationCoordinator(
      */
     private val currentEnvironmentId: (() -> String?)? = null,
     private val clockMillis: () -> Long = ::defaultNowMillis,
+    /**
+     * The device's push preview choice (a [PushPreviewMode] wire value), read on every upsert so the
+     * registration always carries the current choice, so every request includes previewMode. Same
+     * split as [KeyValuePushPreviewModePreferenceStore]: no value sends [PUSH_PREVIEW_MODE_DEFAULT];
+     * an unrecognized value or a failed read fails closed with [PUSH_PREVIEW_MODE_UNREADABLE].
+     */
+    private val previewModeProvider: () -> String? = { PUSH_PREVIEW_MODE_DEFAULT },
     private val infoLogger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : RaftPushRegistrationLifecycleSink {
@@ -367,7 +392,8 @@ internal class RaftPushRegistrationCoordinator(
                 deviceToken = spec.normalizeToken(deviceToken),
                 topic = topic.trim(),
                 env = env.trim().lowercase(),
-                appVersion = appVersion.trim()
+                appVersion = appVersion.trim(),
+                previewMode = currentPreviewMode()
             )
         if (!spec.accepts(payload)) {
             warningLogger("registration_rejected reason=invalid_atomic_identity")
@@ -375,7 +401,7 @@ internal class RaftPushRegistrationCoordinator(
         }
         val payloadJson = pushRegistrationJson.encodeToString(payload)
         store.putString(PENDING_REGISTRATION_KEY, payloadJson)
-        if (payloadJson != store.getString(LAST_REGISTERED_PAYLOAD_KEY)) {
+        if (!sameRegistrationIdentity(payloadJson, store.getString(LAST_REGISTERED_PAYLOAD_KEY))) {
             // The answer described the previous registration; none applies until the new one is upserted.
             clearDeliveryStatus(reason = "registration_changed")
         }
@@ -428,6 +454,59 @@ internal class RaftPushRegistrationCoordinator(
         scope.launch {
             handleSessionInvalidated(reason = "session_${reason.name.lowercase()}")
         }
+    }
+
+    override fun onPreviewModeChanged() {
+        if (unbindInProgress) return
+        scope.launch {
+            handlePreviewModeChanged()
+        }
+    }
+
+    /**
+     * Re-upserts the pending registration with the current preview choice. The flush re-reads
+     * [previewModeProvider], so the dedupe sees a changed payload and the server is updated now
+     * instead of at the next 24h refresh.
+     */
+    internal suspend fun handlePreviewModeChanged(): Boolean =
+        flushPending(reason = "preview_mode_changed")
+
+    private fun currentPreviewMode(): String {
+        val raw =
+            try {
+                previewModeProvider() ?: return PUSH_PREVIEW_MODE_DEFAULT
+            } catch (_: Throwable) {
+                warningLogger("preview_mode_read_failed fallback=$PUSH_PREVIEW_MODE_UNREADABLE")
+                return PUSH_PREVIEW_MODE_UNREADABLE
+            }
+        return PushPreviewMode.fromWire(raw)?.wireName ?: PUSH_PREVIEW_MODE_UNREADABLE
+    }
+
+    private fun decodePayloadOrNull(payloadJson: String?): RaftPushRegistrationPayload? =
+        payloadJson?.takeIf { it.isNotBlank() }?.let { encoded ->
+            try {
+                pushRegistrationJson.decodeFromString<RaftPushRegistrationPayload>(encoded)
+            } catch (_: SerializationException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+
+    /** The stored payload with the current preview choice; unchanged when it already matches. */
+    private fun withCurrentPreviewMode(payloadJson: String): String {
+        val mode = currentPreviewMode()
+        val payload = decodePayloadOrNull(payloadJson) ?: return payloadJson
+        if (payload.previewMode == mode) return payloadJson
+        return pushRegistrationJson.encodeToString(payload.copy(previewMode = mode))
+    }
+
+    /** Same token binding (installation, provider, token, topic, env, version), whatever the preview choice. */
+    private fun sameRegistrationIdentity(first: String?, second: String?): Boolean {
+        if (first == second) return true
+        val a = decodePayloadOrNull(first) ?: return false
+        val b = decodePayloadOrNull(second) ?: return false
+        return a.identity() == b.identity()
     }
 
     internal suspend fun handleSessionSaved(forceUpsert: Boolean = false): Boolean {
@@ -607,7 +686,8 @@ internal class RaftPushRegistrationCoordinator(
                 current != userId ||
                 !registrationSettledFor(userId) ||
                 // A new registration (FID, topic, version) settled meanwhile: this answer predates it.
-                store.getString(LAST_REGISTERED_PAYLOAD_KEY) != admittedRegistration ||
+                // A preview-only change keeps the binding, and with it the answer.
+                !sameRegistrationIdentity(store.getString(LAST_REGISTERED_PAYLOAD_KEY), admittedRegistration) ||
                 currentInstallationId() != installationId ||
                 normalizedPushEnvironmentId(environmentProvider()) != environmentId
             ) {
@@ -707,7 +787,11 @@ internal class RaftPushRegistrationCoordinator(
             return false
         }
         if (providerUnavailableReason != null) return false
-        val pendingPayload = payloadJson ?: return false
+        val storedPending = payloadJson ?: return false
+        // Every upsert carries the current preview choice; persisting it keeps pending == registered
+        // once it is confirmed, which the delivery-status gate relies on.
+        val pendingPayload = withCurrentPreviewMode(storedPending)
+        if (pendingPayload != storedPending) store.putString(PENDING_REGISTRATION_KEY, pendingPayload)
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }
         if (serverId == null) {
             infoLogger("registration_deferred reason=no_selected_server trigger=$reason")
@@ -734,11 +818,16 @@ internal class RaftPushRegistrationCoordinator(
                 infoLogger("registration_deferred reason=shared_runtime_unavailable trigger=$reason")
                 return false
             }
-            if (!sameBinding) {
+            val previewOnlyChange =
+                !sameBinding &&
+                    sameRegistrationIdentity(pendingPayload, store.getString(LAST_REGISTERED_PAYLOAD_KEY)) &&
+                    store.getString(LAST_BOUND_USER_ID_KEY) == session.user.id &&
+                    store.getString(LAST_BOUND_ENVIRONMENT_KEY) == environmentId
+            if (!sameBinding && !previewOnlyChange) {
                 // New token, topic, user or environment: the stored answer described the previous
-                // registration. A same-binding refresh (confirmation expiry, new session family) keeps it:
-                // FCM keeps delivering meanwhile, and dropping the answer would make the realtime path
-                // post the same notification locally as well.
+                // registration. A same-binding refresh (confirmation expiry, new session family) or a
+                // preview-only change keeps it: FCM keeps delivering meanwhile, and dropping the answer
+                // would make the realtime path post the same notification locally as well.
                 clearDeliveryStatus(reason = "registration_changed")
             }
             val response = api.upsert(pendingPayload)
@@ -876,8 +965,19 @@ object RaftIosPushRegistrationBridge {
                 RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
             },
             scope = scope,
+            previewModeProvider = raftPushPreviewModeProvider(),
             infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, message) },
             warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, message) }
         )
     }
+}
+
+/**
+ * The registration's previewMode source on both platforms: the device-local
+ * [PushPreviewModePreferenceStore], the single owner of the choice. Its read always returns one of
+ * the three wire values; a store that cannot be opened fails closed in the coordinator.
+ */
+internal fun raftPushPreviewModeProvider(): () -> String? {
+    val store by lazy { KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()) }
+    return { store.readPushPreviewModeSync() }
 }
