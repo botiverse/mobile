@@ -131,33 +131,6 @@ internal val RaftBrutalTone.raftBadgeVariant: RaftBadgeVariant?
             RaftBrutalTone.Lavender -> null
         }
 
-@Composable
-internal fun RaftBrutalBadgeButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    tone: RaftBrutalTone = RaftBrutalTone.White,
-    uppercase: Boolean = true,
-    enabled: Boolean = true,
-    leadingIcon: RaftLucideIconName? = null
-) {
-    RaftAppButton(
-        onClick = onClick,
-        enabled = enabled,
-        pressFeedback = enabled,
-        // raft badges do not shift when pressed.
-        pressOffset = 0.dp,
-        modifier = modifier
-    ) {
-        RaftBrutalBadgeChrome(
-            label = label,
-            tone = tone,
-            uppercase = uppercase,
-            leadingIcon = leadingIcon
-        )
-    }
-}
-
 // [uppercase] is the retired brutal register's caps; raft-ui badges keep the source case.
 @Suppress("UNUSED_PARAMETER")
 @Composable

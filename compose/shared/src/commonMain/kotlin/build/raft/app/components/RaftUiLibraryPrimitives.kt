@@ -124,7 +124,6 @@ internal fun RaftUiButton(
             },
         minHeight = if (size == RaftUiBannerSize.Small) 28.dp else 32.dp,
         minWidth = 0.dp,
-        shadowOffset = if (variant == RaftUiButtonVariant.Outline) RaftShadow.BrutalSmall else RaftShadow.Brutal,
         textStyle = RaftType.ButtonBold.copy(fontSize = if (size == RaftUiBannerSize.Small) 12.sp else 14.sp, lineHeight = 14.sp)
     )
 }
@@ -688,7 +687,7 @@ internal fun RaftUiMenuSurface(
     modifier: Modifier = Modifier,
     width: Dp? = 310.dp,
     rowHeight: Dp = 36.dp,
-    shadowOffset: Dp = RaftShadow.Brutal,
+    shadowOffset: Dp = 0.dp,
     showDividers: Boolean = false,
     onSelect: (String) -> Unit = {},
     onDismiss: () -> Unit = {}
@@ -710,7 +709,6 @@ internal fun RaftUiMenuSurface(
         modifier = modifier,
         width = width,
         rowHeight = rowHeight,
-        shadowOffset = shadowOffset,
         showDividers = showDividers,
         dividerBeforeIds = items.filter { it.dividerBefore }.map { it.id }.toSet(),
         onDismiss = onDismiss

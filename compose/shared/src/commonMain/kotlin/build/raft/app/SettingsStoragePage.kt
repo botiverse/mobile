@@ -276,7 +276,6 @@ private fun SettingsStorageButton(
         disabledBackgroundColor = RaftColor.EmptyStateGray,
         minWidth = 0.dp,
         minHeight = 44.dp,
-        shadowOffset = 2.dp,
         textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
     )
 }

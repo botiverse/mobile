@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -115,7 +119,6 @@ private fun RaftInAppBrowserScreen() {
                         contentDescription = stringResource(MR.strings.in_app_browser_forward),
                         enabled = navigationState.canGoForward,
                         size = 26.dp,
-                        shadowOffset = 1.dp,
                     )
                     RaftBrutalIconButton(
                         iconName = if (navigationState.isLoading) RaftLucideIconName.X else RaftLucideIconName.RefreshCw,
@@ -129,7 +132,6 @@ private fun RaftInAppBrowserScreen() {
                                 stringResource(MR.strings.in_app_browser_reload)
                             },
                         size = 26.dp,
-                        shadowOffset = 1.dp,
                     )
                     RaftBrutalIconButton(
                         iconName = RaftLucideIconName.ExternalLink,
@@ -137,7 +139,6 @@ private fun RaftInAppBrowserScreen() {
                         contentDescription = stringResource(MR.strings.in_app_browser_open_system),
                         enabled = launchUrl != null,
                         size = 26.dp,
-                        shadowOffset = 1.dp,
                     )
                 }
             },
@@ -248,30 +249,31 @@ private fun RaftInAppBrowserError(
             )
         }
         onRetry?.let {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_retry),
+            RaftButton(
+                text = stringResource(MR.strings.common_retry),
                 onClick = it,
-                leadingIcon = RaftLucideIconName.RefreshCw,
-                backgroundColor = RaftColor.BrandYellow,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
                 modifier = Modifier.fillMaxWidth(),
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg,
             )
         }
         onOpenSystem?.let {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.in_app_browser_open_system),
+            RaftButton(
+                text = stringResource(MR.strings.in_app_browser_open_system),
                 onClick = it,
-                leadingIcon = RaftLucideIconName.ExternalLink,
-                backgroundColor = RaftColor.SurfaceWhite,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.ExternalLink) },
                 modifier = Modifier.fillMaxWidth(),
+                size = RaftButtonSize.Lg,
             )
         }
         onClose?.let {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_close),
+            RaftButton(
+                text = stringResource(MR.strings.common_close),
                 onClick = it,
-                leadingIcon = RaftLucideIconName.X,
-                backgroundColor = RaftColor.SurfaceWhite,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
                 modifier = Modifier.fillMaxWidth(),
+                size = RaftButtonSize.Lg,
             )
         }
     }

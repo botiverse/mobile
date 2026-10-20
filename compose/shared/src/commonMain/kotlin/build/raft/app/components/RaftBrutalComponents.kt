@@ -25,9 +25,9 @@ import build.raft.app.raftArgbHex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,10 +40,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,24 +51,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -87,9 +79,7 @@ import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftReadOnlyField
-import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -113,15 +103,16 @@ import kotlinx.coroutines.delay
  * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField                           |
  * | RaftBrutalCard (12)                          | RaftCard                                                   |
  * | RaftBrutalListRow (2)                        | RaftListRowGroup + RaftListRow                             |
- * | RaftBrutalBadge (3) / RaftBrutalBadgeButton (0) | RaftBadge (soft)                                        |
+ * | RaftBrutalBadge (3)                          | RaftBadge (soft); RaftBrutalBadgeButton (0) removed        |
  * | RaftBrutalDropdownMenuSurface (3) / Row (2)  | RaftMenuSurface + RaftMenuItem                             |
  * | RaftBrutalDropdownMenu (2)                   | app popover positioning around RaftMenuSurface             |
  * | RaftBrutalModalLayer (2) / Header (2)        | dialog header from RaftText headline + ghost RaftIconButton |
  * | RaftBrutalTextarea (2)                       | RaftTextarea (no TextFieldValue / focus-hook overload yet) |
- * | RaftBrutalPanel (1) / PanelShell (1) / ListShell (1) | no generic popover / card surface slot yet         |
- * | RaftBrutalListSectionHeader (1)              | RaftMenuLabel-like group heading                           |
+ * | RaftBrutalPanel (1)                          | no generic popover surface yet (raft-look kept)            |
+ * | RaftBrutalPanelShell (1) / ListShell (1)     | removed: RaftListRowGroup at the call sites                |
+ * | RaftBrutalListSectionHeader (1)              | removed: RaftSectionEyebrow at the call site               |
  * | RaftBrutalActionSheetRow (1)                 | RaftListRow + RaftIconTile (no danger tone yet)            |
- * | RaftShadow.Brutal* (48 refs, all 0dp)        | none: raft-ui controls cast no shadow                      |
+ * | RaftShadow.Brutal* (48 refs, all 0dp)        | removed: raft-ui controls cast no shadow                   |
  */
 
 internal data class RaftModalShellModel(
@@ -958,8 +949,7 @@ internal fun RaftBrutalInputField(
                     iconName = RaftLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange("") },
                     backgroundColor = Color.Transparent,
-                    size = 18.dp,
-                    shadowOffset = 2.dp
+                    size = 18.dp
                 )
             }
             trailingContent?.invoke()
@@ -1126,8 +1116,7 @@ internal fun RaftBrutalInputField(
                     iconName = RaftLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
                     backgroundColor = Color.Transparent,
-                    size = 18.dp,
-                    shadowOffset = 2.dp
+                    size = 18.dp
                 )
             }
             trailingContent?.invoke()
@@ -1425,8 +1414,8 @@ internal val RaftBrutalSearchDefaultTextStyle: TextStyle
 /**
  * Legacy-named button; renders the design-system [RaftButton]. The variant comes from
  * [backgroundColor] ([raftButtonVariantFor]), the size from [minHeight]
- * ([raftButtonSizeFor]). [textStyle], the disabled* colours, [leadingIconSize],
- * [contentSpacing] and [shadowOffset] only shaped the retired brutal register and are
+ * ([raftButtonSizeFor]). [textStyle], the disabled* colours, [leadingIconSize] and
+ * [contentSpacing] only shaped the retired brutal register and are
  * ignored. Prefer `build.raft.designsystem.components.RaftButton` in new code.
  */
 @Suppress("UNUSED_PARAMETER")
@@ -1449,7 +1438,6 @@ internal fun RaftBrutalActionButton(
     leadingIconSpinning: Boolean = leadingIcon == RaftLucideIconName.Loader || leadingIcon == RaftLucideIconName.LoaderCircle,
     leadingIconSize: Dp = 12.dp,
     contentSpacing: Dp = 6.dp,
-    shadowOffset: Dp? = null,
     textStyle: TextStyle = RaftBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
@@ -1797,7 +1785,6 @@ internal fun RaftBrutalIconButton(
     iconColor: String = "#FF000000",
     disabledIconColor: String = "#FF000000",
     size: Dp = 32.dp,
-    shadowOffset: Dp = RaftShadow.BrutalSmall,
     iconSize: Dp = (size.value * 0.5f).dp,
     iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
 ) {
@@ -1915,51 +1902,3 @@ private fun RaftLookIconButton(
 
 // The brutal primitives' hard-coded black icon ink; raft swaps it for the themed ink.
 internal const val RaftLegacyIconInkArgb = "#FF000000"
-
-/** The design-system card surface ([RaftListRowGroup]: container radius, card layer, hairline) round a box. */
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftBrutalPanelShell(
-    modifier: Modifier = Modifier,
-    shadowOffset: Dp = 0.dp,
-    content: @Composable BoxScope.() -> Unit
-) {
-    RaftListRowGroup(modifier = modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth(), content = content)
-    }
-}
-
-/** A lazy list on the design-system card surface ([RaftListRowGroup]). */
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftBrutalListShell(
-    height: Dp,
-    modifier: Modifier = Modifier,
-    shadowOffset: Dp = 0.dp,
-    listModifier: Modifier = Modifier,
-    content: LazyListScope.() -> Unit
-) {
-    RaftListRowGroup(modifier = modifier.fillMaxWidth().height(height)) {
-        LazyColumn(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .then(listModifier),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-            content = content
-        )
-    }
-}
-
-/** A list group heading: the design-system [RaftSectionEyebrow] (footnote bold, hint ink). */
-@Composable
-internal fun RaftBrutalListSectionHeader(
-    label: String,
-    modifier: Modifier = Modifier
-) {
-    RaftSectionEyebrow(
-        text = label,
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
-    )
-}

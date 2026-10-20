@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -346,11 +349,11 @@ private fun ReleaseNotesErrorState(onRetry: () -> Unit) {
             description = stringResource(MR.strings.release_notes_error_body),
             modifier = Modifier.fillMaxSize(),
             action = {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_retry),
+                RaftButton(
+                    text = stringResource(MR.strings.common_retry),
                     onClick = onRetry,
-                    leadingIcon = RaftLucideIconName.RefreshCw,
-                    backgroundColor = RaftColor.SurfaceWhite,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                    size = RaftButtonSize.Lg,
                 )
             },
         )

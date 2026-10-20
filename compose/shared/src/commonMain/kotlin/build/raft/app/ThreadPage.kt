@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -17090,7 +17094,6 @@ private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
         backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 30.dp,
-        shadowOffset = 2.dp,
         textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
     )
 }
@@ -23972,7 +23975,6 @@ private fun ThreadBackToBottomButton(
         backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = ThreadFloatingPillButtonMinHeight,
-        shadowOffset = 4.dp,
         textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
         trailingContent = {
             RaftLucideIcon(
@@ -23998,7 +24000,6 @@ private fun ThreadUnreadJumpButton(
         backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = ThreadFloatingPillButtonMinHeight,
-        shadowOffset = 4.dp,
         textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
     )
 }
@@ -24174,7 +24175,6 @@ private fun ThreadInlineActionRow(
         minWidth = 0.dp,
         minHeight = 36.dp,
         leadingIcon = leadingIcon,
-        shadowOffset = 2.dp,
         textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, color = RaftColor.TextBlack)
     )
 }
@@ -25338,15 +25338,14 @@ internal fun ThreadNewMessageMenu(
     val contentSize =
         with(density) {
             Size(
-                width = (ThreadNewMessageMenuWidth + RaftShadow.BrutalSmall).toPx(),
+                width = ThreadNewMessageMenuWidth.toPx(),
                 height =
                     (
                         ThreadNewMessageMenuReactionRowHeight +
                             RaftAppStroke.Thin +
                             ThreadNewMessageMenuToolRowHeight * (1 + secondaryRowCount) +
                             ThreadNewMessageMenuMoreOverlayHeight +
-                            ThreadNewMessageMenuVerticalPadding * 2 +
-                            RaftShadow.BrutalSmall
+                            ThreadNewMessageMenuVerticalPadding * 2
                     ).toPx()
             )
         }
@@ -25923,7 +25922,6 @@ private fun ThreadActionCardView(
                 disabledBackgroundColor = RaftColor.SurfaceCream,
                 minWidth = 0.dp,
                 minHeight = 34.dp,
-                shadowOffset = 2.dp,
                 textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
             )
         }
@@ -26745,7 +26743,6 @@ internal fun threadAuthorDescriptionPopoverDimensions(
             height = 36.dp
         )
     }
-    val shadowOffset = RaftShadow.BrutalSmall
     val strokeExtra = RaftAppStroke.Default * 2
     val horizontalPadding = (ThreadAuthorDescriptionPopoverHorizontalPaddingDp * 2).dp
     val verticalPadding = (ThreadAuthorDescriptionPopoverVerticalPaddingDp * 2).dp
@@ -26754,12 +26751,12 @@ internal fun threadAuthorDescriptionPopoverDimensions(
     val estimatedLines = ((clean.length + approxCharsPerLine - 1) / approxCharsPerLine).coerceAtLeast(1)
 
     val estimatedWidth = if (estimatedLines == 1) {
-        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra + shadowOffset
-        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth + shadowOffset)
+        val singleLineWidth = (clean.length * ThreadAuthorDescriptionPopoverApproxCharWidthDp).dp + horizontalPadding + strokeExtra
+        singleLineWidth.coerceIn(ThreadAuthorDescriptionPopoverMinWidthDp.dp, maxWidth)
     } else {
-        maxWidth + shadowOffset
+        maxWidth
     }
-    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra + shadowOffset
+    val estimatedHeight = (estimatedLines * ThreadAuthorDescriptionPopoverLineHeightDp).dp + verticalPadding + strokeExtra
     return ThreadAuthorDescriptionPopoverDimensions(
         width = estimatedWidth,
         height = estimatedHeight.coerceIn(36.dp, 320.dp)
@@ -29175,7 +29172,6 @@ internal fun ThreadMessageMenuChrome(
         width = threadMessageMenuWidthDp(showReactionActions).dp,
         // web MenuItem: 36dp `min-h-9` rows, lucide 14 icons.
         rowHeight = ThreadMessageMenuRowHeight,
-        shadowOffset = ThreadMessageMenuShadowOffset,
         showDividers = false,
         dividerBeforeIds = groupDividerIds,
         iconSize = ThreadMessageMenuIconSize,
@@ -30798,7 +30794,6 @@ private fun ThreadAttachmentCommentTinyButton(
         backgroundColor = RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 28.dp,
-        shadowOffset = 2.dp,
         textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack)
     )
 }
@@ -31020,15 +31015,13 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        RaftBrutalActionButton(
-            label = label,
+        RaftButton(
+            text = label,
             onClick = onJoin,
             modifier = Modifier.fillMaxWidth(),
-            backgroundColor = RaftColor.AccentPink,
-            minWidth = 0.dp,
-            minHeight = 40.dp,
-            leadingIcon = RaftLucideIconName.LogIn,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.LogIn) },
+            variant = RaftButtonVariant.Primary,
+            size = RaftButtonSize.Lg
         )
     }
 }
@@ -31848,8 +31841,7 @@ private fun ThreadForwardBundleLoadFailure(
             onClick = onRetry,
             backgroundColor = RaftColor.SurfaceWhite,
             minWidth = 0.dp,
-            minHeight = 36.dp,
-            shadowOffset = 2.dp
+            minHeight = 36.dp
         )
     }
 }
@@ -32667,24 +32659,25 @@ private fun ThreadRemoveMemberConfirmationDialog(
             )
         }
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
                 enabled = !removing,
-                leadingIcon = RaftLucideIconName.X,
-                backgroundColor = RaftColor.SurfaceWhite
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label =
-                    if (removing) {
+            RaftButton(
+                text = if (removing) {
                         stringResource(MR.strings.thread_members_removing)
                     } else {
                         stringResource(MR.strings.member_action_remove_member)
                     },
                 onClick = onConfirm,
                 enabled = !removing,
-                leadingIcon = RaftLucideIconName.UserMinus,
-                backgroundColor = RaftColor.AccentRed
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.UserMinus) },
+                variant = RaftButtonVariant.Danger,
+                size = RaftButtonSize.Lg
             )
         }
     }
@@ -32955,12 +32948,14 @@ private fun ThreadAddMemberModal(
                     },
                 )
                 if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = RaftType.Caption)
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
-                    modifier = Modifier.fillMaxWidth(), leadingIcon = RaftLucideIconName.Plus,
-                    backgroundColor = RaftColor.BrandYellow,
+                RaftButton(
+                    text = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
                     enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
                     onClick = { onSubmitBatch?.invoke(selectedCandidates) },
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
                 )
             } else {
                 RaftModalListShell(height = threadMemberListHeight(agentCandidates.size, humanCandidates.size).dp,

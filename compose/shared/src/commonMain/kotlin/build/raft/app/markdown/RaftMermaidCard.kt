@@ -325,7 +325,6 @@ private fun RaftMermaidToolbarButton(
         contentDescription = contentDescription,
         enabled = enabled,
         disabledAlpha = 0.4f,
-        size = size,
-        shadowOffset = 2.dp
+        size = size
     )
 }

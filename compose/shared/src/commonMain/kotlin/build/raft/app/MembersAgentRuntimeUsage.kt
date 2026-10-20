@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -281,16 +283,16 @@ private fun MembersRuntimeAccountUsageDialog(
                     }
                 }
         }
-        RaftBrutalActionButton(
-            label =
-                if (loading) {
+        RaftButton(
+            text = if (loading) {
                     stringResource(MR.strings.member_runtime_usage_reading)
                 } else {
                     stringResource(MR.strings.member_runtime_usage_reload)
                 },
             enabled = !loading,
             modifier = Modifier.fillMaxWidth(),
-            onClick = onReload
+            onClick = onReload,
+            size = RaftButtonSize.Lg
         )
     }
 }

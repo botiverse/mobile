@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.base.Utils
@@ -4183,17 +4185,14 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
                 minWidth = 0.dp,
                 minHeight = 40.dp,
                 leadingIcon = if (batchExecuting) RaftLucideIconName.LoaderCircle else RaftLucideIconName.UserPlus,
-                backgroundColor = RaftColor.AccentPink,
-                shadowOffset = 2.dp
+                backgroundColor = RaftColor.AccentPink
             )
         }
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.common_done),
+        RaftButton(
+            text = stringResource(MR.strings.common_done),
             onClick = onClose,
             modifier = Modifier.fillMaxWidth(),
-            minWidth = 0.dp,
-            minHeight = 40.dp,
-            shadowOffset = 2.dp
+            size = RaftButtonSize.Lg
         )
     }
 }
@@ -4978,7 +4977,6 @@ private fun ComposerIconButton(
         disabledShadowColor = RaftColor.ShadowBlack,
         disabledIconColor = disabledIconColor,
         size = ThreadComposerIconButtonSize,
-        shadowOffset = ThreadComposerActionShadowOffset,
         iconSize = ThreadComposerIconSize,
         iconSpinning = iconSpinning,
         onLongClick = onLongClick,
@@ -5020,7 +5018,6 @@ private fun ComposerSendButton(
         disabledShadowColor = ThreadComposerDisabledSendShadow,
         disabledIconColor = ThreadComposerDisabledSendIconArgb,
         size = ThreadComposerIconButtonSize,
-        shadowOffset = ThreadComposerActionShadowOffset,
         iconSize = ThreadComposerIconSize
     )
 }
@@ -5106,7 +5103,6 @@ private fun ComposerTextChip(
         backgroundColor = if (variant == ComposerTextChipVariant.Pink) RaftColor.AccentPink else RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 26.dp,
-        shadowOffset = 2.dp,
         leadingIcon = leadingIcon,
         textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
         trailingContent = if (loading) {

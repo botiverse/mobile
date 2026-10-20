@@ -453,7 +453,7 @@ internal fun RaftUiControlledSelectionPopover(
     width: Dp = 220.dp,
     rowHeight: Dp = 36.dp,
     emptyHeight: Dp = 44.dp,
-    shadowOffset: Dp = RaftShadow.Brutal,
+    shadowOffset: Dp = 0.dp,
     horizontalOffset: Dp = 0.dp,
     verticalOffset: Dp = 8.dp,
     verticalOffsetAbove: Dp = verticalOffset,
@@ -539,7 +539,6 @@ internal fun RaftUiControlledSelect(
     onClear: () -> Unit = {},
     onTriggerClick: () -> Unit = {}
 ) {
-    val shadowOffset = if (enabled) RaftShadow.BrutalSmall else 0.dp
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
     val resolvedTriggerHeight = raftFieldHeight(triggerHeight)
@@ -562,7 +561,7 @@ internal fun RaftUiControlledSelect(
         onDismiss = onDismiss,
         width = menuWidth,
         rowHeight = rowHeight,
-        verticalOffset = resolvedTriggerHeight + shadowOffset + 3.dp,
+        verticalOffset = resolvedTriggerHeight + 3.dp,
         verticalOffsetAbove = 3.dp,
         showClear = showClear,
         search = search,
@@ -642,7 +641,7 @@ internal fun RaftUiControlledMenu(
     modifier: Modifier = Modifier,
     width: Dp = 200.dp,
     rowHeight: Dp = 40.dp,
-    shadowOffset: Dp = RaftShadow.Brutal,
+    shadowOffset: Dp = 0.dp,
     horizontalOffset: Dp = 0.dp,
     verticalOffset: Dp = 16.dp,
     horizontalAutoFlip: Boolean = true,

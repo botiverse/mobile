@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.*
 import build.raft.app.data.*
 import build.raft.app.model.ChannelId
@@ -100,8 +103,13 @@ internal fun ChannelMembersCreateAgentDialog(
             onDismiss = onDismiss, dismissEnabled = !submitting) {
             Text(error ?: joinFailedLabel, style = RaftType.Body)
             RaftDialogFooter {
-                RaftBrutalActionButton(label = stringResource(MR.strings.common_retry),
-                    enabled = !submitting, onClick = { submit(null) })
+                RaftButton(
+                    text = stringResource(MR.strings.common_retry),
+                    enabled = !submitting,
+                    onClick = { submit(null) },
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg
+                )
             }
         }
     } else {

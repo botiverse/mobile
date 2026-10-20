@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.sp
 
 private const val RaftBrutalDropdownMenuWidthValue = 200f
 private const val RaftBrutalDropdownMenuRowHeightValue = 40f
-private const val RaftBrutalDropdownMenuShadowOffsetValue = 4f
 
 /**
  * Single-action menu item rendered by [RaftBrutalDropdownMenu]. `id` is the stable
@@ -143,7 +142,6 @@ internal fun RaftBrutalDropdownMenuSurface(
     modifier: Modifier = Modifier,
     width: Dp? = RaftBrutalDropdownMenuWidthValue.dp,
     rowHeight: Dp = RaftBrutalDropdownMenuRowHeightValue.dp,
-    shadowOffset: Dp = RaftBrutalDropdownMenuShadowOffsetValue.dp,
     showDividers: Boolean = true,
     dividerBeforeIds: Set<String> = emptySet(),
     // Optional card header rendered above the rows inside the same border/shadow

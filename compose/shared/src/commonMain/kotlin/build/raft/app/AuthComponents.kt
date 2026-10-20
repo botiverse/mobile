@@ -475,7 +475,6 @@ internal fun AuthTextField(
                             onClick = { passwordVisible = !passwordVisible },
                             enabled = enabled,
                             size = 28.dp,
-                            shadowOffset = 0.dp,
                             iconSize = 15.dp
                         )
                     }

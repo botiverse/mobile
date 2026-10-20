@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
 import build.raft.app.components.raftCardSurface
@@ -1151,15 +1155,11 @@ private fun SharedTasksToolbar(
         )
     }
     val newTaskButton: @Composable () -> Unit = {
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.tasks_action_new_task),
-            leadingIcon = RaftLucideIconName.Plus,
-            backgroundColor = RaftColor.AccentPink,
-            minWidth = 0.dp,
-            minHeight = 30.dp,
-            shadowOffset = 2.dp,
-            textStyle = RaftType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-            onClick = onCreateClick
+        RaftButton(
+            text = stringResource(MR.strings.tasks_action_new_task),
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
+            onClick = onCreateClick,
+            variant = RaftButtonVariant.Primary
         )
     }
     val viewSwitch: @Composable () -> Unit = {
@@ -1925,23 +1925,24 @@ private fun TasksCreateDialog(
             }
         }
         RaftDialogFooter {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.common_cancel),
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
                 enabled = !loading,
-                backgroundColor = RaftColor.SurfaceWhite,
-                onClick = onDismiss
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg
             )
-            RaftBrutalActionButton(
-                label =
-                    if (loading) {
+            RaftButton(
+                text = if (loading) {
                         stringResource(MR.strings.tasks_create_action_creating)
                     } else {
                         stringResource(MR.strings.tasks_create_action)
                     },
-                leadingIcon = RaftLucideIconName.Check,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) },
                 enabled = anyNonBlank && !loading,
-                backgroundColor = RaftColor.AccentPink,
-                onClick = { onSubmit(titles) }
+                onClick = { onSubmit(titles) },
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Lg
             )
         }
     }
