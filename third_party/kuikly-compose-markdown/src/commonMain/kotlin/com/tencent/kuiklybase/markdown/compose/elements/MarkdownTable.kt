@@ -11,6 +11,7 @@ import build.raft.app.compat.ui.bouncesEnable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +40,8 @@ import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownDimens
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableCellPadding
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableClosedGrid
 import com.tencent.kuiklybase.markdown.compose.handleElement
 import org.intellij.markdown.MarkdownElementTypes.IMAGE
 import org.intellij.markdown.ast.ASTNode
@@ -221,6 +224,53 @@ private fun MarkdownTableRow(
     val tableCellPadding = LocalMarkdownDimens.current.tableCellPadding
     val tableSeparatorThickness = LocalMarkdownDimens.current.tableSeparatorThickness
     val tableStoke = LocalMarkdownColors.current.tableStroke
+    val raftCellPadding = LocalRaftMarkdownTableCellPadding.current
+    val cellVerticalInsets =
+        raftCellPadding?.let { it.calculateTopPadding() + it.calculateBottomPadding() } ?: (tableCellPadding * 2)
+    val closedGrid = LocalRaftMarkdownTableClosedGrid.current
+    val verticalRule: @Composable () -> Unit = {
+        VerticalMarkdownDivider(
+            modifier = Modifier.height(height + cellVerticalInsets),
+            color = tableStoke,
+            thickness = tableSeparatorThickness
+        )
+    }
+
+    if (closedGrid) {
+        // Raft: web border-collapse grid — rules on both outer edges and between every cell,
+        // independent of the source's pipes; columns keyed by cell ordinal.
+        verticalRule()
+        node.children.filter { it.type == CELL }.forEachIndexed { index, cell ->
+            Row {
+                if (cell.children.any { it.type == IMAGE }) {
+                    handleElement(
+                        node = cell,
+                        components = markdownComponents,
+                        content = content,
+                        includeSpacer = false
+                    )
+                } else {
+                    MarkdownTableCell(
+                        content = content,
+                        cell = cell,
+                        index = index,
+                        style = style,
+                        maxLines = maxLines,
+                        overflow = overflow,
+                        annotatorSettings = annotatorSettings,
+                        columnWidths = columnWidths,
+                    ) {
+                        val nextHeight = maxOf(height, it.height.dp)
+                        if (height != nextHeight) {
+                            height = nextHeight
+                        }
+                    }
+                }
+            }
+            verticalRule()
+        }
+        return
+    }
 
     node.children.forEachIndexed { index, cell ->
         if (cell.type == CELL) {
@@ -251,11 +301,7 @@ private fun MarkdownTableRow(
                 }
             }
         } else if (cell.type == TABLE_SEPARATOR) {
-            VerticalMarkdownDivider(
-                modifier = Modifier.height(height + tableCellPadding * 2),
-                color = tableStoke,
-                thickness = tableSeparatorThickness
-            )
+            verticalRule()
         }
     }
 }
@@ -282,7 +328,9 @@ private fun MarkdownTableCell(
         else -> tableCellMaxWidth
     }
 
-    Box(modifier = Modifier.padding(tableCellPadding).width(columnWidth)) {
+    val raftCellPadding = LocalRaftMarkdownTableCellPadding.current
+
+    Box(modifier = Modifier.padding(raftCellPadding ?: PaddingValues(tableCellPadding)).width(columnWidth)) {
         MarkdownTableBasicText(
             content = content,
             cell = cell,

@@ -1,5 +1,6 @@
 package com.tencent.kuiklybase.markdown.compose
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.compositionLocalOf
 import kotlin.time.TimeSource
 
@@ -294,6 +295,19 @@ val LocalRaftMarkdownAnnotationRevision =
  * paragraphs wrap to their text and hug the End edge.
  */
 val LocalRaftMarkdownParagraphFillWidth = compositionLocalOf { true }
+
+/**
+ * Raft: table cell insets as separate horizontal / vertical values (web `th`/`td` `px-2 py-1`).
+ * Null keeps the legacy uniform `MarkdownDimens.tableCellPadding`.
+ */
+val LocalRaftMarkdownTableCellPadding = compositionLocalOf<PaddingValues?> { null }
+
+/**
+ * Raft: draw the web `border-collapse` grid — a vertical rule before the first cell and after
+ * every cell of every row, whether or not the Markdown source wrote outer pipes. False keeps the
+ * legacy behaviour (rules only where the source has `|`).
+ */
+val LocalRaftMarkdownTableClosedGrid = compositionLocalOf { false }
 
 /**
  * Single decision point for AnnotatedString memoization, shared by

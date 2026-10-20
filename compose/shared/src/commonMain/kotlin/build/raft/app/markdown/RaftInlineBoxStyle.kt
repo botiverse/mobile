@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
  * [raftInlineDecorations] paints it behind the text from the [TextLayoutResult].
  *
  * Horizontal padding + margin reserve advance width through gap placeholders that
- * [withRaftInlineBox] puts on either side of the boxed range (Kuikly widened the run itself), so a
+ * [withRaftInlineChipGaps] puts on either side of the chip (Kuikly widened the run itself), so a
  * chip's painted padding never overlaps a neighbouring glyph or chip, and the margin leaves a
  * visible gap between two adjacent chips (web chips are `inline-flex` with real padding).
  * TODO(cmp-switch): the vertical extent is estimated from the span font size rather than real
@@ -126,13 +126,27 @@ internal const val RAFT_INLINE_UNDERLINE_ANNOTATION_TAG = "raft.build.markdown.i
 private const val RaftInlineDecorationEncodingVersion = "v1"
 private const val RaftInlineDecorationSeparator = "|"
 
-/**
- * Boxes [block] with [style]. The box's start/end padding + margin are reserved as gap
- * placeholders outside the boxed range (the painter draws the padding into them and leaves the
- * margin clear), glued to the chip with word joiners so a gap never wraps away from its chip.
- * The placeholders resolve through [raftInlineGapInlineContent]; copy uses the source body.
- */
 internal inline fun <R : Any> AnnotatedString.Builder.withRaftInlineBox(
+    style: RaftInlineBoxStyle?,
+    block: AnnotatedString.Builder.() -> R
+): R {
+    if (style == null) return block()
+    val index = pushStringAnnotation(RAFT_INLINE_BOX_ANNOTATION_TAG, style.encode())
+    return try {
+        block()
+    } finally {
+        pop(index)
+    }
+}
+
+/**
+ * Reserves [style]'s start/end padding + margin around one whole chip ([block] — its box, link
+ * and click annotations) as gap placeholders, glued to the chip with word joiners so a gap never
+ * wraps away from it. The painter draws the padding into the gaps and leaves the margin clear.
+ * The gaps sit outside every chip annotation (box, link, tag), so those ranges stay the label.
+ * Placeholders resolve through [raftInlineGapInlineContent]; [raftTextWithoutInlineGaps] drops them.
+ */
+internal inline fun <R : Any> AnnotatedString.Builder.withRaftInlineChipGaps(
     style: RaftInlineBoxStyle?,
     block: AnnotatedString.Builder.() -> R
 ): R {
@@ -143,13 +157,7 @@ internal inline fun <R : Any> AnnotatedString.Builder.withRaftInlineBox(
         appendRaftInlineGap(leadingGap)
         append(RaftInlineWordJoiner)
     }
-    val index = pushStringAnnotation(RAFT_INLINE_BOX_ANNOTATION_TAG, style.encode())
-    val result =
-        try {
-            block()
-        } finally {
-            pop(index)
-        }
+    val result = block()
     if (trailingGap > 0.dp) {
         append(RaftInlineWordJoiner)
         appendRaftInlineGap(trailingGap)
@@ -179,6 +187,26 @@ internal fun raftInlineGapWidth(id: String): Dp? =
         ?.toFloatOrNull()
         ?.takeIf { it > 0f }
         ?.dp
+
+/**
+ * The text without reserved chip gaps (each gap placeholder and the word joiner gluing it to its
+ * chip): exactly the characters the source rendered.
+ */
+internal fun AnnotatedString.raftTextWithoutInlineGaps(): String {
+    val gaps =
+        getStringAnnotations(RaftInlineContentAnnotationTag, 0, length)
+            .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) }
+    if (gaps.isEmpty()) return text
+    val drop = BooleanArray(length)
+    gaps.forEach { gap ->
+        for (i in gap.start until gap.end) drop[i] = true
+        if (gap.end < length && text[gap.end] == '\u2060') drop[gap.end] = true
+        if (gap.start > 0 && text[gap.start - 1] == '\u2060') drop[gap.start - 1] = true
+    }
+    return buildString(length) { text.forEachIndexed { i, c -> if (!drop[i]) append(c) } }
+}
+
+private const val RaftInlineContentAnnotationTag = "androidx.compose.foundation.text.inlineContent"
 
 /** Empty spacer content for every gap placeholder id in [ids]. */
 internal fun raftInlineGapInlineContent(ids: Collection<String>): Map<String, InlineTextContent> {

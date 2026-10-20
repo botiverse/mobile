@@ -24,13 +24,14 @@ class RaftInlineBoxReservedWidthTest {
         val text =
             buildAnnotatedString {
                 append("a")
-                withRaftInlineBox(chip) { append("@x") }
-                withRaftInlineBox(chip) { append("@y") }
+                withRaftInlineChipGaps(chip) { withRaftInlineBox(chip) { append("@x") } }
+                withRaftInlineChipGaps(chip) { withRaftInlineBox(chip) { append("@y") } }
                 append("b")
             }
         // gap + word joiner glue each side; two adjacent chips are separated by both gaps.
         assertEquals("a￼⁠@x⁠￼￼⁠@y⁠￼b", text.text)
         assertEquals(setOf(raftInlineGapInlineId(6.dp)), text.raftMarkdownInlineContentIds())
+        assertEquals("a@x@yb", text.raftTextWithoutInlineGaps())
         val boxes = text.raftInlineBoxRanges()
         assertEquals(listOf("@x", "@y"), boxes.map { text.text.substring(it.start, it.end) })
         assertEquals(6.dp, chip.raftInlineLeadingReservedWidth())
@@ -39,7 +40,7 @@ class RaftInlineBoxReservedWidthTest {
 
     @Test
     fun boxWithoutHorizontalInsetReservesNothing() {
-        val text = buildAnnotatedString { withRaftInlineBox(RaftInlineBoxStyle(paddingTop = 2.dp)) { append("x") } }
+        val text = buildAnnotatedString { withRaftInlineChipGaps(RaftInlineBoxStyle(paddingTop = 2.dp)) { append("x") } }
         assertEquals("x", text.text)
         assertTrue(text.raftMarkdownInlineContentIds().isEmpty())
     }

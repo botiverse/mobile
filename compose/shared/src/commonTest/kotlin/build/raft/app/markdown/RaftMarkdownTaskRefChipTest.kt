@@ -80,7 +80,7 @@ class RaftMarkdownTaskRefChipTest {
 
     @Test
     fun taskChipsKeepAGapFromCjkPunctuationAndEachOther() {
-        val body = "（#92）和#209#7"
+        val body = "（#92）和 #209 #7"
         val statuses = mapOf(92 to TaskStatus.InReview, 209 to TaskStatus.Done)
         val annotated = paragraph(body, raftMarkdownAnnotator(content = body, taskStatuses = statuses))
         val boxes = annotated.raftInlineBoxRanges()
@@ -133,11 +133,13 @@ class RaftMarkdownTaskRefChipTest {
                 "raft-task-chip-lead:in_review", "raft-task-chip-trail:in_review",
                 "raft-task-chip-lead:done", "raft-task-chip-trail:done",
                 "raft-task-chip-lead:unknown", "raft-task-chip-trail:unknown",
+                raftInlineGapInlineId(2.dp),
             ),
             inlineIds
         )
         val provided = annotator.inlineContent?.invoke().orEmpty()
-        assertTrue(provided.keys.containsAll(inlineIds))
+        // Gap placeholders resolve in RichText (raftInlineGapInlineContent), not in the annotator.
+        assertTrue(provided.keys.containsAll(inlineIds.filter { raftInlineGapWidth(it) == null }))
         // The chip text keeps the clickable link and its chip text style.
         val inReviewLink =
             annotated.getLinkAnnotations(0, annotated.length)
@@ -171,8 +173,9 @@ class RaftMarkdownTaskRefChipTest {
         val annotator = raftMarkdownAnnotator(content = body)
         val annotated = paragraph(body, annotator)
 
-        assertEquals("See #92", annotated.text)
-        assertTrue(annotated.raftMarkdownInlineContentIds().isEmpty())
+        assertEquals("See #92", annotated.raftTextWithoutInlineGaps())
+        // Only the legacy chip's reserved gaps; no status pixel content.
+        assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
         assertEquals(
             RaftColor.BrandYellow.copy(alpha = 0.4f),
