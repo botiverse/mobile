@@ -1,9 +1,110 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) rules. Keep them in step with backup_rules.xml, used on API 30 and
+    lower. RaftBackupRulesTest checks both files.
+
+    Backup must never carry sign-in state to another install: a restored refresh token and
+    installation id make two devices share one session family, and the server then signs one of
+    them out after the other refreshes. Excluded: the auth session, auth/push installation ids,
+    push registration, login handoff state, the account-bound message database and per-device
+    state. Still backed up: UI preferences (MMKV slockLocal) and the API environment choice.
+    Caches (cacheDir) and noBackupFilesDir are never backed up.
 -->
 <data-extraction-rules>
-    <cloud-backup />
-    <device-transfer />
+    <cloud-backup>
+        <!-- MMKV namespaces (MMKV.initialize root: files/mmkv). Each namespace is <id> plus <id>.crc. -->
+        <!-- auth session: access/refresh tokens and the auth installation id (SharedAuthRefreshCoordinator) -->
+        <exclude domain="file" path="mmkv/slockAuthSession" />
+        <exclude domain="file" path="mmkv/slockAuthSession.crc" />
+        <!-- push installation id and bound push registration (AndroidPushRegistration) -->
+        <exclude domain="file" path="mmkv/slockPushRegistration" />
+        <exclude domain="file" path="mmkv/slockPushRegistration.crc" />
+        <!-- pending app-login handoff -->
+        <exclude domain="file" path="mmkv/slockAppLogin" />
+        <exclude domain="file" path="mmkv/slockAppLogin.crc" />
+        <!-- in-flight mobile OAuth state -->
+        <exclude domain="file" path="mmkv/slockMobileOAuth" />
+        <exclude domain="file" path="mmkv/slockMobileOAuth.crc" />
+        <!-- per-account Activity unread projection -->
+        <exclude domain="file" path="mmkv/slockActivityUnread" />
+        <exclude domain="file" path="mmkv/slockActivityUnread.crc" />
+        <!-- per-device network recovery latch -->
+        <exclude domain="file" path="mmkv/slockNetworkRecovery" />
+        <exclude domain="file" path="mmkv/slockNetworkRecovery.crc" />
+        <!-- widget state (account data, per-device widget ids) -->
+        <exclude domain="file" path="mmkv/slock_status_widget" />
+        <exclude domain="file" path="mmkv/slock_status_widget.crc" />
+        <!-- agent status widget state -->
+        <exclude domain="file" path="mmkv/slock_agent_status_widget" />
+        <exclude domain="file" path="mmkv/slock_agent_status_widget.crc" />
+        <!-- widget server selection -->
+        <exclude domain="file" path="mmkv/slock_widget_server_config" />
+        <exclude domain="file" path="mmkv/slock_widget_server_config.crc" />
+        <!-- Account-bound local message cache (SQLDelight RaftSqlDatabase.DatabaseName). -->
+        <exclude domain="database" path="slock_cache_v4.db" />
+        <exclude domain="database" path="slock_cache_v4.db-journal" />
+        <exclude domain="database" path="slock_cache_v4.db-wal" />
+        <exclude domain="database" path="slock_cache_v4.db-shm" />
+        <!-- QA session bootstrap inbox (QaSessionBootstrapInbox). -->
+        <exclude domain="file" path="qa-bootstrap/" />
+        <!-- Per-account feedback drafts and attachments. -->
+        <exclude domain="file" path="settings-hands-feedback-drafts/" />
+        <!-- Per-device download records (MediaStore URIs). -->
+        <exclude domain="file" path="attachment-public-downloads-v1.json" />
+        <!-- Per-device process-exit diagnostics. -->
+        <exclude domain="file" path="process_exit_traces/" />
+        <exclude domain="sharedpref" path="raft-process-exit-diagnostics.xml" />
+        <!-- Per-device diagnostics logs (RaftGeneralLogRing). -->
+        <exclude domain="file" path="raft_diagnostics_logs/" />
+        <!-- Firebase Cloud Messaging token cache. -->
+        <exclude domain="sharedpref" path="com.google.android.gms.appid.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- MMKV namespaces (MMKV.initialize root: files/mmkv). Each namespace is <id> plus <id>.crc. -->
+        <!-- auth session: access/refresh tokens and the auth installation id (SharedAuthRefreshCoordinator) -->
+        <exclude domain="file" path="mmkv/slockAuthSession" />
+        <exclude domain="file" path="mmkv/slockAuthSession.crc" />
+        <!-- push installation id and bound push registration (AndroidPushRegistration) -->
+        <exclude domain="file" path="mmkv/slockPushRegistration" />
+        <exclude domain="file" path="mmkv/slockPushRegistration.crc" />
+        <!-- pending app-login handoff -->
+        <exclude domain="file" path="mmkv/slockAppLogin" />
+        <exclude domain="file" path="mmkv/slockAppLogin.crc" />
+        <!-- in-flight mobile OAuth state -->
+        <exclude domain="file" path="mmkv/slockMobileOAuth" />
+        <exclude domain="file" path="mmkv/slockMobileOAuth.crc" />
+        <!-- per-account Activity unread projection -->
+        <exclude domain="file" path="mmkv/slockActivityUnread" />
+        <exclude domain="file" path="mmkv/slockActivityUnread.crc" />
+        <!-- per-device network recovery latch -->
+        <exclude domain="file" path="mmkv/slockNetworkRecovery" />
+        <exclude domain="file" path="mmkv/slockNetworkRecovery.crc" />
+        <!-- widget state (account data, per-device widget ids) -->
+        <exclude domain="file" path="mmkv/slock_status_widget" />
+        <exclude domain="file" path="mmkv/slock_status_widget.crc" />
+        <!-- agent status widget state -->
+        <exclude domain="file" path="mmkv/slock_agent_status_widget" />
+        <exclude domain="file" path="mmkv/slock_agent_status_widget.crc" />
+        <!-- widget server selection -->
+        <exclude domain="file" path="mmkv/slock_widget_server_config" />
+        <exclude domain="file" path="mmkv/slock_widget_server_config.crc" />
+        <!-- Account-bound local message cache (SQLDelight RaftSqlDatabase.DatabaseName). -->
+        <exclude domain="database" path="slock_cache_v4.db" />
+        <exclude domain="database" path="slock_cache_v4.db-journal" />
+        <exclude domain="database" path="slock_cache_v4.db-wal" />
+        <exclude domain="database" path="slock_cache_v4.db-shm" />
+        <!-- QA session bootstrap inbox (QaSessionBootstrapInbox). -->
+        <exclude domain="file" path="qa-bootstrap/" />
+        <!-- Per-account feedback drafts and attachments. -->
+        <exclude domain="file" path="settings-hands-feedback-drafts/" />
+        <!-- Per-device download records (MediaStore URIs). -->
+        <exclude domain="file" path="attachment-public-downloads-v1.json" />
+        <!-- Per-device process-exit diagnostics. -->
+        <exclude domain="file" path="process_exit_traces/" />
+        <exclude domain="sharedpref" path="raft-process-exit-diagnostics.xml" />
+        <!-- Per-device diagnostics logs (RaftGeneralLogRing). -->
+        <exclude domain="file" path="raft_diagnostics_logs/" />
+        <!-- Firebase Cloud Messaging token cache. -->
+        <exclude domain="sharedpref" path="com.google.android.gms.appid.xml" />
+    </device-transfer>
 </data-extraction-rules>

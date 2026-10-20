@@ -120,7 +120,10 @@ class RaftApplication : Application() {
         AndroidRealtimeKeepAliveController.installNoPlayServicesFallback(this)
         runCatching {
             runBlocking {
-                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@RaftApplication)).readSession()
+                val authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@RaftApplication))
+                // A restored/cloned install may carry an installation id without its session.
+                authStore.discardAuthInstallationIdWithoutSession()
+                authStore.readSession()
             }
         }.getOrNull()?.let { session ->
             RaftAndroidLocalDiagnostics.updateUserContext(
