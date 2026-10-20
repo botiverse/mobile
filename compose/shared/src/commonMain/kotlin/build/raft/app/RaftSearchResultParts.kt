@@ -26,6 +26,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -264,29 +270,122 @@ internal fun RaftSearchHitText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val ranges = remember(text, query) { homeSearchHighlightRanges(text, query) }
-    val annotated = remember(text, ranges) { raftSearchHitAnnotatedString(text, ranges) }
+    val padded = remember(text, ranges) { raftSearchHitPaddedText(text, ranges) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val fill = RaftColor.Brand
     val edge = RaftColor.StickerInk
     val dieCut = RaftColor.StickerEdge
+    // web search-hit `px-[3px]`: the sticker's padding takes inline room, so the text after a
+    // hit moves along by it. Each hit is bracketed by a 3dp placeholder.
+    val padWidth = with(LocalDensity.current) { RaftSearchHitPadX.toSp() }
+    val inlineContent =
+        remember(padWidth) {
+            mapOf(
+                RaftSearchHitPadId to
+                    InlineTextContent(Placeholder(padWidth, padWidth, PlaceholderVerticalAlign.TextCenter)) {}
+            )
+        }
     RaftText(
-        text = annotated,
+        text = padded.text,
         style = style,
         color = color,
         maxLines = maxLines,
         overflow = overflow,
         onTextLayout = { layout = it },
+        inlineContent = inlineContent,
         modifier =
             if (ranges.isEmpty()) {
                 modifier
             } else {
                 modifier.drawBehind {
                     val result = layout ?: return@drawBehind
-                    if (result.layoutInput.text.text != text) return@drawBehind
-                    drawRaftSearchHits(result, ranges, style, fill, edge, dieCut)
+                    if (result.layoutInput.text.text != padded.text.text) return@drawBehind
+                    drawRaftPaddedSearchHits(result, padded.hitRanges, style, fill, edge, dieCut)
                 }
             },
     )
+}
+
+private const val RaftSearchHitPadId = "raft-search-hit-pad"
+
+/** [text] with every hit bracketed by a pad placeholder; [hitRanges] index the hits in it. */
+internal class RaftSearchHitPaddedText(val text: AnnotatedString, val hitRanges: List<IntRange>)
+
+internal fun raftSearchHitPaddedText(text: String, ranges: List<IntRange>): RaftSearchHitPaddedText {
+    if (ranges.isEmpty()) return RaftSearchHitPaddedText(AnnotatedString(text), emptyList())
+    val hit = raftSpanStyleForWeight(FontWeight.Bold).copy(color = RaftColor.StickerInk)
+    val hitRanges = mutableListOf<IntRange>()
+    val annotated =
+        buildAnnotatedString {
+            var cursor = 0
+            ranges.forEach { range ->
+                val start = range.first.coerceIn(cursor, text.length)
+                val end = (range.last + 1).coerceIn(start, text.length)
+                append(text.substring(cursor, start))
+                appendInlineContent(RaftSearchHitPadId, " ")
+                val hitStart = length
+                withStyle(hit) { append(text.substring(start, end)) }
+                hitRanges += hitStart until length
+                appendInlineContent(RaftSearchHitPadId, " ")
+                cursor = end
+            }
+            append(text.substring(cursor))
+        }
+    return RaftSearchHitPaddedText(annotated, hitRanges)
+}
+
+/**
+ * The sticker of each hit spans its two pads when they share a line; a hit that wraps (or a
+ * pad lost to an ellipsis) falls back to the per-line glyph extent.
+ */
+private fun DrawScope.drawRaftPaddedSearchHits(
+    layout: TextLayoutResult,
+    hitRanges: List<IntRange>,
+    style: TextStyle,
+    fill: Color,
+    edge: Color,
+    dieCut: Color,
+) {
+    val pads = layout.placeholderRects
+    val radius = CornerRadius(RaftAppRadius.Sticker.toPx())
+    val stroke = RaftAppStroke.Control.toPx()
+    val contentHeight = if (style.fontSize.isSp) style.fontSize.toPx() * 1.28f else Float.NaN
+    val fallback = mutableListOf<IntRange>()
+    hitRanges.forEachIndexed { index, range ->
+        val before = pads.getOrNull(index * 2)
+        val after = pads.getOrNull(index * 2 + 1)
+        if (range.isEmpty() || before == null || after == null) {
+            fallback += range
+            return@forEachIndexed
+        }
+        val line = layout.getLineForOffset(range.first)
+        if (line != layout.getLineForOffset(range.last) || layout.isLineEllipsized(line)) {
+            fallback += range
+            return@forEachIndexed
+        }
+        val top = layout.getLineTop(line)
+        val bottom = layout.getLineBottom(line)
+        val inset = if (contentHeight.isNaN()) 0f else ((bottom - top - contentHeight) / 2f).coerceAtLeast(0f)
+        val box = Rect(before.left, top + inset, after.right, bottom - inset)
+        if (dieCut.alpha > 0f) {
+            drawRoundRect(
+                dieCut,
+                topLeft = Offset(box.left - stroke / 2f, box.top - stroke / 2f),
+                size = Size(box.width + stroke, box.height + stroke),
+                cornerRadius = CornerRadius(radius.x + stroke / 2f),
+                style = Stroke(stroke),
+            )
+        }
+        drawRoundRect(fill, topLeft = box.topLeft, size = box.size, cornerRadius = radius)
+        drawRoundRect(
+            edge,
+            topLeft = Offset(box.left + stroke / 2f, box.top + stroke / 2f),
+            size = Size(box.width - stroke, box.height - stroke),
+            cornerRadius = CornerRadius((radius.x - stroke / 2f).coerceAtLeast(0f)),
+            style = Stroke(stroke),
+        )
+    }
+    if (fallback.isNotEmpty()) drawRaftSearchHits(layout, fallback, style, fill, edge, dieCut)
 }
 
 internal fun raftSearchHitAnnotatedString(text: String, ranges: List<IntRange>): AnnotatedString {

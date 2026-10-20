@@ -21385,9 +21385,9 @@ private fun SharedHomeSearchControlsRow(
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
                 .height(55.dp)
-                .padding(start = if (hasBack) 3.dp else SearchControlsHorizontalPadding, end = 6.dp),
+                .padding(start = if (hasBack) 3.dp else SearchControlsHorizontalPadding, top = 6.dp, end = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         content = content
     )
 }
@@ -21838,7 +21838,7 @@ private fun SharedHomeSearchFilters(
                                 active = timeActive,
                                 enabled = true,
                                 uppercase = false,
-                                iconName = RaftLucideIconName.Calendar,
+                                iconName = RaftLucideIconName.CalendarRange,
                                 activeBackgroundColor = appliedFill,
                                 activeShadowOffset = SearchControlShadowOffset,
                                 reserveActiveShadowSpace = true,
@@ -21857,7 +21857,7 @@ private fun SharedHomeSearchFilters(
                     active = sortActive,
                     enabled = true,
                     uppercase = false,
-                    iconName = RaftLucideIconName.ArrowUpDown,
+                    iconName = RaftLucideIconName.ArrowDownUp,
                     activeBackgroundColor = appliedFill,
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
@@ -22780,9 +22780,8 @@ private fun SharedHomeSearchMessageResultRow(
     ) {
         if (!sender.isNullOrBlank()) {
             RaftAppAvatar(
-                avatarWireValue =
-                    item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver)
-                        ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
+                // web AvatarSlot: a sender without a picture is the person placeholder.
+                avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
                 label = sender,
                 avatarSize = RaftSearchMetrics.EntityLeading,
                 cacheSubject = avatarCacheIdentity?.subject,
@@ -23744,12 +23743,6 @@ private val SearchSort.searchKey: String
             SearchSort.Relevance -> "relevance"
             SearchSort.Recent -> "recent"
         }
-
-private fun String.searchAvatarSeed(): String =
-    lowercase()
-        .replace(Regex("[^a-z0-9]+"), "-")
-        .trim('-')
-        .ifBlank { "default" }
 
 @Composable
 private fun SharedHomeSessionShell(
