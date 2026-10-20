@@ -1,0 +1,8 @@
+/* Push notification preview modes. The server sends these keys (title-loc-key / loc-key / loc-args)
+   when this device asked for "sender_only" or "hidden" previews; the alert text in the payload is the
+   English fallback. Keys must match the server's PUSH_PREVIEW_KEYS. */
+"push.preview.hidden.title" = "Raft";
+"push.preview.hidden.message" = "You have a new message";
+"push.preview.hidden.mention" = "You were mentioned";
+"push.preview.sender_only.message" = "%@ sent a message";
+"push.preview.sender_only.mention" = "%@ mentioned you";
