@@ -34,7 +34,7 @@ class RaftRelativeTimeConsumerTest {
             )
 
         assertEquals(112f, ThreadRelativeTimestampSlotWidthDp)
-        assertEquals(36f, beforePress.widthDp)
+        assertEquals(35f, beforePress.widthDp)
         assertEquals(18f, beforePress.heightDp)
         assertEquals(false, beforePress.timestampVisible)
         assertEquals(beforePress.widthDp, duringPress.widthDp)
@@ -48,7 +48,7 @@ class RaftRelativeTimeConsumerTest {
                 showTimestamp = false
             )
         assertEquals(beforePress.widthDp, compactAuthorSlot.widthDp)
-        assertEquals(40f, compactAuthorSlot.heightDp)
+        assertEquals(39f, compactAuthorSlot.heightDp)
 
         val normalAuthorSlot =
             threadMessageMetadataSlotLayout(
@@ -56,8 +56,8 @@ class RaftRelativeTimeConsumerTest {
                 compactTimestampGutter = false,
                 showTimestamp = false
             )
-        assertEquals(36f, normalAuthorSlot.widthDp)
-        assertEquals(40f, normalAuthorSlot.heightDp)
+        assertEquals(35f, normalAuthorSlot.widthDp)
+        assertEquals(39f, normalAuthorSlot.heightDp)
     }
 
     @Test

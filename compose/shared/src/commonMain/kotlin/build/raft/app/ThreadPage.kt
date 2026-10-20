@@ -646,10 +646,11 @@ internal fun threadMessageMetadataSlotLayout(
     showTimestamp: Boolean
 ): ThreadMessageMetadataSlotLayout =
     ThreadMessageMetadataSlotLayout(
-        widthDp = 36f,
+        // raft-ui MessageItem gutter / avatar slot: `w-[35px]`, the avatar `size-[35px]` + mt-0.5.
+        widthDp = 35f,
         heightDp =
             when {
-                showAvatar -> 40f
+                showAvatar -> 39f
                 compactTimestampGutter -> 18f
                 else -> 0f
             },
@@ -24832,8 +24833,10 @@ private fun ThreadMessageCardContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // raft-ui `MessageItem` root: the row wash spans the whole
-                    // row and the content sits at px-2 py-2 inside it.
+                    // raft-ui `MessageItem` root: `border-t-8 border-transparent
+                    // bg-clip-padding px-2 py-1` -- an 8dp gap the row wash does not
+                    // cover, then the content at py-1 inside the wash.
+                    .padding(top = RaftAppSpacing.Sm)
                     .background(
                         // raft-ui MessageItem: a checked multi-select row washes info-soft.
                         if (shareSelectionActive && selectedForShare) {
@@ -24846,7 +24849,7 @@ private fun ThreadMessageCardContent(
                             threadMessageFocusHighlightColor(focusAlpha)
                         }
                     )
-                    .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),
+                    .padding(horizontal = outerPadding, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             Row(
@@ -29717,6 +29720,9 @@ private fun ThreadMessageAvatarSlot(
     }
 }
 
+/** raft-ui MessageItem avatar: `size-(--mi-avatar,35px)`. */
+private val ThreadMessageAvatarSize = 35.dp
+
 @Composable
 private fun ThreadMessageAvatar(
     interactionIdentity: String,
@@ -29745,7 +29751,7 @@ private fun ThreadMessageAvatar(
     Box(
         modifier =
             Modifier
-                .size(36.dp)
+                .size(ThreadMessageAvatarSize)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(
@@ -29765,7 +29771,7 @@ private fun ThreadMessageAvatar(
     ) {
         RaftAvatarWithStatus(
             statusColor = if (muted) null else status?.color,
-            avatarSize = 36.dp,
+            avatarSize = ThreadMessageAvatarSize,
             statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -29777,7 +29783,7 @@ private fun ThreadMessageAvatar(
                     label = avatarLabel,
                     diagnostics = avatarDiagnostics,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
-                    avatarSize = 36.dp,
+                    avatarSize = ThreadMessageAvatarSize,
                     cacheSubject = cacheSubject,
                     fallbackFill = avatarFill
                 )
