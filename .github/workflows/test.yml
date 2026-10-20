@@ -1020,7 +1020,7 @@ jobs:
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
 
-      - name: Test login route transition admission and CMP bridge selectors (UIKit)
+      - name: Test login route transition admission, CMP bridge selectors and native tab bar mapping (UIKit)
         working-directory: compose/iosApp
         run: |
           set -o pipefail
@@ -1034,6 +1034,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
             -only-testing:iosAppTests/RaftRouterLoginTransitionTests \
             -only-testing:iosAppTests/RaftCmpBridgeSelectorTests \
+            -only-testing:iosAppTests/RaftIosTabBarItemMappingTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \

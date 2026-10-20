@@ -32,8 +32,10 @@ concepts and must not be conflated:
 ## Renderer selection
 
 `RaftTabBar.kt` reads the page-data param `slockNativeTabBarRenderer` (legacy
-alias `nativeTabBarRenderer`) and maps it to `RaftAppTabBarRenderer`. An
-explicit page-data value always wins. When the value is absent, the platform
+alias `nativeTabBarRenderer`) and maps it to `RaftAppTabBarRenderer`. A
+host-registered native tab bar bridge (see below) takes precedence over the
+param and selects `NativeHost`. Otherwise an explicit page-data value always
+wins. When the value is absent, the platform
 capability supplies the default: iOS returns `iosLiquidGlass`, while Android
 returns no default and keep the shared fallback unless their host
 explicitly opts into a native renderer.
@@ -58,28 +60,42 @@ Each host decides its own param:
 The `SharedCompose` fallback guarantees a working bar everywhere, so the native
 paths can assume their platform capability is present.
 
-## Shared → native contract
+## Shared → native contract (iOS system tab bar)
 
-Both native renderers share **one** view name and **one** prop/event
-contract, defined in `RaftTabBar.kt` (`RaftNativeFloatingTabBar` /
-`SlockNativeFloatingTabBarAttr`):
+On iOS every app-shell page (`compose_slock_app_shell`) is hosted by
+`RaftIosTabBarController` (`compose/iosApp/iosApp/RaftIosTabBarController.swift`):
+the shell's Compose controller fills the page and a real `UITabBarController`
+is layered above it. The system controller owns the `UITabBar` (Liquid Glass
+on iOS 26+, the standard bar on earlier versions); its tab children are empty
+placeholders, and an overlay view passes every touch outside the bar through
+to Compose. The shell stays a single Compose page with retained tabs.
 
-- View name: `SlockNativeFloatingTabBarView`.
-- Props (all strings joined by `U+001F`, one entry per tab):
-  - `keysText`, `labelsText`, `iconsText` (Lucide icon wire names),
-    `enabledText` (`"1"`/`"0"`).
-  - `selectedKey` (the key of the selected tab).
-  - `bottomSafeArea` (float, dp).
-- Event: `select` → `{ key, index }`; shared side calls `onSelect(key)`.
+The contract lives in `RaftNativeTabBar.kt` (commonMain, exported to Swift):
 
-Native implementations:
+- `RaftPageControllerFactory` creates a `RaftNativeTabBarBridge`, registers it
+  in `RaftNativeTabBarRegistry` under a fresh host id and passes the id in
+  pageData as `slockNativeTabBarHostId` (identity only; other pages have it
+  stripped).
+- When `RaftAppBottomTabBarHost` finds a bridge for its page, the renderer is
+  `NativeHost`: Compose draws nothing and `RaftNativeTabBarPublisher`
+  publishes `RaftNativeTabBarState` (items in `appShellBottomTabs` order with
+  key, localized title, SF Symbol names, badge count and capped `badgeValue`,
+  enabled; `selectedKey`; `visible`). Leaving composition (the shell hides
+  its bar, `showBottomTabs == false`) publishes `visible = false`.
+- Swift renders the state (`tabBarItem.title/image/badgeValue/isEnabled`,
+  `selectedIndex`, `setTabBarHidden`) and reports taps through
+  `bridge.selectTab(key)`, which runs the shell's normal tab handler (switch,
+  re-tap scroll-to-top). UIKit never switches tabs on its own; programmatic
+  shell navigation (deep links, notification opens) updates the bar through
+  the published state.
+- Swift reports the bar's bottom band (bar top → page bottom, including the
+  home indicator) through `bridge.updateBottomInset(points)`; shared uses it
+  as the content inset (`raftNativeHostTabBarContentInset`) so content scrolls
+  under the bar without a second safe-area padding.
 
-- iOS: `compose/iosApp/iosApp/KuiklyExpand/Components/SlockNativeFloatingTabBarView.m`
-  wraps a UIKit `UITabBar` (system Liquid Glass on iOS 26).
-
-Because the contract is identical, swapping a platform's *look* only touches
-that platform's native file — the shared host, insets, and z-index are
-untouched.
+A tab key added to the shell's ordered tab keys appears natively with its
+label, icon (`raftNativeTabBarSymbol`) and badge (`badgeCountFor`). A compact
+`UITabBarController` shows at most 5 tabs; extra tabs are dropped and logged.
 
 ## Host geometry & content inset
 

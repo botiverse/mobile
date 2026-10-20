@@ -23,7 +23,20 @@ import shared
             // RaftCmpRoot renders the unknown-page surface; keep a diagnostic trail.
             RaftIosDiagnosticsRecord("warn", "SlockCmpHost", "cmp_host_unknown_page page=\(pageName)")
         }
-        let container = RaftPageViewController(pageName: pageName, pageData: pageData)
+        // The app shell's bottom tabs are drawn by a system UITabBarController
+        // (RaftIosTabBarController); shared finds its bridge through the host id in pageData.
+        // Any other page drops an inherited id so it never publishes into a shell's bar.
+        var hostPageData = pageData
+        hostPageData.removeValue(forKey: RaftIosTabBarController.hostIdPageDataKey)
+        var nativeTabBar: (hostId: String, bridge: RaftNativeTabBarBridge)?
+        if RaftIosTabBarController.hostsNativeTabBar(pageName: pageName) {
+            let hostId = UUID().uuidString
+            let bridge = RaftNativeTabBarBridge()
+            RaftNativeTabBarRegistry.shared.register(hostId: hostId, bridge: bridge)
+            hostPageData[RaftIosTabBarController.hostIdPageDataKey] = hostId
+            nativeTabBar = (hostId, bridge)
+        }
+        let container = RaftPageViewController(pageName: pageName, pageData: hostPageData)
         container.raftInitialBackgroundColor = RaftCmpIos.shared.lastCanvasColor()
         let bridge = RaftCmpBridgeHost()
         bridge.hostController = container
@@ -38,7 +51,17 @@ import shared
             navigator: navigator,
             listener: listener
         )
-        container.attachContent(page.viewController) { event, data in
+        let content: UIViewController
+        if let nativeTabBar = nativeTabBar {
+            content = RaftIosTabBarController(
+                content: page.viewController,
+                bridge: nativeTabBar.bridge,
+                hostId: nativeTabBar.hostId
+            )
+        } else {
+            content = page.viewController
+        }
+        container.attachContent(content) { event, data in
             page.sendEvent(event: event, dataJson: RaftPageControllerFactory.jsonText(data))
         }
         // Full-page back swipe: Compose horizontal content reports back-direction consumption.
