@@ -226,6 +226,33 @@ class RaftDisplaySemanticsTest {
             assertEquals(9.5f, (placeTitle.left - placeIcon.right) / d, 0.5f)
         }
 
+    /** A DM's aside parts stand 6dp apart (web `SIDEBAR_ROW_TRAILING_CLASS`), a place row's 4dp. */
+    @Test
+    fun aSidebarPeerRowSpacesItsAsideBy6dp() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarItem("Bugen", onClick = {}, variant = RaftSidebarItemVariant.Peer, trailing = {
+                            Box(Modifier.size(10.dp).testTag("peer-a"))
+                            Box(Modifier.size(10.dp).testTag("peer-b"))
+                        })
+                        RaftSidebarItem("general", onClick = {}, trailing = {
+                            Box(Modifier.size(10.dp).testTag("place-a"))
+                            Box(Modifier.size(10.dp).testTag("place-b"))
+                        })
+                    }
+                },
+            )
+            fun gap(a: String, b: String): Float {
+                val left = onNodeWithTag(a, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                val right = onNodeWithTag(b, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                return (right.left - left.right) / density.density
+            }
+            assertEquals(6f, gap("peer-a", "peer-b"), 0.5f)
+            assertEquals(4f, gap("place-a", "place-b"), 0.5f)
+        }
+
     @Test
     fun aSidebarRowWithoutALongClickHasNoLongClickAction() =
         runComposeUiTest {

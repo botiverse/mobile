@@ -69,6 +69,9 @@ internal object RaftSidebarItemMetrics {
     /** `gap-2` between icon, text and aside. */
     val Gap = 8.dp
 
+    /** `SidebarItemAside` `gap-1` between its parts. */
+    val AsideGap = 4.dp
+
     /** `my-px`: rows stand 2dp apart. */
     val MarginVertical = 1.dp
 
@@ -80,25 +83,33 @@ internal object RaftSidebarItemMetrics {
 /** The icon size [RaftSidebarItemIcon] draws at: the enclosing row's [RaftSidebarItemVariant]. */
 private val LocalRaftSidebarItemIconSize = staticCompositionLocalOf { RaftSidebarItemMetrics.Icon }
 
-/** Which kind of sidebar row: it sets the leading slot and the gap after it. */
+/** Which kind of sidebar row: it sets the leading slot, the gap after it and the aside's gap. */
 enum class RaftSidebarItemVariant(
     internal val leadingBox: Dp,
     internal val icon: Dp,
     internal val leadingGap: Dp,
+    internal val asideGap: Dp,
 ) {
     /**
-     * A place in a group (a channel, a pinned row, a DM): `SidebarItemIcon` /
-     * `SidebarItemChannelIcon`, a 19dp slot with a 16dp icon or a 19dp avatar, `gap-2` (8dp)
-     * to the name.
+     * A place in a group (a channel, a pinned row, a custom group's row):
+     * `SidebarItemIcon` / `SidebarItemChannelIcon`, a 19dp slot with a 16dp icon or a 19dp
+     * avatar, `gap-2` (8dp) to the name; the aside's parts `gap-1` (4dp) apart.
      */
-    Default(RaftSidebarItemMetrics.IconBox, RaftSidebarItemMetrics.Icon, RaftSidebarItemMetrics.Gap),
+    Default(RaftSidebarItemMetrics.IconBox, RaftSidebarItemMetrics.Icon, RaftSidebarItemMetrics.Gap, RaftSidebarItemMetrics.AsideGap),
 
     /**
      * An entry row at the top of the phone Home (Search, Activity, Saved; web
      * `SIDEBAR_ENTRY_ROW_CLASS` / `SIDEBAR_ENTRY_ICON_CLASS`, raft-ui ListRow `entry` +
      * `ListRowIcon`): a 20dp icon, `gap-3` (12dp) to the name. Never selected (Home rules).
      */
-    Entry(20.dp, 20.dp, 12.dp),
+    Entry(20.dp, 20.dp, 12.dp, RaftSidebarItemMetrics.AsideGap),
+
+    /**
+     * A direct message (web `SidebarPeerRowBody`): the 19dp avatar 8dp from the name, and
+     * the aside's parts (the draft mark, the agent's activity or runtime, the count)
+     * `gap-1.5` (6dp) apart (web `SIDEBAR_ROW_TRAILING_CLASS`).
+     */
+    Peer(RaftSidebarItemMetrics.IconBox, RaftSidebarItemMetrics.Icon, RaftSidebarItemMetrics.Gap, 6.dp),
 }
 
 /**
@@ -120,8 +131,8 @@ enum class RaftSidebarItemVariant(
  *   icon ink. The name truncates before it; the slot never does.
  * - [subtitle]: `text-footnote` `foreground-muted` on the title's baseline, 4dp after it.
  *   It gives up its room before the title does.
- * - [trailing]: the aside (`gap-1`): [RaftSidebarItemMarks], [RaftSidebarItemMeta], a
- *   status pixel.
+ * - [trailing]: the aside (`gap-1`; `gap-1.5` in a [RaftSidebarItemVariant.Peer] row):
+ *   [RaftSidebarItemMarks], [RaftSidebarItemMeta], a status pixel.
  *
  * States (States: navigation selection): [selected] is "you are here", the yellow sticker:
  * `brand` fill, 1.5dp `sticker-ink` edge, die-cut edge in dark, `sticker-ink` for every
@@ -339,7 +350,7 @@ private fun RaftSidebarItemLayout(
             }
             if (trailing != null) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(variant.asideGap),
                     verticalAlignment = Alignment.CenterVertically,
                     content = trailing,
                 )

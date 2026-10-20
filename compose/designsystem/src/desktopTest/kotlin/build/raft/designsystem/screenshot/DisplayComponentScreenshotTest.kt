@@ -638,8 +638,8 @@ class DisplayComponentScreenshotTest {
 
     /**
      * raft-ui Sidebar rows at the phone size (Home): the entry rows (20dp icon, 12dp gap),
-     * group headers (collapsed, with attention, expanded with controls) and channel rows in
-     * every state: mention plus
+     * group headers (collapsed, with attention, expanded with controls), DM rows (the peer
+     * variant: aside parts 6dp apart) and channel rows in every state: mention plus
      * threads, unread plus threads, muted with unread, plain unread, selected (the yellow
      * sticker), private, away, a subtitle, pressed, a row and a header whose press-and-hold
      * menu is open (pressed; the header's attention pixel hidden), focused, a truncated
@@ -702,11 +702,17 @@ class DisplayComponentScreenshotTest {
                 RaftSidebarChannelItem("general", onClick = {}, selected = true, unreadCount = 120)
                 RaftSidebarChannelItem("leadership", onClick = {}, isPrivate = true)
                 RaftSidebarChannelItem("acme-shared", onClick = {}, tone = RaftRowTone.Away)
+                // A DM: the aside's parts 6dp apart.
                 RaftSidebarItem(
                     "Bugen",
                     onClick = {},
+                    variant = RaftSidebarItemVariant.Peer,
                     subtitle = "planning the release candidate for next week",
                     leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, initials = "B", presence = RaftPresence.Online) },
+                    trailing = {
+                        RaftSidebarItemMeta("Codex")
+                        RaftUnreadCount(4)
+                    },
                 )
                 StateCell(pressed = true) { RaftSidebarChannelItem("pressed", onClick = {}) }
                 // Press and hold opened the row's menu: it keeps the press overlay.
@@ -734,6 +740,7 @@ class DisplayComponentScreenshotTest {
                 RaftSidebarItem(
                     "Wug",
                     onClick = {},
+                    variant = RaftSidebarItemVariant.Peer,
                     selected = true,
                     subtitle = "idle",
                     leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, initials = "W") },
