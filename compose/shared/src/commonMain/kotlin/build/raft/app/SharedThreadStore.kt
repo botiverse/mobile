@@ -840,7 +840,9 @@ internal class SharedThreadMessageStore(
                 getScoped(scopeId, channelId, messageId)
                     ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
                     ?.let { message -> return SharedThreadMessageResolution.Loaded(message) }
-                inFlight[key] ?: scope.async {
+                // A completed producer stays in [inFlight] until its cleanup coroutine runs on
+                // [scope]; joining it then would hand a new request the old Missing/Error.
+                inFlight[key]?.takeUnless { producer -> producer.isCompleted } ?: scope.async {
                     val fetched = fetch()
                     synchronized(messageLock) {
                         val current =
