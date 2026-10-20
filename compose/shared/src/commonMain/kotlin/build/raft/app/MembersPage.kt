@@ -169,6 +169,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -12424,19 +12425,21 @@ private fun MembersAgentReminderCard(
     timeContext: RaftTimeContext,
     onOpenMessageRef: (String) -> Unit
 ) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    // raft-ui Card (default): the card title, when it fires (relative, then the date in
+    // Space Mono), then its recurrence and the message it points at as badges.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+            .membersRaftCard()
+            .padding(RaftAppSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(
+        RaftText(
             text = reminder.title,
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextBlack,
+            style = typography.cardTitle,
+            color = colors.foreground,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )
@@ -12451,84 +12454,62 @@ private fun MembersAgentReminderCard(
             ) {
                 RaftLucideIcon(
                     RaftLucideIconName.Clock3,
-                    modifier = Modifier.size(12.dp),
-                    color = "#99000000"
+                    modifier = Modifier.size(14.dp),
+                    color = raftArgbHex(colors.foregroundMuted)
                 )
-                Text(
+                RaftText(
                     text = reminder.fireAt.membersReminderRelativeTime(timeContext),
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium)
-                        .copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.TextBlack.copy(alpha = 0.6f),
+                    style = typography.footnote.copy(fontWeight = FontWeight.Medium),
+                    color = colors.foregroundMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Text(
+            RaftText(
                 text = reminder.fireAt.membersReminderShortDateTime(timeContext),
-                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack.copy(alpha = 0.5f),
+                style = typography.monoMeta,
+                color = colors.foregroundHint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
         }
-        reminder.recurrenceDescription?.takeIf { it.isNotBlank() }?.let { recurrence ->
-            MembersAgentReminderChip(
-                iconName = RaftLucideIconName.RefreshCw,
-                text = recurrence,
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
-                background = RaftColor.AccentLavender.copy(alpha = 0.3f),
-                textColor = RaftColor.TextBlack
-            )
+        val recurrence = reminder.recurrenceDescription?.takeIf { it.isNotBlank() }
+        val messageRef = reminder.messageRef?.takeIf { it.isNotBlank() }
+        if (recurrence != null || messageRef != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (recurrence != null) {
+                    RaftBadge(
+                        text = recurrence,
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Information,
+                        modifier = Modifier.weight(1f, fill = false),
+                        icon = { RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 13.dp) }
+                    )
+                }
+                if (messageRef != null) {
+                    val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
+                    RaftBadge(
+                        text = messageRef,
+                        appearance = RaftBadgeAppearance.Outline,
+                        enabled = true,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .then(
+                                if (permalink != null) {
+                                    Modifier.clickable(role = Role.Button) { onOpenMessageRef(permalink) }
+                                } else {
+                                    Modifier
+                                }
+                            ),
+                        icon = { RaftContentLucideIcon(RaftLucideIconName.Link2, size = 13.dp) }
+                    )
+                }
+            }
         }
-        reminder.messageRef?.takeIf { it.isNotBlank() }?.let { messageRef ->
-            val permalink = reminder.messagePermalink?.takeIf { it.isNotBlank() }
-            MembersAgentReminderChip(
-                iconName = RaftLucideIconName.Link2,
-                text = messageRef,
-                background = RaftColor.SurfaceWhite,
-                textColor =
-                    if (permalink != null) {
-                        RaftColor.TextBlack
-                    } else {
-                        RaftColor.TextBlack.copy(alpha = 0.7f)
-                    },
-                onClick = permalink?.let { link -> { onOpenMessageRef(link) } }
-            )
-        }
-    }
-}
-
-@Composable
-private fun MembersAgentReminderChip(
-    iconName: RaftLucideIconName,
-    text: String,
-    background: Color,
-    textColor: Color,
-    onClick: (() -> Unit)? = null
-) {
-    val interactionModifier =
-        if (onClick != null) {
-            Modifier.clickable(onClick = onClick)
-        } else {
-            Modifier
-        }
-    Row(
-        modifier = interactionModifier
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-            .background(background)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(11.dp), color = RaftColor.TextBlackArgb)
-        Text(
-            text = text,
-            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = textColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
