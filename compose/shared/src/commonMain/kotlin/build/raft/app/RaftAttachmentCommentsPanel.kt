@@ -26,9 +26,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.markdown.RaftMarkdownBody
@@ -47,6 +47,7 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiPalette
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 // web AttachmentCommentsPanel (packages/web/src/components/message/AttachmentCommentsPanel.tsx):
@@ -71,6 +72,11 @@ private val CommentComposerGap = 8.dp
 private val CommentComposerInputMinHeight = 24.dp
 private val CommentComposerInputMaxHeight = 120.dp
 private val CommentChipIconSize = 12.dp
+// On the web the card's anchor chip is `inline-flex`, so it sits on a line box whose strut
+// reaches below the chip's baseline; the body starts that much lower than the `mt-1` alone.
+private val CommentChipLineBoxDescent = (8f / 3f).dp
+// web AvatarSlot `compact-list` for a person without a photo: lucide User at 12px.
+private val CommentAvatarIconSize = 12.dp
 
 /**
  * The attachment comments panel: the web `AttachmentCommentsPanel` on a phone. [onClose] adds
@@ -230,10 +236,25 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val agent = comment.senderType == "agent"
             RaftAvatar(
-                type = if (comment.senderType == "agent") RaftAvatarType.Agent else RaftAvatarType.Human,
+                type = if (agent) RaftAvatarType.Agent else RaftAvatarType.Human,
                 size = RaftAvatarSize.Xs,
-                modifier = Modifier.size(CommentAvatarSize)
+                modifier = Modifier.size(CommentAvatarSize),
+                image =
+                    if (agent) {
+                        null
+                    } else {
+                        {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                RaftLucideIcon(
+                                    RaftLucideIconName.User,
+                                    modifier = Modifier.size(CommentAvatarIconSize),
+                                    color = raftArgbHex(RaftUiPalette.stickerInk)
+                                )
+                            }
+                        }
+                    }
             )
             RaftText(
                 text = comment.senderName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
@@ -262,10 +283,10 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
             textStyle =
                 RaftType.Body.copy(
                     fontSize = RaftTheme.typography.footnote.fontSize,
-                    // web MarkdownContent `density="compact"`: footnote text on a 1.5 line.
-                    lineHeight = 1.5.em,
+                    lineHeight = RaftTheme.typography.footnote.lineHeight,
                     color = colors.foreground
-                )
+                ),
+            modifier = Modifier.padding(top = CommentChipLineBoxDescent)
         )
     }
 }
@@ -410,7 +431,13 @@ private fun AttachmentCommentComposer(
             autoFocus = false,
             onValueChange = onDraftChange,
             enabled = enabled,
-            textStyle = RaftType.Input.copy(color = if (enabled) colors.foreground else colors.foregroundDisabled),
+            // CSS wraps greedily (a break after `-` included); Compose's default paragraph
+            // strategy would re-balance the lines instead.
+            textStyle =
+                RaftType.Input.copy(
+                    color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                    lineBreak = LineBreak.Simple
+                ),
             placeholderColor = colors.foregroundHint,
             cursorBrush = SolidColor(colors.foreground),
             maxLines = 5,
