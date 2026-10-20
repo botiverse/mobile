@@ -154,6 +154,27 @@ class RaftDisplaySemanticsTest {
             assertEquals("Channel Options", action.label)
         }
 
+    /** The mark after a long name stays whole and inside the row; the name truncates. */
+    @Test
+    fun aSidebarRowKeepsItsTitleTrailingWhenTheNameTruncates() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Box(Modifier.width(240.dp)) {
+                        RaftSidebarChannelItem(
+                            "a-channel-name-long-enough-to-run-past-the-end-of-the-row",
+                            onClick = {},
+                            unreadCount = 3,
+                            titleTrailing = { Box(Modifier.size(16.dp).testTag("mark")) },
+                        )
+                    }
+                },
+            )
+            val mark = onNodeWithTag("mark", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(16f, mark.width / density.density, 0.5f)
+            assertTrue(mark.right / density.density < 240f, "mark ends at ${mark.right / density.density}dp")
+        }
+
     @Test
     fun aSidebarRowWithoutALongClickHasNoLongClickAction() =
         runComposeUiTest {

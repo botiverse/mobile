@@ -86,6 +86,9 @@ internal object RaftSidebarItemMetrics {
  * - [title]: `text-body` (16/24) at 600, one line with an ellipsis; 700 when
  *   [RaftRowTone.Unread] or [selected]. [RaftRowTone.Muted] writes it in
  *   `foreground-muted`, [RaftRowTone.Away] in `foreground-hint`.
+ * - [titleTrailing]: what goes right after the name, 4dp from it (`SidebarItemMetaIcon` in
+ *   `SidebarItemContent`: an activity-muted bell, a bridge badge), centred on it in the
+ *   icon ink. The name truncates before it; the slot never does.
  * - [subtitle]: `text-footnote` `foreground-muted` on the title's baseline, 4dp after it.
  *   It gives up its room before the title does.
  * - [trailing]: the aside (`gap-1`): [RaftSidebarItemMarks], [RaftSidebarItemMeta], a
@@ -119,6 +122,7 @@ fun RaftSidebarItem(
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null,
     menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -190,14 +194,36 @@ fun RaftSidebarItem(
             ) {
                 // The title is measured first, so it keeps its width while the subtitle
                 // (weighted) takes what is left: the subtitle gives way first.
-                RaftText(
-                    title,
-                    modifier = if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline(),
-                    style = typography.body.copy(fontWeight = titleWeight),
-                    color = look.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val titleModifier = if (subtitle == null) Modifier.weight(1f) else Modifier.alignByBaseline()
+                val titleStyle = typography.body.copy(fontWeight = titleWeight)
+                if (titleTrailing == null) {
+                    RaftText(
+                        title,
+                        modifier = titleModifier,
+                        style = titleStyle,
+                        color = look.ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    // The name and its slot as one piece (it keeps the name's baseline for the
+                    // subtitle): the slot is measured first, so only the name truncates.
+                    Row(
+                        titleModifier,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftText(
+                            title,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = titleStyle,
+                            color = look.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Box(contentAlignment = Alignment.Center) { titleTrailing() }
+                    }
+                }
                 if (subtitle != null) {
                     RaftText(
                         subtitle,
@@ -234,7 +260,8 @@ fun RaftSidebarItemIcon(glyph: RaftGlyph, modifier: Modifier = Modifier) {
  * `foreground-hint` (`SidebarItemChannelIcon`), then the name and its marks
  * ([RaftSidebarItemMarks]). Something unread or a mention turns a [RaftRowTone.Default]
  * row [RaftRowTone.Unread] (a 700 name); a muted or away tone stays. [trailing] goes
- * before the marks (a draft pencil, a status pixel). [onLongClick], [onLongClickLabel] and
+ * before the marks (a draft pencil, a status pixel); [titleTrailing] right after the name
+ * (the activity-muted bell, a bridge badge). [onLongClick], [onLongClickLabel] and
  * [menuOpen] are [RaftSidebarItem]'s: press and hold opens the channel's menu.
  */
 @Composable
@@ -254,6 +281,7 @@ fun RaftSidebarChannelItem(
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null,
     menuOpen: Boolean = false,
+    titleTrailing: (@Composable () -> Unit)? = null,
 ) {
     val waiting = unreadCount > 0 || threadCount > 0 || mentioned
     val resolvedTone = if (tone == RaftRowTone.Default && waiting) RaftRowTone.Unread else tone
@@ -279,6 +307,7 @@ fun RaftSidebarChannelItem(
         onLongClick = onLongClick,
         onLongClickLabel = onLongClickLabel,
         menuOpen = menuOpen,
+        titleTrailing = titleTrailing,
     )
 }
 

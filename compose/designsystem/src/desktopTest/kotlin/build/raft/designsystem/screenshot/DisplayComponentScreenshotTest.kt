@@ -640,8 +640,9 @@ class DisplayComponentScreenshotTest {
      * with attention, expanded with controls) and channel rows in every state: mention plus
      * threads, unread plus threads, muted with unread, plain unread, selected (the yellow
      * sticker), private, away, a subtitle, pressed, a row and a header whose press-and-hold
-     * menu is open (pressed; the header's attention pixel hidden), focused and a truncated
-     * name.
+     * menu is open (pressed; the header's attention pixel hidden), focused, a truncated
+     * name, and a mark right after the name (`titleTrailing`; with a long name, and on a
+     * selected row with a subtitle).
      */
     @Test
     fun sidebar() =
@@ -711,6 +712,22 @@ class DisplayComponentScreenshotTest {
                 StateCell(focused = true) { RaftSidebarChannelItem("focused", onClick = {}, unreadCount = 2) }
                 StateCell(focused = true) { RaftSidebarChannelItem("focused-selected", onClick = {}, selected = true) }
                 RaftSidebarChannelItem("a-channel-name-long-enough-to-run-past-the-end-of-the-row", onClick = {}, unreadCount = 9)
+                // A mark right after the name (activity muted, a bridge): the name truncates, the mark stays.
+                RaftSidebarChannelItem("release", onClick = {}, titleTrailing = { Glyph(RaftGlyph.Info, 14.dp) })
+                RaftSidebarChannelItem(
+                    "a-bridged-channel-name-long-enough-to-run-past-the-end",
+                    onClick = {},
+                    unreadCount = 3,
+                    titleTrailing = { Glyph(RaftGlyph.Copy, 14.dp) },
+                )
+                RaftSidebarItem(
+                    "Wug",
+                    onClick = {},
+                    selected = true,
+                    subtitle = "idle",
+                    leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, initials = "W") },
+                    titleTrailing = { Glyph(RaftGlyph.Info, 14.dp) },
+                )
                 RaftSidebarItem("This Mac", leading = { RaftSidebarItemIcon(RaftGlyph.Info) }, subtitle = "display-only row")
             }
         }
