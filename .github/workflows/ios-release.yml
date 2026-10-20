@@ -220,6 +220,29 @@ jobs:
           mkdir -p "$GUH"
           printf '%s\n' "org.gradle.jvmargs=-Xmx${HEAP} -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\\=\"-Xmx${HEAP},-Xss4m\"" >> "$GUH/gradle.properties"
           echo "Kotlin/Gradle heap for ${RAFT_MACOS_RUNNER}: ${HEAP}"
+
+      # ~/.konan (Kotlin/Native distribution + LLVM/libffi/sysroot deps) is not
+      # under ~/.gradle, so setup-gradle never restores it and every archive
+      # re-downloaded it inside the nested Xcode Gradle run. A cold ~/.konan is
+      # also what made Xcode's MR-bundle phase relink the framework (see
+      # visual-testing.yml). Keyed on the exact Kotlin version; actions/cache
+      # works on Blacksmith and GitHub-hosted macOS runners alike.
+      - name: Resolve Kotlin version
+        id: kotlin
+        shell: bash
+        run: |
+          set -euo pipefail
+          KOTLIN_VERSION="$(sed -n 's/^kotlin[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' compose/gradle/libs.versions.toml | head -n 1)"
+          [ -n "${KOTLIN_VERSION}" ] || { echo "::error::kotlin version not found in compose/gradle/libs.versions.toml"; exit 1; }
+          echo "version=${KOTLIN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Kotlin ${KOTLIN_VERSION}"
+
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-v1-${{ runner.os }}-${{ runner.arch }}-kotlin-${{ steps.kotlin.outputs.version }}
+
       - name: Ensure shared framework placeholder
         working-directory: compose
         shell: bash
@@ -287,6 +310,29 @@ jobs:
         shell: bash
         run: compose/iosApp/scripts/test_diagnostics_environment_rows.sh
 
+      # Link the release framework once, as its own visible step (same pattern
+      # as test.yml / visual-testing.yml), instead of inside xcodebuild's
+      # CocoaPods "[CP-User] Build shared" phase, whose output Xcode buffers
+      # until the phase ends. The archive below skips that phase with
+      # OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES and consumes this framework.
+      # platform/archs/configuration match what the archive passed to the
+      # phase before (generic iOS device, Release => iphoneos / arm64).
+      # The per-runner heap (12g, or 5g on macos-latest) comes from the
+      # $GRADLE_USER_HOME/gradle.properties written by the heap step above,
+      # which this ./gradlew reads like the Xcode-nested runs did.
+      - name: Build shared framework (Release, iosArm64)
+        working-directory: compose
+        shell: bash
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphoneos \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Release \
+            --no-daemon \
+            --console=plain \
+            --max-workers=${{ env.GRADLE_MAX_WORKERS }} \
+            --stacktrace
+
       - name: Archive app
         working-directory: compose/iosApp
         shell: bash
@@ -310,8 +356,16 @@ jobs:
             "DEVELOPMENT_TEAM=${TEAM_ID}"
             "CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}"
             "PROVISIONING_PROFILE_SPECIFIER=${PROFILE_SPECIFIER}"
+            # Device archive is arm64-only (the framework step links iosArm64).
+            "ARCHS=arm64"
+            # The framework was linked by the previous step: skip the CocoaPods
+            # "Build shared" phase, and let the MR-bundle phase reuse that link
+            # instead of relinking (~24 min; see compose/shared/build.gradle.kts).
+            "OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES"
+            "RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES"
           )
           set -o pipefail
+          ARCHIVE_LOG="${RUNNER_TEMP}/ios-release/xcodebuild-archive.log"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
@@ -319,8 +373,12 @@ jobs:
             -destination 'generic/platform=iOS' \
             -archivePath "${ARCHIVE_PATH}" \
             "${BUILD_SETTINGS[@]}" \
-            archive | tee "${RUNNER_TEMP}/ios-release/xcodebuild-archive.log"
+            archive | tee "${ARCHIVE_LOG}"
           echo "ARCHIVE_PATH=${ARCHIVE_PATH}" >> "$GITHUB_ENV"
+          # Surface a regression of the duplicate link without failing a release.
+          if grep -E '> Task :shared:link[A-Za-z0-9]*Framework[A-Za-z0-9]*$' "${ARCHIVE_LOG}"; then
+            echo "::warning::xcodebuild relinked the shared framework inside the archive (expected SKIPPED); the archive took the slow path."
+          fi
 
       - name: Export signed IPA
         working-directory: compose/iosApp
