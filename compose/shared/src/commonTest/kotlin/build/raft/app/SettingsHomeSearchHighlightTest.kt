@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -26,7 +28,7 @@ class SettingsHomeSearchHighlightTest {
     }
 
     @Test
-    fun highlightedAnnotatedStringKeepsOneTextNodeWithBackgroundRanges() {
+    fun highlightedAnnotatedStringKeepsOneTextNodeWithSearchHitRanges() {
         val annotated = homeSearchHighlightedAnnotatedString(
             text = "Find keyword here",
             query = "keyword"
@@ -39,20 +41,19 @@ class SettingsHomeSearchHighlightTest {
             ),
             annotated.spanStyles.map { it.start until it.end }
         )
-        assertEquals(RaftColor.BrandYellow, annotated.spanStyles.single().item.background)
-        assertEquals(RaftColor.TextBlack, annotated.spanStyles.single().item.color)
+        // raft-ui search hit: bold sticker-ink type; the brand sticker is drawn behind it.
+        val hit = annotated.spanStyles.single().item
+        assertEquals(RaftColor.StickerInk, hit.color)
+        assertEquals(raftFontFamilyForWeight(FontWeight.Bold), hit.fontFamily)
+        assertEquals(Color.Unspecified, hit.background)
     }
 
     @Test
-    fun searchResultTimestampsUseReactMonoMetadataFont() {
-        val regular = sharedHomeSearchTimestampTextStyle(compact = false)
-        val compact = sharedHomeSearchTimestampTextStyle(compact = true)
+    fun searchResultMetaUsesRaftMonoMetaFont() {
+        val meta = sharedHomeSearchTimestampTextStyle()
 
-        assertEquals(RaftMonoFamily, regular.fontFamily)
-        assertEquals(10.sp, regular.fontSize)
-        assertEquals(12.sp, regular.lineHeight)
-        assertEquals(RaftMonoFamily, compact.fontFamily)
-        assertEquals(9.sp, compact.fontSize)
-        assertEquals(11.sp, compact.lineHeight)
+        assertEquals(RaftMonoFamily, meta.fontFamily)
+        assertEquals(12.sp, meta.fontSize)
+        assertEquals(16.sp, meta.lineHeight)
     }
 }
