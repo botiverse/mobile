@@ -14,25 +14,49 @@ import kotlin.test.assertTrue
  */
 class ThreadOfflineLastKnownTipTest {
     @Test
-    fun insetIsReservedWhileTheFrameStandsInAndTheTipWaitsForTheRefreshToEnd() {
+    fun insetIsReservedWhileTheFrameStandsInAndTheTipWaitsForAFailedLoad() {
+        // Hands e0a5248d: the stand-in is published before its refresh starts, online too. No
+        // failure yet, so no "offline" tip, only the inset.
+        val opening =
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = false, mainLoadFailed = false)
+        assertTrue(opening.insetActive)
+        assertFalse(opening.tipVisible)
+
         // Durable frame rendered, network refresh still running: reserve the inset, no tip yet.
-        val refreshing = threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = true)
+        val refreshing =
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = true, mainLoadFailed = false)
         assertTrue(refreshing.insetActive)
         assertFalse(refreshing.tipVisible)
 
         // Refresh ended without replacing the frame (transient failure): tip on, inset unchanged (no jump).
-        val failed = threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = false)
+        val failed =
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = false, mainLoadFailed = true)
         assertTrue(failed.insetActive)
         assertTrue(failed.tipVisible)
+
+        // A recovery retry is running again after that failure: the tip waits for its answer.
+        assertFalse(
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "content", backgroundRefreshing = true, mainLoadFailed = true)
+                .tipVisible
+        )
     }
 
     @Test
     fun anEmptyLastKnownChannelIsAStandInToo() {
         // Task #1137: the empty channel carries the tip once the refresh has failed.
-        assertFalse(threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = true).tipVisible)
-        assertTrue(threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = false).tipVisible)
+        assertFalse(
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = true, mainLoadFailed = false)
+                .tipVisible
+        )
+        assertTrue(
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "empty", backgroundRefreshing = false, mainLoadFailed = true)
+                .tipVisible
+        )
         // A canonical empty answer (flag cleared) is an ordinary empty channel with no tip.
-        assertFalse(threadOfflineLastKnownChrome(durableLastKnown = false, status = "empty", backgroundRefreshing = false).tipVisible)
+        assertFalse(
+            threadOfflineLastKnownChrome(durableLastKnown = false, status = "empty", backgroundRefreshing = false, mainLoadFailed = false)
+                .tipVisible
+        )
     }
 
     @Test
@@ -40,16 +64,16 @@ class ThreadOfflineLastKnownTipTest {
         // A canonical answer cleared the flag: both go away with the content replacement.
         assertEquals(
             ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false),
-            threadOfflineLastKnownChrome(durableLastKnown = false, status = "content", backgroundRefreshing = false)
+            threadOfflineLastKnownChrome(durableLastKnown = false, status = "content", backgroundRefreshing = false, mainLoadFailed = false)
         )
         // The flag without rendered content (defensive: the store never produces this) shows nothing.
         assertEquals(
             ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false),
-            threadOfflineLastKnownChrome(durableLastKnown = true, status = "loading", backgroundRefreshing = false)
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "loading", backgroundRefreshing = false, mainLoadFailed = true)
         )
         assertEquals(
             ThreadOfflineLastKnownChrome(insetActive = false, tipVisible = false),
-            threadOfflineLastKnownChrome(durableLastKnown = true, status = "error", backgroundRefreshing = false)
+            threadOfflineLastKnownChrome(durableLastKnown = true, status = "error", backgroundRefreshing = false, mainLoadFailed = true)
         )
     }
 
@@ -63,9 +87,11 @@ class ThreadOfflineLastKnownTipTest {
                 status = "content",
                 backgroundRefreshing = false,
                 durableLastKnown = true,
+                mainLoadFailed = true,
                 messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
             )
         assertTrue(payload.toThreadTimelineSlice().durableLastKnown)
+        assertTrue(payload.toThreadTimelineSlice().mainLoadFailed)
         assertEquals(ThreadOfflineLastKnownChrome(insetActive = true, tipVisible = true), threadOfflineLastKnownChrome(payload))
 
         val replaced = payload.copy(durableLastKnown = false)
