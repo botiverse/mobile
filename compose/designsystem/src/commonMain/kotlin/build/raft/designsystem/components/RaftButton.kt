@@ -248,7 +248,7 @@ private fun RaftButtonBox(
                 .semantics { if (loading) disabled() }
                 .then(
                     if (widenTouchTarget) {
-                        Modifier.raftTouchTarget(enabled && !loading, source, onClick)
+                        Modifier.raftTouchTarget(enabled && !loading, source, onClick, onLongClick = onLongClick?.let { long -> { if (!loading) long() } })
                     } else {
                         Modifier
                     },
@@ -414,6 +414,7 @@ fun RaftIconButton(
     val box = if (onFrame) 36.dp else size.box
     val glyph = if (onFrame) 20.dp else size.glyph
     val description = contentDescription
+    require(description != null) { "RaftIconButton needs a name: pass tooltip or contentDescription" }
     val button: @Composable (Modifier) -> Unit = { outer ->
         RaftButtonBox(
             look = look,
