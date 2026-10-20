@@ -1794,6 +1794,8 @@ private fun RaftStructuralHomeShellContent(
     val directMessages = data.directMessages
     val selectedChannelId = data.selectedChannelId
     val selectedConversationSection = data.selectedConversationSection
+    val inboxUnreadCount = data.inboxUnreadCount
+    val inboxTotalCount = data.inboxTotalCount
     val savedCount = data.savedCount
     val notifications = data.notifications
     val inlineError = data.inlineError
@@ -1843,6 +1845,7 @@ private fun RaftStructuralHomeShellContent(
     val onCreateServerClick = callbacks.onCreateServerClick
     val onCreateChannelClick = callbacks.onCreateChannelClick
     val onTabSelected = callbacks.onTabSelected
+    val onInboxClick = callbacks.onInboxClick
     val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
     val onSavedClick = callbacks.onSavedClick
     val onSearchClick = callbacks.onSearchClick
@@ -2280,6 +2283,10 @@ private fun RaftStructuralHomeShellContent(
         dismissNotificationCenterForFocusLoss()
         onSearchClick()
     }
+    val onInboxClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
+        onInboxClick()
+    }
     val onSavedClickWithDismiss: () -> Unit = {
         dismissNotificationCenterForFocusLoss()
         onSavedClick()
@@ -2429,7 +2436,23 @@ private fun RaftStructuralHomeShellContent(
                                 raftPullToRefreshItem()
                                 item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
                                 item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
-                                // artin 2026-10-20: Activity is a bottom tab now; the Home list keeps Search and Saved.
+                                // artin 2026-10-20: the Home 动态 row stays alongside the Activity bottom tab (muscle
+                                // memory); it opens that same kept-alive tab via openHomeSecondaryDestination(Activity).
+                                item {
+                                    val activityProjection =
+                                        homeActivitySidebarProjection(
+                                            activityUnreadCount = inboxUnreadCount,
+                                            activityTotalCount = inboxTotalCount
+                                        )
+                                    SidebarActivityRow(
+                                        labels.inbox,
+                                        unreadCount = activityProjection.unreadLabel,
+                                        totalCount = activityProjection.totalLabel,
+                                        selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
+                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null
+                                    )
+                                }
                                 item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
                                 inlineError?.let { error ->
                                     item {
@@ -6334,6 +6357,26 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
         RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(14.dp))
         Text(label, style = RaftType.ButtonBold, color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+@Composable
+private fun SidebarActivityRow(
+    label: String,
+    unreadCount: String?,
+    totalCount: String?,
+    selected: Boolean = false,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    SidebarActionRow(
+        icon = RaftLucideIconName.Activity,
+        label = label,
+        selected = selected,
+        modifier = modifier,
+        badge = unreadCount,
+        trailingText = totalCount,
+        onClick = onClick
+    )
 }
 
 /**
