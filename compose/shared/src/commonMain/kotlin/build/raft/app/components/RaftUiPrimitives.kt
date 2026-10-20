@@ -1,6 +1,5 @@
 package build.raft.app.components
 
-import build.raft.app.raftDisplayUppercase
 import build.raft.app.Button as RaftAppButton
 import build.raft.app.RaftAppAvatar
 import build.raft.app.RaftColor
@@ -11,7 +10,6 @@ import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppStroke
 import build.raft.app.raftArgbHex
 import build.raft.app.RaftType
-import build.raft.app.raftSquareCorners
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
@@ -25,8 +23,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -35,9 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -288,12 +282,11 @@ internal fun RaftSectionHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val raft = raftActive()
             iconName?.let {
                 RaftLucideIcon(
                     it,
                     modifier = Modifier.size(16.dp),
-                    color = if (raft) raftArgbHex(RaftColor.ForegroundHint) else RaftColor.TextMutedGrayArgb
+                    color = raftArgbHex(RaftColor.ForegroundHint)
                 )
             }
             RaftAppSectionEyebrow(label = label, modifier = Modifier)
@@ -301,8 +294,8 @@ internal fun RaftSectionHeader(
                 // raft section count: Space Mono 12/16, hint ink.
                 Text(
                     text = it.toString(),
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = if (raft) 16.sp else 14.sp),
-                    color = if (raft) RaftColor.ForegroundHint else RaftColor.TextBlack.copy(alpha = 0.4f),
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = RaftColor.ForegroundHint,
                     maxLines = 1
                 )
             }
@@ -390,7 +383,7 @@ internal fun RaftAvatarListRow(
                     Text(
                         text = it,
                         style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
-                        color = if (raftActive()) RaftColor.ForegroundHint else RaftColor.TextBlack.copy(alpha = 0.5f),
+                        color = RaftColor.ForegroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

@@ -1,8 +1,6 @@
 package build.raft.app.components
 
-import build.raft.app.raftDisplayUppercase
 import build.raft.app.raftMenuWidth
-import build.raft.app.RaftAnchoredPopover
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingDefaultViewportGap
 import build.raft.app.RaftMonoFamily
@@ -19,7 +17,6 @@ import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import build.raft.app.TextField
 import build.raft.app.raftCaptureLiveRootAnchor
-import build.raft.app.raftSquareCorners
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.withRaftFontWeight
 import build.raft.app.raftArgbHex
@@ -38,21 +35,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import com.tencent.tmm.kmmresource.compose.stringResource
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,100 +86,18 @@ internal fun RaftSelectionPopover(
     onClear: () -> Unit = {},
     onSelect: (RaftSelectionPopoverOption) -> Unit = {}
 ) {
-    if (raftActive()) {
-        RaftLookSelectionPopover(
-            title = title,
-            options = options,
-            modifier = modifier,
-            showHeader = showHeader,
-            showClear = showClear,
-            search = search,
-            searchPlaceholder = searchPlaceholder,
-            emptyLabel = emptyLabel,
-            onClear = onClear,
-            onSelect = onSelect
-        )
-        return
-    }
-    Box(modifier = modifier.fillMaxWidth().padding(end = 3.dp, bottom = 3.dp)) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .offset(x = 3.dp, y = 3.dp)
-                    .background(RaftColor.ShadowBlack)
-        )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite, RectangleShape)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack, RectangleShape)
-                    .raftSquareCorners()
-        ) {
-            if (showHeader) {
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(34.dp)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title.raftDisplayUppercase(),
-                        style = RaftType.SectionLabel.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 1.0.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.60f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (showClear) {
-                        Text(
-                            text = stringResource(MR.strings.common_clear),
-                            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.5.sp).withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.TextBlack.copy(alpha = 0.50f),
-                            maxLines = 1,
-                            modifier = Modifier.clickable { onClear() }
-                        )
-                    }
-                }
-                RaftThinDivider()
-            }
-            if (search != null) {
-                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
-                    RaftBrutalInputField(
-                        value = search,
-                        onValueChange = {},
-                        placeholder = searchPlaceholder,
-                        autoFocus = false,
-                        fieldMinHeight = 30.dp,
-                        horizontalPadding = 8.dp,
-                        verticalPadding = 5.dp,
-                        textStyle = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
-                        showShadow = true
-                    )
-                }
-                RaftThinDivider()
-            }
-            if (options.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().height(44.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = emptyLabel ?: stringResource(MR.strings.common_no_matches),
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextBlack.copy(alpha = 0.40f)
-                    )
-                }
-            } else {
-                options.forEachIndexed { index, option ->
-                    RaftSelectionPopoverOptionRow(option = option, onSelect = onSelect)
-                    if (index != options.lastIndex) {
-                        RaftSubtleDivider()
-                    }
-                }
-            }
-        }
-    }
+    RaftLookSelectionPopover(
+        title = title,
+        options = options,
+        modifier = modifier,
+        showHeader = showHeader,
+        showClear = showClear,
+        search = search,
+        searchPlaceholder = searchPlaceholder,
+        emptyLabel = emptyLabel,
+        onClear = onClear,
+        onSelect = onSelect
+    )
 }
 
 // raft selection-popover geometry (web SelectionPopover): header px-4 pt-2.5 pb-1 with a
@@ -407,73 +317,34 @@ internal fun RaftMenuItemRow(
     dividerBefore: Boolean = false,
     onClick: () -> Unit = {}
 ) {
-    if (raftActive()) {
-        // raft-ui MenuItem: min 36dp, control radius, px-2.5 py-1.5, 10dp gap, callout
-        // 14/20 medium ink, 16dp icon in icon ink, mono 12/16 hint trailing; disabled ink.
-        // Separators are the menu's `-mx-1.5 my-1.5` hairline.
-        Column(modifier = modifier.fillMaxWidth()) {
-            if (dividerBefore) {
-                RaftLookSeparator(verticalSpacing = 6.dp)
-            }
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(RaftMetrics.MenuRowHeight)
-                        .clickable(enabled = enabled) { onClick() }
-                        .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
-                horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                leadingIconName?.let {
-                    RaftLucideIcon(
-                        it,
-                        modifier = Modifier.size(16.dp),
-                        color = raftArgbHex(if (enabled) RaftColor.TextMuted else RaftColor.ForegroundDisabled)
-                    )
-                }
-                Text(
-                    text = label,
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Medium),
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                trailing?.let {
-                    Text(
-                        text = it,
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = RaftColor.ForegroundHint,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-        return
-    }
+    // raft-ui MenuItem: min 36dp, control radius, px-2.5 py-1.5, 10dp gap, callout
+    // 14/20 medium ink, 16dp icon in icon ink, mono 12/16 hint trailing; disabled ink.
+    // Separators are the menu's `-mx-1.5 my-1.5` hairline.
     Column(modifier = modifier.fillMaxWidth()) {
         if (dividerBefore) {
-            RaftSubtleDivider()
+            RaftLookSeparator(verticalSpacing = 6.dp)
         }
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(38.dp)
-                    .background(RaftColor.SurfaceWhite)
+                    .height(RaftMetrics.MenuRowHeight)
                     .clickable(enabled = enabled) { onClick() }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(horizontal = RaftMetrics.MenuItemPaddingHorizontal),
+            horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap),
             verticalAlignment = Alignment.CenterVertically
         ) {
             leadingIconName?.let {
-                RaftLucideIcon(it, modifier = Modifier.size(14.dp), color = if (enabled) "#FF000000" else RaftColor.TextMutedGrayArgb)
+                RaftLucideIcon(
+                    it,
+                    modifier = Modifier.size(16.dp),
+                    color = raftArgbHex(if (enabled) RaftColor.TextMuted else RaftColor.ForegroundDisabled)
+                )
             }
             Text(
                 text = label,
-                style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp).withRaftFontWeight(FontWeight.Medium),
-                color = if (enabled) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.30f),
+                style = RaftType.Body.withRaftFontWeight(FontWeight.Medium),
+                color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -481,8 +352,8 @@ internal fun RaftMenuItemRow(
             trailing?.let {
                 Text(
                     text = it,
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
-                    color = RaftColor.TextBlack.copy(alpha = 0.40f),
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                    color = RaftColor.ForegroundHint,
                     maxLines = 1
                 )
             }
@@ -501,58 +372,15 @@ internal fun RaftAppSelectTrigger(
     height: Dp = 40.dp,
     onClick: () -> Unit = {}
 ) {
-    if (raftActive()) {
-        RaftLookSelectTrigger(
-            label = label,
-            placeholder = label.isBlank(),
-            modifier = modifier,
-            enabled = enabled,
-            expanded = expanded,
-            height = raftFieldHeight(height),
-            onClick = onClick
-        )
-        return
-    }
-    val shadowOffset = RaftShadow.BrutalSmall
-    val contentColor = if (enabled) RaftColor.TextBlack else RaftColor.TextBlack.copy(alpha = 0.50f)
-    val backgroundColor = if (enabled) RaftColor.SurfaceWhite else Color(0xFFF3F4F6)
-    Box(modifier = modifier.fillMaxWidth().height(height + shadowOffset)) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(RaftColor.ShadowBlack)
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .background(backgroundColor)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .clickable(enabled = enabled) { onClick() }
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label.ifBlank { "Select..." },
-                style = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            RaftLucideIcon(
-                RaftLucideIconName.ChevronDown,
-                modifier = Modifier.size(14.dp),
-                color = if (enabled) "#FF000000" else "#80000000",
-                rotationDegrees = if (expanded) 180f else 0f
-            )
-        }
-    }
+    RaftLookSelectTrigger(
+        label = label,
+        placeholder = label.isBlank(),
+        modifier = modifier,
+        enabled = enabled,
+        expanded = expanded,
+        height = raftFieldHeight(height),
+        onClick = onClick
+    )
 }
 
 /**
@@ -611,6 +439,7 @@ internal fun RaftLookSelectTrigger(
     }
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUiControlledSelectionPopover(
     expanded: Boolean,
@@ -639,24 +468,21 @@ internal fun RaftUiControlledSelectionPopover(
 ) {
     if (!expanded || anchor == null) return
     val density = LocalDensity.current
-    val raft = raftActive()
-    val headerHeight = if (showHeader) (if (raft) RaftSelectionHeaderHeight else 35.dp) else 0.dp
-    val searchHeight = if (search != null) (if (raft) RaftSelectionSearchHeight else 47.dp) else 0.dp
+    val headerHeight = if (showHeader) RaftSelectionHeaderHeight else 0.dp
+    val searchHeight = if (search != null) RaftSelectionSearchHeight else 0.dp
     val optionHeight =
-        when {
+        if (options.isEmpty()) {
             // raft: p-1.5 list, no row dividers, 36dp rows (empty row = callout + py-2).
-            raft && options.isEmpty() -> 36.dp + RaftMetrics.PopupPadding * 2
-            raft -> (RaftMetrics.MenuRowHeight.value * options.size).dp + RaftMetrics.PopupPadding * 2
-            options.isEmpty() -> emptyHeight
-            else -> ((rowHeight.value * options.size) + (RaftAppStroke.Thin.value * (options.size - 1).coerceAtLeast(0))).dp
+            36.dp + RaftMetrics.PopupPadding * 2
+        } else {
+            (RaftMetrics.MenuRowHeight.value * options.size).dp + RaftMetrics.PopupPadding * 2
         }
     // raft overlays float on a shadow that takes no layout space.
-    val reservedShadow = if (raft) 0.dp else shadowOffset
     val contentSize =
         with(density) {
             Size(
-                width = (width + reservedShadow).toPx(),
-                height = (headerHeight + searchHeight + optionHeight + reservedShadow).toPx()
+                width = width.toPx(),
+                height = (headerHeight + searchHeight + optionHeight).toPx()
             )
         }
     RaftModalAnchoredPopover(
@@ -717,26 +543,15 @@ internal fun RaftUiControlledSelect(
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
     val resolvedTriggerHeight = raftFieldHeight(triggerHeight)
-    if (raftActive()) {
-        RaftLookSelectTrigger(
-            label = displayLabel,
-            placeholder = selectedLabel.isBlank() && selectedOption == null,
-            modifier = modifier,
-            enabled = enabled,
-            expanded = expanded,
-            height = resolvedTriggerHeight,
-            onClick = onTriggerClick
-        )
-    } else {
-        RaftAppSelectTrigger(
-            label = displayLabel,
-            modifier = modifier,
-            enabled = enabled,
-            expanded = expanded,
-            height = triggerHeight,
-            onClick = onTriggerClick
-        )
-    }
+    RaftLookSelectTrigger(
+        label = displayLabel,
+        placeholder = selectedLabel.isBlank() && selectedOption == null,
+        modifier = modifier,
+        enabled = enabled,
+        expanded = expanded,
+        height = resolvedTriggerHeight,
+        onClick = onTriggerClick
+    )
     RaftUiControlledSelectionPopover(
         expanded = expanded && enabled,
         anchor = anchor,
@@ -837,20 +652,18 @@ internal fun RaftUiControlledMenu(
     if (!expanded) return
     val density = LocalDensity.current
     val effectiveRowCount = items.size.coerceAtLeast(1)
-    val raft = raftActive()
     // raft overlays float on a shadow that takes no layout space; the list sits in a p-1.5 popup.
-    val reservedShadow = if (raft) 0.dp else shadowOffset
-    val chromeHeight = if (raft) RaftMetrics.PopupPadding * 2 else 0.dp
+    val chromeHeight = RaftMetrics.PopupPadding * 2
     // raft: the surface turns the legacy 40dp row into `min-h-9` and widens to `min-w-60`.
-    val measuredRowHeight = if (raft && rowHeight == 40.dp) RaftMetrics.MenuRowHeight else rowHeight
-    val measuredWidth = if (raft) raftMenuWidth(width) else width
+    val measuredRowHeight = if (rowHeight == 40.dp) RaftMetrics.MenuRowHeight else rowHeight
+    val measuredWidth = raftMenuWidth(width)
     val contentSize =
         with(density) {
             Size(
-                width = (measuredWidth + reservedShadow).toPx(),
+                width = measuredWidth.toPx(),
                 height =
                     measuredRowHeight.toPx() * effectiveRowCount +
-                        (chromeHeight + reservedShadow).toPx()
+                        chromeHeight.toPx()
             )
         }
     RaftModalAnchoredPopover(
@@ -875,60 +688,4 @@ internal fun RaftUiControlledMenu(
             showDividers = showDividers
         )
     }
-}
-
-@Composable
-private fun RaftSelectionPopoverOptionRow(
-    option: RaftSelectionPopoverOption,
-    onSelect: (RaftSelectionPopoverOption) -> Unit
-) {
-    val rowEnabled = option.enabled
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(36.dp)
-                .background(RaftColor.SurfaceWhite)
-                .clickable(enabled = rowEnabled) { onSelect(option) }
-                .padding(horizontal = 12.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (option.reserveLeadingSlot || option.leadingIconName != null) {
-            Box(modifier = Modifier.width(20.dp), contentAlignment = Alignment.Center) {
-                option.leadingIconName?.let {
-                    RaftLucideIcon(it, modifier = Modifier.size(14.dp), color = if (rowEnabled) "#FF000000" else RaftColor.TextMutedGrayArgb)
-                }
-            }
-        }
-        Text(
-            text = option.label,
-            style =
-                RaftType.Caption
-                    .copy(fontSize = 12.sp, lineHeight = 18.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-            color =
-                when {
-                    !rowEnabled -> RaftColor.TextBlack.copy(alpha = 0.30f)
-                    option.italic -> RaftColor.TextBlack.copy(alpha = 0.70f)
-                    else -> RaftColor.TextBlack
-                },
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-        if (option.checked) {
-            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
-        }
-    }
-}
-
-@Composable
-private fun RaftThinDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack))
-}
-
-@Composable
-private fun RaftSubtleDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack.copy(alpha = 0.10f)))
 }

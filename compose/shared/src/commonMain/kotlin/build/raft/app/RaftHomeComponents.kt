@@ -11,7 +11,6 @@ import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftAppSkeletonVariant
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataResult
@@ -5994,7 +5993,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
             Modifier
                 .size(32.dp)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
-                .raftThemedCorners(RaftAppRadius.Sticker)
+                .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 // No ink fill behind an uploaded image: a transparent server avatar must show the
                 // surface it sits on (the yellow frame), not a black square. The ink tile belongs to
                 // the initial-letter fallback only (ServerAvatarFallbackLabel draws it).
@@ -7324,11 +7323,8 @@ internal fun RaftAppAvatar(
         }
     }
     // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
-    // never circles; brutal keeps square corners.
-    // The border follows the same shape as the clip: a rectangular border under a rounded clip
-    // loses its corner strokes and reads as a square-cornered tile (Hands dd79da45 follow-up).
-    val frameShape = if (raftActive()) RoundedCornerShape(RaftAppRadius.Sticker) else RectangleShape
-    val frameModifier = modifier.clip(frameShape)
+    // never circles.
+    val frameModifier = modifier.clip(RoundedCornerShape(RaftAppRadius.Sticker))
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)

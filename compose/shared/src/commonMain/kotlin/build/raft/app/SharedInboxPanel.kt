@@ -1579,7 +1579,6 @@ private fun SharedActivityList(
                     }
                 },
                 selectedId = "",
-                uppercaseLabels = false,
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
                     when (id) {

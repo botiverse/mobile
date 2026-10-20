@@ -34,7 +34,6 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
-import build.raft.app.components.raftActive
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalIconButton
@@ -21679,7 +21678,6 @@ internal fun SharedHomeSavedPanel(
                 anchor = menu.anchor,
                 items = contextMenuItems,
                 selectedId = "",
-                uppercaseLabels = false,
                 onDismiss = { activeMenu = null },
                 onSelect = { actionId ->
                     val item = menu.item
@@ -21905,8 +21903,8 @@ private fun SharedHomeSearchFilters(
     val scopeLabel = stringResource(MR.strings.search_filter_scope)
     val channelLabel = stringResource(MR.strings.search_filter_channel)
     // raft-ui PickerTriggerButton: an applied filter is the cyan `--info-soft` wash
-    // (web `appliedFilterProps`); the brutal register keeps its yellow sticker.
-    val appliedFill = if (raftActive()) RaftColor.InfoSoft else RaftColor.BrandYellow
+    // (web `appliedFilterProps`).
+    val appliedFill = RaftColor.InfoSoft
     SharedHomeSearchControlsBlock {
         val backSwipeRowState = rememberLazyListState()
         val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)

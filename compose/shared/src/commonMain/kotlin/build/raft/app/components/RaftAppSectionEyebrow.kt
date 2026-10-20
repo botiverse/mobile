@@ -1,6 +1,5 @@
 package build.raft.app.components
 
-import build.raft.app.raftDisplayUppercase
 import build.raft.app.RaftColor
 import build.raft.app.RaftType
 import build.raft.app.withRaftFontWeight
@@ -23,17 +22,16 @@ internal fun RaftAppSectionEyebrow(
 ) {
     // raft-ui section title (`rf-section`): 13/18 bold hint ink in the source case, no
     // tracking; hierarchy by size and colour, never ALL CAPS. Explicit caller metrics stay.
-    val raft = raftActive()
     Text(
-        text = if (raft) label else label.raftDisplayUppercase(),
+        text = label,
         style = RaftType.SectionLabel
             .copy(
-                fontSize = if (raft && fontSize == 12.sp) 13.sp else fontSize,
+                fontSize = if (fontSize == 12.sp) 13.sp else fontSize,
                 lineHeight = lineHeight,
-                letterSpacing = if (raft) 0.sp else RaftType.SectionLabel.letterSpacing
+                letterSpacing = 0.sp
             )
             .withRaftFontWeight(FontWeight.Bold),
-        color = if (raft && color == RaftColor.TextMutedGray) RaftColor.ForegroundHint else color,
+        color = if (color == RaftColor.TextMutedGray) RaftColor.ForegroundHint else color,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier

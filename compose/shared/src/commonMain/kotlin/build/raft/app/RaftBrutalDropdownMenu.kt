@@ -8,7 +8,6 @@ import androidx.compose.runtime.setValue
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
@@ -17,14 +16,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import build.raft.app.components.RaftMetrics
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -40,10 +37,6 @@ import androidx.compose.ui.unit.sp
 
 private const val RaftBrutalDropdownMenuWidthValue = 200f
 private const val RaftBrutalDropdownMenuRowHeightValue = 40f
-// #71: 8dp default vertical offset put the first menu row right at the
-// button's bottom edge — easy to mis-click the first action (Stop / Delete /
-// etc.) when the user intended the button. 16dp gives a clearer visual gap.
-private const val RaftBrutalDropdownMenuVerticalOffsetValue = 16f
 private const val RaftBrutalDropdownMenuShadowOffsetValue = 4f
 
 /**
@@ -86,20 +79,17 @@ internal fun RaftBrutalDropdownMenu(
     modifier: Modifier = Modifier,
     widthDp: Float = RaftBrutalDropdownMenuWidthValue,
     horizontalOffsetDp: Float = 0f,
-    // null = the register default: raft-ui DropdownMenuContent's `sideOffset ?? 6`, the
-    // brutal register's 16dp (#71).
+    // null = the default: raft-ui DropdownMenuContent's `sideOffset ?? 6`.
     verticalOffsetDp: Float? = null,
     horizontalAutoFlip: Boolean = true,
     verticalPlacement: RaftFloatingVerticalPlacement = RaftFloatingVerticalPlacement.Auto
 ) {
     val density = LocalDensity.current
-    val raft = raftActive()
     // raft-ui DropdownMenu content is `min-w-60`.
-    val popoverWidth = if (raft) raftMenuWidth(widthDp.dp) else widthDp.dp
-    val shadowOffsetDp = RaftBrutalDropdownMenuShadowOffsetValue.dp
+    val popoverWidth = raftMenuWidth(widthDp.dp)
     val rowHeight = RaftBrutalDropdownMenuRowHeightValue.dp
     // Card height = max(n * rowHeight, rowHeight) for a visible "no actions" placeholder
-    // when items is empty + shadow offset. RaftAnchoredPopover only needs an upper bound
+    // when items is empty. RaftAnchoredPopover only needs an upper bound
     // for vertical auto-flip; the actual content size is set by the Column inside, so this
     // is purely advisory. We always reserve at least one row so an empty items list still
     // produces a visible card (e.g. a non-admin user clicking the trigger still sees a
@@ -107,31 +97,17 @@ internal fun RaftBrutalDropdownMenu(
     val effectiveRowCount = items.size.coerceAtLeast(1)
     val contentSize =
         with(density) {
-            if (raft) {
-                // raft: 36dp rows in a p-1.5 popup; the float shadow takes no layout space.
-                Size(
-                    width = popoverWidth.toPx(),
-                    height =
-                        (effectiveRowCount * RaftMetrics.MenuRowHeight.value + RaftMetrics.PopupPadding.value * 2)
-                            .dp
-                            .toPx()
-                )
-            } else {
-                Size(
-                    width = (popoverWidth + shadowOffsetDp).toPx(),
-                    height =
-                        // Rows + the border the rows sit inside (react content-box, see
-                        // RaftBrutalDropdownMenuSurface) + the shadow (task #370).
-                        ((effectiveRowCount * RaftBrutalDropdownMenuRowHeightValue +
-                            RaftAppStroke.Default.value * 2).dp + shadowOffsetDp)
-                            .toPx()
-                )
-            }
+            // raft: 36dp rows in a p-1.5 popup; the float shadow takes no layout space.
+            Size(
+                width = popoverWidth.toPx(),
+                height =
+                    (effectiveRowCount * RaftMetrics.MenuRowHeight.value + RaftMetrics.PopupPadding.value * 2)
+                        .dp
+                        .toPx()
+            )
         }
     val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
-    val resolvedVerticalOffsetDp =
-        verticalOffsetDp
-            ?: if (raft) RaftMetrics.MenuSideOffset.value else RaftBrutalDropdownMenuVerticalOffsetValue
+    val resolvedVerticalOffsetDp = verticalOffsetDp ?: RaftMetrics.MenuSideOffset.value
     val verticalOffsetPx = with(density) { resolvedVerticalOffsetDp.dp.toPx() }
     val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
     RaftModalAnchoredPopover(
@@ -151,12 +127,12 @@ internal fun RaftBrutalDropdownMenu(
             modifier = Modifier,
             width = popoverWidth,
             rowHeight = rowHeight,
-            shadowOffset = shadowOffsetDp,
             onDismiss = onDismiss
         )
     }
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalDropdownMenuSurface(
     items: List<RaftBrutalDropdownMenuItem>,
@@ -176,71 +152,17 @@ internal fun RaftBrutalDropdownMenuSurface(
     iconSize: Dp = RaftMetrics.MenuIconSize,
     onDismiss: () -> Unit = {}
 ) {
-    if (raftActive()) {
-        RaftDropdownMenuSurface(
-            items = items,
-            onSelect = onSelect,
-            modifier = modifier,
-            width = width?.let(::raftMenuWidth),
-            rowHeight = rowHeight,
-            dividerBeforeIds = dividerBeforeIds,
-            headerContent = headerContent,
-            iconSize = iconSize,
-            onDismiss = onDismiss
-        )
-        return
-    }
-    Box(
-        modifier = modifier.padding(end = shadowOffset, bottom = shadowOffset)
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = shadowOffset, y = shadowOffset)
-                .background(RaftColor.ShadowBlack)
-        )
-        Column(
-            modifier = Modifier
-                .let { base -> if (width != null) base.width(width) else base.fillMaxWidth() }
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .raftFloatingContentClickTarget()
-                // react draws its 2px border around the rows (content-box), so the
-                // card is rows + 2*2dp tall and the rows are inset by the stroke;
-                // Compose paints the border over the content instead — pad the rows
-                // in by the stroke to match (task #370).
-                .padding(RaftAppStroke.Default)
-        ) {
-            headerContent?.let { header ->
-                header()
-                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
-            }
-            if (items.isEmpty()) {
-                RaftBrutalDropdownMenuEmptyRow(rowHeight = rowHeight)
-            } else {
-                items.forEachIndexed { index, item ->
-                    if (index > 0 && (showDividers || item.id in dividerBeforeIds)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(RaftAppStroke.Thin)
-                                .background(RaftColor.BorderBlack.copy(alpha = 0.1f))
-                        )
-                    }
-                    RaftBrutalDropdownMenuRow(
-                        item = item,
-                        rowHeight = rowHeight,
-                        onClick = {
-                            if (item.enabled) {
-                                onSelect(item.id)
-                            }
-                            onDismiss()
-                        }
-                    )
-                }
-            }
-        }
-    }
+    RaftDropdownMenuSurface(
+        items = items,
+        onSelect = onSelect,
+        modifier = modifier,
+        width = width?.let(::raftMenuWidth),
+        rowHeight = rowHeight,
+        dividerBeforeIds = dividerBeforeIds,
+        headerContent = headerContent,
+        iconSize = iconSize,
+        onDismiss = onDismiss
+    )
 }
 
 /** raft-ui menu popup width: the caller's width, never under `min-w-60`. */
@@ -361,125 +283,35 @@ internal fun RaftBrutalDropdownMenuRow(
                     onPressedChange = { pressed = it }
                 )
         )
-    if (raftActive()) {
-        RaftDropdownMenuRow(
-            item = item,
-            rowHeight = rowHeight,
-            iconSize = iconSize,
-            emphasized = emphasized,
-            pressed = pressed,
-            gestureModifier = Modifier.raftGesturePointerInput(gestureOwner, item.enabled) { owner ->
-                var gesture: RaftGestureSession<RaftBrutalDropdownRowGestureCallbacks>? = null
-                detectTapGestures(
-                    onPress = {
-                        val session = owner.beginGesture().also { gesture = it }
-                        val callbacks = session.currentCallbacksOrNull()
-                        if (callbacks != null && callbacks.enabled) {
-                            callbacks.onPressedChange(true)
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                gesture?.currentCallbacksOrNull()?.onPressedChange(false)
-                            }
-                        }
-                    },
-                    onTap = {
-                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                            if (callbacks.enabled) callbacks.onClick()
+    RaftDropdownMenuRow(
+        item = item,
+        rowHeight = rowHeight,
+        iconSize = iconSize,
+        emphasized = emphasized,
+        pressed = pressed,
+        gestureModifier = Modifier.raftGesturePointerInput(gestureOwner, item.enabled) { owner ->
+            var gesture: RaftGestureSession<RaftBrutalDropdownRowGestureCallbacks>? = null
+            detectTapGestures(
+                onPress = {
+                    val session = owner.beginGesture().also { gesture = it }
+                    val callbacks = session.currentCallbacksOrNull()
+                    if (callbacks != null && callbacks.enabled) {
+                        callbacks.onPressedChange(true)
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            gesture?.currentCallbacksOrNull()?.onPressedChange(false)
                         }
                     }
-                )
-            }
-        )
-        return
-    }
-    val rowBackground = if (item.destructive) {
-        // deliberate react-parity wash (menu destructive row / press soft-signal, web bg-*/N); triaged token-audit #1062
-        RaftColor.AccentRed.copy(alpha = 0.08f)
-    } else if (pressed && item.enabled) {
-        RaftColor.SoftSignal.copy(alpha = 0.30f) // react-parity: intentional bg-palette-yellow/30 wash
-    } else {
-        RaftColor.SurfaceWhite
-    }
-    val labelColor = if (item.destructive) {
-        RaftColor.AccentRed
-    } else if (!item.enabled) {
-        RaftColor.TextBlack.copy(alpha = 0.30f)
-    } else {
-        RaftColor.TextBlack
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(rowHeight)
-            .background(rowBackground)
-            .raftGesturePointerInput(gestureOwner, item.enabled) { owner ->
-                var gesture: RaftGestureSession<RaftBrutalDropdownRowGestureCallbacks>? = null
-                detectTapGestures(
-                    onPress = {
-                        val session = owner.beginGesture().also { gesture = it }
-                        val callbacks = session.currentCallbacksOrNull()
-                        if (callbacks != null && callbacks.enabled) {
-                            callbacks.onPressedChange(true)
-                            try {
-                                tryAwaitRelease()
-                            } finally {
-                                gesture?.currentCallbacksOrNull()?.onPressedChange(false)
-                            }
-                        }
-                    },
-                    onTap = {
-                        (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
-                            if (callbacks.enabled) callbacks.onClick()
-                        }
+                },
+                onTap = {
+                    (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.let { callbacks ->
+                        if (callbacks.enabled) callbacks.onClick()
                     }
-                )
-            }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item.icon?.let { icon ->
-            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                RaftLucideIcon(icon, modifier = Modifier.size(14.dp), color = if (item.destructive) "#FFD32F2F" else "#FF000000")
-            }
-        }
-        Text(
-            text = item.label,
-            // react menu rows are text-sm font-medium (14px/20px): measured cap
-            // heights in components.ui.menu-item.states are 14px-sized, and 12sp
-            // bold rendered visibly smaller/narrower labels (task #370).
-            style = RaftType.Caption.copy(
-                fontSize = 14.sp,
-                lineHeight = 20.sp
-            ).withRaftFontWeight(FontWeight.Medium),
-            color = labelColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-        item.trailing?.let {
-            Text(
-                text = it,
-                style = RaftType.Caption.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 14.sp
-                ),
-                color = RaftColor.TextBlack.copy(alpha = 0.40f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                }
             )
         }
-        item.trailingIcon?.let {
-            // Icon affordances are Lucide, never text glyphs (task #494) —
-            // e.g. the selected-item check the raft-ui menu shows.
-            RaftLucideIcon(
-                name = it,
-                color = RaftColor.TextBlackArgb,
-                modifier = Modifier.size(14.dp)
-            )
-        }
-    }
+    )
 }
 
 /**
@@ -554,27 +386,3 @@ private data class RaftBrutalDropdownRowGestureCallbacks(
     val onClick: () -> Unit,
     val onPressedChange: (Boolean) -> Unit
 )
-
-@Composable
-private fun RaftBrutalDropdownMenuEmptyRow(rowHeight: Dp) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(rowHeight)
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = stringResource(MR.strings.common_no_actions_available),
-            style = RaftType.Caption.copy(
-                fontSize = 11.sp,
-                lineHeight = 14.sp
-            ).withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}

@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.components.raftActive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -246,7 +245,7 @@ internal fun RaftModalDismissBarrier(
     // raft-ui dialogs dim with the `--layer-backdrop` token (black 65% light /
     // 60% dark); lighter, sheet-style veils keep their own alpha.
     val veil =
-        if (raftActive() && overlayAlpha >= 0.5f) {
+        if (overlayAlpha >= 0.5f) {
             RaftColor.Backdrop
         } else {
             RaftColor.TextBlack.copy(alpha = overlayAlpha)
