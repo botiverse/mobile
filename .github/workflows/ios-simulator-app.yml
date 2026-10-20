@@ -100,6 +100,25 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
+      # Link the Debug simulator framework once, as its own visible step. Before,
+      # the CocoaPods "Build shared" phase linked it inside xcodebuild (34 min,
+      # run 39422105488) and the "Copy kmmresource MR bundle to app" phase then
+      # relinked it (another 12 min). The build below skips the first phase
+      # (OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED) and the second reuses this link
+      # (RAFT_IOS_REUSE_LINKED_FRAMEWORK, compose/shared/build.gradle.kts).
+      - name: Sync shared framework (simulator, Debug)
+        working-directory: compose
+        env:
+          ARCHS_INPUT: ${{ inputs.archs }}
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs="${ARCHS_INPUT:-arm64}" \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
       # ARCHS is pinned (default arm64) because the generic Simulator destination
       # alone builds arm64 AND x86_64, and the CocoaPods "Build shared" phase then
       # links BOTH Kotlin/Native frameworks in one Gradle invocation under the
@@ -145,6 +164,8 @@ jobs:
             -derivedDataPath build/DerivedData \
             ARCHS="$archs" \
             CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             build-for-testing > "$log" 2>&1
           status=$?
           tail -60 "$log"
