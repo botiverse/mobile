@@ -1306,7 +1306,18 @@ data class SettingsComputerSnapshot(
     val createdAt: String? = null,
     val lastHeartbeat: String? = null,
     val apiKeyPrefix: String? = null,
-    val statusVersion: Long = 0L
+    val statusVersion: Long = 0L,
+    /** `machines.userId` — the machine creator, who may edit/remove it without a capability. */
+    val creatorUserId: String? = null,
+    /** The current user attached the Computer backing this machine (web counts this as manage authority). */
+    val attachedByCurrentUser: Boolean = false,
+    /** Active agents assigned to this machine (server `agentCount`). */
+    val agentCount: Int = 0,
+    /**
+     * The server's policy-aware `computerUpgradeAvailable` decision, only ever true for a managed
+     * Computer (web `shouldShowComputerUpgradeIndicator`); raw daemons never claim an update.
+     */
+    val upgradeAvailable: Boolean = false
 )
 
 data class SettingsComputerDetailSnapshot(
@@ -1318,14 +1329,14 @@ data class SettingsComputerDetailSnapshot(
     val workspacesError: SettingsSectionErrorSnapshot? = null,
     val agentsError: SettingsSectionErrorSnapshot? = null,
     /**
-     * #78: server-side `manageMachines` capability. Defaults to false to mirror
-     * the existing [SettingsComputersSnapshot.canAddComputer] hardcode — actual
-     * member-role permission detection is a follow-up. When false, the
-     * ComputerDetail page hides rename / delete / rotate-key actions; the
-     * server still enforces 403 on the API endpoints so unauthorized users
-     * can't bypass a permissive client.
+     * Either [canEditMachine] or [canRemoveMachine]: the page shows its Actions section. The
+     * server still enforces 403 on the API endpoints, so a permissive client cannot bypass it.
      */
-    val canManageMachines: Boolean = false
+    val canManageMachines: Boolean = false,
+    /** Rename / description: creator, attaching user, or the `editMachines` capability (owner/admin). */
+    val canEditMachine: Boolean = false,
+    /** Delete: creator, attaching user, or the `removeMachines` capability (owner/admin). */
+    val canRemoveMachine: Boolean = false
 )
 
 data class SettingsSectionErrorSnapshot(

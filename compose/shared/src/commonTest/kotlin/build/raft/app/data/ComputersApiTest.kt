@@ -109,6 +109,36 @@ class ComputersApiTest {
     }
 
     @Test
+    fun upgradeFlagMapsFromTheServerPolicyDecisionForComputersOnly() = runPortableCoroutineTest {
+        // Wire fields per botiverse/slock c1105a176: MachineReadModel (services/machineReadModel.ts) and the
+        // GET /servers/:id/machines projection (routes/servers.ts) that adds computerUpgradeAvailable.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"Studio","status":"online","isComputer":true,"computerVersion":"1.0.0",
+               "computerUpgradeAvailable":true,"userId":"user-1","computerAttachedByCurrentUser":true,"agentCount":2},
+              {"id":"c-2","name":"Laptop","status":"offline","isComputer":true,"computerVersion":"0.1.0",
+               "computerUpgradeAvailable":false,"userId":"user-2","computerAttachedByCurrentUser":false,"agentCount":0},
+              {"id":"d-1","name":"Daemon","status":"online","isComputer":false,"daemonVersion":"0.1.0",
+               "computerUpgradeAvailable":null,"userId":"user-3","computerAttachedByCurrentUser":false,"agentCount":1}
+            ],"latestDaemonVersion":null,"latestComputerVersion":"9.9.9"}
+            """.trimIndent()
+        val summary =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data
+        val snapshots = summary.machines.map { it.toSettingsComputerSnapshot() }.associateBy { it.id }
+
+        assertEquals(true, snapshots.getValue("c-1").upgradeAvailable)
+        assertEquals(false, snapshots.getValue("c-2").upgradeAvailable)
+        assertEquals(false, snapshots.getValue("d-1").upgradeAvailable)
+        assertEquals("user-1", snapshots.getValue("c-1").creatorUserId)
+        assertEquals(true, snapshots.getValue("c-1").attachedByCurrentUser)
+        assertEquals(2, snapshots.getValue("c-1").agentCount)
+        assertEquals(1, snapshots.getValue("d-1").agentCount)
+    }
+
+    @Test
     fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract

@@ -427,7 +427,15 @@ internal data class ComputerSummary(
     val os: String?,
     val description: String?,
     val lastHeartbeat: String?,
-    val createdAt: String?
+    val createdAt: String?,
+    /** `machines.userId`: the user who registered the machine (server's "machine creator" authority). */
+    val creatorUserId: String? = null,
+    /** True when the requester attached the Computer backing this machine (false for raw daemons). */
+    val attachedByCurrentUser: Boolean = false,
+    /** Active agents assigned to the machine. */
+    val agentCount: Int = 0,
+    /** The server's policy-aware upgrade decision; null for raw daemons / older servers. */
+    val computerUpgradeAvailable: Boolean? = null
 )
 
 internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKey: String, val apiKeyPrefix: String)
@@ -593,7 +601,13 @@ private data class ComputerDto(
     val os: String? = null,
     val description: String? = null,
     val lastHeartbeat: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    // slock packages/server/src/services/machineReadModel.ts (MachineReadModel) and the
+    // GET /servers/:id/machines projection in routes/servers.ts.
+    val userId: String? = null,
+    val computerAttachedByCurrentUser: Boolean = false,
+    val agentCount: Int = 0,
+    val computerUpgradeAvailable: Boolean? = null
 )
 
 /**
@@ -618,7 +632,8 @@ private data class MachineRenameDto(
     val os: String? = null,
     val description: String? = null,
     val lastHeartbeat: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    val userId: String? = null
 )
 
 internal enum class ComputerStatus(val wire: String) {
@@ -651,7 +666,11 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         os = os,
         description = description,
         lastHeartbeat = lastHeartbeat,
-        createdAt = createdAt
+        createdAt = createdAt,
+        creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() },
+        attachedByCurrentUser = computerAttachedByCurrentUser,
+        agentCount = agentCount.coerceAtLeast(0),
+        computerUpgradeAvailable = computerUpgradeAvailable
     )
 }
 
@@ -671,7 +690,8 @@ private fun MachineRenameDto.toSummary(): ComputerSummary? {
         os = os,
         description = description,
         lastHeartbeat = lastHeartbeat,
-        createdAt = createdAt
+        createdAt = createdAt,
+        creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() }
     )
 }
 
