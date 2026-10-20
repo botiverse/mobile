@@ -1,6 +1,8 @@
 package build.raft.app.components
 
 import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAvatarStep
+import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftBrutalDropdownMenuItem
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftBrutalDropdownMenuSurface
@@ -590,47 +592,22 @@ internal fun RaftUiAvatar(
     size: Dp = 32.dp,
     badge: Boolean = false
 ) {
-    // raft-ui Avatar: square sticker (4dp radius, 1.5dp sticker-ink edge; agents on
-    // `--inactive`, humans lavender); the presence badge is an 11dp square pixel that
-    // overhangs the corner by 4dp with a 2dp panel-coloured outline.
-    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
-    val badgeSize = if (size >= 48.dp) 14.dp else 11.dp
-    Box(modifier = modifier.size(size + if (badge) 4.dp else 0.dp)) {
-        // The fallback art is the app avatar; the sticker frame (clip + ink edge, which
-        // Kuikly paints over the children) comes from this wrapper.
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .clip(shape)
-                    .background(if (type == RaftUiAvatarType.Agent) RaftColor.Inactive else RaftColor.AccentLavender, shape)
-                    .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
-            contentAlignment = Alignment.Center
+    // raft-ui Avatar: the app avatar's square sticker (4dp radius, 1.5dp sticker-ink
+    // edge, sticker-edge ring; agents on `inactive`, humans lavender, initials sized per
+    // step) with the AvatarBadge presence light scaled to the nearest raft-ui step.
+    // Reserve what the light passes the avatar's edge by: its overhang plus the cut-out.
+    val step = RaftAvatarStep.nearest(size)
+    Box(modifier = modifier.size(size + if (badge) step.badgeOverhang + step.badgeCutout else 0.dp)) {
+        RaftAvatarWithStatus(
+            statusColor = if (badge) RaftColor.PresenceOnline else null,
+            avatarSize = size
         ) {
             RaftAppAvatar(
                 avatarWireValue = null,
                 label = label,
                 avatarSize = size,
-                borderWidth = 0.dp
+                fallbackFill = if (type == RaftUiAvatarType.Agent) RaftColor.Inactive else RaftColor.AccentLavender
             )
-        }
-        if (badge) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(badgeSize + 4.dp)
-                        .align(Alignment.BottomEnd)
-                        .background(RaftColor.Canvas, RoundedCornerShape(4.dp))
-                        .padding(2.dp)
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(badgeSize)
-                            .background(RaftColor.PresenceOnline, RoundedCornerShape(2.dp))
-                            .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(2.dp))
-                )
-            }
         }
     }
 }

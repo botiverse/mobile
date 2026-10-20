@@ -13692,7 +13692,7 @@ private fun RaftThreadMessageItem.toMemberProfile(kind: MemberKind): MemberProfi
         description = effectiveDescription,
         avatarUrl = effectiveAvatarUrl,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
-        avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
+        avatarLabel = avatarLabel.ifBlank { authorName.toRaftAvatarLabel() },
         presence = Presence.Offline,
         membershipStatus = cleanMembershipStatus,
         agentDeletedAt = cleanAuthorDeletedAt

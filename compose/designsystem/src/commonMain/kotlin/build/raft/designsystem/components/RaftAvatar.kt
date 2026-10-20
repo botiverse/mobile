@@ -62,104 +62,45 @@ enum class RaftAvatarType {
  */
 enum class RaftAvatarSize(
     val edge: Dp,
-    internal val initialsSize: TextUnit,
-    internal val iconSize: Dp,
-    internal val badgeEdge: Dp,
-    /** How far the presence light overhangs the right and bottom edges. */
-    internal val badgeOverhang: Dp,
-    internal val badgeBorder: Dp,
+    val initialsSize: TextUnit,
+    val iconSize: Dp,
+    val badgeEdge: Dp,
+    /**
+     * How far the presence light overhangs the right and bottom outer edges. raft-ui's
+     * `-right-2` / `right-[-5px]` / `-right-1` / `right-[-3px]` / `-right-0.5` are measured
+     * from the avatar's padding edge, inside its 1.5px ink border, so the overhang past the
+     * outer edge is the offset minus that border.
+     */
+    val badgeOverhang: Dp,
+    val badgeBorder: Dp,
     /** The outline cut out of the surface around the light. */
-    internal val badgeCutout: Dp,
+    val badgeCutout: Dp,
 ) {
     /** 99dp: the profile of an agent or a person; carries the hard sticker shadow. */
-    Xl(99.dp, 40.sp, 48.dp, 20.dp, 8.dp, RaftStroke.Strong, 2.dp),
+    Xl(99.dp, 40.sp, 48.dp, 20.dp, 6.5.dp, RaftStroke.Strong, 2.dp),
 
     /** 51dp: your own row in settings, profile cards. */
-    Lg(51.dp, 22.sp, 24.dp, 14.dp, 5.dp, RaftStroke.Control, 2.dp),
+    Lg(51.dp, 22.sp, 24.dp, 14.dp, 3.5.dp, RaftStroke.Control, 2.dp),
 
     /** 35dp: messages and lists. */
-    Md(35.dp, 15.sp, 18.dp, 11.dp, 4.dp, RaftStroke.Control, 2.dp),
+    Md(35.dp, 15.sp, 18.dp, 11.dp, 2.5.dp, RaftStroke.Control, 2.dp),
 
     /** 27dp: search results, top bars. */
-    Sm(27.dp, 13.sp, 14.dp, 9.dp, 3.dp, RaftStroke.Control, 2.dp),
+    Sm(27.dp, 13.sp, 14.dp, 9.dp, 1.5.dp, RaftStroke.Control, 2.dp),
 
     /** 19dp: the sidebar, chips, avatar stacks. */
-    Xs(19.dp, 11.sp, 12.dp, 7.dp, 2.dp, RaftStroke.Hairline, 1.dp),
+    Xs(19.dp, 11.sp, 12.dp, 7.dp, 0.5.dp, RaftStroke.Hairline, 1.dp),
 
     /** 19dp (raft `2xs`): sidebar and DM rows. */
-    Xxs(19.dp, 11.sp, 12.dp, 7.dp, 2.dp, RaftStroke.Hairline, 1.dp),
+    Xxs(19.dp, 11.sp, 12.dp, 7.dp, 0.5.dp, RaftStroke.Hairline, 1.dp),
 
     /** 14dp (raft `3xs`): inline preview chips; outside the scale. */
-    Xxxs(14.dp, 8.sp, 8.dp, 6.dp, 2.dp, RaftStroke.Hairline, 1.dp),
+    Xxxs(14.dp, 8.sp, 8.dp, 6.dp, 0.5.dp, RaftStroke.Hairline, 1.dp),
     ;
 
     /** raft-ui writes only one initial at `xs`, `2xs` and `sm`, where two don't fit. */
     val maxInitials: Int get() = if (this == Xl || this == Lg || this == Md) 2 else 1
 }
-
-/**
- * Initials for a person without a photo: the first character of the first
- * [RaftAvatarSize.maxInitials] words of [name], upper-cased. A character is a whole
- * user-perceived one ([raftFirstGrapheme]), so an emoji or an accented letter written
- * with a combining mark is never split.
- */
-fun raftAvatarInitials(name: String, size: RaftAvatarSize = RaftAvatarSize.Md): String =
-    name.trim()
-        .split(Regex("\\s+"))
-        .filter { it.isNotEmpty() }
-        .take(size.maxInitials)
-        .joinToString("") { raftFirstGrapheme(it).uppercase() }
-
-/**
- * The first user-perceived character of [text]: its first code point (both halves of a
- * surrogate pair) plus what attaches to it: combining marks, variation selectors, emoji
- * skin tones, keycaps, tag sequences, a second regional indicator (a flag), and emoji
- * joined with a zero-width joiner. A close approximation of a Unicode grapheme cluster
- * without platform break iterators (commonMain has none).
- */
-internal fun raftFirstGrapheme(text: String): String {
-    if (text.isEmpty()) return text
-    var end = codePointEnd(text, 0)
-    val first = codePointAt(text, 0)
-    if (isRegionalIndicator(first) && end < text.length && isRegionalIndicator(codePointAt(text, end))) {
-        return text.substring(0, codePointEnd(text, end))
-    }
-    while (end < text.length) {
-        val cp = codePointAt(text, end)
-        end =
-            when {
-                isGraphemeExtend(cp) -> codePointEnd(text, end)
-                // ZWJ joins the next code point into the same character.
-                cp == 0x200D && codePointEnd(text, end) < text.length -> codePointEnd(text, codePointEnd(text, end))
-                else -> break
-            }
-    }
-    return text.substring(0, end)
-}
-
-private fun codePointAt(text: String, index: Int): Int {
-    val high = text[index]
-    if (high.isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate()) {
-        return ((high.code - 0xD800) shl 10) + (text[index + 1].code - 0xDC00) + 0x10000
-    }
-    return high.code
-}
-
-private fun codePointEnd(text: String, index: Int): Int =
-    if (text[index].isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate()) index + 2 else index + 1
-
-private fun isRegionalIndicator(cp: Int): Boolean = cp in 0x1F1E6..0x1F1FF
-
-private fun isGraphemeExtend(cp: Int): Boolean =
-    cp in 0x0300..0x036F || // combining diacritical marks
-        cp in 0x1AB0..0x1AFF ||
-        cp in 0x1DC0..0x1DFF ||
-        cp in 0x20D0..0x20FF || // combining marks for symbols, the keycap
-        cp in 0xFE20..0xFE2F ||
-        cp in 0xFE00..0xFE0F || // variation selectors
-        cp in 0xE0100..0xE01EF ||
-        cp in 0x1F3FB..0x1F3FF || // emoji skin tones
-        cp in 0xE0020..0xE007F // tags (subdivision flags)
 
 /** Set by [RaftAvatarGroup]: each face in a stack is ringed with the surface. */
 private val LocalRaftAvatarGroupRing = staticCompositionLocalOf { Color.Unspecified }

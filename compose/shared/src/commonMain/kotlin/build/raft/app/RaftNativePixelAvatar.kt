@@ -1,40 +1,37 @@
 package build.raft.app
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.unit.Dp
 
 /**
- * Pixel avatar drawn with Compose (it was a native Kuikly view on each platform): background,
- * then each horizontal colour span of the 8x8 grid.
+ * The face of a pixel avatar: background, then each horizontal colour span of the 8x8 grid,
+ * filling the avatar's inside (the frame, ink edge and corners are [RaftAppAvatar]'s).
+ *
+ * Pixel art scales nearest-neighbour: every cell edge is snapped to a whole device pixel
+ * ([pixelAvatarGridEdge]), so neighbouring cells meet without an anti-aliased seam and a
+ * cell is never smeared across two pixels. The face box itself sits on whole pixels (layout
+ * rounds it), so the snapped edges stay crisp on screen.
  */
 @Composable
 internal fun RaftNativePixelAvatar(
     spec: PixelAvatarSpec,
-    modifier: Modifier = Modifier,
-    avatarSize: Dp,
-    borderWidth: Dp = RaftAppStroke.Thin
+    modifier: Modifier = Modifier
 ) {
-    Canvas(
-        modifier
-            .size(width = avatarSize, height = avatarSize)
-            .border(borderWidth, RaftColor.BorderBlack)
-    ) {
+    Canvas(modifier.fillMaxSize()) {
         drawRect(spec.background)
-        val rows = spec.grid.size.coerceAtLeast(1)
-        val columns = spec.grid.maxOfOrNull { it.length }?.coerceAtLeast(1) ?: 1
-        val cellWidth = size.width / columns
-        val cellHeight = size.height / rows
         for (span in spec.spans) {
+            val left = pixelAvatarGridEdge(span.startColumnIndex, size.width)
+            val right = pixelAvatarGridEdge(span.startColumnIndex + span.columnCount, size.width)
+            val top = pixelAvatarGridEdge(span.rowIndex, size.height)
+            val bottom = pixelAvatarGridEdge(span.rowIndex + 1, size.height)
             drawRect(
                 color = span.color,
-                topLeft = Offset(span.startColumnIndex * cellWidth, span.rowIndex * cellHeight),
-                size = Size(span.columnCount * cellWidth, cellHeight),
+                topLeft = Offset(left, top),
+                size = Size(right - left, bottom - top)
             )
         }
     }

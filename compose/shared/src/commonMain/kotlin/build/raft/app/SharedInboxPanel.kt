@@ -1950,7 +1950,8 @@ private fun SharedActivitySenderAvatar(
                     label = identity.label,
                     avatarSize = ActivitySenderAvatarSize,
                     borderWidth = ActivitySenderAvatarBorder,
-                    cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId)
+                    cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
+                    fallbackFill = raftAvatarFallbackFill(identity.senderKind)
                 )
             MemberKind.System,
             null -> SharedActivityAppAvatar()
@@ -1960,13 +1961,13 @@ private fun SharedActivitySenderAvatar(
 
 @Composable
 private fun SharedActivityAppAvatar(modifier: Modifier = Modifier) {
-    Box(
-        modifier =
-            modifier
-                .size(ActivitySenderAvatarSize)
-                .background(RaftColor.SoftSignal)
-                .border(ActivitySenderAvatarBorder, RaftColor.BorderBlack),
-        contentAlignment = Alignment.Center
+    // The same raft-ui sticker frame as the member avatars beside it (ink edge, dark-mode
+    // sticker-edge ring), on the system's soft-signal fill.
+    RaftAppAvatarFrame(
+        modifier = modifier,
+        avatarSize = ActivitySenderAvatarSize,
+        borderWidth = ActivitySenderAvatarBorder,
+        fill = RaftColor.SoftSignal
     ) {
         Text(
             text = ActivitySenderAppInitials,

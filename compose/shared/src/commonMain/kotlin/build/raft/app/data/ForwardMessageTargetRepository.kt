@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -59,7 +60,7 @@ data class ForwardMessageTarget(
     val title: String,
     val subtitle: String = "",
     val avatarWireValue: String? = null,
-    val avatarLabel: String = title.take(1).uppercase(),
+    val avatarLabel: String = title.toRaftAvatarLabel(),
     val channelId: ChannelId? = null,
     val channelKind: ConversationKind = ConversationKind.Channel,
     val channelType: String? = null,
@@ -678,7 +679,7 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Recent DM",
         avatarWireValue = peer?.avatar?.wireValue ?: peer?.avatarUrl,
-        avatarLabel = peer?.avatarLabel?.takeIf { it.isNotBlank() } ?: title.take(1).uppercase(),
+        avatarLabel = peer?.avatarLabel?.takeIf { it.isNotBlank() } ?: title.toRaftAvatarLabel(),
         channelId = channelId,
         channelKind = ConversationKind.DirectMessage,
         channelType = "dm",
@@ -865,7 +866,7 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
         title = title,
         subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
         avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl),
-        avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
+        avatarLabel = avatarLabel.ifBlank { title.toRaftAvatarLabel() },
         channelKind = ConversationKind.DirectMessage,
         channelType = "dm",
         memberId = id,
@@ -979,7 +980,7 @@ private fun ForwardTargetSearchItemDto.toForwardMessageTarget(fallbackServerId: 
         title = cleanTitle,
         subtitle = subtitle?.trim()?.takeIf { it.isNotBlank() }.orEmpty(),
         avatarWireValue = avatarUrl?.trim()?.takeIf { it.isNotBlank() },
-        avatarLabel = avatarLabel?.trim()?.takeIf { it.isNotBlank() } ?: cleanTitle.take(1).uppercase(),
+        avatarLabel = avatarLabel?.trim()?.takeIf { it.isNotBlank() } ?: cleanTitle.toRaftAvatarLabel(),
         channelId = cleanChannelId,
         channelKind =
             when (channelKind?.trim()?.lowercase()) {

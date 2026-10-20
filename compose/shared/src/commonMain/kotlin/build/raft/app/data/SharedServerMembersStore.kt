@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.toRaftAvatarLabel
 import build.raft.app.base.putIfAbsent
 import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
@@ -3083,7 +3084,7 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
                 description = member.description?.trim()?.takeIf { it.isNotBlank() },
                 avatarWireValue = avatar.effectiveAvatarWireValue,
                 avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
-                    ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
+                    ?: member.displayName.toRaftAvatarLabel().ifBlank { handle.toRaftAvatarLabel() },
                 memberId = memberId
             )
         val key = suggestion.memberSuggestionIdentityKey()

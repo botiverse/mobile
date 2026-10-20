@@ -551,7 +551,6 @@ private fun SettingsProfileAvatar(
             avatarWireValue = profile.avatarUrl,
             label = profile.avatarLabel,
             avatarSize = 56.dp,
-            borderWidth = RaftAppStroke.Default,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
         )
