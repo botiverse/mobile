@@ -820,6 +820,10 @@ dependencies {
     implementation(project(":shared"))
     // CMP page root/router/host contracts (RaftCmpActivity); see ui-cmp/build.gradle.kts.
     implementation(project(":ui-cmp"))
+    // Play services (auth/base/messaging) only declare androidx.fragment 1.1.0 transitively; the
+    // activity lint (InvalidFragmentVersionForActivityResult) judges that declaration and fails
+    // lintVitalRelease. Declare a current Fragment directly.
+    implementation(libs.androidx.fragment)
     implementation(project(":designsystem"))
     runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.47")
 
