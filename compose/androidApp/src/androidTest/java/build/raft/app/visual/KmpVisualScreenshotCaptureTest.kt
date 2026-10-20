@@ -17,6 +17,7 @@ import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.inspector.WindowInspector
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import build.raft.app.shared.RaftCmpActivity
@@ -159,6 +160,7 @@ class KmpVisualScreenshotCaptureTest {
     private var lastCaptureClampedToShortWindow = false
 
     private var lastCaptureMethod: String? = null
+    private var lastCaptureCompositedWindowCount = 0
     private var lastStableFrameCount = 0
     private var lastReadyTokenObserved = false
     private var lastReadyTokenRequired = false
@@ -3409,6 +3411,95 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // React CREATE_AGENT_CASES counterparts (slock packages/web/visual-testing/
+    // VisualTestingCases.tsx). State comes from the gated
+    // compose_create_agent_state_visual fixture page; `variant` only selects it.
+    @Test
+    fun captureMembersCreateAgentDialogError() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-error",
+            variant = "error"
+        )
+    }
+
+    // React renders its onboarding ("Meet Cindy") step here; the shared dialog
+    // has no onboarding layout, so Android captures the standard form for the
+    // same seed and the product gap stays visible in the report.
+    @Test
+    fun captureMembersCreateAgentDialogOnboarding() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-onboarding",
+            variant = "onboarding"
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentDialogEmpty() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-empty",
+            variant = "empty",
+            // A blank initial name is replaced by a random suggestion, so clear
+            // the seeded name the way a user would to reach React's empty field.
+            beforeScreenshot = { clearEditableTextField("Product-QA-Bot") }
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentDialogNoComputer() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-no-computer",
+            variant = "no-computer"
+        )
+    }
+
+
+
+    private fun captureMembersCreateAgentStateCase(
+        caseId: String,
+        variant: String,
+        beforeScreenshot: (() -> Unit)? = null
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_create_agent_state_visual",
+            pageData = JSONObject().put("variant", variant),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500,
+            beforeScreenshot = beforeScreenshot
+        )
+    }
+
+    /** Clear the editable field currently showing [text] through its accessibility SetText action. */
+    private fun clearEditableTextField(text: String) {
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
+        var field: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (field == null) {
+            val roots = listOfNotNull(uiAutomation.rootInActiveWindow) + uiAutomation.windows.mapNotNull { it.root }
+            field =
+                roots
+                    .asSequence()
+                    .flatMap { it.findAccessibilityNodeInfosByText(text).asSequence() }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isEditable } }
+                    .firstOrNull()
+            if (field != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(field) { "No editable field showing \"$text\" to clear" }
+        val cleared =
+            field.performAction(
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+                android.os.Bundle().apply {
+                    putCharSequence(
+                        android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        ""
+                    )
+                }
+            )
+        require(cleared) { "SetText(\"\") was rejected by the field showing \"$text\"" }
+        Thread.sleep(500)
+    }
+
     @Test
     fun captureAnnouncementModalFirstPage() {
         captureKmpComponentCase(
@@ -3564,6 +3655,36 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "screens.members.agent-detail.profile.daemon-only",
             tab = "profile",
             memberId = "agent-daemon-only"
+        )
+    }
+
+    // task #261: no server membership row -> serverRole omitted -> role chip hidden.
+    @Test
+    fun captureMembersAgentDetailProfileNoMembershipScreen() {
+        captureMembersAgentDetailStateCase(
+            caseId = "screens.members.agent-detail.profile.no-membership",
+            state = "no-membership"
+        )
+    }
+
+    // task #259: computers still loading -> the Computer row must not render yet.
+    @Test
+    fun captureMembersAgentDetailProfileLoadingStateScreen() {
+        captureMembersAgentDetailStateCase(
+            caseId = "screens.members.agent-detail.profile.loading-state",
+            state = "loading-state"
+        )
+    }
+
+    // Seeds come from the gated compose_members_agent_detail_state_visual page,
+    // not from the production compose_member_detail route's pageData.
+    private fun captureMembersAgentDetailStateCase(caseId: String, state: String) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_members_agent_detail_state_visual",
+            pageData = JSONObject().put("state", state),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
         )
     }
 
@@ -4319,8 +4440,17 @@ class KmpVisualScreenshotCaptureTest {
                 waitForIdleBounded()
             }
             if (suppressSoftKeyboard) {
-                onActivityNoIdle { suppressVisualKeyboard(it) }
+                var fixtureOwnedWindows = 0
+                onActivityNoIdle {
+                    fixtureOwnedWindows = fixtureOwnedWindowViews(it).size
+                    suppressVisualKeyboard(it)
+                }
                 waitForIdleBounded()
+                if (fixtureOwnedWindows > 0) {
+                    // Let a dialog laid out above a dismissed IME settle back.
+                    Thread.sleep(DIALOG_IME_DISMISS_SETTLE_MS)
+                    waitForIdleBounded()
+                }
             }
             lastReadyTokenObserved = readyToken?.let { awaitVisualReadyToken(caseId, it) } ?: false
             lastReadyTokenRequired = readyToken != null
@@ -4988,6 +5118,36 @@ class KmpVisualScreenshotCaptureTest {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity.window.insetsController?.hide(WindowInsets.Type.ime())
         }
+        // Modal content lives in its own dialog window, which neither the
+        // activity's soft-input mode nor its immersive flags reach. An
+        // auto-focused field there (Create Agent's name input) raised the IME,
+        // shrank the dialog above it, and left a composing underline; the React
+        // baseline is captured unfocused with no keyboard or system bars.
+        fixtureOwnedWindowViews(activity).forEach { view ->
+            val params = view.layoutParams as WindowManager.LayoutParams
+            val hiddenSoftInput =
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            if (params.softInputMode != hiddenSoftInput) {
+                params.softInputMode = hiddenSoftInput
+                try {
+                    activity.windowManager.updateViewLayout(view, params)
+                } catch (t: IllegalArgumentException) {
+                    Log.w(VISUAL_LOG_TAG, "fixture window soft-input update skipped: ${t.message}")
+                }
+            }
+            view.findFocus()?.clearFocus()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                view.windowInsetsController?.let { controller ->
+                    controller.hide(
+                        WindowInsets.Type.statusBars() or
+                            WindowInsets.Type.navigationBars() or
+                            WindowInsets.Type.ime()
+                    )
+                    controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
+        }
     }
 
     /**
@@ -5048,6 +5208,78 @@ class KmpVisualScreenshotCaptureTest {
                 Log.w(VISUAL_LOG_TAG, "onActivityNoIdle: no RESUMED activity (page may have crashed/finished)")
             }
         }
+    }
+
+    /**
+     * [captureActivityScreenshot] plus every window the fixture activity owns
+     * (Compose `Dialog` windows behind `Modal`, and popups anchored to them),
+     * composited in z-order. `Modal` rehosts its content in a separate native
+     * window, so drawing only the activity decor dropped open dialogs entirely
+     * (screens.settings.server-danger-modal captured the page with no modal) or
+     * left a blank frame that fell through to the UiAutomation screenshot, which
+     * carries the device status/navigation bars and the soft keyboard the React
+     * baseline never has (components.members.create-agent.*,
+     * components.home.create-channel.dialog, components.channel.*). System
+     * windows (bars, IME) are never part of the composite.
+     */
+    private fun captureAppWindowsScreenshot(caseId: String): Bitmap {
+        lastCaptureCompositedWindowCount = 0
+        var bitmap: Bitmap? = null
+        onActivityNoIdle { activity ->
+            val root = activity.window.decorView.rootView
+            if (root.width > 0 && root.height > 0) {
+                bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888).also { output ->
+                    val canvas = Canvas(output)
+                    root.draw(canvas)
+                    lastCaptureCompositedWindowCount = drawFixtureOwnedWindows(activity, canvas)
+                }
+            }
+        }
+        return bitmap ?: captureActivityScreenshot(caseId)
+    }
+
+    /** Windows (other than the activity decor) attached to [activity]'s app token, bottom to top. */
+    private fun fixtureOwnedWindowViews(activity: Activity): List<View> {
+        val activityRoot = activity.window.decorView.rootView
+        val ownerTokens = mutableSetOf<android.os.IBinder>()
+        activity.window.attributes.token?.let(ownerTokens::add)
+        activityRoot.windowToken?.let(ownerTokens::add)
+        // getGlobalWindowViews is in add order; a stable sort by window type keeps
+        // that order within a layer and puts sub-window panels above dialogs.
+        val candidates =
+            WindowInspector.getGlobalWindowViews()
+                .filter { it !== activityRoot && it.isAttachedToWindow }
+                .sortedBy { (it.layoutParams as? WindowManager.LayoutParams)?.type ?: 0 }
+        val owned = mutableListOf<View>()
+        for (view in candidates) {
+            val token = (view.layoutParams as? WindowManager.LayoutParams)?.token ?: continue
+            if (token !in ownerTokens) continue
+            view.windowToken?.let(ownerTokens::add)
+            owned += view
+        }
+        return owned
+    }
+
+    private fun drawFixtureOwnedWindows(activity: Activity, canvas: Canvas): Int {
+        val rootLocation = IntArray(2).also(activity.window.decorView.rootView::getLocationOnScreen)
+        var drawn = 0
+        for (view in fixtureOwnedWindowViews(activity)) {
+            if (view.visibility != View.VISIBLE || view.width <= 0 || view.height <= 0) continue
+            val params = view.layoutParams as WindowManager.LayoutParams
+            if (params.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND != 0) {
+                canvas.drawColor(Color.argb((params.dimAmount.coerceIn(0f, 1f) * 255f).toInt(), 0, 0, 0))
+            }
+            val location = IntArray(2).also(view::getLocationOnScreen)
+            val checkpoint = canvas.save()
+            canvas.translate(
+                (location[0] - rootLocation[0]).toFloat(),
+                (location[1] - rootLocation[1]).toFloat()
+            )
+            view.draw(canvas)
+            canvas.restoreToCount(checkpoint)
+            drawn += 1
+        }
+        return drawn
     }
 
     private fun captureActivityScreenshot(caseId: String): Bitmap {
@@ -5206,7 +5438,13 @@ class KmpVisualScreenshotCaptureTest {
 
         do {
             waitForIdleBounded()
-            val screenshot = captureActivityScreenshot(caseId)
+            val screenshot = captureAppWindowsScreenshot(caseId)
+            lastCaptureMethod =
+                if (lastCaptureCompositedWindowCount > 0) {
+                    crop.captureMethod + APP_DIALOG_WINDOWS_CAPTURE_SUFFIX
+                } else {
+                    crop.captureMethod
+                }
             val boundsProblem = cropBoundsProblem(screenshot, crop)
             if (boundsProblem != null) {
                 // Window not at full size yet (e.g. edge-to-edge not settled) —
@@ -6830,6 +7068,9 @@ class KmpVisualScreenshotCaptureTest {
 
         private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
         private const val STABLE_CAPTURE_RETRY_MS = 750L
+        private const val APP_DIALOG_WINDOWS_CAPTURE_SUFFIX = "+app-dialog-windows"
+        private const val DIALOG_IME_DISMISS_SETTLE_MS = 1_000L
+        private const val EDITABLE_FIELD_LOOKUP_TIMEOUT_MS = 10_000L
         private const val VISUAL_READY_TIMEOUT_MS = 10_000L
 
         // Reaction-glyph sprite atlas settle (task #379). The reaction atlas is

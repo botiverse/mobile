@@ -1720,7 +1720,7 @@ private val membersAgentDetailVisualScopeSet = AgentScopeSet(
  * computerOffline / computerMissing / noComputer / longMachine, machines
  * studio / longName); the slock-side test pins them there.
  */
-private data class MembersAgentDetailVisualVariant(
+internal data class MembersAgentDetailVisualVariant(
     val id: String,
     val name: String,
     val displayName: String,
@@ -1731,8 +1731,9 @@ private data class MembersAgentDetailVisualVariant(
     val daemonVersion: String?,
     /** Server role as the wire sends it. Every fixture agent is a server member;
         one is admin so the role chip cell can fail (task #261). Without this the
-        default seed leaves it null and membersAgentDisplayServerRole draws Member. */
-    val serverRole: String
+        default seed leaves it null and membersAgentDisplayServerRole draws Member.
+        Null = no membership row (the wire omits serverRole; role chip hidden). */
+    val serverRole: String?
 )
 
 private val membersAgentDetailVisualVariants = listOf(
@@ -4382,15 +4383,18 @@ internal fun MemberDetailPageContent(
     }
 }
 
+/** Default agent-detail visual seed (fixture agent agent-product-ux). */
+private fun membersAgentDetailDefaultVisualSeed(): MemberDetailVisualSeed =
+    MemberDetailVisualSeed(
+        member = membersAgentDetailVisualMember,
+        agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
+        agentScopeSet = membersAgentDetailVisualScopeSet
+    )
+
 private fun RaftMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDetailVisualSeed? {
     if (!instanceId.startsWith("visual-")) return null
     return when (identity?.memberId?.value) {
-        membersAgentDetailVisualMember.id.value ->
-            MemberDetailVisualSeed(
-                member = membersAgentDetailVisualMember,
-                agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
-                agentScopeSet = membersAgentDetailVisualScopeSet
-            )
+        membersAgentDetailVisualMember.id.value -> membersAgentDetailDefaultVisualSeed()
         membersHumanDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersHumanDetailVisualMember,
@@ -4402,11 +4406,34 @@ private fun RaftMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDeta
     }
 }
 
+/**
+ * Entry for gated visual fixture pages (visualFixtures source set): renders the agent
+ * detail for a typed [variant] (null = default agent-product-ux seed) without going
+ * through the production `compose_member_detail` pageData parser.
+ */
+@Composable
+internal fun MembersAgentDetailVisualVariantContent(
+    payload: RaftMemberDetailPayload,
+    variant: MembersAgentDetailVisualVariant?,
+    pageVisibleTick: Int,
+    machineStatusRow: ((String?) -> MembersMachineStatusRow)? = null
+) {
+    val seed = remember(variant) { variant?.toSeed() ?: membersAgentDetailDefaultVisualSeed() }
+    MemberDetailVisualSeedContent(
+        payload = payload,
+        seed = seed,
+        pageVisibleTick = pageVisibleTick,
+        machineStatusRow = machineStatusRow ?: membersVisualFixtureMachineStatusRow
+    )
+}
+
 @Composable
 private fun MemberDetailVisualSeedContent(
     payload: RaftMemberDetailPayload,
     seed: MemberDetailVisualSeed,
-    pageVisibleTick: Int
+    pageVisibleTick: Int,
+    // Gated visual fixture pages inject other computers-store states (e.g. still loading).
+    machineStatusRow: (String?) -> MembersMachineStatusRow = membersVisualFixtureMachineStatusRow
 ) {
     val initialAgentTab = remember(payload.initialAgentTab) {
         payload.initialAgentTab.toMembersAgentDetailTabOrNull()
@@ -4421,7 +4448,7 @@ private fun MemberDetailVisualSeedContent(
         agentDetailState = seed.agentDetailState,
         canViewPrivateAgentSurfaces = { member, _ -> member.kind == MemberKind.Agent },
         canManageAgent = { member, _ -> member.kind == MemberKind.Agent },
-        machineStatusRow = membersVisualFixtureMachineStatusRow,
+        machineStatusRow = machineStatusRow,
         actions = MembersDetailActions(
             onBack = {},
             onOpenDirectMessage = {},

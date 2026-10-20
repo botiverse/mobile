@@ -725,7 +725,7 @@ internal class ComposeCreateAgentBuiltInDialogVisualPage : BasePager() {
     }
 }
 
-private fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
+internal fun createAgentBuiltInVisualForm(): SharedResolvedAgentCreateForm {
     val ref = SharedRuntimeFormDefinitionRef(1, "builtin", "builtin-pi.create.v3")
     val providerRef = SharedAgentCreateFormOptionSourceRef.Select(ref, "provider", "/providerId")
     val modelRef = SharedAgentCreateFormOptionSourceRef.DependentSelect(ref, "model", "/model", "/providerId")
@@ -821,7 +821,7 @@ internal class TokenPaletteVisualPage : BasePager() {
 internal class ComposeUiSegmentedControlVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSegmentedControlVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSegmentedControlVisualContent() } }
     }
 }
 
@@ -924,7 +924,7 @@ internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
 internal class ComposeUiCheckMarkerVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiCheckMarkerVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckMarkerVisualContent() } }
     }
 }
 
@@ -932,7 +932,7 @@ internal class ComposeUiCheckMarkerVisualPage : BasePager() {
 internal class ComposeUiAttentionDotVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiAttentionDotVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiAttentionDotVisualContent() } }
     }
 }
 
@@ -940,7 +940,7 @@ internal class ComposeUiAttentionDotVisualPage : BasePager() {
 internal class ComposeUiStatusDotVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiStatusDotVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiStatusDotVisualContent() } }
     }
 }
 
@@ -948,7 +948,7 @@ internal class ComposeUiStatusDotVisualPage : BasePager() {
 internal class ComposeUiProgressBarVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiProgressBarVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiProgressBarVisualContent() } }
     }
 }
 
@@ -956,7 +956,7 @@ internal class ComposeUiProgressBarVisualPage : BasePager() {
 internal class ComposeUiSkeletonVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSkeletonVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSkeletonVisualContent() } }
     }
 }
 
@@ -964,7 +964,7 @@ internal class ComposeUiSkeletonVisualPage : BasePager() {
 internal class ComposeUiSpinnerVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSpinnerVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSpinnerVisualContent() } }
     }
 }
 
@@ -972,7 +972,7 @@ internal class ComposeUiSpinnerVisualPage : BasePager() {
 internal class ComposeUiSlugInputVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSlugInputVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSlugInputVisualContent() } }
     }
 }
 
@@ -980,7 +980,7 @@ internal class ComposeUiSlugInputVisualPage : BasePager() {
 internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSectionEyebrowVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSectionEyebrowVisualContent() } }
     }
 }
 
@@ -988,7 +988,7 @@ internal class ComposeUiSectionEyebrowVisualPage : BasePager() {
 internal class ComposeUiSelectionPopoverVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSelectionPopoverVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSelectionPopoverVisualContent() } }
     }
 }
 
@@ -996,7 +996,7 @@ internal class ComposeUiSelectionPopoverVisualPage : BasePager() {
 internal class ComposeUiMenuItemVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiMenuItemVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiMenuItemVisualContent() } }
     }
 }
 
@@ -1004,7 +1004,7 @@ internal class ComposeUiMenuItemVisualPage : BasePager() {
 internal class ComposeUiSelectVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSelectVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSelectVisualContent() } }
     }
 }
 
@@ -1012,7 +1012,7 @@ internal class ComposeUiSelectVisualPage : BasePager() {
 internal class ComposeUiBadgeVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiBadgeVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiBadgeVisualContent() } }
     }
 }
 
@@ -1020,7 +1020,7 @@ internal class ComposeUiBadgeVisualPage : BasePager() {
 internal class ComposeUiSectionHeaderVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSectionHeaderVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSectionHeaderVisualContent() } }
     }
 }
 
@@ -1028,7 +1028,7 @@ internal class ComposeUiSectionHeaderVisualPage : BasePager() {
 internal class ComposeUiSurfaceListItemVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiSurfaceListItemVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiSurfaceListItemVisualContent() } }
     }
 }
 
@@ -1036,7 +1036,7 @@ internal class ComposeUiSurfaceListItemVisualPage : BasePager() {
 internal class ComposeUiAvatarListRowVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { UiAvatarListRowVisualContent() }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiAvatarListRowVisualContent() } }
     }
 }
 
