@@ -67,6 +67,13 @@ data class SharedSettingsState(
     val mobile: ScreenLoadState<SettingsMobileSnapshot> = ScreenLoadState.Loading,
     val storage: ScreenLoadState<SharedSettingsStorageSnapshot> = ScreenLoadState.Loading,
     val addComputerDialog: AddComputerDialogState? = null,
+    /**
+     * The key a rotation just returned, for the one-time dialog of the detail page that rotated it.
+     * In-memory only (the page's own store), never cached or persisted, and cleared when the dialog
+     * closes ([SharedSettingsIntent.DismissRotatedComputerKey]), the page leaves the machine, the
+     * account changes or the store is cleared.
+     */
+    val rotatedComputerKey: SettingsComputerRotatedKey? = null,
     val about: ScreenLoadState<SharedSettingsAboutSnapshot> = ScreenLoadState.Loading,
     val openSourceLicenses: ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot> = ScreenLoadState.Loading,
     val developer: ScreenLoadState<SharedSettingsDeveloperSnapshot> = ScreenLoadState.Loading,
@@ -75,6 +82,12 @@ data class SharedSettingsState(
     val routeErrorCode: String? = null,
     val actionState: SharedSettingsActionState? = null,
     val effect: SharedSettingsEffect? = null
+)
+
+/** A rotated machine key on its way to the one-time dialog; [apiKey] redacts itself in [toString]. */
+data class SettingsComputerRotatedKey(
+    val machineId: String,
+    val apiKey: SettingsComputerApiKey
 )
 
 enum class AddComputerStep { Type, Waiting, Connected }
@@ -391,6 +404,8 @@ sealed interface SharedSettingsIntent {
     data class UpdateComputerDescription(val request: SettingsComputerDescriptionUpdateRequest) : SharedSettingsIntent
     data class DeleteComputer(val machineId: String) : SharedSettingsIntent
     data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
+    /** The one-time key dialog closed: drop the key for good. */
+    data object DismissRotatedComputerKey : SharedSettingsIntent
     data class RegisterComputer(val request: SettingsComputerRegisterRequest) : SharedSettingsIntent
     data object ShowAddComputerDialog : SharedSettingsIntent
     data object DismissAddComputerDialog : SharedSettingsIntent
@@ -2015,6 +2030,9 @@ class SharedSettingsStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        if (_state.value.rotatedComputerKey != null) {
+            _state.value = _state.value.copy(rotatedComputerKey = null)
+        }
         cancelDiagnosticsExpiryRefresh()
         authOwnerObservationJob?.cancel()
         authOwnerObservationJob = null
@@ -2029,10 +2047,12 @@ class SharedSettingsStore(
                 if (intent.page != SharedSettingsDestination.Notifications) {
                     retireServerNotificationModeMutation()
                 }
+                val route = SharedSettingsRoute(intent.page, intent.itemId?.trim()?.takeIf { it.isNotBlank() })
                 _state.value =
                     _state.value.copy(
-                        route = SharedSettingsRoute(intent.page, intent.itemId?.trim()?.takeIf { it.isNotBlank() }),
-                        routeErrorCode = null
+                        route = route,
+                        routeErrorCode = null,
+                        rotatedComputerKey = _state.value.rotatedComputerKey?.takeIf { it.machineId == route.itemId }
                     )
                 loadCurrentRoute()
             }
@@ -2052,7 +2072,8 @@ class SharedSettingsStore(
                     _state.value.copy(
                         route = SharedSettingsRoute(SharedSettingsDestination.Home),
                         routeErrorCode = null,
-                        actionState = null
+                        actionState = null,
+                        rotatedComputerKey = null
                     )
                 loadHome()
             }
@@ -2201,9 +2222,13 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.RotateComputerKey -> {
                 runAction(COMPUTER_ACTION_ROTATE_KEY, intent.machineId) {
-                    dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
+                    dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(intent.machineId)
                 }
             }
+            SharedSettingsIntent.DismissRotatedComputerKey ->
+                if (_state.value.rotatedComputerKey != null) {
+                    _state.value = _state.value.copy(rotatedComputerKey = null)
+                }
             is SharedSettingsIntent.RegisterComputer -> {
                 runAction(COMPUTER_ACTION_REGISTER) {
                     _state.value = _state.value.copy(
@@ -3213,6 +3238,13 @@ class SharedSettingsStore(
 
     private suspend fun onAuthSessionEvent(event: AuthSessionEvent) {
         if (event is AuthSessionEvent.TokensRotated) return
+        // Sign-out or another account: a machine key shown for the previous one must not survive.
+        if (
+            (event is AuthSessionEvent.Cleared || event is AuthSessionEvent.Authenticated) &&
+            _state.value.rotatedComputerKey != null
+        ) {
+            _state.value = _state.value.copy(rotatedComputerKey = null)
+        }
         val mutation = serverNotificationModeMutation ?: return
         val currentOwnerResult =
             runCatchingPreservingCancellation { dataSource.currentMobileSettingsOwnerKey() }
@@ -3477,19 +3509,36 @@ class SharedSettingsStore(
         }
     }
 
-    private suspend fun DataResult<SettingsComputerKeyRotationResult>.applyComputerRotateKeyActionResult(
-        action: String,
-        machineId: String
-    ) {
+    /**
+     * A rotation changes only the machine's key: the detail slice takes the new prefix in place (no
+     * reload), and the full key goes to [SharedSettingsState.rotatedComputerKey] for the one-time
+     * dialog. A failure keeps the page and records the action error like the other computer actions.
+     */
+    private fun DataResult<SettingsComputerKeyRotationResult>.applyComputerRotateKeyActionResult(machineId: String) {
         when (this) {
-            is DataResult.Content ->
-                dataSource.loadComputerDetail(machineId, forceComputers = true).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Content -> {
+                val current = _state.value
+                val detail = (current.computerDetail as? ScreenLoadState.Content)?.data
+                _state.value =
+                    current.copy(
+                        computerDetail =
+                            if (detail != null && detail.computer.id == data.machineId) {
+                                ScreenLoadState.Content(
+                                    detail.copy(computer = detail.computer.copy(apiKeyPrefix = data.apiKeyPrefix))
+                                )
+                            } else {
+                                current.computerDetail
+                            },
+                        rotatedComputerKey = SettingsComputerRotatedKey(machineId = data.machineId, apiKey = data.apiKey),
+                        actionState = SharedSettingsActionState(COMPUTER_ACTION_ROTATE_KEY, machineId, inProgress = false)
+                    )
+            }
             is DataResult.Empty ->
-                DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
+                DataResult.Empty(reason).applyComputerDetailActionResult(COMPUTER_ACTION_ROTATE_KEY, machineId)
             is DataResult.Error ->
-                DataResult.Error(error).applyComputerDetailActionResult(action, machineId)
+                DataResult.Error(error).applyComputerDetailActionResult(COMPUTER_ACTION_ROTATE_KEY, machineId)
             is DataResult.NoPermission ->
-                DataResult.NoPermission(blocker).applyComputerDetailActionResult(action, machineId)
+                DataResult.NoPermission(blocker).applyComputerDetailActionResult(COMPUTER_ACTION_ROTATE_KEY, machineId)
         }
     }
 
@@ -3827,6 +3876,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.UpdateComputerDescription,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
+            SharedSettingsIntent.DismissRotatedComputerKey,
             is SharedSettingsIntent.RegisterComputer,
             SharedSettingsIntent.ShowAddComputerDialog,
             SharedSettingsIntent.DismissAddComputerDialog,
@@ -3883,9 +3933,10 @@ private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
                 )
             DataResult.Content(
                 data.copy(
-                    canManageMachines = permissions.canEdit || permissions.canRemove,
+                    canManageMachines = permissions.canEdit || permissions.canRemove || permissions.canRotateKey,
                     canEditMachine = permissions.canEdit,
-                    canRemoveMachine = permissions.canRemove
+                    canRemoveMachine = permissions.canRemove,
+                    canRotateMachineKey = permissions.canRotateKey
                 )
             )
         }
@@ -3894,13 +3945,15 @@ private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
         is DataResult.NoPermission -> this
     }
 
-internal data class SettingsComputerPermissions(val canEdit: Boolean, val canRemove: Boolean)
+internal data class SettingsComputerPermissions(val canEdit: Boolean, val canRemove: Boolean, val canRotateKey: Boolean)
 
 /**
  * Mirrors the server gate `canManageMachineResource` (slock packages/server/src/routes/servers.ts):
  * the machine creator (`machines.userId`) or a role holding `editMachines` (PATCH) /
  * `removeMachines` (DELETE). Per packages/shared/src/serverPermissions.ts only owner and admin hold
- * those capabilities. Like the web detail panel, attaching the backing Computer also counts.
+ * those capabilities. Like the web detail panel, attaching the backing Computer also counts for
+ * edit/remove. Key rotation (`POST .../rotate-key`) follows the server alone: the machine creator or
+ * `rotateMachineKeys` (owner/admin); attaching the Computer does not grant it.
  */
 internal fun settingsComputerPermissions(
     serverRole: String?,
@@ -3914,7 +3967,8 @@ internal fun settingsComputerPermissions(
     val ownsMachine = isCreator || computer.attachedByCurrentUser
     return SettingsComputerPermissions(
         canEdit = roleGrantsMachineCapabilities || ownsMachine,
-        canRemove = roleGrantsMachineCapabilities || ownsMachine
+        canRemove = roleGrantsMachineCapabilities || ownsMachine,
+        canRotateKey = roleGrantsMachineCapabilities || isCreator
     )
 }
 

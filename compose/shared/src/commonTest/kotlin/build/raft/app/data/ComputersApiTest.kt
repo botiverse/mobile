@@ -5,6 +5,7 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class ComputersApiTest {
     @Test
@@ -36,7 +37,7 @@ class ComputersApiTest {
             ).data.description
         )
         assertEquals(true, assertIs<DataResult.Content<ComputerCommandResult>>(client.deleteMachine(serverId, "machine-1")).data.ok)
-        assertEquals("sk_machine_1", assertIs<DataResult.Content<ComputerApiKeyRotationSummary>>(client.rotateMachineKey(serverId, "machine-1")).data.apiKeyPrefix)
+        assertEquals("sk_machine_123456", assertIs<DataResult.Content<ComputerApiKeyRotationSummary>>(client.rotateMachineKey(serverId, "machine-1")).data.apiKeyPrefix)
         assertEquals(2, assertIs<DataResult.Content<ComputerWorkspacePage>>(client.machineWorkspaces(serverId, "machine-1")).data.itemCount)
         val runtimeModels = assertIs<DataResult.Content<ComputerRuntimeModelsSummary>>(client.runtimeModels(serverId, "machine-1", "claude")).data
         assertEquals("sonnet", runtimeModels.defaultModel)
@@ -221,6 +222,25 @@ class ComputersApiTest {
             assertEquals("computer_has_agents", error.code, fixture.name)
             assertEquals(fixture.expected, error.serverMessage, fixture.name)
         }
+    }
+
+    @Test
+    fun rotateKeyKeepsTheFullKeyAndNeverPrintsIt() = runPortableCoroutineTest {
+        // slock packages/server/src/routes/servers.ts rotate-key: `res.json({ apiKey })`, a
+        // `sk_machine_` + 64 hex key (machineService.generateMachineKeyMaterial).
+        val key = "sk_machine_" + "0123456789abcdef".repeat(4)
+        val client = RaftComputersApiClient(RecordingComputersApi(rotateBody = """{"apiKey":"$key"}"""))
+
+        val rotated =
+            assertIs<DataResult.Content<ComputerApiKeyRotationSummary>>(
+                client.rotateMachineKey(ServerId("server-1"), "machine-1")
+            ).data
+
+        assertEquals(key, rotated.apiKey.value)
+        // The server stores `apiKey.slice(0, 20)` as apiKeyPrefix.
+        assertEquals(key.take(20), rotated.apiKeyPrefix)
+        assertTrue(key !in rotated.toString(), "summary toString must redact the key: $rotated")
+        assertTrue(key !in rotated.apiKey.toString())
     }
 
     @Test
