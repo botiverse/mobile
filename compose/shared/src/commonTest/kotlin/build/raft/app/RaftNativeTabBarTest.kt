@@ -36,11 +36,11 @@ class RaftNativeTabBarTest {
         assertEquals("activity", state.selectedKey)
         assertTrue(state.visible)
         assertEquals(
-            listOf("house", "bell", "checkmark.square", "person.2", "gearshape"),
+            listOf("house", "waveform.path.ecg", "checkmark.square", "person.2", "gearshape"),
             state.items.map { it.systemImageName },
         )
         assertEquals(
-            listOf("house.fill", "bell.fill", "checkmark.square.fill", "person.2.fill", "gearshape.fill"),
+            listOf("house.fill", "waveform.path.ecg", "checkmark.square.fill", "person.2.fill", "gearshape.fill"),
             state.items.map { it.selectedSystemImageName },
         )
     }

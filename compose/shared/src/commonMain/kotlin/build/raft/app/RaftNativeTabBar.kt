@@ -230,6 +230,8 @@ internal fun raftNativeTabBarSymbol(icon: RaftLucideIconName): RaftNativeTabBarS
         RaftLucideIconName.House -> RaftNativeTabBarSymbol("house", "house.fill")
         RaftLucideIconName.MessageCircle -> RaftNativeTabBarSymbol("message", "message.fill")
         RaftLucideIconName.Bell -> RaftNativeTabBarSymbol("bell", "bell.fill")
+        // Lucide "activity" is a pulse line; SF Symbols has no filled variant of it.
+        RaftLucideIconName.Activity -> RaftNativeTabBarSymbol("waveform.path.ecg", "waveform.path.ecg")
         RaftLucideIconName.Ellipsis -> RaftNativeTabBarSymbol("ellipsis", "ellipsis")
         RaftLucideIconName.SquareCheckBig -> RaftNativeTabBarSymbol("checkmark.square", "checkmark.square.fill")
         RaftLucideIconName.Users -> RaftNativeTabBarSymbol("person.2", "person.2.fill")
