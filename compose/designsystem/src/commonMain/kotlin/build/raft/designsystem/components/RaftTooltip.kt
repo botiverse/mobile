@@ -1,9 +1,6 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.MutatePriority
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +15,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -31,7 +27,6 @@ import build.raft.designsystem.tokens.RaftRadius
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 
 /** raft-ui tooltip metrics (tooltip.tsx). */
 internal object RaftTooltipMetrics {
@@ -46,23 +41,13 @@ internal object RaftTooltipMetrics {
      * bottom, the `py-1`); this is the remaining 2dp.
      */
     val ExtraPaddingX = 2.dp
-
-    /** How long a long press keeps it open (Material's `BasicTooltipDefaults.TooltipDuration`). */
-    const val TouchDuration = 1500L
 }
 
 /**
  * Opens every [RaftTooltip] in the subtree, persistent (screenshot fixtures only: an
- * offscreen frame can neither hover nor hold a long press).
+ * offscreen frame cannot hover).
  */
 internal val LocalRaftTooltipPreview = staticCompositionLocalOf { false }
-
-/**
- * Waits out a long-press tooltip's [RaftTooltipMetrics.TouchDuration] before it closes
- * (`delay`). Tests swap in a gate they release, as the scene's effect dispatcher takes its
- * delays from the wall clock, not `mainClock`. A mouse-opened tooltip never calls it.
- */
-internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (durationMillis: Long) -> Unit> { { delay(it) } }
 
 /**
  * raft-ui 0.8.0 Tooltip around [content]: a short label in the dark HUD bubble with a
@@ -72,9 +57,10 @@ internal val LocalRaftTooltipTouchTimer = staticCompositionLocalOf<suspend (dura
  *   10 x 4dp padding, `text-footnote` 13/18 in medium weight, `shadow-float`, a 10 x 5.25dp
  *   caret, 8dp from the anchor.
  * - A mouse / trackpad pointer entering [content] opens it, and it stays open until the
- *   pointer leaves (raft-ui: open while hovered). A touch or stylus long press opens it
- *   for [RaftTooltipMetrics.TouchDuration] (1.5s, Material's plain tooltip); that long
- *   press does not also click. A click or tap elsewhere closes it.
+ *   pointer leaves (raft-ui: open while hovered). Touch never opens it: on a touch screen
+ *   a long press belongs to the element's menu, and a tooltip is never the only place a
+ *   label lives (raft-design Touch / Tooltip). [content] must carry the label as its
+ *   accessible name.
  * - Not focusable and adds no semantics node: it never takes focus or swallows the next
  *   tap, and screen readers get one stop, [content] itself, which must carry the label
  *   (see [RaftIconButton], which passes it as the content description).
@@ -92,14 +78,13 @@ fun RaftTooltip(
     content: @Composable () -> Unit,
 ) {
     val preview = LocalRaftTooltipPreview.current
-    val touchTimer = LocalRaftTooltipTouchTimer.current
     val colors = RaftTheme.colors
-    // Persistent: open until dismissed. The touch path bounds it with a timeout.
+    // Persistent: open while hovered, until the pointer leaves.
     val state = rememberTooltipState(initialIsVisible = preview, isPersistent = true)
     val scope = rememberCoroutineScope()
     // TooltipBox puts [modifier] on an inner box, where parent-data modifiers (`align`,
     // `weight`) would be lost: the caller's modifier goes on this outer box instead.
-    Box(modifier.raftTooltipGestures(state, scope, touchTimer), propagateMinConstraints = true) {
+    Box(modifier.raftTooltipHover(state, scope), propagateMinConstraints = true) {
         TooltipBox(
             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(RaftTooltipMetrics.AnchorSpacing),
             tooltip = {
@@ -130,49 +115,16 @@ fun RaftTooltip(
     }
 }
 
-/** Opens [state] for [RaftTooltipMetrics.TouchDuration] (outside the restricted pointer scope). */
-@OptIn(ExperimentalMaterial3Api::class)
-private fun CoroutineScope.showForTouch(
-    state: TooltipState,
-    timer: suspend (Long) -> Unit,
-) {
-    launch {
-        val show = launch { state.show(MutatePriority.UserInput) }
-        timer(RaftTooltipMetrics.TouchDuration)
-        // Cancelling the show closes it (no-op if a hover or another press took over).
-        show.cancel()
-    }
-}
-
 /**
- * Hover (mouse) opens [state] until the pointer leaves; a touch / stylus long press opens it
- * for [RaftTooltipMetrics.TouchDuration] and eats the rest of that gesture so [content]
- * doesn't click. Runs in the Initial pass and consumes nothing else, so [content]'s own
- * clicks, presses and hover are unchanged.
+ * Hover (mouse) opens [state] until the pointer leaves. Runs in the Initial pass and consumes
+ * nothing, so [content]'s own clicks, presses, long presses and hover are unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
-private fun Modifier.raftTooltipGestures(
+private fun Modifier.raftTooltipHover(
     state: TooltipState,
     scope: CoroutineScope,
-    touchTimer: suspend (Long) -> Unit,
 ): Modifier =
     pointerInput(state) {
-        awaitEachGesture {
-            val pass = PointerEventPass.Initial
-            val down = awaitFirstDown(requireUnconsumed = false, pass = pass)
-            if (down.type != PointerType.Touch && down.type != PointerType.Stylus) return@awaitEachGesture
-            try {
-                withTimeout(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(pass) }
-            } catch (_: PointerEventTimeoutCancellationException) {
-                scope.showForTouch(state, touchTimer)
-                // The long press was the tooltip's: swallow it up to the release.
-                do {
-                    val event = awaitPointerEvent(pass)
-                    event.changes.forEach { it.consume() }
-                } while (event.changes.any { it.pressed })
-            }
-        }
-    }.pointerInput(state) {
         var hover: Job? = null
         awaitPointerEventScope {
             while (true) {
