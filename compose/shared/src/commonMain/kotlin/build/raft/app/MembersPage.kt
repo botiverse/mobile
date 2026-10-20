@@ -165,6 +165,23 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftPresence
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftTabStrip
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -5930,8 +5947,7 @@ private fun MembersDetailContent(
                             tabs = visibleTabs,
                             selectedTab = selectedTab,
                             onSelectedTabChange = { selectedTabOverride = it },
-                            onReorderTabs = onAgentPanelTabOrderChange,
-                            autoScrollSelectedTab = !stableVisualCapture
+                            onReorderTabs = onAgentPanelTabOrderChange
                         )
                     },
                     modifier = Modifier
@@ -6433,13 +6449,6 @@ private fun MembersDetailHeader(
         remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(RaftPopoverLocalPoint.BottomEnd) }
     val currentOnManagementMenuAnchorResolverReady by
         rememberUpdatedState(onManagementMenuAnchorResolverReady)
-    val agentStatusDisplayState =
-        if (member.kind == MemberKind.Agent) {
-            agentStatusIndicatorState?.toMembersAgentStatusDisplayState()
-                ?: unknownMembersAgentStatusIndicatorState().toMembersAgentStatusDisplayState()
-        } else {
-            member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
-        }
     val headerMetaLabel =
         when {
             deleted -> stringResource(MR.strings.member_status_deleted)
@@ -6450,29 +6459,38 @@ private fun MembersDetailHeader(
         }
     val avatarClick = onAvatarClick
     val topSafeArea = raftTopSafeAreaPadding()
-    Box(
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    // raft-ui ProfilePanelHeader on a phone: a 56dp head on `layer-canvas` with a `line-seam`
+    // under it; Back, the 35dp avatar, the title (`text-headline` bold) over one line of
+    // meta (`text-caption`, `foreground-hint`), then 44dp ghost PanelActions 2dp apart.
+    // The web head's Start / Stop and Restart / Reset sit in the More menu at phone width.
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(topSafeArea + RaftAppSize.PageHeaderHeight)
-            .background(RaftColor.SurfaceWhite)
+            .background(colors.layerCanvas)
+            .padding(top = topSafeArea)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(topSafeArea + RaftAppSize.PageHeaderContentHeight)
-                .padding(start = 12.dp, top = topSafeArea + 8.dp, end = 24.dp, bottom = 8.dp),
+                .height(RaftAppSize.PageHeaderHeight - RaftStroke.Hairline)
+                .padding(horizontal = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
-            RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
-            MembersAvatar(
+            RaftIconButton(
+                onClick = onBack,
+                contentDescription = stringResource(MR.strings.common_back),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg
+            ) {
+                RaftContentLucideIcon(RaftLucideIconName.ArrowLeft, size = 22.dp)
+            }
+            MembersRaftAvatar(
                 member = member,
-                avatarSize = 36.dp,
-                statusSize = 10.dp,
-                statusDisplayState = agentStatusDisplayState,
-                statusIndicatorState = agentStatusIndicatorState,
+                size = RaftAvatarSize.Md,
                 memberAvatarResolver = memberAvatarResolver,
-                showStatusOverlay = false,
                 modifier = if (avatarClick != null) {
                     Modifier.clickable(onClick = avatarClick)
                 } else {
@@ -6480,76 +6498,108 @@ private fun MembersDetailHeader(
                 }
             )
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                modifier = Modifier.weight(1f)
             ) {
-                Text(
+                RaftText(
                     text = member.displayName,
-                    style = RaftType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp)
-                        .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack,
+                    style = typography.headline,
+                    color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (!headerMetaLabel.isNullOrBlank()) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    RaftText(
+                        text = headerMetaLabel,
+                        style = typography.caption,
+                        color = if (deleted) colors.dangerStrong else colors.foregroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (
+                    directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
+                    membersHeaderMessageUsesIconOnly(member.kind)
+                ) {
+                    RaftIconButton(
+                        onClick = onOpenDirectMessage,
+                        contentDescription = stringResource(MR.strings.member_label_message),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg
                     ) {
-                        Text(
-                            text = headerMetaLabel,
-                            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = if (deleted) RaftColor.AccentOrange else RaftColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
+                        RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = 22.dp)
+                    }
+                } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
+                    // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
+                    RaftButton(
+                        text = stringResource(MR.strings.member_label_message),
+                        onClick = onOpenDirectMessage,
+                        modifier = Modifier.padding(end = 7.dp),
+                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare) }
+                    )
+                }
+                if (member.kind == MemberKind.Agent) {
+                    RaftIconButton(
+                        onClick = {
+                            onRequestManagementMenu(
+                                threeDotButtonAnchorResolver.resolve()
+                            )
+                        },
+                        contentDescription = stringResource(MR.strings.tab_more),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg,
+                        modifier =
+                            Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                                currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
+                            }
+                    ) {
+                        RaftContentLucideIcon(RaftLucideIconName.Ellipsis, size = 22.dp)
                     }
                 }
             }
-            if (
-                directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
-                membersHeaderMessageUsesIconOnly(member.kind)
-            ) {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.MessageSquare,
-                    onClick = onOpenDirectMessage,
-                    contentDescription = stringResource(MR.strings.member_label_message),
-                    size = MembersActionSize
-                )
-            } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.member_label_message),
-                    leadingIcon = RaftLucideIconName.MessageSquare,
-                    minHeight = MembersActionSize,
-                    modifier = Modifier.widthIn(min = 92.dp),
-                    onClick = onOpenDirectMessage
-                )
-            }
-            if (member.kind == MemberKind.Agent) {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.Menu,
-                    onClick = {
-                        onRequestManagementMenu(
-                            threeDotButtonAnchorResolver.resolve()
-                        )
-                    },
-                    size = MembersActionSize,
-                    modifier =
-                        Modifier.raftCaptureLiveRootAnchor(threeDotButtonAnchor) {
-                            currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
-                        }
-                )
-            }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(RaftAppStroke.Default)
-                .background(RaftColor.BorderBlack)
-                .align(Alignment.BottomCenter)
-        )
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
     }
+}
+
+/**
+ * raft-ui Avatar (the square sticker, [RaftAvatarSize.Xl] with the hard sticker shadow)
+ * around the member's resolved avatar (pixel avatar, photo or the app's fallback face).
+ */
+@Composable
+private fun MembersRaftAvatar(
+    member: MemberProfile,
+    size: RaftAvatarSize,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    presence: RaftPresence? = null,
+    modifier: Modifier = Modifier
+) {
+    val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
+    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+        member.avatarWireValueForAvatarSlot()
+    }
+    val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
+    RaftAvatar(
+        type = if (member.kind == MemberKind.Human) RaftAvatarType.Human else RaftAvatarType.Agent,
+        size = size,
+        presence = presence,
+        modifier = modifier,
+        image = {
+            RaftAppAvatar(
+                avatarWireValue = avatarWireValue,
+                label = member.avatarLabel,
+                // The face fills the inside of the 1.5dp sticker edge.
+                avatarSize = size.edge - RaftStroke.Control * 2,
+                borderWidth = 0.dp,
+                cacheSubject = member.raftAvatarCacheSubject(),
+                cacheServerId = member.serverId?.value
+            )
+        }
+    )
 }
 
 @Composable
@@ -7654,56 +7704,47 @@ private fun MembersAgentLifecycleAction.restartResetAccentColor(): Color =
 private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
     RaftColor.AppBgLightBlue
 
+/**
+ * raft-ui ConversationPanelTabs + TabsList (default variant), as the web agent page: sticker
+ * tabs (16dp icon, callout label) 2dp apart on `layer-canvas`, 16 / 8dp padding and a
+ * `line-seam` under them ([RaftTabStrip]); the selected tab scrolls itself into view.
+ * Long-press drag reorders (raft-ui SortableTabsList): the step is the dragged tab's measured
+ * width, and the dragged tab takes `info-soft`.
+ */
 @Composable
 private fun MembersAgentTabBar(
     tabs: List<MembersAgentDetailTab>,
     selectedTab: MembersAgentDetailTab,
     onSelectedTabChange: (MembersAgentDetailTab) -> Unit,
     onReorderTabs: ((List<MembersAgentDetailTab>) -> Unit)? = null,
-    autoScrollSelectedTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberLazyListState()
     var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
     var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
     var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
-    if (autoScrollSelectedTab) {
-        LaunchedEffect(tabs, selectedTab) {
-            if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
-                listState.animateScrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
-            }
-        }
-    }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(RaftTopTabBarDefaults.Height)
-            .background(RaftColor.SurfaceWhite)
-    ) {
-        LazyRow(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) {
-            items(tabs.size, key = { "members-agent-tab-${tabs[it].name}" }) { index ->
-                val tab = tabs[index]
+    val tabWidthsPx = remember(tabs) { mutableStateMapOf<MembersAgentDetailTab, Int>() }
+    val tabGapPx = with(LocalDensity.current) { 2.dp.toPx() }
+    val dragFill = RaftTheme.colors.infoSoft
+    RaftTabStrip(modifier = modifier) {
+        tabs.forEachIndexed { index, tab ->
+            key(tab) {
                 val spec = tab.toRaftTabSpec()
-                val selected = tab == selectedTab
-                val dragging = tab == draggedTab
-                Row(
+                RaftTab(
+                    text = spec.label,
+                    selected = tab == selectedTab,
+                    onClick = { onSelectedTabChange(tab) },
+                    icon = { RaftContentLucideIcon(spec.iconName) },
                     modifier = Modifier
-                        .widthIn(min = spec.width)
-                        .fillMaxHeight()
-                        .background(
-                            when {
-                                dragging -> RaftColor.AccentCyan
-                                selected -> RaftColor.BrandYellow
-                                else -> RaftColor.SurfaceWhite
+                        .onSizeChanged { tabWidthsPx[tab] = it.width }
+                        .then(
+                            if (tab == draggedTab) {
+                                Modifier.background(dragFill, RoundedCornerShape(RaftRadius.Control))
+                            } else {
+                                Modifier
                             }
                         )
-                        .clickable { onSelectedTabChange(tab) }
                         .pointerInput(tabs, tab, onReorderTabs) {
                             if (onReorderTabs == null) return@pointerInput
-                            val stepWidthPx = spec.width.toPx().coerceAtLeast(1f)
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
                                     draggedTab = tab
@@ -7712,6 +7753,7 @@ private fun MembersAgentTabBar(
                                 },
                                 onDragEnd = {
                                     val fromIndex = dragStartIndex
+                                    val stepWidthPx = ((tabWidthsPx[tab] ?: 0) + tabGapPx).coerceAtLeast(1f)
                                     val toIndex = (fromIndex + (dragOffsetX / stepWidthPx).roundToInt())
                                         .coerceIn(0, tabs.lastIndex)
                                     if (fromIndex in tabs.indices && toIndex != fromIndex) {
@@ -7730,27 +7772,9 @@ private fun MembersAgentTabBar(
                                 dragOffsetX += dragAmount.x
                             }
                         }
-                        .padding(horizontal = 10.dp, vertical = RaftAppSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally)
-                ) {
-                    RaftLucideIcon(spec.iconName, modifier = Modifier.size(14.dp), color = RaftColor.TextBlackArgb)
-                    Text(
-                        text = spec.label,
-                        style = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack),
-                        color = RaftColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .height(RaftTopTabBarDefaults.Height - RaftAppStroke.Default)
-                        .width(RaftAppStroke.Default)
-                        .background(RaftColor.BorderBlack)
                 )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
     }
 }
 
