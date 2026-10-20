@@ -285,23 +285,29 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: RaftTh
     }
 
 /**
- * Task status by task number for inline `#N` chips in this thread's Markdown
- * (web MessageItem `taskByNumber`). Later sources win: task facts carried on
- * the loaded messages, then the server task projection, then the channel
- * projection (the freshest scope the thread keeps in sync).
+ * Thread-wide task status by task number for inline `#N` chips in this thread's Markdown
+ * (web MessageItem `taskByNumber`): server tasks, then channel tasks (channel wins). The message's
+ * own linked task is layered on per message body by `RaftMarkdownOwnTaskStatusScope`, as on web.
+ *
+ * Returns `null` until the channel or the server task slice has loaded, so task refs keep the
+ * legacy chip instead of flashing the grey "unknown task" badge before turning status-coloured.
  */
 internal fun threadMarkdownTaskStatusesByNumber(
     channelTasks: List<TaskSummary>,
     serverTasks: List<TaskSummary>,
-    messages: List<RaftThreadMessageItem>,
-): Map<Int, TaskStatus> {
+    loaded: Boolean,
+): Map<Int, TaskStatus>? {
+    if (!loaded) return null
     val statuses = LinkedHashMap<Int, TaskStatus>()
-    messages.forEach { message ->
-        val number = message.taskNumber?.takeIf { it > 0 } ?: return@forEach
-        val status = TaskStatus.fromWireValue(message.taskStatus) ?: return@forEach
-        statuses[number] = status
-    }
     serverTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
     channelTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
     return statuses
 }
+
+/** Either task slice feeding the thread's inline task chips has finished loading. */
+internal fun threadMarkdownTaskSourceLoaded(
+    channelProjectionSlice: SharedTasksProjectionSlice,
+    serverProjectionSlice: SharedTasksProjectionSlice,
+): Boolean =
+    channelProjectionSlice.status == SharedTasksDataStoreStatus.Loaded ||
+        serverProjectionSlice.status == SharedTasksDataStoreStatus.Loaded

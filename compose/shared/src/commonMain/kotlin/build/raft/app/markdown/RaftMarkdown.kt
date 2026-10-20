@@ -846,9 +846,7 @@ private data class RaftRichTextRendererInput(
 
     fun taskChipInlineContent(): Map<String, InlineTextContent> {
         if (taskStatusesOrNull() == null) return emptyMap()
-        return raftMarkdownTaskChipInlineContent(
-            (TaskStatus.entries + listOf<TaskStatus?>(null)).map { status -> raftMarkdownTaskChipStyle(status) }
-        )
+        return raftMarkdownTaskChipInlineContent(dark = RaftAppThemeState.isDark)
     }
 
     fun raftRefTokensStartingInRange(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
@@ -2184,7 +2182,9 @@ fun RaftMarkdownBody(
     val taskStatuses = LocalRaftMarkdownTaskStatuses.current
     val currentTaskStatuses by rememberUpdatedState(taskStatuses)
     val colors = RaftMarkdownColorsDefault
-    val typography = remember(markdownTextStyle) { raftMarkdownTypography(markdownTextStyle) }
+    // The typography carries theme colours (h6, quotes); the theme is part of its key.
+    val markdownDark = RaftAppThemeState.isDark
+    val typography = remember(markdownTextStyle, markdownDark) { raftMarkdownTypography(markdownTextStyle) }
     val markdownParserContent = remember(content) {
         MarkdownParserContent.from(content)
     }
@@ -2313,6 +2313,8 @@ fun RaftMarkdownBody(
     // will serve stale output for it.
     val annotationRevision: List<String?> =
         buildList {
+            // Link and task-chip spans resolve theme colours at annotation time.
+            add(if (markdownDark) "theme:dark" else "theme:light")
             if (bodyActiveActionId != null) add("activeAction:$bodyActiveActionId")
             if (bodyActiveTagKey != null) add("activeTag:$bodyActiveTagKey")
             if (activeActionIndicator.isNotEmpty()) add("indicator:$activeActionIndicator")
@@ -2323,7 +2325,7 @@ fun RaftMarkdownBody(
             }
             // Task chips read the status map and the theme at annotation time.
             if (taskStatuses != null) {
-                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, RaftAppThemeState.isDark))
+                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark))
             }
         }
     val padding = remember {

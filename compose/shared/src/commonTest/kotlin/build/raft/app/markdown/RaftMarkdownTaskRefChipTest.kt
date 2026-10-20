@@ -23,7 +23,9 @@ import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftMarkdownTaskRefChipTest {
@@ -74,6 +76,18 @@ class RaftMarkdownTaskRefChipTest {
         assertEquals(FontWeight.Bold, style.fontWeight)
         assertEquals(6.dp, style.leadingGap)
         assertEquals(6.dp, style.trailingGap)
+    }
+
+    @Test
+    fun taskChipInlineContentIsBuiltOncePerTheme() {
+        val light = raftMarkdownTaskChipInlineContent(dark = false)
+        val dark = raftMarkdownTaskChipInlineContent(dark = true)
+        assertSame(light, raftMarkdownTaskChipInlineContent(dark = false))
+        assertSame(dark, raftMarkdownTaskChipInlineContent(dark = true))
+        assertNotSame(light, dark)
+        // Every status plus the unknown badge, a lead and a trail each.
+        assertEquals((TaskStatus.entries.size + 1) * 2, light.size)
+        assertEquals(light.keys, dark.keys)
     }
 
     @Test
