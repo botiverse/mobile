@@ -96,6 +96,7 @@ import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
 import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
+import build.raft.app.data.MOBILE_ACTION_NATIVE_PULL_TO_REFRESH
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_OFFLINE_COMPUTER_ALERTS
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -8413,6 +8414,9 @@ private fun SettingsNativeDetailPageContent(
                     onThreadReverseLayoutChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
                     },
+                    onNativePullToRefreshChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetNativePullToRefreshEnabled(enabled))
+                    },
                     diagnosticsLogger = diagnosticsLogger,
                 )
             SettingsNativeDetailPage.About ->
@@ -9820,6 +9824,7 @@ private fun SettingsMobileContent(
     onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
     onHttp3Change: (Boolean) -> Unit = {},
     onThreadReverseLayoutChange: (Boolean) -> Unit = {},
+    onNativePullToRefreshChange: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
     val snapshot =
@@ -9944,6 +9949,15 @@ private fun SettingsMobileContent(
                     actionState = actionState,
                     onHomeServerAvatarChange = onHomeServerAvatarChange
                 )
+            }
+            if (snapshot.nativePullToRefresh.available) {
+                item {
+                    SettingsNativePullToRefreshCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onNativePullToRefreshChange = onNativePullToRefreshChange
+                    )
+                }
             }
             if (snapshot.realtimeCurlSocketIo.available) {
                 item {
@@ -10307,6 +10321,51 @@ private fun SettingsHttp3Card(
             RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState)
+        }
+    }
+}
+
+@Composable
+private fun SettingsNativePullToRefreshCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onNativePullToRefreshChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_NATIVE_PULL_TO_REFRESH && actionState.inProgress
+    val preference = snapshot.nativePullToRefresh
+    SettingsFormSectionCard(
+        iconName = RaftLucideIconName.RefreshCw,
+        title = stringResource(MR.strings.settings_mobile_native_pull_to_refresh)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onNativePullToRefreshChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    preference.localizedToggleStatus(),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
+                )
+                Text(
+                    stringResource(MR.strings.settings_mobile_native_pull_to_refresh_detail),
+                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_NATIVE_PULL_TO_REFRESH && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -21535,6 +21594,7 @@ internal fun SharedHomeSavedPanel(
                             .background(RaftColor.SurfaceWhite),
                     verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
+                    raftPullToRefreshItem()
                     val hasSavedRows = projectedItems.isNotEmpty()
                     if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
                         item {

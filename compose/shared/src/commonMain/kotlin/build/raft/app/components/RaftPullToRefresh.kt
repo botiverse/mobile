@@ -3,6 +3,7 @@ package build.raft.app.components
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
@@ -11,16 +12,135 @@ import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.pullToRefreshIndicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.RaftNativePullToRefreshRuntime
+import build.raft.app.raftPlatformNativePullToRefreshStyle
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.theme.RaftTheme
+
+/**
+ * Which pull-to-refresh implementation a [RaftPullToRefreshBox] runs.
+ *
+ * - [Custom]: Raft's custom pull-to-refresh (default; see RaftCustomPullToRefresh.kt): a header
+ *   item in the list grows with the pull and pushes the content down.
+ * - [Material]: Material 3 shape with the Raft indicator overlaid at the top (Android native).
+ * - [Cupertino]: UIRefreshControl-style, content follows the finger (iOS native).
+ */
+internal enum class RaftPullToRefreshStyle {
+    Custom,
+    Material,
+    Cupertino,
+}
+
+/** The custom style needs a header item inside the list; the native styles do not. */
+internal val RaftPullToRefreshStyle.addsListItem: Boolean
+    get() = this == RaftPullToRefreshStyle.Custom
+
+/**
+ * The Settings → Mobile "Native pull-to-refresh" switch: off = [RaftPullToRefreshStyle.Custom],
+ * on = the platform's own style ([platformNativeStyle]).
+ */
+internal fun raftPullToRefreshStyle(
+    nativeEnabled: Boolean,
+    platformNativeStyle: RaftPullToRefreshStyle,
+): RaftPullToRefreshStyle =
+    if (nativeEnabled) platformNativeStyle else RaftPullToRefreshStyle.Custom
+
+/** The live style: recomposes when the Settings switch changes. */
+@Composable
+internal fun rememberRaftPullToRefreshStyle(): RaftPullToRefreshStyle =
+    raftPullToRefreshStyle(
+        nativeEnabled = RaftNativePullToRefreshRuntime.enabled(),
+        platformNativeStyle = raftPlatformNativePullToRefreshStyle(),
+    )
+
+/**
+ * Content scope of [RaftPullToRefreshBox]. Lists inside call [raftPullToRefreshItem] first in their
+ * LazyColumn content: it emits the custom style's header item, and nothing for the native styles.
+ */
+@Stable
+internal interface RaftPullToRefreshScope : BoxScope {
+    fun LazyListScope.raftPullToRefreshItem()
+}
+
+private class RaftPullToRefreshScopeImpl(
+    boxScope: BoxScope,
+    private val emitItem: (LazyListScope.() -> Unit)?,
+) : RaftPullToRefreshScope, BoxScope by boxScope {
+    override fun LazyListScope.raftPullToRefreshItem() {
+        emitItem?.invoke(this)
+    }
+}
+
+/**
+ * The single switch point for pull-to-refresh: every refreshable list wraps itself in this box,
+ * which runs the implementation picked by [style] (by default the live Settings switch, see
+ * [rememberRaftPullToRefreshStyle]). [enabled] gates the gesture and the indicator;
+ * [isRefreshing] is the caller's refresh signal.
+ */
+@Composable
+internal fun RaftPullToRefreshBox(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentAlignment: Alignment = Alignment.TopStart,
+    style: RaftPullToRefreshStyle = rememberRaftPullToRefreshStyle(),
+    content: @Composable RaftPullToRefreshScope.() -> Unit,
+) {
+    when (style) {
+        RaftPullToRefreshStyle.Custom -> {
+            val state = rememberRaftCustomPullToRefreshState(isRefreshing)
+            val latestOnRefresh by rememberUpdatedState(onRefresh)
+            Box(modifier.raftCustomPullToRefresh(state, enabled), contentAlignment = contentAlignment) {
+                val boxScope = this
+                val scope =
+                    remember(boxScope, state, enabled) {
+                        RaftPullToRefreshScopeImpl(
+                            boxScope,
+                            if (enabled) {
+                                { raftCustomPullToRefreshItem(state, onRefresh = { latestOnRefresh() }) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                scope.content()
+            }
+        }
+        RaftPullToRefreshStyle.Material ->
+            RaftMaterialPullToRefreshContainer(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                modifier = modifier,
+                enabled = enabled,
+                contentAlignment = contentAlignment,
+            ) {
+                val boxScope = this
+                remember(boxScope) { RaftPullToRefreshScopeImpl(boxScope, null) }.content()
+            }
+        RaftPullToRefreshStyle.Cupertino ->
+            RaftCupertinoPullToRefreshContainer(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                modifier = modifier,
+                enabled = enabled,
+                contentAlignment = contentAlignment,
+            ) {
+                val boxScope = this
+                remember(boxScope) { RaftPullToRefreshScopeImpl(boxScope, null) }.content()
+            }
+    }
+}
 
 /**
  * Material 3 pull-to-refresh with the Raft indicator: the M3 `PullToRefreshBox` shape
@@ -38,12 +158,12 @@ import build.raft.designsystem.theme.RaftTheme
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RaftPullToRefreshBox(
+private fun RaftMaterialPullToRefreshContainer(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    contentAlignment: Alignment = Alignment.TopStart,
+    modifier: Modifier,
+    enabled: Boolean,
+    contentAlignment: Alignment,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val state = rememberPullToRefreshState()

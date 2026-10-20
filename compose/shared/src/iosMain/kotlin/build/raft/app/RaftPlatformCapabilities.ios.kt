@@ -8,6 +8,10 @@ import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
+import build.raft.app.components.RaftPullToRefreshStyle
+
+internal actual fun raftPlatformNativePullToRefreshStyle(): RaftPullToRefreshStyle =
+    RaftPullToRefreshStyle.Cupertino
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = false
 
