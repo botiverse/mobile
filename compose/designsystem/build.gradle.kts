@@ -4,7 +4,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 // Standalone: no Kuikly, no :shared dependency. See README.md.
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
 }
@@ -14,12 +14,18 @@ kotlin {
     // uses the standard one (commonMain -> iosMain -> ios*Main, ...).
     applyDefaultHierarchyTemplate()
 
-    androidTarget {
+    // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
+    // AGP 9 Android-KMP library plugin (com.android.kotlin.multiplatform.library): the Android
+    // target and its settings live here; there is no top-level `android {}` block.
+    android {
+        namespace = "build.raft.designsystem"
+        compileSdk = 37
+        minSdk = 21
+        // Compose resources (fonts, ...) ship as Android resources/assets.
+        androidResources { enable = true }
         compilerOptions {
-            // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
             jvmTarget.set(JvmTarget.JVM_11)
         }
-        publishLibraryVariants("release")
     }
 
     iosArm64()
@@ -57,18 +63,6 @@ compose.resources {
     packageOfResClass = "build.raft.designsystem.resources"
     publicResClass = false
     generateResClass = always
-}
-
-android {
-    namespace = "build.raft.designsystem"
-    compileSdk = 37
-    defaultConfig {
-        minSdk = 21
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
 }
 
 // Screenshot tests (src/desktopTest): verify against the committed goldens by default;

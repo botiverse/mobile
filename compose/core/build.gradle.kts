@@ -13,7 +13,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
 }
 
 kotlin {
@@ -23,7 +23,14 @@ kotlin {
         optIn.add("build.raft.app.RaftCoreInternalApi")
     }
 
-    androidTarget {
+    // AGP 9 Android-KMP library plugin (com.android.kotlin.multiplatform.library): the Android
+    // target and its settings live here; there is no top-level `android {}` block.
+    android {
+        namespace = "build.raft.app.core"
+        compileSdk = 37
+        minSdk = 21
+        // Runs commonTest on the JVM as before (formerly testDebugUnitTest).
+        withHostTest {}
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_1_8)
         }
@@ -62,14 +69,6 @@ kotlin {
             iosArm64Test.dependsOn(this)
             iosSimulatorArm64Test.dependsOn(this)
         }
-    }
-}
-
-android {
-    namespace = "build.raft.app.core"
-    compileSdk = 37
-    defaultConfig {
-        minSdk = 21
     }
 }
 

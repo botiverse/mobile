@@ -14,7 +14,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  */
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
 }
@@ -24,9 +24,18 @@ kotlin {
     // one (commonMain -> iosMain -> ios*Main), like :designsystem.
     applyDefaultHierarchyTemplate()
 
-    androidTarget {
+    // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
+    // AGP 9 Android-KMP library plugin (com.android.kotlin.multiplatform.library): the Android
+    // target and its settings live here; there is no top-level `android {}` block.
+    android {
+        namespace = "build.raft.app.cmp"
+        compileSdk = 37
+        minSdk = 21
+        // Compose resources (fonts, ...) ship as Android resources/assets.
+        androidResources { enable = true }
+        // Runs commonTest on the JVM as before (formerly testDebugUnitTest).
+        withHostTest {}
         compilerOptions {
-            // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
@@ -50,18 +59,6 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
         }
-    }
-}
-
-android {
-    namespace = "build.raft.app.cmp"
-    compileSdk = 37
-    defaultConfig {
-        minSdk = 21
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 
