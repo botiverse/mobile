@@ -2,10 +2,13 @@ package build.raft.app.widget
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
+import build.raft.app.PixelAvatarRasterCellCount
+import build.raft.app.RaftPixelAvatarRaster
+import build.raft.app.core.data.auth.androidMMKVLocalPreferenceKeyValueStore
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.raftApplyPersistedPixelAvatars
+import build.raft.app.raftPixelAvatarActiveDataVersion
+import build.raft.app.raftPixelAvatarRaster
 import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.security.MessageDigest
@@ -18,13 +21,13 @@ import kotlin.math.roundToInt
 internal suspend fun Context.cacheRaftWidgetAvatarPath(wireValue: String): String? {
     val normalized = wireValue.trim().takeIf { it.isNotBlank() } ?: return null
     val directory = File(cacheDir, "slock-widget-avatars").also { it.mkdirs() }
-    val file = File(directory, "${normalized.sha256()}.png")
-    if (file.isFile && file.length() > 0L) return file.absolutePath
     return when {
-        normalized.startsWith("http://") || normalized.startsWith("https://") ->
-            cacheRemoteAvatar(normalized, file)
+        normalized.startsWith("http://") || normalized.startsWith("https://") -> {
+            val file = File(directory, "${normalized.sha256()}.png")
+            if (file.isFile && file.length() > 0L) file.absolutePath else cacheRemoteAvatar(normalized, file)
+        }
         normalized.startsWith("pixel:") || normalized.startsWith("random:") ->
-            cachePixelAvatar(normalized, file)
+            cachePixelAvatar(normalized, directory)
         else -> null
     }
 }
@@ -46,108 +49,59 @@ private suspend fun cacheRemoteAvatar(url: String, file: File): String? =
         null
     }
 
-private fun cachePixelAvatar(wireValue: String, file: File): String? =
+private fun Context.cachePixelAvatar(wireValue: String, directory: File): String? =
     runCatching {
-        val spec = wireValue.toWidgetPixelAvatarSpec()
-        val bitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            isAntiAlias = false
-            style = Paint.Style.FILL
-        }
-        Canvas(bitmap).also { canvas ->
-            paint.color = spec.background
-            canvas.drawRect(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat(), paint)
-            spec.grid.forEachIndexed { rowIndex, row ->
-                row.forEachIndexed { columnIndex, key ->
-                    val color = WidgetPixelPalette[key] ?: Color.TRANSPARENT
-                    if (color != Color.TRANSPARENT) {
-                        paint.color = color
-                        canvas.drawRect(
-                            widgetPixelEdge(columnIndex, bitmap.width),
-                            widgetPixelEdge(rowIndex, bitmap.height),
-                            widgetPixelEdge(columnIndex + 1, bitmap.width),
-                            widgetPixelEdge(rowIndex + 1, bitmap.height),
-                            paint
-                        )
-                    }
-                }
-            }
-        }
+        raftApplyPersistedPixelAvatars(androidMMKVLocalPreferenceKeyValueStore(this))
+        val raster = raftPixelAvatarRaster(wireValue.toSharedPixelAvatarWireValue()) ?: return@runCatching null
+        // Key the render by the active table version so a runtime table update re-renders.
+        val file = File(directory, "${wireValue.sha256()}-pixel-v$raftPixelAvatarActiveDataVersion.png")
+        if (file.isFile && file.length() > 0L) return@runCatching file.absolutePath
+        val bitmap = renderRaftWidgetPixelAvatar(raster)
         file.outputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
         file.absolutePath
     }.getOrNull()
 
-private data class WidgetPixelAvatarSpec(
-    val background: Int,
-    val grid: List<String>
-)
+/**
+ * Legacy bare `random:<seed>` values render like the canonical `pixel:random:<seed>`; every
+ * other value is passed through to the shared resolver unchanged.
+ */
+internal fun String.toSharedPixelAvatarWireValue(): String =
+    if (startsWith(LegacyRandomPrefix)) "pixel:random:${removePrefix(LegacyRandomPrefix)}" else this
 
-private fun String.toWidgetPixelAvatarSpec(): WidgetPixelAvatarSpec {
-    removePrefixOrNull("pixel:")?.let { key ->
-        return WidgetPixelFixedSpecs[key] ?: WidgetPixelFixedSpecs.getValue("robot")
+private const val LegacyRandomPrefix = "random:"
+
+/** Pixel raster for a resolved avatar; split out (no Bitmap) so unit tests can compare it. */
+internal fun RaftPixelAvatarRaster.widgetPixelArgb(size: Int = WidgetPixelAvatarSizePx): IntArray {
+    val pixels = IntArray(size * size) { backgroundArgb }
+    cellArgb.forEachIndexed { rowIndex, row ->
+        row.forEachIndexed { columnIndex, color ->
+            if ((color ushr 24) != 0) {
+                val left = widgetPixelEdge(columnIndex, size)
+                val top = widgetPixelEdge(rowIndex, size)
+                val right = widgetPixelEdge(columnIndex + 1, size)
+                val bottom = widgetPixelEdge(rowIndex + 1, size)
+                for (y in top until bottom) {
+                    for (x in left until right) pixels[y * size + x] = color
+                }
+            }
+        }
     }
-    removePrefixOrNull("random:")?.let { seed ->
-        val options = WidgetPixelFixedSpecs.values.toList()
-        return options[(seed.pixelHash().absoluteValueCompat()) % options.size]
-    }
-    return WidgetPixelFixedSpecs.getValue("robot")
+    return pixels
 }
 
-private val WidgetPixelPalette =
-    mapOf(
-        '_' to Color.TRANSPARENT,
-        'K' to Color.rgb(20, 17, 17),
-        'W' to Color.WHITE,
-        'P' to Color.rgb(254, 125, 168),
-        'O' to Color.rgb(248, 161, 111),
-        'Y' to Color.rgb(255, 212, 64),
-        'L' to Color.rgb(169, 216, 119),
-        'C' to Color.rgb(39, 204, 243),
-        'V' to Color.rgb(187, 175, 230),
-        'B' to Color.rgb(87, 101, 116),
-        'R' to Color.rgb(249, 114, 100),
-        'G' to Color.rgb(157, 202, 170)
-    )
+private fun renderRaftWidgetPixelAvatar(raster: RaftPixelAvatarRaster): Bitmap {
+    val size = WidgetPixelAvatarSizePx
+    return Bitmap.createBitmap(raster.widgetPixelArgb(size), size, size, Bitmap.Config.ARGB_8888)
+}
 
-private val WidgetPixelFixedSpecs =
-    mapOf(
-        "robot" to WidgetPixelAvatarSpec(
-            WidgetPixelPalette.getValue('C'),
-            listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")
-        ),
-        "ghost" to WidgetPixelAvatarSpec(
-            WidgetPixelPalette.getValue('V'),
-            listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")
-        ),
-        "alien" to WidgetPixelAvatarSpec(
-            WidgetPixelPalette.getValue('L'),
-            listOf("_KKKKKK_", "KGGGGGGK", "KGKKKKGK", "KGGGGGGK", "_KGGGGK_", "__KGGK__", "__KGGK__", "_KK__KK_")
-        ),
-        "cat" to WidgetPixelAvatarSpec(
-            WidgetPixelPalette.getValue('Y'),
-            listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")
-        ),
-        "flame" to WidgetPixelAvatarSpec(
-            WidgetPixelPalette.getValue('O'),
-            listOf("___K____", "__KRK___", "__KRKK__", "_KORRRK_", "_KOORRK_", "KYOOORK_", "KYYOOK__", "_KKKK___")
-        )
-    )
+private const val WidgetPixelAvatarSizePx = 48
 
-private fun widgetPixelEdge(index: Int, extent: Int): Float =
+private fun widgetPixelEdge(index: Int, extent: Int): Int =
     when {
-        index <= 0 -> 0f
-        index >= 8 -> extent.toFloat()
-        else -> (extent.toFloat() * index / 8).roundToInt().toFloat()
+        index <= 0 -> 0
+        index >= PixelAvatarRasterCellCount -> extent
+        else -> (extent.toFloat() * index / PixelAvatarRasterCellCount).roundToInt()
     }
-
-private fun String.removePrefixOrNull(prefix: String): String? =
-    takeIf { startsWith(prefix) }?.removePrefix(prefix)?.ifBlank { "robot" }
-
-private fun String.pixelHash(): Int =
-    fold(0) { hash, char -> (hash * 31) + char.code }
-
-private fun Int.absoluteValueCompat(): Int =
-    if (this == Int.MIN_VALUE) 0 else kotlin.math.abs(this)
 
 private fun String.sha256(): String {
     val digest = MessageDigest.getInstance("SHA-256").digest(toByteArray())
