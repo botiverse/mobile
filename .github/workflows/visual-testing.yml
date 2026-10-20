@@ -42,6 +42,10 @@ on:
         description: "Allow the publish guard to accept a reduced case count (intentional retirement only, e.g. slock #4792/#4995) — never set for ordinary runs"
         type: boolean
         default: false
+      include_ios:
+        description: "Also run the iOS simulator capture (macOS runners are expensive: off for dispatched rounds, on for the nightly schedule)"
+        type: boolean
+        default: false
       ios_shards:
         description: "iOS capture parallelism: N job-owned simulators each take a slice of the case list. 1 = legacy serial behaviour. Suggested max on the single self-hosted Mac: 4."
         type: number
@@ -58,7 +62,7 @@ jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
     name: React capture (playwright)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     timeout-minutes: 45
     defaults:
       run:
@@ -144,7 +148,8 @@ jobs:
     name: Android build (connected test APKs)
     # ubuntu-latest-m (org larger runner, 4 cores / 15GB): the standard 7GB
     # runner forces emulator and gradle to fight for memory. (task #418)
-    runs-on: ubuntu-latest
+    # Gradle is CPU-bound: a large Blacksmith runner (as android-release.yml) cuts the build most.
+    runs-on: blacksmith-16vcpu-ubuntu-2204
     timeout-minutes: 60
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
@@ -315,7 +320,8 @@ jobs:
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
-    runs-on: ubuntu-latest
+    # Blacksmith runners expose /dev/kvm for the emulator (the Enable KVM step below still applies).
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
@@ -336,6 +342,14 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
+
+      # sdkmanager needs JDK 17+; Blacksmith images default to 11.
+      - name: Setup JDK 17
+        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup Android SDK
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
@@ -457,8 +471,11 @@ jobs:
   # lists everything else as pending — no silent coverage gaps.
   ios-capture:
     name: iOS capture (simulator)
-    if: ${{ !inputs.site_only }}
-    runs-on: macos-latest
+    # macOS minutes are the expensive part: nightly runs always capture iOS,
+    # dispatched rounds only when include_ios is set (report degrades to react__android).
+    if: ${{ !inputs.site_only && (github.event_name == 'schedule' || inputs.include_ios) }}
+    # Same macOS pool as ios-release.yml.
+    runs-on: blacksmith-12vcpu-macos-latest
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
@@ -742,7 +759,7 @@ jobs:
     # with an empty android side (react__android missing 89). iOS stays
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     # AI analysis moved to the ai-analysis job (images publish first, per
     # artin 2026-07-09); without it diff/report/site fits well inside 30.
     timeout-minutes: 30
@@ -942,7 +959,7 @@ jobs:
     needs: [report]
     # Only meaningful when the report actually published a site to update.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 60
     # A rerun/new publish supersedes the in-flight analysis of the previous
     # one: cancel it instead of letting it burn model calls and a runner
