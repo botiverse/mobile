@@ -46,15 +46,58 @@ class RaftAndroidHostHooksTest {
                             raftOpenRenderLease(
                                 io,
                                 open = {
-                                    // Covers the FAST path: `open` returns synchronously and the
-                                    // cancel is issued from inside it, so `withContext` may return
-                                    // before the cancellation is observed. `ensureActive()` in
-                                    // `raftOpenRenderLease` is what makes this deterministic --
-                                    // without it the lease would be handed to a cancelled caller.
+                                    // Covers the SUSPENDED path, not the fast one: the
+                                    // `runBlocking` below blocks the io thread until the test
+                                    // completes `jobRef`, so the caller genuinely suspends and
+                                    // `withContext` dispatches back with the cancellation already
+                                    // observed. Removing `ensureActive()` does NOT fail this test.
+                                    // Kept because the catch branch it exercises is what the
+                                    // original flake tripped. The fast path is covered by
+                                    // leaseIsClosedWhenTheCallerIsCancelledBeforeTheHandOver.
                                     runBlocking { jobRef.await() }.cancel()
                                     lease
                                 },
                                 close = { it.closes.incrementAndGet() },
+                            )
+                        }
+                    failure.complete(result.exceptionOrNull())
+                }
+            jobRef.complete(job)
+            job.start()
+            job.join()
+            assertTrue(failure.await() is CancellationException)
+            assertEquals(1, lease.closes.get())
+        } finally {
+            io.close()
+        }
+    }
+
+    @Test
+    fun leaseIsClosedWhenTheCallerIsCancelledBeforeTheHandOver() = runBlocking {
+        val io = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            val lease = Lease()
+            val failure = CompletableDeferred<Throwable?>()
+            // Covers the FAST path: `open` returns synchronously and the caller never
+            // suspends, so `withContext` has no reason to check cancellation and returns
+            // normally. The cancel is issued from `beforeHandOver`, which runs in the
+            // window after that return and before the hand-over -- the one place the
+            // un-cancelled caller could otherwise still be handed a live lease.
+            // Deterministic by construction: the cancel point is pinned by the hook, not
+            // by scheduling. Removing `ensureActive()` makes this fail with closes == 0.
+            val jobRef = CompletableDeferred<Job>()
+            val job =
+                launch(start = CoroutineStart.LAZY) {
+                    val result =
+                        runCatching {
+                            raftOpenRenderLease(
+                                io,
+                                open = { lease },
+                                close = { it.closes.incrementAndGet() },
+                                beforeHandOver = {
+                                    // Runs after `open` returned and before the hand-over.
+                                    runBlocking { jobRef.await() }.cancel()
+                                },
                             )
                         }
                     failure.complete(result.exceptionOrNull())
@@ -75,11 +118,10 @@ class RaftAndroidHostHooksTest {
         try {
             val lease = Lease()
             val failure = CompletableDeferred<Throwable?>()
-            // Covers the SLOW path: the cancel is observed only after `open` is already
-            // suspended, so `withContext(NonCancellable)` still completes and the boundary
-            // check inside it has nothing to report. This case cannot flake because the
-            // test waits for `entered` before cancelling and for `cancelled` before `open`
-            // returns; it stays green even if `ensureActive()` is removed.
+            // Also a suspended path, made explicit: the test waits for `entered` before
+            // cancelling and for `cancelled` before `open` returns, so it cannot flake.
+            // It stays green if `ensureActive()` is removed. The fast path that check
+            // exists for is covered by leaseIsClosedWhenTheCallerIsCancelledBeforeTheHandOver.
             val entered = CompletableDeferred<Job>()
             val cancelled = CompletableDeferred<Unit>()
             val job =
