@@ -1667,12 +1667,18 @@ internal const val ThreadReplyEmptyTitle = "No replies yet"
 internal const val ThreadReplyEmptyDetail = ""
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
-private val ThreadHeaderActionSize = 30.dp
-// raft head actions cast no shadow, so the group gap alone carries the former
-// 4dp gap + 2dp shadow inset.
-private val ThreadHeaderActionGroupSpacing = 6.dp
-private val ThreadHeaderActionIconSize = 16.dp
-private val ThreadHeaderActionLabelMinWidth = 46.dp
+// raft-ui `PanelAction` on a phone (`h-11 min-w-11`, `[&>svg]:size-[22px]`, text-foreground):
+// a 44dp frameless button carrying a 22dp glyph, so the hit area is the 44dp touch target.
+private val ThreadHeaderActionSize = 44.dp
+// raft-ui `panelHeadActions` on a phone: `gap-0.5`. The 44dp buttons carry 11dp of empty
+// inset on each side, so neighbouring glyphs still sit 24dp apart.
+private val ThreadHeaderActionGroupSpacing = 2.dp
+private val ThreadHeaderActionIconSize = 22.dp
+private val ThreadHeaderActionLabelMinWidth = 44.dp
+// raft `panelHeadEdges` on a phone + `panelHeadActions mr-[-3px]` / Back `-ml-[13px]`: the
+// Back button and the last trailing action both sit 3dp from the screen edge, which puts each
+// 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
+private val ThreadHeaderEdgeInset = 3.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
 private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
@@ -16045,11 +16051,17 @@ internal fun ThreadPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
+        contentStartPadding = ThreadHeaderEdgeInset,
+        contentEndPadding = ThreadHeaderEdgeInset,
         contentSpacing = ThreadHeaderContentSpacing,
-        leadingContent = {
-            RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
-        },
         titleLeadingContent = {
+            // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
+            // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
+            ThreadHeaderCompactAction(
+                icon = RaftLucideIconName.ArrowLeft,
+                onClick = onBack,
+                contentDescription = stringResource(MR.strings.common_back)
+            )
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -16744,9 +16756,9 @@ private fun ThreadHeaderFocusModeMenu(
             subscription.close()
         }
     }
-    RaftBrutalIconButton(
-        iconName = RaftLucideIconName.Ellipsis,
-        onClick = {
+    ThreadHeaderCompactAction(
+        icon = RaftLucideIconName.Ellipsis,
+        onClick = onClick@{
             // task #180 diagnostics (Argus): unconditional entry log. The previous device run
             // produced ZERO trace lines, which could not distinguish "the click never reached this
             // handler" from "the lines went somewhere else". This line fires before any guard.
@@ -16755,13 +16767,13 @@ private fun ThreadHeaderFocusModeMenu(
             val anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
             if (anchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
-                return@RaftBrutalIconButton
+                return@onClick
             }
             // Already window space: the shell must not convert this again.
             val pageRootAnchor = anchor.rootOffsetOrNull()
             if (pageRootAnchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
-                return@RaftBrutalIconButton
+                return@onClick
             }
             // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
             // space, so add this page's measured window origin (1520 for the thread column, plus the
@@ -16794,10 +16806,6 @@ private fun ThreadHeaderFocusModeMenu(
                 ).toJson()
             )
         },
-        enabled = true,
-        size = 28.dp,
-        shadowOffset = RaftShadow.BrutalSmall,
-        iconSize = 14.dp,
         modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
     )
@@ -16838,20 +16846,31 @@ internal fun ThreadHeaderActionButton(
 private fun ThreadHeaderCompactAction(
     icon: RaftLucideIconName,
     onClick: () -> Unit,
-    label: String? = null
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    contentDescription: String? = null
 ) {
     ThreadHeaderActionButton(
         onClick = onClick,
+        modifier =
+            if (contentDescription.isNullOrBlank()) {
+                modifier
+            } else {
+                modifier.semantics { this.contentDescription = contentDescription }
+            },
         minWidth = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth,
-        horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Xs,
+        // raft-ui `PanelAction` `px-2` once it carries a label next to its glyph.
+        horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Sm,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            RaftLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = raftArgbHex(RaftColor.TextMuted))
+            // raft-ui `PanelAction` is `text-foreground`; the muted ink made the head read as disabled.
+            RaftLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = raftArgbHex(RaftColor.TextBlack))
             label?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                // raft-ui `PanelAction`: `text-footnote font-bold` (13/18).
+                Text(it, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
                     color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -16862,6 +16881,12 @@ internal fun threadHeaderVisibleActionGapDp(): Float =
     ThreadHeaderActionGroupSpacing.value
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
+
+internal fun threadHeaderActionSizeDp(): Float = ThreadHeaderActionSize.value
+
+internal fun threadHeaderActionIconSizeDp(): Float = ThreadHeaderActionIconSize.value
+
+internal fun threadHeaderEdgeInsetDp(): Float = ThreadHeaderEdgeInset.value
 
 internal fun threadHeaderChannelTitleGapDp(): Float =
     (ThreadHeaderContentSpacing + ThreadHeaderChannelTitleGapExtra).value

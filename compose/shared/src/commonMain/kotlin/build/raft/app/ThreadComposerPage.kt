@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -111,11 +112,18 @@ private val ThreadComposerVisualInputWidth = 321.dp
 // raft-ui `ComposerInput` `min-h-6`.
 private val ThreadComposerTextFieldMinHeight = 24.dp
 private val ThreadComposerTextFieldMaxHeight = 80.dp
-private val ThreadComposerToolbarMinHeight = 28.dp
-private val ThreadComposerIconButtonSize = 26.dp
-private val ThreadComposerIconSize = 14.dp
+// raft-ui `ComposerIconButton` / `ComposerSubmit size="icon-sm"`: 32dp control-radius boxes with
+// an 18dp glyph (`iconMd`, whose `after:-inset-1.5` hit area reaches 44dp; Compose's minimum
+// touch target extends the pointer bounds the same way).
+private val ThreadComposerToolbarMinHeight = 32.dp
+private val ThreadComposerIconButtonSize = 32.dp
+private val ThreadComposerIconSize = 18.dp
 private val ThreadComposerActionShadowOffset = 2.dp
-private val ThreadComposerLeftActionGroupSpacing = 6.dp
+// raft-ui `ComposerActions`: `gap-2`. Raft chrome casts no offset shadow, so this is the visible gap.
+private val ThreadComposerLeftActionGroupSpacing = 8.dp
+// raft-ui `ComposerIconButton`: the first tool is pulled `ml-[-5px]` so its glyph, not its empty
+// box, lines up with the text typed above it.
+private val ThreadComposerLeadingActionPull = 5.dp
 private const val ThreadComposerAttachmentTrayMaxWidthDp = 321
 private const val ThreadComposerAttachmentImageTileSizeDp = 64
 private const val ThreadComposerAttachmentFileTileWidthDp = 128
@@ -2869,7 +2877,10 @@ internal fun ThreadComposerContentLeaf(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            modifier = Modifier.heightIn(min = ThreadComposerToolbarMinHeight),
+                            modifier =
+                                Modifier
+                                    .heightIn(min = ThreadComposerToolbarMinHeight)
+                                    .offset(x = -ThreadComposerLeadingActionPull),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                         ) {
@@ -4973,7 +4984,11 @@ private fun ComposerSendButton(
 }
 
 internal fun threadComposerVisibleLeftActionGapDp(): Float =
-    (ThreadComposerLeftActionGroupSpacing + ThreadComposerActionShadowOffset).value
+    ThreadComposerLeftActionGroupSpacing.value
+
+internal fun threadComposerIconButtonSizeDp(): Float = ThreadComposerIconButtonSize.value
+
+internal fun threadComposerIconSizeDp(): Float = ThreadComposerIconSize.value
 
 private enum class ComposerTextChipVariant {
     Pink,
