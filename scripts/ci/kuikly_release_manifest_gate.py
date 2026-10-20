@@ -34,6 +34,7 @@ import concurrent.futures
 import hashlib
 import json
 import os
+import ssl
 import sys
 import time
 import urllib.error
@@ -110,18 +111,10 @@ class Registry:
                     return True, f.read(), 200
             return False, None, 404
         url = f"{self.base}/{rel_path}"
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
-
-        class _NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                return None
-
-        opener = urllib.request.build_opener(_NoRedirect)
         last_error = None
         for attempt in range(3):
             try:
-                with opener.open(req, timeout=60) as resp:
-                    return True, resp.read(), resp.status
+                return self._fetch_once(url)
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     return False, None, e.code
@@ -130,9 +123,25 @@ class Registry:
                 last_error = e
             except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
                 last_error = e
+            except ssl.SSLError as e:
+                # e.g. UNEXPECTED_EOF_WHILE_READING: CDN-side transport flake,
+                # indistinguishable from content state without a retry.
+                last_error = e
             if attempt < 2:
                 time.sleep(2 ** attempt)
         raise RuntimeError(f"registry unreachable after 3 attempts: {url}: {last_error}") from last_error
+
+    def _fetch_once(self, url: str):
+        """Single GET attempt. Returns (found, bytes_or_none, status)."""
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT}, method="GET")
+
+        class _NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(req, timeout=60) as resp:
+            return True, resp.read(), resp.status
 
     def list_prefix(self, prefix: str):
         """Return the list of object paths under prefix (paginated to the end
@@ -217,9 +226,9 @@ def validate_manifest(manifest: dict, expected_version: str, closure: list) -> l
         missing = set(closure) - set(closure_coordinates)
         extra = set(closure_coordinates) - set(closure)
         if missing:
-            errors.append(f"closure missing coordinates: {sorted(missing)}")
+            errors.append(f"closure missing coordinates (is the closure file for release {expected_version}?): {sorted(missing)}")
         if extra:
-            errors.append(f"unexpected coordinates beyond closure: {sorted(extra)}")
+            errors.append(f"unexpected coordinates beyond closure (is the closure file for release {expected_version}?): {sorted(extra)}")
     pubs = manifest.get("publications")
     if not isinstance(pubs, list) or not pubs:
         errors.append("publications missing or empty")
@@ -275,9 +284,9 @@ def validate_manifest(manifest: dict, expected_version: str, closure: list) -> l
         missing = expected_gavs - primary_gavs
         extra = seen_gavs - expected_gavs
         if missing:
-            errors.append(f"closure missing coordinates: {sorted(missing)}")
+            errors.append(f"closure missing coordinates (is the closure file for release {expected_version}?): {sorted(missing)}")
         if extra:
-            errors.append(f"unexpected coordinates beyond closure: {sorted(extra)}")
+            errors.append(f"unexpected coordinates beyond closure (is the closure file for release {expected_version}?): {sorted(extra)}")
     # set digest
     if len(closure) == 37 and len(pubs) != EXPECTED_FILE_COUNT:
         errors.append(f"production manifest must contain {EXPECTED_FILE_COUNT} files")
@@ -651,6 +660,41 @@ def self_test() -> int:
     check("conflict-unexpected", EXIT_CONFLICT, root_conflict_unexpected)
     check("invalid-schema", EXIT_CONFLICT, root_invalid_schema)
 
+    # Transport-retry regression arm: ssl.SSLError mid-readback must be
+    # retried (not surfaced as CONFLICT), and sustained failure must end as
+    # RuntimeError, never a raw SSLError. This bites if the handling is
+    # REMOVED; reordering the except clauses or folding SSLError into the
+    # tuple stays green (verified by mutation test, per XiShi).
+    class _FlakyRegistry(Registry):
+        def __init__(self, fails):
+            super().__init__(base="https://example.invalid")
+            self._fails = fails
+            self.calls = 0
+
+        def _fetch_once(self, url):
+            self.calls += 1
+            if self.calls <= self._fails:
+                raise ssl.SSLError("UNEXPECTED_EOF_WHILE_READING")
+            return True, b"bytes", 200
+
+    ok_reg = _FlakyRegistry(fails=2)
+    try:
+        found, data, status = ok_reg.get_bytes("x/y.jar")
+        if not (found and data == b"bytes" and ok_reg.calls == 3):
+            failures.append("ssl-retry: expected 3 calls then success")
+        else:
+            log("self-test arm ssl-retry-recovers: OK")
+    except Exception as e:
+        failures.append(f"ssl-retry: unexpected {e!r}")
+    dead_reg = _FlakyRegistry(fails=9)
+    try:
+        dead_reg.get_bytes("x/y.jar")
+        failures.append("ssl-exhausted: expected RuntimeError")
+    except ssl.SSLError as e:
+        failures.append(f"ssl-exhausted: raw SSLError escaped: {e!r}")
+    except RuntimeError:
+        log("self-test arm ssl-retry-exhausted: OK")
+
     if failures:
         for f in failures:
             log(f"SELF-TEST FAILURE: {f}")
@@ -662,7 +706,11 @@ def self_test() -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release", help="release id, e.g. 2.21.0-raft.0")
-    parser.add_argument("--registry-base", help="registry base URL (production)")
+    parser.add_argument(
+        "--registry-base",
+        default="https://maven.artifacts.botiverse.dev",
+        help="registry base URL (default: production maven.artifacts.botiverse.dev)",
+    )
     parser.add_argument("--offline-root", help="directory-based fake registry (testing)")
     parser.add_argument("--closure", help="JSON file: list of expected publication GAVs")
     parser.add_argument(
