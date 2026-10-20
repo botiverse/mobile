@@ -101,6 +101,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -568,9 +569,8 @@ private const val SlockFilePreviewSaveToPhotosActionId = "save-to-photos"
 /** task #188: toggles the HTML attachment's desktop viewport. */
 internal const val SlockFilePreviewDesktopModeActionId = "html-desktop-mode"
 internal const val SlockFilePreviewCopyTextActionId = "copy-text"
-internal const val SlockFilePreviewSelectTextActionId = "select-text"
 
-/** Markdown / plain-text previews expose their source text for copy and selection. */
+/** Markdown / plain-text previews expose their source text for "copy all". */
 internal fun SlockFilePreviewPayload.selectableSourceText(): String? =
     content.takeIf { (kind == "markdown" || kind == "text") && it.isNotBlank() }
 private const val SlockFilePreviewSaveToFilesActionId = "save-to-files"
@@ -1711,7 +1711,6 @@ private fun SlockFilePreviewStandalonePageContent() {
     // document means a new page and a fresh value. Checked while reviewing: `payload` can re-derive
     // within the page, but only for authority/expiry reasons on the SAME attachment.
     var htmlDesktopMode by remember { mutableStateOf(false) }
-    var textSelectionOpen by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
@@ -3697,8 +3696,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
-                // Rendered Markdown / text is not selectable in place, so expose the
-                // source the same way a message does: copy all, or open Select Text.
+                // The body itself is selectable in place; this copies the whole source.
                 if (payload.selectableSourceText() != null) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewCopyTextActionId,
@@ -3711,15 +3709,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                                 }
                             ),
                         icon = SlockLucideIconName.Copy
-                    )
-                } else {
-                    null
-                },
-                if (payload.selectableSourceText() != null) {
-                    SlockRaftUiMenuItem(
-                        id = SlockFilePreviewSelectTextActionId,
-                        label = stringResource(MR.strings.thread_action_select_text),
-                        icon = SlockLucideIconName.FileText
                     )
                 } else {
                     null
@@ -3822,7 +3811,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                         bridge.copyToPasteboard(text)
                         bridge.toast(copiedLabel)
                     }
-                SlockFilePreviewSelectTextActionId -> textSelectionOpen = true
             }
         }
     ) {
@@ -3846,7 +3834,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                     payload = payload,
                     onOpenUrl = {},
                     htmlDesktopMode = htmlDesktopMode,
-                    onLongPressText = { textSelectionOpen = true },
                     onExternalBrowserOpen =
                         if (
                             payload.source == SlockFilePreviewSourceThreadAttachment &&
@@ -3929,16 +3916,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                             ?.takeIf { it.attachment.id == state.attachment.id }
                             ?.withQuotedAttachmentComment(comment)
                 }
-            )
-        }
-    }
-    if (textSelectionOpen && !composerImageEditMode) {
-        payload.selectableSourceText()?.let { text ->
-            SlockTextSelectionDialog(
-                text = text,
-                textStyle = SlockType.Body,
-                onDismiss = { textSelectionOpen = false },
-                testTag = "file_preview_selection_text"
             )
         }
     }
@@ -7700,8 +7677,6 @@ internal fun SlockFilePreviewPayloadContent(
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
     onExternalBrowserOpen: (() -> Unit)? = null,
-    /** Long-press on a Markdown / text body; the page opens Select Text. */
-    onLongPressText: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -7747,8 +7722,7 @@ internal fun SlockFilePreviewPayloadContent(
                     modifier = Modifier.fillMaxSize(),
                     performanceKey = "preview:${payload.path}",
                     textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                    showChrome = false,
-                    onLongPress = onLongPressText
+                    showChrome = false
                 )
             }
         "text" ->
@@ -7766,8 +7740,7 @@ internal fun SlockFilePreviewPayloadContent(
                     meta = payload.meta,
                     content = payload.content,
                     modifier = Modifier.fillMaxSize(),
-                    showChrome = false,
-                    onLongPress = onLongPressText
+                    showChrome = false
                 )
             }
         "xlsx" -> {
@@ -10007,8 +9980,7 @@ internal fun SlockFilePreviewMarkdownPanel(
     modifier: Modifier = Modifier,
     performanceKey: String? = null,
     textStyle: TextStyle? = null,
-    showChrome: Boolean = true,
-    onLongPress: (() -> Unit)? = null
+    showChrome: Boolean = true
 ) {
     if (!showChrome && status == "content") {
         LazyColumn(
@@ -10017,14 +9989,17 @@ internal fun SlockFilePreviewMarkdownPanel(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             item {
-                SlockMarkdownBody(
-                    body = body.orEmpty(),
-                    textStyle = textStyle ?: SlockType.Body,
-                    onOpenUrl = onOpenUrl,
-                    modifier = Modifier.fillMaxWidth().slockFilePreviewLongPress(onLongPress),
-                    softLineBreaksAsNewLines = false,
-                    performanceKey = performanceKey
-                )
+                // Long-press selects the rendered text in place; copy yields plain text.
+                SelectionContainer(modifier = Modifier.fillMaxWidth()) {
+                    SlockMarkdownBody(
+                        body = body.orEmpty(),
+                        textStyle = textStyle ?: SlockType.Body,
+                        onOpenUrl = onOpenUrl,
+                        modifier = Modifier.fillMaxWidth(),
+                        softLineBreaksAsNewLines = false,
+                        performanceKey = performanceKey
+                    )
+                }
             }
         }
         return
@@ -10075,21 +10050,13 @@ internal fun SlockFilePreviewMarkdownPanel(
     }
 }
 
-private fun Modifier.slockFilePreviewLongPress(onLongPress: (() -> Unit)?): Modifier =
-    if (onLongPress == null) {
-        this
-    } else {
-        pointerInput(onLongPress) { detectTapGestures(onLongPress = { onLongPress() }) }
-    }
-
 @Composable
 internal fun SlockFilePreviewTextPanel(
     name: String,
     meta: String,
     content: String,
     modifier: Modifier = Modifier,
-    showChrome: Boolean = true,
-    onLongPress: (() -> Unit)? = null
+    showChrome: Boolean = true
 ) {
     if (!showChrome) {
         LazyColumn(
@@ -10097,14 +10064,16 @@ internal fun SlockFilePreviewTextPanel(
             contentPadding = PaddingValues(SlockSpacing.Md)
         ) {
             item {
-                Text(
-                    text = content,
-                    modifier = Modifier.fillMaxWidth().slockFilePreviewLongPress(onLongPress),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = Int.MAX_VALUE,
-                    overflow = TextOverflow.Clip
-                )
+                SelectionContainer(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = content,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = Int.MAX_VALUE,
+                        overflow = TextOverflow.Clip
+                    )
+                }
             }
         }
         return
