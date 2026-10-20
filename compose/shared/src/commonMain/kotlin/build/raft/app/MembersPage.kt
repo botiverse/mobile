@@ -197,31 +197,22 @@ import androidx.compose.ui.platform.LocalDensity
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBanner
-import build.raft.designsystem.components.RaftBannerSize
-import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
-import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.tokens.RaftStroke
-import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftCodeBlock
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
-import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -275,23 +266,10 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.isSpecified
-import build.raft.designsystem.components.RaftAvatar
-import build.raft.designsystem.components.RaftAvatarSize
-import build.raft.designsystem.components.RaftAvatarType
-import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBadgeAppearance
-import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionValue
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
-import build.raft.designsystem.components.RaftIconButtonSize
-import build.raft.designsystem.components.RaftListRow
-import build.raft.designsystem.components.RaftListRowGroup
-import build.raft.designsystem.components.RaftSectionEyebrow
-import build.raft.designsystem.components.RaftSeparator
-import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.input.pointer.pointerInput
@@ -8190,13 +8168,12 @@ private fun MembersAgentTabBar(
     RaftTabStrip(modifier = modifier) {
         tabs.forEach { tab ->
             key(tab) {
-                val spec = tab.toRaftTabSpec()
                 val dragging = tab == draggedTab
                 RaftTab(
-                    text = spec.label,
+                    text = tab.localizedLabel(),
                     selected = tab == selectedTab,
                     onClick = { onSelectedTabChange(tab) },
-                    icon = { RaftContentLucideIcon(spec.iconName) },
+                    icon = { RaftContentLucideIcon(tab.iconName) },
                     modifier = Modifier
                         .onSizeChanged { tabWidthsPx[tab] = it.width }
                         .then(
