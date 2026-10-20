@@ -429,6 +429,8 @@
     <string name="thread_composer_as_task">As Task</string>
     <string name="thread_composer_original_image">Original image</string>
     <string name="thread_composer_members_parent_channel">In parent channel</string>
+    <string name="composer_mention_actor_human">Human</string>
+    <string name="composer_mention_actor_agent">Agent</string>
     <string name="thread_composer_members_this_channel">In this channel</string>
     <string name="thread_composer_members_this_thread">In this thread</string>
     <string name="thread_composer_members_not_parent_channel">Not in parent channel</string>

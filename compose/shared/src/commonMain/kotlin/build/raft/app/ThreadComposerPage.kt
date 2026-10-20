@@ -33,6 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -154,7 +157,16 @@ private val ComposerSuggestionItemGap = 10.dp
 private val ComposerSuggestionContentGap = 6.dp
 private val ComposerMemberSuggestionAvatarSize = 19.dp
 private val ComposerMemberSuggestionAvatarNameGap = ComposerSuggestionItemGap
-private val ComposerAgentActivityDotSize = 10.dp
+// web `AgentActivityDot size="sm"` on the 19dp compact avatar.
+private val ComposerMemberSuggestionStatusSize = 7.dp
+// web `ComposerSuggestionTitle max-w-[12rem]`, server meta `max-w-[10rem]`, handle `max-w-[7rem]`.
+private val ComposerSuggestionTitleMaxWidth = 192.dp
+private val ComposerSuggestionServerMaxWidth = 160.dp
+private val ComposerSuggestionHandleMaxWidth = 112.dp
+private val ComposerSuggestionTitleStyle: TextStyle
+    get() = RaftType.Button.copy(fontSize = 14.sp, lineHeight = 20.sp)
+private val ComposerSuggestionMetaStyle: TextStyle
+    get() = RaftType.Caption
 private val ComposerChannelSuggestionIconSize = 19.dp
 private val ComposerChannelSuggestionGlyphSize = 11.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
@@ -3624,27 +3636,25 @@ private fun ComposerMemberSuggestionRow(
     agentStatusResolver: RaftAgentStatusResolver,
     onClick: () -> Unit
 ) {
-    val description =
-        member.description
-            ?.takeIf { member.kind == MemberKind.Agent }
-            ?.takeIf { it.isNotBlank() }
-    val secondary = description ?: member.sourceServerLabel?.takeIf { it.isNotBlank() }
+    // Web `MentionCandidateBody` (raft-ui ComposerSuggestion* parts): title, a soft muted
+    // actor-type badge, the description and the source server as hint metas, and the
+    // `@handle` in a mono aside. Not-in-channel rows are dimmed by the row overlay.
+    val description = member.description?.trim()?.replace(Regex("\\s+"), " ")?.takeIf { it.isNotBlank() }
+    val serverLabel = member.sourceServerLabel?.trim()?.takeIf { it.isNotBlank() }
+    val actorTypeLabel =
+        when (member.kind) {
+            MemberKind.Human -> stringResource(MR.strings.composer_mention_actor_human)
+            MemberKind.Agent -> stringResource(MR.strings.composer_mention_actor_agent)
+            else -> null
+        }
     val muted = !inChannel
-    val contentColor =
-        when {
-            muted -> RaftColor.TextMutedGray
-            else -> RaftColor.TextBlack
-        }
-    val handleColor =
-        when {
-            muted -> RaftColor.TextMutedGray
-            else -> RaftColor.TextBlack.copy(alpha = 0.4f)
-        }
-    val secondaryColor =
-        when {
-            muted -> RaftColor.TextMutedGray
-            selected -> RaftColor.TextBlack.copy(alpha = 0.7f)
-            else -> RaftColor.TextBlack.copy(alpha = 0.5f)
+    // web `MentionCandidateAvatar`: the agent's activity light sits on the avatar corner
+    // (`AgentActivityDot size="sm"`), only for members of this conversation.
+    val agentStatus =
+        if (inChannel && member.kind == MemberKind.Agent) {
+            rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)
+        } else {
+            null
         }
     ComposerSuggestionInteractiveRow(
         selected = selected,
@@ -3654,12 +3664,11 @@ private fun ComposerMemberSuggestionRow(
         mutedOverlay = true,
         onClick = onClick
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(ComposerMemberSuggestionAvatarSize)
-                    .background(if (muted) RaftColor.FillMuted else RaftColor.Card),
-            contentAlignment = Alignment.Center
+        RaftAvatarWithStatus(
+            statusColor = agentStatus?.color,
+            avatarSize = ComposerMemberSuggestionAvatarSize,
+            statusSize = ComposerMemberSuggestionStatusSize,
+            statusPulsing = agentStatus?.pulsing == true
         ) {
             RaftAppAvatar(
                 avatarWireValue = member.avatarWireValue,
@@ -3670,68 +3679,82 @@ private fun ComposerMemberSuggestionRow(
                 cacheServerId = member.sourceServerId
             )
         }
+        if (muted) {
+            // web: `ComposerSuggestionIcon variant="auxiliary"` UserX after the avatar.
+            Spacer(modifier = Modifier.width(ComposerSuggestionItemGap - 4.dp))
+            RaftLucideIcon(
+                RaftLucideIconName.UserMinus,
+                modifier = Modifier.size(12.dp),
+                color = raftArgbHex(RaftColor.ForegroundHint)
+            )
+        }
         Spacer(modifier = Modifier.width(ComposerMemberSuggestionAvatarNameGap))
         Row(
             modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
         ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(ComposerSuggestionContentGap)
-            ) {
-                if (muted) {
-                    RaftLucideIcon(
-                        RaftLucideIconName.UserMinus,
-                        modifier = Modifier.size(12.dp),
-                        color = RaftColor.TextMutedGrayArgb
-                    )
-                }
-                Text(
-                    text = member.displayName,
-                    style = RaftType.Button.copy(color = contentColor),
-                    color = contentColor,
-                    modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (inChannel && member.kind == MemberKind.Agent) {
-                    rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)?.let { status ->
-                        ComposerAgentStatusDot(status)
-                    }
-                }
-                if (secondary != null) {
-                    Text(
-                        text = secondary,
-                        style = RaftType.Caption.copy(color = secondaryColor),
-                        color = secondaryColor,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
             Text(
-                text = "@${member.handle}",
-                style = RaftType.Caption.copy(color = handleColor, fontFamily = RaftMonoFamily),
-                color = handleColor,
-                modifier = Modifier.widthIn(max = 132.dp).padding(start = 6.dp),
+                text = member.displayName,
+                // raft-ui suggestion item: text-callout (14/20) medium on foreground.
+                style = ComposerSuggestionTitleStyle,
+                color = RaftColor.TextBlack,
+                modifier = Modifier.weight(1f, fill = false).widthIn(max = ComposerSuggestionTitleMaxWidth),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            actorTypeLabel?.let { ComposerSuggestionSoftBadge(it) }
+            description?.let {
+                Text(
+                    text = it,
+                    style = ComposerSuggestionMetaStyle,
+                    color = RaftColor.ForegroundHint,
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            serverLabel?.let {
+                Text(
+                    text = it,
+                    style = ComposerSuggestionMetaStyle,
+                    color = RaftColor.ForegroundHint,
+                    modifier = Modifier.weight(1f, fill = false).widthIn(max = ComposerSuggestionServerMaxWidth),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
+        // raft-ui `ComposerSuggestionAside` + `ComposerSuggestionMeta variant="code"`.
+        Text(
+            text = "@${member.handle}",
+            style = ComposerSuggestionMetaStyle.copy(fontFamily = RaftMonoFamily),
+            color = RaftColor.ForegroundHint,
+            modifier = Modifier.padding(start = ComposerSuggestionContentGap).widthIn(max = ComposerSuggestionHandleMaxWidth),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
+/** raft-ui `Badge appearance="soft" variant="muted"`: 22dp, chip radius, caption semibold. */
 @Composable
-private fun ComposerAgentStatusDot(status: RaftAgentStatusIndicatorState) {
-    RaftStatusIndicator(
-        color = status.color,
-        size = ComposerAgentActivityDotSize,
-        borderColor = RaftColor.BorderBlack,
-        borderWidth = RaftAppStroke.Thin,
-        pulsing = status.pulsing
-    )
+private fun ComposerSuggestionSoftBadge(label: String) {
+    Box(
+        modifier =
+            Modifier
+                .height(22.dp)
+                .background(RaftColor.InactiveSoft, RoundedCornerShape(RaftAppRadius.Chip))
+                .padding(horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold),
+            color = RaftColor.TextBlack,
+            maxLines = 1
+        )
+    }
 }
 
 @Composable
@@ -4778,7 +4801,7 @@ private fun ComposerChannelSuggestionRow(
             ) {
                 Text(
                     text = channel.name,
-                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    style = ComposerSuggestionTitleStyle,
                     color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -4808,9 +4831,13 @@ private fun ComposerSuggestionInteractiveRow(
     onClick: () -> Unit,
     content: @Composable RowScope.() -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    // raft-ui item: `hover:bg-brand-soft data-[highlighted=true]:bg-brand-soft`; on touch the
+    // press takes the hover wash instead of a platform ripple.
     val background =
         when {
-            selected -> selectedColor
+            selected || pressed -> selectedColor
             else -> Color.Transparent
         }
     // raft-ui `ComposerSuggestionList` item: inset 6dp (p-1.5) inside the
@@ -4827,7 +4854,7 @@ private fun ComposerSuggestionInteractiveRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
-                    .clickable(onClick = onClick)
+                    .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
                     .padding(
                         horizontal = ComposerSuggestionItemPaddingHorizontal,
                         vertical = ComposerSuggestionItemPaddingVertical

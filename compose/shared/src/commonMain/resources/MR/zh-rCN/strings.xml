@@ -429,6 +429,8 @@
     <string name="thread_composer_as_task">作为任务</string>
     <string name="thread_composer_original_image">原图</string>
     <string name="thread_composer_members_parent_channel">父频道成员</string>
+    <string name="composer_mention_actor_human">人类成员</string>
+    <string name="composer_mention_actor_agent">Agent</string>
     <string name="thread_composer_members_this_channel">当前频道成员</string>
     <string name="thread_composer_members_this_thread">当前消息列成员</string>
     <string name="thread_composer_members_not_parent_channel">不在父频道中</string>

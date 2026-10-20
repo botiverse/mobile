@@ -433,6 +433,8 @@
     <string name="thread_composer_as_task">タスクとして</string>
     <string name="thread_composer_original_image">元画像</string>
     <string name="thread_composer_members_parent_channel">親チャンネルのメンバー</string>
+    <string name="composer_mention_actor_human">人間</string>
+    <string name="composer_mention_actor_agent">エージェント</string>
     <string name="thread_composer_members_this_channel">このチャンネルのメンバー</string>
     <string name="thread_composer_members_this_thread">このスレッドのメンバー</string>
     <string name="thread_composer_members_not_parent_channel">親チャンネルに未参加</string>
