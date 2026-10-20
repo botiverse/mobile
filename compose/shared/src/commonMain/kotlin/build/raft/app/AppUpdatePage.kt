@@ -146,12 +146,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
             title = stringResource(MR.strings.home_notification_app_update_title),
             iconName = RaftLucideIconName.CircleArrowUp,
             backgroundColor = RaftColor.BrandYellow,
-            leadingContent = {
-                RaftTopPageHeaderAction(
-                    icon = RaftLucideIconName.ArrowLeft,
-                    onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
-                )
-            }
+            onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
         )
         AppUpdateSummary(
             snapshot = snapshot,
@@ -463,9 +458,7 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             title = stringResource(MR.strings.home_notification_app_update_title),
             iconName = RaftLucideIconName.CircleArrowUp,
             backgroundColor = RaftColor.BrandYellow,
-            leadingContent = {
-                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = {})
-            }
+            onBack = {}
         )
         AppUpdateSummary(
             snapshot = snapshot,

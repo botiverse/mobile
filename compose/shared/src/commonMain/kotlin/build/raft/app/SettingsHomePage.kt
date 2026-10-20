@@ -1,8 +1,11 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
@@ -39,7 +42,6 @@ import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
 import build.raft.app.components.RaftAnchoredToolbarChip
@@ -12487,14 +12489,11 @@ private fun SettingsServerDeleteConfirmationDialog(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        RaftBrutalIconButton(
-                            enabled = !deleteBusy,
-                            iconName = RaftLucideIconName.X,
+                        RaftBackButton(
                             onClick = onDismiss,
-                            backgroundColor = Color.Transparent,
-                            size = 32.dp,
-                            iconSize = 18.dp,
-                            shadowOffset = 3.dp
+                            label = stringResource(MR.strings.common_close),
+                            glyph = RaftGlyph.X,
+                            enabled = !deleteBusy,
                         )
                     }
                     SettingsServerDeleteWarningBanner(serverName = resolvedName)
@@ -15525,9 +15524,7 @@ internal fun SettingsDetailShell(
             backgroundColor = RaftColor.SurfaceWhite,
             applyTopSafeArea = applyTopSafeArea,
             headerHeight = headerHeight,
-            leadingContent = {
-                SettingsDetailBackButton(onBack)
-            },
+            onBack = onBack,
             trailingContent = if (trailingContent != null) {
                 { trailingContent() }
             } else {
@@ -15536,19 +15533,6 @@ internal fun SettingsDetailShell(
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
-        }
-    }
-}
-
-@Composable
-private fun SettingsDetailBackButton(onBack: () -> Unit) {
-    Box(modifier = Modifier.size(30.dp)) {
-        // raft-ui `PanelAction`: a ghost Back, no edge and no offset shadow.
-        RaftPanelAction(
-            onClick = onBack,
-            modifier = Modifier.size(28.dp)
-        ) {
-            RaftLucideIcon(RaftLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextMuted))
         }
     }
 }
@@ -18235,12 +18219,7 @@ internal fun AppShellServerGateContent(
         topBarBrandImagePadding = 0.dp,
         topLeadingContent = onBack?.let { back ->
             {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.ArrowLeft,
-                    onClick = back,
-                    size = 34.dp,
-                    shadowOffset = 2.dp
-                )
+                RaftBackButton(onClick = back, label = stringResource(MR.strings.common_back))
             }
         }
     ) {
@@ -18574,12 +18553,7 @@ internal fun AppShellAuthErrorContent(
         onDiagnosticsShortcut = onOpenDiagnostics,
         topLeadingContent = onBack?.let { back ->
             {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.ArrowLeft,
-                    onClick = back,
-                    size = 34.dp,
-                    shadowOffset = 2.dp
-                )
+                RaftBackButton(onClick = back, label = stringResource(MR.strings.common_back))
             }
         }
     ) {
@@ -21419,7 +21393,7 @@ private fun SharedHomeSearchHistoryTag(
 }
 
 // raft-ui SearchHeader (PanelHeader): a 56dp canvas row, `pl-4` and `gap-2` on a phone; an
-// outline icon-lg Back, the 27dp brand PanelHeaderIcon with the search glyph, then the
+// ghost icon-lg Back (RaftBackButton), the 27dp brand PanelHeaderIcon with the search glyph, then the
 // search field (a filled control, so it ends on the 16dp content edge).
 @Composable
 private fun SharedHomeSearchToolbar(
@@ -21436,16 +21410,13 @@ private fun SharedHomeSearchToolbar(
     topSafeAreaPadding: Dp = 0.dp,
     placeholder: String
 ) {
-    SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
+    SharedHomeSearchControlsRow(
+        topSafeAreaPadding = topSafeAreaPadding,
+        // Back sits at the top-bar edge inset, its arrow 14dp in, like every page header.
+        startPadding = if (onClose != null) RaftBackButtonDefaults.EdgeInset else SearchControlsHorizontalPadding
+    ) {
         if (onClose != null) {
-            RaftBrutalIconButton(
-                iconName = RaftLucideIconName.ArrowLeft,
-                onClick = onClose,
-                contentDescription = stringResource(MR.strings.common_back),
-                backgroundColor = RaftColor.SurfaceWhite,
-                size = RaftMetrics.ControlHeightLg,
-                iconSize = 14.dp
-            )
+            RaftBackButton(onClick = onClose, label = stringResource(MR.strings.common_back))
         }
         RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Sm) {
             RaftLucideIcon(
@@ -21474,6 +21445,7 @@ private fun SharedHomeSearchToolbar(
 @Composable
 private fun SharedHomeSearchControlsRow(
     topSafeAreaPadding: Dp,
+    startPadding: Dp = SearchControlsHorizontalPadding,
     content: @Composable RowScope.() -> Unit
 ) {
     Row(
@@ -21483,7 +21455,7 @@ private fun SharedHomeSearchControlsRow(
                 .background(RaftColor.Canvas)
                 .padding(top = topSafeAreaPadding)
                 .height(56.dp)
-                .padding(horizontal = SearchControlsHorizontalPadding),
+                .padding(start = startPadding, end = SearchControlsHorizontalPadding),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
@@ -25636,7 +25608,7 @@ private fun SettingsServerDangerModalVisualContent() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SettingsDetailBackButton(onBack = {})
+                RaftBackButton(onClick = {}, label = stringResource(MR.strings.common_back))
                 Text(
                     "Server Profile",
                     style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),

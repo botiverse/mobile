@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
@@ -4111,13 +4113,10 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        RaftBrutalIconButton(
-            iconName = RaftLucideIconName.X,
+        RaftBackButton(
             onClick = onClose,
-            contentDescription = stringResource(MR.strings.common_close),
-            size = 30.dp,
-            iconSize = 14.dp,
-            shadowOffset = 2.dp
+            label = stringResource(MR.strings.common_close),
+            glyph = RaftGlyph.X,
         )
     }
     LazyColumn(

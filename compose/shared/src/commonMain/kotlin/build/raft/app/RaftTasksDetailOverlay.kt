@@ -1,8 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.runtime.Composable
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,12 +96,10 @@ internal fun RaftTasksDetailOverlay(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.X,
+                    RaftBackButton(
                         onClick = onDismiss,
-                        contentDescription = stringResource(MR.strings.common_close),
-                        size = 32.dp,
-                        shadowOffset = 2.dp,
+                        label = stringResource(MR.strings.common_close),
+                        glyph = RaftGlyph.X,
                     )
                 }
                 content(Modifier.fillMaxWidth().weight(1f))

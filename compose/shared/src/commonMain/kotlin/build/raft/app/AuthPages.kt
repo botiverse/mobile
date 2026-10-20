@@ -11,7 +11,6 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.DataResult
@@ -1166,19 +1165,12 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     AuthAboutDestination.ApiEnvironment -> RaftLucideIconName.Server
                     AuthAboutDestination.Diagnostics -> RaftLucideIconName.ClipboardList
                 },
-            leadingContent = {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.ArrowLeft,
-                    onClick = {
-                        if (destination != AuthAboutDestination.About && initialDestination == AuthAboutDestination.About) {
-                            destination = AuthAboutDestination.About
-                        } else {
-                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                        }
-                    },
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
+            onBack = {
+                if (destination != AuthAboutDestination.About && initialDestination == AuthAboutDestination.About) {
+                    destination = AuthAboutDestination.About
+                } else {
+                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                }
             }
         )
         val sourceLicensesSignInMessage = stringResource(MR.strings.auth_notice_source_licenses_sign_in)

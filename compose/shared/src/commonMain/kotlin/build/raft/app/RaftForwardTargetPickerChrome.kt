@@ -33,6 +33,8 @@ import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckbox
@@ -82,17 +84,19 @@ internal fun RaftForwardPickerHeader(
         contentEndPadding = ForwardPickerHeaderEdgeInset,
         contentSpacing = ForwardPickerHeaderContentSpacing,
         titleLeadingContent = {
-            RaftIconButton(
-                onClick = onBack,
-                tooltip = backLabel,
-                enabled = dismissEnabled,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg
-            ) {
-                ForwardPickerGlyph(
-                    if (multiSelect && multiSelectAvailable) RaftLucideIconName.Undo2 else RaftLucideIconName.ArrowLeft,
-                    22.dp
-                )
+            if (multiSelect && multiSelectAvailable) {
+                // Leaving multi-select is an undo, not a Back: same 44dp ghost control, Undo2 glyph.
+                RaftIconButton(
+                    onClick = onBack,
+                    tooltip = backLabel,
+                    enabled = dismissEnabled,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg
+                ) {
+                    ForwardPickerGlyph(RaftLucideIconName.Undo2, RaftBackButtonDefaults.IconSize)
+                }
+            } else {
+                RaftBackButton(onClick = onBack, label = backLabel, enabled = dismissEnabled)
             }
         },
         titleContent = {

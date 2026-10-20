@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.components.raftSoftWash
 import build.raft.app.components.raftControlSurface
@@ -19,7 +20,6 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftBrutalInputField
@@ -4850,9 +4850,7 @@ private fun MemberDetailRoutePageShell(
             subtitle = stringResource(MR.strings.member_label_profile),
             iconName = RaftLucideIconName.Users,
             backgroundColor = RaftColor.SurfaceWhite,
-            leadingContent = {
-                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
-            }
+            onBack = onBack
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             content()
@@ -6976,14 +6974,7 @@ private fun MembersHumanDetailHeader(
         contentSpacing = MembersHumanHeaderContentSpacing,
         showBodyTopBanner = false,
         titleLeadingContent = {
-            RaftIconButton(
-                onClick = onBack,
-                tooltip = backLabel,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg
-            ) {
-                MembersHumanGlyph(RaftLucideIconName.ArrowLeft, 22.dp)
-            }
+            RaftBackButton(onClick = onBack, label = backLabel)
             MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
         },
         titleContent = {
@@ -7083,14 +7074,7 @@ private fun MembersDetailHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
-            RaftIconButton(
-                onClick = onBack,
-                tooltip = stringResource(MR.strings.common_back),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg
-            ) {
-                RaftContentLucideIcon(RaftLucideIconName.ArrowLeft, size = 22.dp)
-            }
+            RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
             MembersRaftAvatar(
                 member = member,
                 size = RaftAvatarSize.Md,
@@ -14340,13 +14324,7 @@ internal fun MembersPageHeader(
         title = title,
         subtitle = null,
         refreshing = refreshing,
-        leadingContent = if (onBack != null) {
-            {
-                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
-            }
-        } else {
-            null
-        }
+        onBack = onBack
     )
 }
 

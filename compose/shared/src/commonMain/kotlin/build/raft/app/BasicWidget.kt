@@ -2,6 +2,10 @@
 
 package build.raft.app
 
+import com.tencent.tmm.kmmresource.compose.stringResource
+import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftBackButtonDefaults
+import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.app.compat.ui.nativeEvent
@@ -2110,16 +2114,10 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
     Column {
         Spacer(modifier = Modifier.height(40.dp))
         Box {
-            Text(
-                text = "<",
-                style = RaftType.PageTitle
-                    .copy(fontSize = 22.sp, lineHeight = 28.sp)
-                    .withRaftFontWeight(FontWeight.SemiBold),
-                modifier = Modifier
-                    .padding(vertical = 12.dp, horizontal = 12.dp)
-                    .clickable {
-                        routerModule?.closePage()
-                    }
+            RaftBackButton(
+                onClick = { routerModule?.closePage() },
+                label = stringResource(MR.strings.common_back),
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = RaftBackButtonDefaults.EdgeInset)
             )
             Text(
                 title,

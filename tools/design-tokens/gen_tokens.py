@@ -136,7 +136,7 @@ def declarations(body: str) -> list[tuple[str, str]]:
     return [(m.group(1), " ".join(m.group(2).split())) for m in DECL_RE.finditer("".join(flat))]
 
 
-# Selector -> {theme: rank inside the unlayered tier}. raft-ui 0.7.1 and later have one
+# Selector -> {theme: rank inside the unlayered tier}. raft-ui 0.7.1 has one
 # "raft" family: the root element carries `.light` or `.dark` (System resolves
 # to one of them), so `.light` / `.dark` match at class specificity and beat
 # the zero-specificity `:where(:root)` defaults. Equal ranks resolve by source

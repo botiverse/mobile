@@ -82,12 +82,10 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Cursor contract: everything clickable, including in-message refs, uses
-     the same link-hand affordance as the Website. Disabled controls keep their
-     own explicit not-allowed/default state; non-clickable look-alikes (static
-     ref spans, display-only chips), drag handles, and busy refs opt into
-     default/wait/grab at their callsites
-     (src/components/message/clickableAffordance.ts). */
+  /* Cursor contract: enabled interactive app chrome uses the same link-hand
+     affordance as the Website. Disabled controls keep their own explicit
+     not-allowed/default state; non-navigation chips, drag handles, and busy
+     refs opt back into default/wait/grab at their callsites. */
   button:not(:disabled), [role="button"]:not([aria-disabled="true"]), a[href="#"] {
     cursor: pointer;
   }
@@ -171,14 +169,7 @@
     background-color: var(--layer-sidebar);
   }
 
-  /* A fallback ring for focusable elements with no focus style of their own.
-     An element whose classes state one (`focus-visible:shadow-focus` on
-     raft-ui's controls, `focus-visible:bg-…` on menu rows) keeps it alone.
-     A data-slot is no marker: raft-ui's Badge rendered as a button has no
-     ring, and a Tooltip stamps its slot on a hand-rolled trigger. Every ring
-     follows raft-ui's input-modality gate: none after a click or a tap, a
-     ring after keyboard navigation (raft-design states.md › Focus). */
-  :root:not([data-input-modality="pointer"]) :focus-visible:not([class*="focus-visible:"]) {
+  *:focus-visible {
     outline: 2px solid var(--line-strong);
     outline-offset: 2px;
   }

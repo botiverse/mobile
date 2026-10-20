@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalActionSheetRow
 import build.raft.app.components.RaftBrutalIconButton
@@ -625,14 +629,11 @@ private fun RaftUnifiedDialogSurface(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    RaftBrutalIconButton(
-                        enabled = dismissEnabled,
-                        iconName = RaftLucideIconName.X,
+                    RaftBackButton(
                         onClick = onDismiss,
-                        backgroundColor = Color.Transparent,
-                        size = 32.dp,
-                        iconSize = 18.dp,
-                        shadowOffset = 3.dp
+                        label = stringResource(MR.strings.common_close),
+                        glyph = RaftGlyph.X,
+                        enabled = dismissEnabled,
                     )
                 }
                 CompositionLocalProvider(

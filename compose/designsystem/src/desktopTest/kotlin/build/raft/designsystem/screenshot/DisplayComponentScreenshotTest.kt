@@ -37,6 +37,8 @@ import build.raft.designsystem.components.RaftAvatarGroup
 import build.raft.designsystem.components.RaftAvatarGroupCount
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -230,6 +232,39 @@ class DisplayComponentScreenshotTest {
                             Box(Modifier.width(12.dp))
                         }
                     }
+                }
+            }
+        }
+
+    /**
+     * The top-bar Back: rest, pressed, focused, disabled; a leading Close; a light arrow on a
+     * dark overlay (image preview); and in a header row at its 3dp edge inset.
+     */
+    @Test
+    fun backButton() =
+        capture("back_button") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Caption("Back (44, 22 arrow): rest, pressed, focused, disabled; Close")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    listOf("Rest", "Pressed", "Focused", "Disabled").forEach { state ->
+                        StateCell(pressed = state == "Pressed", focused = state == "Focused") {
+                            RaftBackButton(onClick = {}, label = "Back", enabled = state != "Disabled")
+                        }
+                    }
+                    RaftBackButton(onClick = {}, label = "Close", glyph = RaftGlyph.X)
+                }
+                Caption("On a dark overlay")
+                Row(Modifier.background(Color(0xFF111111)).padding(4.dp)) {
+                    RaftBackButton(onClick = {}, label = "Back", color = Color.White)
+                }
+                Caption("In a top bar")
+                Row(
+                    Modifier.width(320.dp).height(56.dp).background(RaftTheme.colors.layerFrame).padding(start = RaftBackButtonDefaults.EdgeInset),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftBackButton(onClick = {}, label = "Back")
+                    RaftText("Search", style = RaftTheme.typography.headline)
                 }
             }
         }

@@ -9606,14 +9606,7 @@ internal fun RaftFilePreviewPageScaffold(
                 subtitle = subtitle,
                 iconName = iconName,
                 backgroundColor = RaftColor.SurfaceWhite,
-                leadingContent = {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.ArrowLeft,
-                        onClick = onBack,
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
-                },
+                onBack = onBack,
                 trailingContent =
                     trailingContent
                         ?: if (overflowMenuItems.isNotEmpty()) {
