@@ -66,7 +66,7 @@ check(install >= 0 && firstPageOwner > install, 'provider must install before sh
 check(provider.includes('extension SlockIosAvatarCacheHost: RaftIosManagedImageStore'), 'host must serve managed reads to the CMP image loader');
 check(provider.includes('store.renderData('), 'managed read must resolve exact committed native bytes');
 check(hostHooks.includes('RaftImageHost.managedImageReader'), 'iOS host hooks must install the managed image reader');
-const hooksInstall = app.indexOf('RaftIosHostHooks.shared.install(managedImages: SlockIosAvatarCacheHost.shared)');
+const hooksInstall = app.search(/RaftIosHostHooks\.shared\.install\(\s*managedImages: SlockIosAvatarCacheHost\.shared\b/);
 check(hooksInstall > install, 'managed image reader must be installed after the provider');
 
 const bridgeStart = bridge.indexOf('- (void)avatarCacheCapability:(NSDictionary *)args {');

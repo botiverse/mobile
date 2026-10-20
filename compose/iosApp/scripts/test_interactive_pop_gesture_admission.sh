@@ -7,10 +7,11 @@ NAVIGATION_SOURCE="$IOS_ROOT/iosApp/FDFullscreenPopGesture/UINavigationControlle
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# Keep the expanded all-pages contract and direction-aware native horizontal-scroll arbitration
+# Keep the page pop contract and direction-aware native horizontal-scroll arbitration
 # visible to this focused admission check; the C policy test alone cannot see
-# Objective-C touch routing.
-grep -Fq 'renderViewController.fd_interactivePopAllowsFullScreen = YES;' "$NAVIGATION_SOURCE"
+# Objective-C touch routing. CMP pages pop from the leading edge only until shared code reports
+# horizontal-scroll consumption (TODO(cmp-switch)): Compose scrollers are not UIScrollViews.
+grep -Fq 'renderViewController.fd_interactivePopAllowsFullScreen = NO;' "$NAVIGATION_SOURCE"
 grep -Fq 'SlockInteractivePopHorizontalScrollCanConsumeDirection' "$NAVIGATION_SOURCE"
 grep -Fq 'self.touchView = touch.view;' "$NAVIGATION_SOURCE"
 
