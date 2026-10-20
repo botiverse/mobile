@@ -35,6 +35,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import androidx.compose.ui.text.font.FontWeight
+import build.raft.designsystem.components.RaftRowTone
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -902,32 +903,15 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeConversationTitleProjectionUsesActivityMutedAxis() {
-        assertEquals(
-            RaftColor.TextMutedGray,
-            homeConversationTitleColor(muted = true, joined = true)
-        )
-        assertEquals(
-            RaftColor.TextMutedGray,
-            homeConversationTitleColor(muted = true, joined = false)
-        )
-        assertEquals(
-            RaftColor.TextBlack,
-            homeConversationTitleColor(muted = false, joined = true)
-        )
-        // raft-ui SidebarItem `tone="away"`: a channel you have not joined reads foreground-hint.
-        assertEquals(
-            RaftColor.ForegroundHint,
-            homeConversationTitleColor(muted = false, joined = false)
-        )
-    }
-
-    @Test
-    fun homeChannelSymbolIsInkThreeUnlessSelected() {
-        // raft-ui `sidebarItemChannelIcon`: the # glyph is foreground-hint for joined and
-        // unjoined channels alike; the selected sticker turns it sticker ink.
-        assertEquals(raftArgbHex(RaftColor.ForegroundHint), homeChannelSymbolColorArgb(selected = false))
-        assertEquals(raftArgbHex(RaftColor.StickerInk), homeChannelSymbolColorArgb(selected = true))
+    fun homeConversationRowToneFollowsRaftUiSidebarTones() {
+        // raft-ui SidebarItem tones: not joined = `away` (foreground-hint) unless it is the
+        // current place, muted = `muted`, a loud unread = `unread` (a 700 name).
+        assertEquals(RaftRowTone.Away, homeConversationRowTone(muted = true, joined = false, selected = false, loudUnread = false))
+        assertEquals(RaftRowTone.Muted, homeConversationRowTone(muted = true, joined = false, selected = true, loudUnread = false))
+        assertEquals(RaftRowTone.Muted, homeConversationRowTone(muted = true, joined = true, selected = false, loudUnread = true))
+        assertEquals(RaftRowTone.Unread, homeConversationRowTone(muted = false, joined = true, selected = false, loudUnread = true))
+        assertEquals(RaftRowTone.Default, homeConversationRowTone(muted = false, joined = true, selected = false, loudUnread = false))
+        assertEquals(RaftRowTone.Default, homeConversationRowTone(muted = false, joined = false, selected = true, loudUnread = false))
     }
 
     @Test
@@ -1071,11 +1055,11 @@ class RaftHomeComponentsTest {
     @Test
     fun homeActivitySidebarProjectionUsesSharedBadgeFormatting() {
         assertEquals(
-            HomeActivitySidebarProjection(unreadLabel = "99+", totalLabel = null),
+            HomeActivitySidebarProjection(unreadCount = 140, totalLabel = null),
             homeActivitySidebarProjection(activityUnreadCount = 140, activityTotalCount = 200)
         )
         assertEquals(
-            HomeActivitySidebarProjection(unreadLabel = null, totalLabel = "99+"),
+            HomeActivitySidebarProjection(unreadCount = 0, totalLabel = "99+"),
             homeActivitySidebarProjection(activityUnreadCount = 0, activityTotalCount = 200)
         )
     }
@@ -1183,50 +1167,6 @@ class RaftHomeComponentsTest {
 
         assertTrue(item.isDirectMessageConversation())
         assertEquals(RaftThreadSurfaceKind.DirectMessage, item.homeChannelKind())
-    }
-
-    @Test
-    fun homeChannelTitleMatchesReactSelectedAndUnreadWeightRules() {
-        assertEquals(
-            RaftType.ListItem,
-            homeChannelTitleTextStyle(
-                selected = false,
-                hasUnread = false,
-                badgeTone = HomeSidebarBadgeTone.Loud,
-            ),
-        )
-        assertEquals(
-            RaftType.ListItemBold,
-            homeChannelTitleTextStyle(
-                selected = true,
-                hasUnread = false,
-                badgeTone = HomeSidebarBadgeTone.Loud,
-            ),
-        )
-        assertEquals(
-            RaftType.ListItemBold,
-            homeChannelTitleTextStyle(
-                selected = false,
-                hasUnread = true,
-                badgeTone = HomeSidebarBadgeTone.Loud,
-            ),
-        )
-        assertEquals(
-            RaftType.ListItem,
-            homeChannelTitleTextStyle(
-                selected = false,
-                hasUnread = true,
-                badgeTone = HomeSidebarBadgeTone.Quiet,
-            ),
-        )
-        assertEquals(
-            RaftType.ListItemBold,
-            homeChannelTitleTextStyle(
-                selected = true,
-                hasUnread = true,
-                badgeTone = HomeSidebarBadgeTone.Quiet,
-            ),
-        )
     }
 
     @Test
