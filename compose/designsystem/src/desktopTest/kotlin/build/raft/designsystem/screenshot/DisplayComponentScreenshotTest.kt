@@ -75,6 +75,12 @@ import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSection
+import build.raft.designsystem.components.RaftSidebarChannelItem
+import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftSidebarItemIcon
+import build.raft.designsystem.components.RaftSidebarItemMeta
+import build.raft.designsystem.components.RaftSidebarSectionAction
+import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftStatusDot
@@ -617,6 +623,72 @@ class DisplayComponentScreenshotTest {
                         RaftListRow("Activity", variant = RaftListRowVariant.Entry, onClick = {}, leading = { Glyph(RaftGlyph.AtSign, 20.dp) }, trailing = { RaftUnreadCount(3) })
                     }
                 }
+            }
+        }
+
+    /**
+     * raft-ui Sidebar rows at the phone size (Home): nav rows, group headers (collapsed,
+     * with attention, expanded with controls) and channel rows in every state: mention plus
+     * threads, unread plus threads, muted with unread, plain unread, selected (the yellow
+     * sticker), private, away, a subtitle, pressed, focused and a truncated name.
+     */
+    @Test
+    fun sidebar() =
+        capture("sidebar") {
+            Column(Modifier.width(360.dp)) {
+                RaftSidebarItem("Search", onClick = {}, leading = { RaftSidebarItemIcon(RaftGlyph.Search) })
+                RaftSidebarItem(
+                    "Activity",
+                    onClick = {},
+                    leading = { RaftSidebarItemIcon(RaftGlyph.Info) },
+                    trailing = { RaftUnreadCount(41) },
+                )
+                RaftSidebarItem("Saved", onClick = {}, leading = { RaftSidebarItemIcon(RaftGlyph.Copy) }, trailing = { RaftSidebarItemMeta("2") })
+                RaftSidebarSectionHeader(
+                    "Pinned",
+                    expanded = false,
+                    onExpandedChange = {},
+                    count = 3,
+                    actions = { RaftSidebarSectionAction(RaftGlyph.ChevronDown, "Sort Pinned", onClick = {}) },
+                )
+                RaftSidebarSectionHeader(
+                    "automation/infra",
+                    expanded = false,
+                    onExpandedChange = {},
+                    count = 6,
+                    attention = true,
+                    icon = { RaftStatusDot(variant = RaftStatusVariant.Information, size = RaftStatusSize.Lg) },
+                )
+                RaftSidebarSectionHeader(
+                    "Channels",
+                    expanded = true,
+                    onExpandedChange = {},
+                    count = 38,
+                    attention = true,
+                    actions = {
+                        RaftSidebarSectionAction(RaftGlyph.ChevronDown, "Sort Channels", onClick = {})
+                        RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", onClick = {})
+                    },
+                )
+                RaftSidebarChannelItem("proj-raft-computer", onClick = {}, mentioned = true, unreadCount = 4, threadCount = 2)
+                RaftSidebarChannelItem("proj-runtime", onClick = {}, unreadCount = 5, threadCount = 1)
+                RaftSidebarChannelItem("proj-mobile", onClick = {}, threadCount = 3)
+                RaftSidebarChannelItem("proj-connectors", onClick = {}, tone = RaftRowTone.Muted, unreadCount = 7)
+                RaftSidebarChannelItem("wg-task-v2", onClick = {}, unreadCount = 5)
+                RaftSidebarChannelItem("general", onClick = {}, selected = true, unreadCount = 120)
+                RaftSidebarChannelItem("leadership", onClick = {}, isPrivate = true)
+                RaftSidebarChannelItem("acme-shared", onClick = {}, tone = RaftRowTone.Away)
+                RaftSidebarItem(
+                    "Bugen",
+                    onClick = {},
+                    subtitle = "planning the release candidate for next week",
+                    leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, initials = "B", presence = RaftPresence.Online) },
+                )
+                StateCell(pressed = true) { RaftSidebarChannelItem("pressed", onClick = {}) }
+                StateCell(focused = true) { RaftSidebarChannelItem("focused", onClick = {}, unreadCount = 2) }
+                StateCell(focused = true) { RaftSidebarChannelItem("focused-selected", onClick = {}, selected = true) }
+                RaftSidebarChannelItem("a-channel-name-long-enough-to-run-past-the-end-of-the-row", onClick = {}, unreadCount = 9)
+                RaftSidebarItem("This Mac", leading = { RaftSidebarItemIcon(RaftGlyph.Info) }, subtitle = "display-only row")
             }
         }
 

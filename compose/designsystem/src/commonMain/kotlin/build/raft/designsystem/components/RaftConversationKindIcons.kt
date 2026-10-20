@@ -45,13 +45,18 @@ private val DirectMessageShoulders by lazy {
 
 private fun parse(data: String): Path = PathParser().parsePathString(data).toPath()
 
-/** Draws [glyph] at [size] in [color], else the current ink. Decorative: no semantics. */
+/**
+ * Draws [glyph] at [size] in [color], else the current ink. Decorative: no semantics.
+ * [strokeWidth] (in the 18-unit viewBox) replaces the glyph's own stroke, as raft-ui's
+ * `strokeWidth` prop does: `SidebarItemThreadCount` draws the thread at 1.75.
+ */
 @Composable
 fun RaftConversationKindIcon(
     glyph: RaftConversationKindGlyph,
     modifier: Modifier = Modifier,
     size: Dp = 14.dp,
     color: Color = Color.Unspecified,
+    strokeWidth: Float? = null,
 ) {
     val ink =
         when {
@@ -63,12 +68,12 @@ fun RaftConversationKindIcon(
         scale(unit, unit, pivot = Offset.Zero) {
             when (glyph) {
                 RaftConversationKindGlyph.Thread -> {
-                    val stroke = Stroke(width = 1f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    val stroke = Stroke(width = strokeWidth ?: 1f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     drawPath(BubbleOutline, ink, style = stroke)
                     drawPath(ThreadReplyBubble, ink, style = Fill)
                 }
                 RaftConversationKindGlyph.DirectMessage -> {
-                    val stroke = Stroke(width = 1.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    val stroke = Stroke(width = strokeWidth ?: 1.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
                     drawPath(BubbleOutline, ink, style = stroke)
                     drawPath(DirectMessageHead, ink, style = stroke)
                     drawPath(DirectMessageShoulders, ink, style = stroke)
