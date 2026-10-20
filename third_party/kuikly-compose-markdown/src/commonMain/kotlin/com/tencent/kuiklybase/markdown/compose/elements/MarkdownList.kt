@@ -18,9 +18,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isEm
+import androidx.compose.ui.unit.isSp
 import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
@@ -67,7 +72,10 @@ fun MarkdownListItems(
         modifier = Modifier
             .then(if (depth == 0) Modifier.fillMaxWidth() else Modifier)
             .padding(
-                start = (indentListDp) * (depth + 1),
+                // Nested lists already sit inside the parent item's text column, so
+                // the indent is per level, not multiplied by depth (web: each `ul`
+                // adds the same padding-left).
+                start = indentListDp,
                 top = listDp,
                 bottom = listDp
             )
@@ -196,31 +204,86 @@ fun MarkdownBulletList(
 
 @Composable
 private fun MarkdownBullet(depth: Int, style: TextStyle) {
-    val lineHeight = if (style.lineHeight.isSpecified) style.lineHeight.value.dp else 28.dp
+    val density = LocalDensity.current
+    val listIndent = LocalMarkdownPadding.current.listIndent
+    val fontSize = with(density) {
+        (if (style.fontSize.isSpecified) style.fontSize else MarkdownBulletFallbackFontSize).toDp()
+    }
+    val lineHeight = with(density) {
+        when {
+            style.lineHeight.isSp -> style.lineHeight.toDp()
+            style.lineHeight.isEm -> fontSize * style.lineHeight.value
+            else -> fontSize * MarkdownBulletFallbackLineHeightEm
+        }
+    }
+    val metrics = markdownBulletMetrics(fontSize = fontSize, lineHeight = lineHeight, listIndent = listIndent)
+    val color = style.color
+    // The slot is one first-line box tall, so the marker is centered on the first line
+    // whatever the font scale; the marker hangs at the slot's end, `gap` before the text.
     Box(
         modifier = Modifier
-            .height(lineHeight)
-            .padding(end = 4.dp)
-            .width(9.dp),
-        contentAlignment = Alignment.CenterStart
+            .width(metrics.slotWidth)
+            .height(metrics.lineHeight)
+            .padding(end = metrics.gap),
+        contentAlignment = Alignment.CenterEnd
     ) {
-        if (depth <= 0) {
-            Spacer(
-                modifier = Modifier
-                    .background(style.color)
-                    .clip(CircleShape)
-                    .size(5.dp)
+        val marker = Modifier.size(metrics.markerSize)
+        when (markdownBulletShape(depth)) {
+            MarkdownBulletShape.Disc -> Spacer(marker.clip(CircleShape).background(color))
+            MarkdownBulletShape.Circle -> Spacer(
+                marker.border(BorderStroke(width = metrics.strokeWidth, color = color), CircleShape)
             )
-        } else {
-            Spacer(
-                modifier = Modifier
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .border(BorderStroke(width = 0.5.dp, color = style.color))
-            )
+            MarkdownBulletShape.Square -> Spacer(marker.background(color))
         }
     }
 }
+
+/** Browser `list-style-type` per nesting level: `disc` → `circle` → `square` (and square below). */
+enum class MarkdownBulletShape { Disc, Circle, Square }
+
+fun markdownBulletShape(depth: Int): MarkdownBulletShape = when {
+    depth <= 0 -> MarkdownBulletShape.Disc
+    depth == 1 -> MarkdownBulletShape.Circle
+    else -> MarkdownBulletShape.Square
+}
+
+data class MarkdownBulletMetrics(
+    val markerSize: Dp,
+    val strokeWidth: Dp,
+    val gap: Dp,
+    val slotWidth: Dp,
+    val lineHeight: Dp,
+)
+
+/**
+ * Web parity for unordered list markers, all in em of the list text so they follow the
+ * message font size:
+ * - marker box: Chromium paints disc/circle/square at `ascent / 3` (≈ 1/3 em) for every level;
+ * - circle stroke: 1px (kept ≥ 1dp, grows with large fonts);
+ * - gap: the outside marker sits ~0.5em before the text (Chromium's 7px at 16px);
+ * - indent: each list level moves the text 1.5em right (`padding-left: 1.5em`); the list's
+ *   own [listIndent] is part of that 1.5em, the marker slot fills the rest.
+ */
+fun markdownBulletMetrics(fontSize: Dp, lineHeight: Dp, listIndent: Dp): MarkdownBulletMetrics {
+    val markerSize = fontSize * MarkdownBulletSizeEm
+    val strokeWidth = maxOf(1.dp, markerSize * MarkdownBulletCircleStrokeRatio)
+    val gap = fontSize * MarkdownBulletGapEm
+    val slotWidth = maxOf(fontSize * MarkdownListIndentEm - listIndent, markerSize + gap)
+    return MarkdownBulletMetrics(
+        markerSize = markerSize,
+        strokeWidth = strokeWidth,
+        gap = gap,
+        slotWidth = slotWidth,
+        lineHeight = maxOf(lineHeight, markerSize),
+    )
+}
+
+private const val MarkdownBulletSizeEm = 1f / 3f
+private const val MarkdownBulletCircleStrokeRatio = 0.2f
+private const val MarkdownBulletGapEm = 0.5f
+private const val MarkdownListIndentEm = 1.5f
+private const val MarkdownBulletFallbackLineHeightEm = 1.5f
+private val MarkdownBulletFallbackFontSize = 14.sp
 
 /**
  * Retrieve the current list depth from the [MarkdownComponentModel]
