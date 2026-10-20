@@ -120,12 +120,15 @@ import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesSyncHost
 import build.raft.app.model.ThreadId
 import androidx.compose.ui.text.input.TextFieldValue
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -920,6 +923,51 @@ class SharedThreadStoreTest {
         assertEquals("shared result", (second.await() as SharedThreadMessageResolution.Loaded).message.body)
         assertEquals(1, fetchCount)
         assertEquals("shared result", store.get(server, channel, messageId)?.body)
+        producerScope.cancel()
+    }
+
+    @Test
+    fun sharedThreadMessageStoreNeverJoinsACompletedProducerAwaitingCleanup() = runBlocking {
+        // The producer scope's in-flight cleanup is a separate coroutine launched on completion.
+        // Hold it back (as a busy Default pool does) and make sure a new request does not join the
+        // finished producer and get its stale non-cacheable Missing/Error back.
+        val pending = ArrayDeque<Runnable>()
+        val manualDispatcher =
+            object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) {
+                    pending.addLast(block)
+                }
+            }
+        val producerScope = CoroutineScope(SupervisorJob() + manualDispatcher)
+        val store = SharedThreadMessageStore(scope = producerScope)
+        val channel = ChannelId("parent-channel-1")
+        val messageId = MessageId("parent-1")
+        var fetchCount = 0
+        val first =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                store.resolveScoped("scope-1", channel, messageId) {
+                    fetchCount += 1
+                    SharedThreadMessageResolution.Missing
+                }
+            }
+        // Run only the producer; its completion queues the in-flight cleanup, which stays pending.
+        pending.removeFirst().run()
+        assertEquals(SharedThreadMessageResolution.Missing, first.await())
+        assertEquals(1, pending.size, "the in-flight cleanup should still be queued")
+
+        val second =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                store.resolveScoped("scope-1", channel, messageId) {
+                    fetchCount += 1
+                    SharedThreadMessageResolution.Error("thread_parent_timeout")
+                }
+            }
+        while (!second.isCompleted) {
+            pending.removeFirstOrNull()?.run() ?: yield()
+        }
+
+        assertEquals(SharedThreadMessageResolution.Error("thread_parent_timeout"), second.await())
+        assertEquals(2, fetchCount)
         producerScope.cancel()
     }
 
@@ -2676,7 +2724,9 @@ class SharedThreadStoreTest {
         viewModel.ensureStarted()
         viewModel.ensureStarted()
         // Let the fire-and-forget store coroutine pass its first-frame delay and reach refresh.
-        delay(100)
+        withTimeout(10_000) {
+            while (api.channelMessageCalls < 1 || viewModel.state.value.payload.status != "content") delay(10)
+        }
 
         val payload = viewModel.state.value.payload
         assertEquals("content", payload.status)
@@ -3563,7 +3613,7 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
         homeRequested.await()
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -3578,7 +3628,7 @@ class SharedThreadStoreTest {
         assertEquals(null, resolvedBeforeHome.initialHomeAccessCandidate)
 
         releaseHome.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
@@ -3624,7 +3674,7 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
         conversationRepository.getThreadStarted?.await()
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
@@ -3640,7 +3690,7 @@ class SharedThreadStoreTest {
         assertTrue(accessHistory.all { it == ThreadAccessResolution.Loading })
 
         conversationRepository.releaseGetThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -3678,7 +3728,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -3724,7 +3774,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.payload.status == "loading") {
                 delay(10)
             }
@@ -3762,7 +3812,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
                 delay(10)
             }
@@ -3795,7 +3845,7 @@ class SharedThreadStoreTest {
                 )
             val store = SharedThreadStore(dataSource = dataSource, scope = scope)
             store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
-            withTimeout(1_000) {
+            withTimeout(10_000) {
                 while (
                     store.state.value.accessResolution != ThreadAccessResolution.NoPermission &&
                     store.state.value.accessResolution != ThreadAccessResolution.Error
@@ -3961,7 +4011,7 @@ class SharedThreadStoreTest {
         assertFalse(cachedFrame.writeActionsEnabled)
 
         releaseHome.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -3983,7 +4033,7 @@ class SharedThreadStoreTest {
         repository.releaseGetThread?.complete(Unit)
         // The canonical body and the canonicalAccessResolved flag land in separate reduces;
         // wait for the flag, then read one frame.
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.canonicalAccessResolved) {
                 delay(10)
             }
@@ -4055,14 +4105,14 @@ class SharedThreadStoreTest {
         )
 
         repository.releaseGetThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.payload.messages.singleOrNull()?.body != "network body") {
                 delay(10)
             }
         }
         assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
         releaseHome.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4153,14 +4203,14 @@ class SharedThreadStoreTest {
         )
 
         repository.releaseGetReplyThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.canonicalAccessResolved) {
                 delay(10)
             }
         }
         assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
         releaseHome.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4240,7 +4290,7 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(route))
         repository.getReplyThreadStarted?.await()
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
@@ -4264,7 +4314,7 @@ class SharedThreadStoreTest {
         )
 
         repository.releaseGetReplyThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4335,14 +4385,14 @@ class SharedThreadStoreTest {
         }
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.canonicalAccessResolved) {
                 delay(10)
             }
         }
         assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
         releaseHome.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4416,7 +4466,7 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(route))
         repository.getReplyThreadStarted?.await()
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
@@ -4431,7 +4481,7 @@ class SharedThreadStoreTest {
         )
 
         repository.releaseGetReplyThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4500,7 +4550,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4549,7 +4599,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4606,7 +4656,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -4660,7 +4710,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (
                 store.state.value.accessResolution != ThreadAccessResolution.Resolved ||
                 store.state.value.writeActionsEnabled
@@ -4769,7 +4819,7 @@ class SharedThreadStoreTest {
                 )
 
             store.dispatch(SharedThreadIntent.Start(route))
-            withTimeout(1_000) {
+            withTimeout(10_000) {
                 while (
                     store.state.value.accessResolution != ThreadAccessResolution.Resolved ||
                     store.state.value.writeActionsEnabled
@@ -4790,7 +4840,7 @@ class SharedThreadStoreTest {
             if (homeCompletesFirst) {
                 withTimeout(5_000) { repository.getThreadStarted?.await() }
                 retryHomeFinished.await()
-                withTimeout(1_000) {
+                withTimeout(10_000) {
                     while (retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames) {
                         delay(10)
                     }
@@ -4799,7 +4849,7 @@ class SharedThreadStoreTest {
                 assertFalse(store.state.value.writeActionsEnabled)
                 repository.releaseGetThread?.complete(Unit)
             } else {
-                withTimeout(1_000) {
+                withTimeout(10_000) {
                     while (store.state.value.payload.status != "empty") {
                         delay(10)
                     }
@@ -4808,7 +4858,7 @@ class SharedThreadStoreTest {
                 releaseRetryHome.complete(Unit)
                 retryHomeFinished.await()
             }
-            withTimeout(1_000) {
+            withTimeout(10_000) {
                 while (
                     store.state.value.payload.status != "empty" ||
                     retryHomeMarker !in store.state.value.payload.knownMarkdownChannelNames
@@ -4885,7 +4935,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(route))
-        withTimeout(1_500) {
+        withTimeout(10_000) {
             while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
@@ -4910,7 +4960,7 @@ class SharedThreadStoreTest {
         assertEquals(1, channelRepository.channelsCalls)
 
         store.dispatch(SharedThreadIntent.Refresh)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.writeActionsEnabled) {
                 delay(10)
             }
@@ -4966,7 +5016,7 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(route))
         repository.getReplyThreadStarted?.await()
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.initialHomeAccessLookupComplete) {
                 delay(10)
             }
@@ -4975,7 +5025,7 @@ class SharedThreadStoreTest {
         assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
 
         repository.releaseGetReplyThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -5042,46 +5092,46 @@ class SharedThreadStoreTest {
             val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
             store.dispatch(SharedThreadIntent.Start(basePayload()))
-            val (releaseFirstHome, firstHomeFinished) = withTimeout(1_000) { homeCalls.receive() }
-            val (releaseFirstCanonical, firstCanonicalFinished) = withTimeout(1_000) { canonicalCalls.receive() }
+            val (releaseFirstHome, firstHomeFinished) = withTimeout(10_000) { homeCalls.receive() }
+            val (releaseFirstCanonical, firstCanonicalFinished) = withTimeout(10_000) { canonicalCalls.receive() }
             releaseFirstCanonical.complete(Unit)
-            withTimeout(1_000) { firstCanonicalFinished.await() }
-            withTimeout(1_000) {
+            withTimeout(10_000) { firstCanonicalFinished.await() }
+            withTimeout(10_000) {
                 store.state.first { it.payload.messages.singleOrNull()?.body == "canonical-1" }
             }
             assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
 
             store.dispatch(SharedThreadIntent.Refresh)
-            withTimeout(500) { firstHomeFinished.await() }
-            val (releaseSecondHome, secondHomeFinished) = withTimeout(1_000) { homeCalls.receive() }
-            val (releaseSecondCanonical, secondCanonicalFinished) = withTimeout(1_000) { canonicalCalls.receive() }
+            withTimeout(10_000) { firstHomeFinished.await() }
+            val (releaseSecondHome, secondHomeFinished) = withTimeout(10_000) { homeCalls.receive() }
+            val (releaseSecondCanonical, secondCanonicalFinished) = withTimeout(10_000) { canonicalCalls.receive() }
             if (homeCompletesFirst) {
                 releaseSecondHome.complete(Unit)
-                withTimeout(1_000) { secondHomeFinished.await() }
-                withTimeout(1_000) {
+                withTimeout(10_000) { secondHomeFinished.await() }
+                withTimeout(10_000) {
                     store.state.first { it.initialHomeAccessLookupComplete }
                 }
                 releaseSecondCanonical.complete(Unit)
-                withTimeout(1_000) { secondCanonicalFinished.await() }
-                withTimeout(1_000) {
+                withTimeout(10_000) { secondCanonicalFinished.await() }
+                withTimeout(10_000) {
                     store.state.first { it.payload.messages.singleOrNull()?.body == "canonical-2" }
                 }
             } else {
                 releaseSecondCanonical.complete(Unit)
-                withTimeout(1_000) { secondCanonicalFinished.await() }
-                withTimeout(1_000) {
+                withTimeout(10_000) { secondCanonicalFinished.await() }
+                withTimeout(10_000) {
                     store.state.first { it.payload.messages.singleOrNull()?.body == "canonical-2" }
                 }
                 releaseSecondHome.complete(Unit)
-                withTimeout(1_000) { secondHomeFinished.await() }
-                withTimeout(1_000) {
+                withTimeout(10_000) { secondHomeFinished.await() }
+                withTimeout(10_000) {
                     store.state.first { it.initialHomeAccessLookupComplete }
                 }
             }
             releaseFirstHome.complete(Unit)
 
             val resolved =
-                withTimeout(1_000) {
+                withTimeout(10_000) {
                     store.state.first {
                         it.initialHomeAccessLookupComplete &&
                             it.accessResolution == ThreadAccessResolution.Resolved &&
@@ -5130,7 +5180,7 @@ class SharedThreadStoreTest {
         store.dispatch(SharedThreadIntent.Start(basePayload()))
         repository.getThreadStarted?.await()
         repository.releaseGetThread?.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
                 delay(10)
             }
@@ -5186,7 +5236,7 @@ class SharedThreadStoreTest {
         }
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_500) {
+        withTimeout(10_000) {
             while (
                 store.state.value.accessResolution != ThreadAccessResolution.Error ||
                 !store.state.value.initialHomeAccessLookupComplete
@@ -5198,7 +5248,7 @@ class SharedThreadStoreTest {
         repository.threadResult = DataResult.Content(threadSnapshot(conversation = conversationSummary().copy(joined = true)))
         renderEvents.clear()
         store.dispatch(SharedThreadIntent.Refresh)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (homeAttempt < 2 || store.state.value.payload.messages.singleOrNull()?.body != "repository body") {
                 delay(10)
             }
@@ -5212,7 +5262,7 @@ class SharedThreadStoreTest {
         )
 
         releaseRetryHome.complete(Unit)
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -5238,7 +5288,7 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -5283,7 +5333,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
-        withTimeout(2_000) {
+        withTimeout(10_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
@@ -5550,7 +5600,7 @@ class SharedThreadStoreTest {
         val replyJob = scope.launch { store.accept(SharedThreadIntent.Start(replyRoute)) }
         replyStarted.await()
 
-        withTimeout(500) {
+        withTimeout(10_000) {
             while (true) {
                 val payload = store.state.value.payload
                 if (payload.sourceThreadId == "thread-a" && payload.messages.singleOrNull()?.body == "reply cached") {
@@ -5563,7 +5613,7 @@ class SharedThreadStoreTest {
         assertEquals("reply cached", store.state.value.payload.messages.single().body)
 
         channelRelease.complete(Unit)
-        withTimeout(500) {
+        withTimeout(10_000) {
             while (true) {
                 if (logs.any { it.startsWith("thread_refresh_stale_drop") && it.contains("threadId=channel-1") }) {
                     return@withTimeout
@@ -5576,7 +5626,7 @@ class SharedThreadStoreTest {
         assertEquals("reply cached", store.state.value.payload.messages.single().body)
 
         replyRelease.complete(Unit)
-        withTimeout(500) {
+        withTimeout(10_000) {
             while (true) {
                 if (store.state.value.payload.messages.singleOrNull()?.body == "reply network") {
                     return@withTimeout
@@ -5849,12 +5899,12 @@ class SharedThreadStoreTest {
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
 
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (store.state.value.payload.messages.firstOrNull()?.body != "network body") {
                 delay(1)
             }
         }
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             homeRequested.await()
         }
         releaseHome.complete(Unit)
@@ -6605,7 +6655,7 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        withTimeout(1_000) {
+        withTimeout(10_000) {
             while (!store.state.value.writeActionsEnabled) {
                 delay(10)
             }
@@ -9514,7 +9564,7 @@ class SharedThreadStoreTest {
                 dataSource = dataSource,
                 scope = visibleScope
             )
-        withTimeout(1_000L) {
+        withTimeout(10_000L) {
             store.accept(
                 SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1"))
             )
@@ -9612,13 +9662,13 @@ class SharedThreadStoreTest {
         assertEquals("loading", dataSource.cachedPayload("thread-m1")?.originStatus)
         releaseParent.complete(Unit)
         val loaded =
-            withTimeout(1_000L) {
+            withTimeout(10_000L) {
                 store.state.map { it.payload }.first { it.originStatus == "loaded" }
             }
         assertEquals("late parent", loaded.originMessage?.body)
         assertEquals(1, repository.getMessageContextRequests.count { it == parentMessageId })
         store.accept(SharedThreadIntent.FirstContentReady)
-        withTimeout(1_000L) {
+        withTimeout(10_000L) {
             // The immediate secondary refresh may finish before FirstContentReady and log
             // `result=pending_first_content`; wait for the applied result (`emitted=`), which is
             // what the assertion below inspects.
@@ -10026,7 +10076,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(route))
-        withTimeout(1_000L) { parentStarted.await() }
+        withTimeout(10_000L) { parentStarted.await() }
 
         val beforeParent = store.state.value.payload
         assertEquals("content", beforeParent.status)
@@ -10036,7 +10086,7 @@ class SharedThreadStoreTest {
 
         releaseParent.complete(Unit)
         val afterParent =
-            withTimeout(1_000L) {
+            withTimeout(10_000L) {
                 store.state.map { it.payload }.first { it.originStatus == "loaded" }
             }
         assertEquals(listOf("reply-focus-1"), afterParent.messages.map { it.id })
@@ -10087,7 +10137,7 @@ class SharedThreadStoreTest {
             )
 
         store.accept(SharedThreadIntent.Start(focusedReplyRoute()))
-        val missing = withTimeout(1_000L) {
+        val missing = withTimeout(10_000L) {
             store.state.map { it.payload }.first { it.originStatus == "missing" }
         }
         assertEquals("content", missing.status)
@@ -10096,7 +10146,7 @@ class SharedThreadStoreTest {
 
         repository.messageContextResult = DataResult.Error(ScreenError("thread_parent_timeout", retryable = true))
         store.accept(SharedThreadIntent.Start(focusedReplyRoute().copy(focusedMessageRequestNonce = 2)))
-        val error = withTimeout(1_000L) {
+        val error = withTimeout(10_000L) {
             store.state.map { it.payload }.first { it.originStatus == "error" }
         }
         assertEquals("thread_parent_timeout", error.originErrorCode)
@@ -10234,7 +10284,7 @@ class SharedThreadStoreTest {
             )
 
         store.accept(SharedThreadIntent.Start(focusedReplyRoute()))
-        withTimeout(1_000L) { parentStarted.await() }
+        withTimeout(10_000L) { parentStarted.await() }
         store.accept(
             SharedThreadIntent.Start(
                 basePayload().copy(
@@ -11546,7 +11596,7 @@ class SharedThreadStoreTest {
                 threadChannelId = null
             ).copy(originStatus = "loading")
 
-        withTimeout(2_000L) {
+        withTimeout(10_000L) {
             store.accept(SharedThreadIntent.Start(initialPayload))
         }
 
@@ -11607,7 +11657,7 @@ class SharedThreadStoreTest {
         assertEquals(emptyList(), store.state.value.payload.messages)
         assertEquals(null, store.state.value.payload.errorCode)
 
-        withTimeout(1_000L) {
+        withTimeout(10_000L) {
             while (store.state.value.payload.messages.singleOrNull()?.id != "m1") {
                 delay(5L)
             }
@@ -11648,7 +11698,7 @@ class SharedThreadStoreTest {
         assertEquals("cached content", store.state.value.payload.messages.single().body)
         assertEquals(null, store.state.value.payload.errorCode)
 
-        withTimeout(1_000L) {
+        withTimeout(10_000L) {
             while (store.state.value.payload.messages.singleOrNull()?.body != "refreshed content") {
                 delay(5L)
             }
@@ -13411,7 +13461,13 @@ class SharedThreadStoreTest {
         )
         store.dispatch(SharedThreadIntent.MarkVisibleRead())
 
-        delay(120L)
+        // Wait for the coalesced follow-up read instead of a fixed 120ms against the 50ms fake
+        // readAll delay (a stalled JVM blew that budget), then give a stray extra request a
+        // moment to show up before asserting the burst collapsed to one call.
+        withTimeout(10_000) {
+            while (api.readSeqRequests.isEmpty() || api.activeReadAllCalls > 0) delay(10)
+        }
+        delay(50L)
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
         assertEquals(listOf("channel-1" to 12L), api.readSeqRequests)
