@@ -193,6 +193,9 @@ import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.components.RaftTab
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -12243,121 +12246,79 @@ private fun MembersAgentChatTabContent(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
-        Text(
-            text = stringResource(MR.strings.member_section_agent_channels_dms),
-            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray
-        )
-        Text(
+        RaftSectionEyebrow(text = stringResource(MR.strings.member_section_agent_channels_dms))
+        RaftText(
             text = stringResource(MR.strings.member_section_channels),
-            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray
+            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foregroundMuted
         )
         val channels = detail?.channels.orEmpty().filter { it.archivedAt.isNullOrBlank() }
         if (channels.isEmpty()) {
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.member_state_no_active_channels),
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextMutedGray
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundHint
             )
         } else {
-            channels.forEach { channel ->
-                MembersAgentChannelRow(channel)
+            // raft-ui ListRow rows in an inset group (one card, hairlines between rows).
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                channels.forEachIndexed { index, channel ->
+                    MembersAgentChannelRow(channel, divider = index > 0)
+                }
             }
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(RaftAppStroke.Thin)
-                .background(RaftColor.BorderBlack.copy(alpha = 0.15f))
-        )
-        Text(
+        RaftSeparator()
+        RaftText(
             text = stringResource(MR.strings.member_section_private_chats),
-            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray
+            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foregroundMuted
         )
-        Text(
+        RaftText(
             text = stringResource(MR.strings.member_hint_chat_audit_only),
-            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundHint
         )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(RaftAppStroke.Thin)
-                .background(RaftColor.BorderBlack.copy(alpha = 0.15f))
-        )
+        RaftSeparator()
         val rows = detail?.directMessages.orEmpty()
         if (rows.isEmpty()) {
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.member_state_no_agent_dms),
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextMutedGray
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundHint
             )
         } else {
-            rows.take(8).forEach { row ->
-                MembersAgentDmRow(row, currentServerId, serverMembersState)
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                rows.take(8).forEachIndexed { index, row ->
+                    MembersAgentDmRow(row, currentServerId, serverMembersState, divider = index > 0)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RaftLucideIcon(
-                channel.type.threadChannelHeaderIcon(),
-                modifier = Modifier.size(15.dp),
-                color = RaftColor.TextBlackArgb
-            )
-            Text(
-                text = channel.name,
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (channel.activityMuted) {
-                RaftLucideIcon(
-                    RaftLucideIconName.BellOff,
-                    modifier = Modifier.size(15.dp),
-                    color = RaftColor.TextMutedGrayArgb
-                )
-                Text(
+private fun MembersAgentChannelRow(channel: AgentChannelSummary, divider: Boolean = false) {
+    // raft-ui ListRow (plain): the channel's 20dp icon, its name, its description; a muted
+    // channel ends with the bell-off icon and a soft Muted tag.
+    RaftListRow(
+        title = channel.name,
+        variant = RaftListRowVariant.Plain,
+        divider = divider,
+        description = channel.description?.takeIf { it.isNotBlank() },
+        leading = { RaftContentLucideIcon(channel.type.threadChannelHeaderIcon(), size = 20.dp) },
+        trailing = if (channel.activityMuted) {
+            {
+                RaftContentLucideIcon(RaftLucideIconName.BellOff)
+                RaftBadge(
                     text = stringResource(MR.strings.member_label_muted),
-                    style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
-                        .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextMutedGray
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Muted
                 )
             }
+        } else {
+            null
         }
-        channel.description?.takeIf { it.isNotBlank() }?.let { description ->
-            Text(
-                text = description,
-                style = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
+    )
 }
 
 internal fun SharedServerMembersState.membersAgentDmPeerProfile(
@@ -12377,7 +12338,8 @@ internal fun SharedServerMembersState.membersAgentDmPeerProfile(
 private fun MembersAgentDmRow(
     row: AgentDmSummary,
     currentServerId: String?,
-    serverMembersState: SharedServerMembersState
+    serverMembersState: SharedServerMembersState,
+    divider: Boolean = false
 ) {
     val avatarCacheIdentity =
         remember(row.peerId, currentServerId, serverMembersState) {
@@ -12385,72 +12347,46 @@ private fun MembersAgentDmRow(
                 .membersAgentDmPeerProfile(row, currentServerId)
                 ?.raftAvatarCacheIdentity(currentServerId)
         }
-    // React parity: subtle bordered card (alpha 0.2 border, no brutal shadow)
-    // with avatar + name + handle + relative time on the top row, body text
-    // on the second row, and an ACTIVITY ONLY tag on the third row.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = stringResource(MR.strings.member_label_agent_dm),
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = RaftColor.TextMutedGray
+    // raft-ui AvatarListRow: the 35dp peer avatar, name, @handle in Space Mono, the last
+    // message as the preview with an Activity only tag, the time on the right.
+    RaftListRow(
+        title = row.peerName,
+        divider = divider,
+        subtitle = "@${row.peerName}",
+        description = row.lastMessagePreview?.takeIf { it.isNotBlank() },
+        alignTop = true,
+        leading = {
+            RaftAvatar(
+                type = RaftAvatarType.Human,
+                size = RaftAvatarSize.Md,
+                image = {
+                    RaftAppAvatar(
+                        avatarWireValue = row.peerAvatarUrl,
+                        label = row.peerName.take(1).uppercase(),
+                        avatarSize = RaftAvatarSize.Md.edge - RaftStroke.Control * 2,
+                        borderWidth = 0.dp,
+                        cacheSubject = avatarCacheIdentity?.subject,
+                        cacheServerId = avatarCacheIdentity?.serverId
+                    )
+                }
             )
-            RaftAppAvatar(
-                avatarWireValue = row.peerAvatarUrl,
-                label = row.peerName.take(1).uppercase(),
-                avatarSize = 22.dp,
-                borderWidth = RaftAppStroke.Thin,
-                cacheSubject = avatarCacheIdentity?.subject,
-                cacheServerId = avatarCacheIdentity?.serverId
+        },
+        badge = {
+            RaftBadge(
+                text = stringResource(MR.strings.member_label_activity_only),
+                appearance = RaftBadgeAppearance.Soft,
+                variant = RaftBadgeVariant.Muted
             )
-            Text(
-                text = row.peerName,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "@${row.peerName}",
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1
-            )
+        },
+        trailing = {
             RaftRelativeTimestampText(
                 value = row.lastMessageAt,
-                style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = RaftColor.TextMutedGray,
+                style = RaftTheme.typography.monoMeta,
+                color = RaftTheme.colors.foregroundHint,
                 maxLines = 1
             )
         }
-        if (!row.lastMessagePreview.isNullOrBlank()) {
-            Text(
-                text = row.lastMessagePreview,
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Text(
-            text = stringResource(MR.strings.member_label_activity_only),
-            style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
-        )
-    }
+    )
 }
 
 @Composable
