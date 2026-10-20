@@ -22324,6 +22324,7 @@ private fun SharedHomeSearchEmptyState(
     RaftSearchEmptyState(
         title = title,
         detail = detail,
+        typography = RaftTheme.typography,
         modifier = Modifier.heightIn(min = 300.dp)
     )
 }
@@ -22339,6 +22340,7 @@ private fun SharedHomeSearchErrorState(
     RaftSearchEmptyState(
         title = copy.title,
         detail = copy.detail,
+        typography = RaftTheme.typography,
         iconName = null,
         actions =
             if (showAction) {
@@ -22367,7 +22369,8 @@ private fun SharedHomeSearchResultsCount(
                 stringResource(MR.strings.search_state_searching)
             } else {
                 stringResource(MR.strings.search_results_count, totalResults)
-            }
+            },
+        typography = RaftTheme.typography
     )
 }
 

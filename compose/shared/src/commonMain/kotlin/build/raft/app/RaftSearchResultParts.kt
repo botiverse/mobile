@@ -33,10 +33,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.RaftTypography
 
 // raft-ui search recipes (packages/ui/src/components/search/*.recipe.ts) for the Home search
-// panel. Read the type through RaftTheme.typography, so call these inside RaftDesignSystemTheme.
+// panel. The parts take their type from the caller (a style or the designsystem
+// RaftTypography) instead of reading RaftTheme.typography themselves, so a part cannot be
+// placed where that read would throw; callers read it inside RaftDesignSystemTheme.
 
 internal object RaftSearchMetrics {
     /** Rows, headings and the summary: `px-4`. */
@@ -82,12 +84,16 @@ internal fun Modifier.raftSearchRowSeparator(show: Boolean, inset: Dp, color: Co
 internal fun Modifier.raftSearchRowPressed(pressed: Boolean, color: Color): Modifier =
     if (pressed) background(color) else this
 
-/** search `sectionHeading`: `px-4 pt-5 pb-2 text-footnote font-bold text-foreground-hint`. */
+/**
+ * search `sectionHeading`: `px-4 pt-5 pb-2 text-footnote font-bold text-foreground-hint`.
+ * [style] is the designsystem `footnote` in bold (`RaftTheme.typography.footnote`, read by
+ * the caller inside RaftDesignSystemTheme).
+ */
 @Composable
 internal fun RaftSearchSectionHeading(
     label: String,
+    style: TextStyle,
     modifier: Modifier = Modifier,
-    style: TextStyle = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
 ) {
     Box(modifier.fillMaxWidth().padding(start = RaftSearchMetrics.Inset, top = 20.dp, end = RaftSearchMetrics.Inset, bottom = 8.dp)) {
         RaftText(
@@ -100,13 +106,17 @@ internal fun RaftSearchSectionHeading(
     }
 }
 
-/** search `summary`: `px-4 pt-2 text-footnote text-foreground-hint`. */
+/**
+ * search `summary`: `px-4 pt-2 text-footnote text-foreground-hint`. [typography] is the
+ * designsystem type scale (`RaftTheme.typography`, read by the caller inside
+ * RaftDesignSystemTheme).
+ */
 @Composable
-internal fun RaftSearchSummary(text: String, modifier: Modifier = Modifier) {
+internal fun RaftSearchSummary(text: String, typography: RaftTypography, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().padding(start = RaftSearchMetrics.Inset, top = 8.dp, end = RaftSearchMetrics.Inset)) {
         RaftText(
             text = text,
-            style = RaftTheme.typography.footnote,
+            style = typography.footnote,
             color = RaftColor.ForegroundHint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -118,12 +128,14 @@ internal fun RaftSearchSummary(text: String, modifier: Modifier = Modifier) {
  * raft-ui EmptyState as the search panel uses it (SearchEmpty / SearchError): `px-6 py-12`
  * centred, a 36dp `foreground-hint` icon, a `text-headline` bold `foreground-muted` title,
  * a `text-callout` `foreground-hint` description at most 300dp wide (all 8dp apart) and the
- * actions 20dp below.
+ * actions 20dp below. [typography] is the designsystem type scale (`RaftTheme.typography`,
+ * read by the caller inside RaftDesignSystemTheme).
  */
 @Composable
 internal fun RaftSearchEmptyState(
     title: String,
     detail: String?,
+    typography: RaftTypography,
     modifier: Modifier = Modifier,
     iconName: RaftLucideIconName? = RaftLucideIconName.Search,
     actions: (@Composable () -> Unit)? = null,
@@ -142,7 +154,7 @@ internal fun RaftSearchEmptyState(
             }
             RaftText(
                 text = title,
-                style = RaftTheme.typography.headline,
+                style = typography.headline,
                 color = RaftColor.TextMuted,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -151,7 +163,7 @@ internal fun RaftSearchEmptyState(
             detail?.takeIf { it.isNotBlank() }?.let {
                 RaftText(
                     text = it,
-                    style = RaftTheme.typography.callout,
+                    style = typography.callout,
                     color = RaftColor.ForegroundHint,
                     textAlign = TextAlign.Center,
                     maxLines = 3,
@@ -183,7 +195,9 @@ internal fun RaftSearchHitText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val ranges = remember(text, query) { homeSearchHighlightRanges(text, query) }
-    val annotated = remember(text, ranges) { raftSearchHitAnnotatedString(text, ranges) }
+    // The hit span names the bold face of the Settings > Appearance face, so rebuild it on a
+    // face change.
+    val annotated = remember(text, ranges, RaftFontFaceState.preference) { raftSearchHitAnnotatedString(text, ranges) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val fill = RaftColor.Brand
     val edge = RaftColor.StickerInk
