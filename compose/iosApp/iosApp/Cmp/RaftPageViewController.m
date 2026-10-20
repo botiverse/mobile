@@ -222,7 +222,9 @@ static NSString *RaftPageWindowId(UIWindow *window) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor whiteColor];
+    // Not a fixed white: under a dark app theme a pushed page flashed white until its first
+    // composition painted the canvas (RaftCmpIos raftPaintHostCanvas).
+    self.view.backgroundColor = self.raftInitialBackgroundColor ?: UIColor.systemBackgroundColor;
     [self raftEmbedContentIfNeeded];
     [self.navigationController setNavigationBarHidden:YES animated:NO];
 }

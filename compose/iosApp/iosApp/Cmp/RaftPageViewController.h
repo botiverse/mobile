@@ -21,6 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL raftConversationForwardGestureEnabled;
 @property (nonatomic, assign, readonly) BOOL raftIsAppShellPage;
 @property (nonatomic, assign, readonly) BOOL raftIsLoginPage;
+/**
+ * Container background until the page paints its own canvas colour (set before the view loads;
+ * the factory passes the last canvas colour a CMP page reported). Nil: systemBackgroundColor.
+ */
+@property (nonatomic, strong, nullable) UIColor *raftInitialBackgroundColor;
 
 /**
  * @param pageName the page name (the former Kuikly `@Page` name)

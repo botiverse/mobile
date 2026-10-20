@@ -3,6 +3,7 @@ package build.raft.app.cmp.ios
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.window.ComposeUIViewController
 import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.RaftCmpRouter
@@ -139,6 +140,13 @@ object RaftCmpIos {
         RaftCmpRouter.configure(debugBuild = debugBuild)
     }
 
+    /**
+     * The canvas colour the last composed page painted (light/dark aware), or null before any.
+     * `RaftPageViewController` starts with it so a pushed page's container does not flash white
+     * (or the system colour) under a dark (or light) app theme before its first composition.
+     */
+    fun lastCanvasColor(): UIColor? = raftLastCanvasColor
+
     /** True when [pageName] is a registered page (anything else renders the unknown-page surface). */
     fun rendersOnCmp(pageName: String): Boolean = RaftCmpRouter.rendersOnCmp(pageName)
 
@@ -167,7 +175,6 @@ object RaftCmpIos {
         val onDarkThemeResolved: ((Boolean) -> Unit)? = listener?.let { target -> { dark -> target.onDarkThemeResolved(dark) } }
         val backSwipeRegions = RaftBackSwipeRegions()
         return RaftIosPage(events, backSwipeRegions) { page ->
-            var controller: UIViewController? = null
             ComposeUIViewController(
                 configure = {
                     // Not opaque: an opaque CMP view clears its canvas, and fills its view, with
@@ -179,25 +186,33 @@ object RaftCmpIos {
                     opaque = false
                 },
             ) {
+                // Read from composition, not captured in this lambda: a Kotlin closure holding the
+                // controller that holds this content would be an ObjC/Kotlin retain cycle.
+                val controller = LocalUIViewController.current
                 RaftCmpRoot(
                     args = args,
                     host = host,
                     onDarkThemeResolved = onDarkThemeResolved,
-                    onCanvasColorResolved = { color -> controller?.raftPaintHostCanvas(color) },
+                    onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
                     backSwipeRegions = backSwipeRegions,
                 )
                 // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.
                 LaunchedEffect(Unit) { page.replayStickyEvents() }
-            }.also { controller = it }
+            }
         }
     }
 }
 
+/** Main thread only (composition effects). */
+private var raftLastCanvasColor: UIColor? = null
+
 /**
- * Gives the Compose view and its host container (`RaftPageViewController`'s view, white by
- * default) the app's canvas colour, light/dark aware. CMP resets the transparent Compose view's
- * own background on trait changes; the container keeps the colour then.
+ * Gives the Compose view and its host container (`RaftPageViewController`'s view, which starts
+ * with the last canvas colour or `systemBackgroundColor`) the app's canvas colour, light/dark
+ * aware. CMP resets the transparent Compose view's own background on trait changes; the container
+ * keeps the colour then.
  */
+
 private fun UIViewController.raftPaintHostCanvas(color: Color) {
     val uiColor =
         UIColor.colorWithRed(
@@ -206,6 +221,7 @@ private fun UIViewController.raftPaintHostCanvas(color: Color) {
             blue = color.blue.toDouble(),
             alpha = color.alpha.toDouble(),
         )
+    raftLastCanvasColor = uiColor
     view.backgroundColor = uiColor
     view.superview?.backgroundColor = uiColor
 }
