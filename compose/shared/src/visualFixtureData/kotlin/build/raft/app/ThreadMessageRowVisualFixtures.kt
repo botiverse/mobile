@@ -351,6 +351,11 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_IMAGE = "inline_image"
+
+/** A tall phone-screenshot stand-in (9:20 SVG, yellow canvas, black block) for the inline image case. */
+private const val ThreadMessageVisualInlineImageUri =
+    "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2090%20200%22%3E%3Crect%20width%3D%2290%22%20height%3D%22200%22%20fill%3D%22%23FDE047%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2224%22%20width%3D%2266%22%20height%3D%2248%22%20fill%3D%22%23000000%22%2F%3E%3Crect%20x%3D%2212%22%20y%3D%2288%22%20width%3D%2266%22%20height%3D%228%22%20fill%3D%22%23F472B6%22%2F%3E%3C%2Fsvg%3E"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES = "inline_replies"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
@@ -646,6 +651,69 @@ internal fun threadVisualFixture(
                             reactions =
                                 listOf(
                                     RaftThreadReactionItem(emoji = "👀", count = 1, selected = false)
+                                )
+                        )
+                    ),
+                members =
+                    listOf(
+                        RaftThreadMemberItem(
+                            id = "visual-human-designer",
+                            displayName = "Designer",
+                            handle = "designer",
+                            kind = "human",
+                            avatarUrl = AvatarReference.Random("visual-human-designer").wireValue,
+                            avatarLabel = "DE"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    RaftThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_IMAGE ->
+            RaftThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#design",
+                subtitle = "Inline image attachment fixture",
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                streamChannelId = "channel-design",
+                sourceThreadId = "channel-design",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        RaftThreadMessageItem(
+                            id = "msg-inline-image",
+                            authorId = "visual-human-designer",
+                            authorName = "Designer",
+                            authorHandle = "designer",
+                            authorKind = "user",
+                            avatarLabel = "DE",
+                            avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue,
+                            timestampLabel = "06/26 17:15",
+                            messageType = "Chat",
+                            body = "Inline image keeps its reserved box, rounded hairline frame and muted letterbox.",
+                            threadChannelId = "thread-msg-inline-image",
+                            attachments =
+                                listOf(
+                                    RaftThreadAttachmentItem(
+                                        id = "att-inline-image",
+                                        name = "screenshot.png",
+                                        mimeType = "image/png",
+                                        sizeLabel = "212 KB",
+                                        thumbnailUrl = ThreadMessageVisualInlineImageUri,
+                                        width = 1080,
+                                        height = 2400
+                                    )
                                 )
                         )
                     ),

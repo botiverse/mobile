@@ -334,6 +334,10 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import build.raft.designsystem.components.RaftMessageImageDimensions
+import build.raft.designsystem.components.RaftMessageImageFit
+import build.raft.designsystem.components.RaftMessageImageGallery
+import build.raft.designsystem.theme.LocalRaftColors
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -3009,7 +3013,10 @@ internal data class RaftThreadAttachmentItem(
     val sizeLabel: String = "",
     val sizeBytes: Long = 0L,
     val thumbnailUrl: String? = null,
-    val commentCount: Int = 0
+    val commentCount: Int = 0,
+    /** Intrinsic pixel size when the server knows it: reserves the inline image's box before it loads. */
+    val width: Int? = null,
+    val height: Int? = null
 )
 
 private data class ThreadImagePreviewUrl(
@@ -29980,8 +29987,6 @@ private fun ThreadMessageCommentRefChip(
     }
 }
 
-private val SharedThreadAttachmentImageSize = 92.dp
-
 internal fun RaftThreadAttachmentItem.isImageAttachment(): Boolean =
     raftFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType)
 
@@ -30233,23 +30238,27 @@ private fun ThreadMessageAttachments(
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
         if (imageAttachments.isNotEmpty()) {
-            val backSwipeRowState = rememberLazyListState()
-            val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
-            LazyRow(
-                state = backSwipeRowState,
-                userScrollEnabled = backSwipeRow.userScrollEnabled,
-                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(
-                        RaftAppSpacing.Sm,
-                        if (alignEnd) Alignment.End else Alignment.Start
-                    ),
-                verticalAlignment = Alignment.CenterVertically
+            val imageDimensions =
+                remember(imageAttachments) {
+                    imageAttachments.map { RaftMessageImageDimensions(width = it.width, height = it.height) }
+                }
+            // raft-ui MessageImageGallery (web MessageItem): rounded hairline frames on fill-muted,
+            // a lone image in its own reserved box, multi-image rows in the phone grid.
+            CompositionLocalProvider(
+                LocalRaftColors provides
+                    if (RaftAppThemeState.isDark) {
+                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftDark
+                    } else {
+                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftLight
+                    }
             ) {
-                items(imageAttachments.size, key = { imageAttachments[it].id }) { index ->
-                    ThreadImageAttachmentTile(
-                        attachment = imageAttachments[index],
-                        onOpen = { onOpenAttachment(imageAttachments[index].id) }
+                RaftMessageImageGallery(
+                    images = imageDimensions,
+                    onClick = { index -> onOpenAttachment(imageAttachments[index].id) }
+                ) { layout ->
+                    ThreadImageAttachmentContent(
+                        attachment = imageAttachments[layout.index],
+                        fit = layout.fit
                     )
                 }
             }
@@ -30266,9 +30275,9 @@ private fun ThreadMessageAttachments(
 }
 
 @Composable
-private fun ThreadImageAttachmentTile(
+private fun ThreadImageAttachmentContent(
     attachment: RaftThreadAttachmentItem,
-    onOpen: () -> Unit
+    fit: RaftMessageImageFit
 ) {
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
     val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
@@ -30285,24 +30294,22 @@ private fun ThreadImageAttachmentTile(
             fallbackHost?.requestFallback?.invoke(attachment.id)
         }
     }
-    Box(
-        modifier = Modifier.size(SharedThreadAttachmentImageSize)
-            .clickable(onClick = onOpen),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftAspectFitImagePreviewSurface(
-            source = thumbnailUrl,
-            fallbackSource = fallbackUrl,
-            contentDescription = attachment.name,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = RaftImageThumbnailContentScale,
-            onImageStateChange = { state ->
-                if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
-                    fallbackHost?.requestFallback?.invoke(attachment.id)
-                }
+    // The frame (fill, border, radius, press) is RaftMessageImageFrame's; the surface only
+    // draws the image, so it brings no fill or border of its own.
+    RaftAspectFitImagePreviewSurface(
+        source = thumbnailUrl,
+        fallbackSource = fallbackUrl,
+        contentDescription = attachment.name,
+        modifier = Modifier.fillMaxSize(),
+        backgroundColor = Color.Transparent,
+        borderWidth = 0.dp,
+        contentScale = if (fit == RaftMessageImageFit.Cover) RaftImageThumbnailContentScale else ContentScale.Fit,
+        onImageStateChange = { state ->
+            if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
+                fallbackHost?.requestFallback?.invoke(attachment.id)
             }
-        )
-    }
+        }
+    )
 }
 
 @Composable
