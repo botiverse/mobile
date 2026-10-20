@@ -2,9 +2,9 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.10.3/dist/styles.css sha256=88b63110918e5a10
-//   npm:@botiverse/raft-ui@0.10.3/dist/foundation.css sha256=69d8677d3d39d91b
-//   botiverse/slock@3383c86a853bf6c9076ae48aeff474f1120156f2:packages/web/src/index.css sha256=49c5fc2ffce4a07f
+//   npm:@botiverse/raft-ui@0.7.1/dist/styles.css sha256=03a09bc2cc12b8af
+//   npm:@botiverse/raft-ui@0.7.1/dist/foundation.css sha256=8bea55d645010db8
+//   botiverse/slock@b09755fcefeaea6286e42f0445388da97d98f1fe:packages/web/src/index.css sha256=e661c0943fed16c9
 
 package build.raft.app.designtokens
 
@@ -1316,8 +1316,6 @@ internal sealed class RaftUiThemeColors {
     abstract val ink8: Color
     /** `--layer-backdrop` */
     abstract val layerBackdrop: Color
-    /** `--layer-backdrop-nested` */
-    abstract val layerBackdropNested: Color
     /** `--layer-canvas` */
     abstract val layerCanvas: Color
     /** `--layer-canvas-muted` */
@@ -1449,7 +1447,6 @@ internal sealed class RaftUiThemeColors {
         override val ink6 = Color(0x0F141111)
         override val ink8 = Color(0x14141111)
         override val layerBackdrop = Color(0xA6000000)
-        override val layerBackdropNested = Color(0x66000000)
         override val layerCanvas = Color(0xFFFFFFFF)
         override val layerCanvasMuted = Color(0xFFFFFAEF)
         override val layerCard = Color(0xFFFFFFFF)
@@ -1540,7 +1537,6 @@ internal sealed class RaftUiThemeColors {
         override val ink6 = Color(0x0FFAFAF7)
         override val ink8 = Color(0x14FAFAF7)
         override val layerBackdrop = Color(0x99000000)
-        override val layerBackdropNested = Color(0x66000000)
         override val layerCanvas = Color(0xFF1B1B19)
         override val layerCanvasMuted = Color(0xFF0D0D0B)
         override val layerCard = Color(0xFF242422)

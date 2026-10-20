@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
@@ -32,7 +35,6 @@ import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSearchField
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftUiBanner
@@ -4539,12 +4541,7 @@ private fun ThreadMembersPageScreen() {
                 RaftTopPageHeader(
                     title = "Members",
                     iconName = RaftLucideIconName.Users,
-                    leadingContent = {
-                        RaftTopPageHeaderAction(
-                            icon = RaftLucideIconName.ArrowLeft,
-                            onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
-                        )
-                    }
+                    onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                 )
                 ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
             }
@@ -4566,12 +4563,7 @@ private fun ThreadMembersPageScreen() {
                 RaftTopPageHeader(
                     title = stringResource(MR.strings.thread_members_title, 0),
                     iconName = RaftLucideIconName.Users,
-                    leadingContent = {
-                        RaftTopPageHeaderAction(
-                            icon = RaftLucideIconName.ArrowLeft,
-                            onClick = router::closePage,
-                        )
-                    },
+                    onBack = router::closePage,
                 )
                 ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
             }
@@ -5036,15 +5028,10 @@ internal fun ThreadMembersPageContent(
             iconName = RaftLucideIconName.Users,
             backgroundColor = RaftColor.Frame,
             refreshing = refreshing,
-            leadingContent = {
-                RaftTopPageHeaderAction(
-                    icon = RaftLucideIconName.ArrowLeft,
-                    onClick = {
-                        if (addDialogVisible) {
-                            if (addMemberStatus != "adding") onAddVisibleChange(false)
-                        } else onBack()
-                    }
-                )
+            onBack = {
+                if (addDialogVisible) {
+                    if (addMemberStatus != "adding") onAddVisibleChange(false)
+                } else onBack()
             },
         )
         if (addDialogVisible && canAddMembers) {
@@ -13579,14 +13566,7 @@ private fun ThreadImagePreviewOverlay(
                 subtitle = null,
                 iconName = RaftLucideIconName.Image,
                 backgroundColor = RaftColor.Canvas,
-                leadingContent = {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.ArrowLeft,
-                        onClick = onDismiss,
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
-                },
+                onBack = onDismiss,
                 trailingContent = {
                     RaftFilePreviewOverflowMenuButton(
                         onOpenMenu = { anchor ->
@@ -16276,11 +16256,7 @@ internal fun ThreadPageHeader(
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
             // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
-            ThreadHeaderCompactAction(
-                icon = RaftLucideIconName.ArrowLeft,
-                onClick = onBack,
-                contentDescription = stringResource(MR.strings.common_back)
-            )
+            RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -29138,15 +29114,14 @@ private fun ThreadMessageTextSelectionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(topSafeArea + 56.dp)
-                        .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
+                        .padding(start = 16.dp, top = topSafeArea, end = RaftBackButtonDefaults.EdgeInset),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End
                 ) {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.X,
+                    RaftBackButton(
                         onClick = onDismiss,
-                        size = 36.dp,
-                        shadowOffset = 2.dp
+                        label = stringResource(MR.strings.common_close),
+                        glyph = RaftGlyph.X,
                     )
                 }
                 LazyColumn(
@@ -30554,11 +30529,10 @@ internal fun ThreadAttachmentCommentsSheet(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        RaftBrutalIconButton(
-                            iconName = RaftLucideIconName.X,
+                        RaftBackButton(
                             onClick = onDismiss,
-                            size = 34.dp,
-                            shadowOffset = 3.dp
+                            label = stringResource(MR.strings.common_close),
+                            glyph = RaftGlyph.X,
                         )
                     }
                     ThreadAttachmentCommentsContent(
@@ -31779,15 +31753,8 @@ private fun ThreadForwardBundleScreen() {
             title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
             iconName = RaftLucideIconName.Share2,
             backgroundColor = RaftColor.Canvas,
-            leadingContent = {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.ArrowLeft,
-                    onClick = {
-                        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                    },
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
+            onBack = {
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
             }
         )
         when {

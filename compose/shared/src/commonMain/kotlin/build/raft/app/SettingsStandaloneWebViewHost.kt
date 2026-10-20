@@ -14,7 +14,6 @@ import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftShellStoreScope
@@ -197,14 +196,7 @@ private fun SettingsWebViewInvalidRoute(pager: Pager) {
             title = stringResource(MR.strings.settings_title),
             iconName = RaftLucideIconName.Settings,
             backgroundColor = RaftColor.SurfaceWhite,
-            leadingContent = {
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.ArrowLeft,
-                    onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
-                    size = 30.dp,
-                    shadowOffset = 2.dp,
-                )
-            },
+            onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         )
         SettingsWebViewErrorContent(
             actionLabel = stringResource(MR.strings.common_close),
@@ -324,14 +316,7 @@ internal fun SettingsWebViewPageScaffold(
                     },
                 iconName = iconName,
                 backgroundColor = RaftColor.SurfaceWhite,
-                leadingContent = {
-                    RaftBrutalIconButton(
-                        iconName = RaftLucideIconName.ArrowLeft,
-                        onClick = ::goBackOrClose,
-                        size = 30.dp,
-                        shadowOffset = 2.dp,
-                    )
-                },
+                onBack = ::goBackOrClose,
             )
         }
         Box(

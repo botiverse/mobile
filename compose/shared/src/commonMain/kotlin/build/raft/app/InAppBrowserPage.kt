@@ -103,12 +103,7 @@ private fun RaftInAppBrowserScreen() {
                     ?.let(::raftInAppBrowserDisplayUrl),
             iconName = RaftLucideIconName.Globe,
             backgroundColor = RaftColor.SurfaceWhite,
-            leadingContent = {
-                RaftTopPageHeaderAction(
-                    icon = RaftLucideIconName.ArrowLeft,
-                    onClick = ::goBackOrClose,
-                )
-            },
+            onBack = ::goBackOrClose,
             trailingContent = {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

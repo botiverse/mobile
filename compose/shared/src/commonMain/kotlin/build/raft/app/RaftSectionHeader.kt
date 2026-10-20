@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.RaftBackButtonDefaults
 
 private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
@@ -61,6 +63,8 @@ internal val RaftMainTabHeaderTitleStyle: TextStyle
     get() = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
 internal val RaftTopPageHeaderContentStartPadding = 18.dp
 internal val RaftTopPageHeaderContentSpacing = 12.dp
+// After a 44dp Back: its 22dp arrow keeps 11dp of its own inset, so the title sits 17dp past it.
+private val RaftTopPageHeaderBackContentSpacing = 6.dp
 internal val RaftTopPageHeaderContentEndPadding = 16.dp
 
 internal enum class RaftMainTabHeaderSurface(
@@ -100,6 +104,8 @@ internal fun raftTopPageHeaderFrameMetrics(
 @Composable
 internal fun RaftTopPageHeader(
     title: String,
+    // The design-system top-bar Back ([RaftBackButton], 44dp), in place of the header icon.
+    onBack: (() -> Unit)? = null,
     subtitle: String? = null,
     iconName: RaftLucideIconName? = null,
     iconBackground: Color = RaftColor.Brand,
@@ -110,9 +116,10 @@ internal fun RaftTopPageHeader(
     applyTopSafeArea: Boolean = true,
     topSafeAreaOverride: Dp? = null,
     headerHeight: Dp = RaftAppSize.PageHeaderHeight,
-    contentStartPadding: Dp = RaftTopPageHeaderContentStartPadding,
+    // [onBack] sets the Back button's 3dp edge inset and the 6dp gap after it.
+    contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
     contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
-    contentSpacing: Dp = RaftTopPageHeaderContentSpacing,
+    contentSpacing: Dp = if (onBack != null) RaftTopPageHeaderBackContentSpacing else RaftTopPageHeaderContentSpacing,
     titleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
@@ -136,6 +143,8 @@ internal fun RaftTopPageHeader(
             contentSpacing = contentSpacing,
         ) {
             when {
+                onBack != null ->
+                    RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
                 leadingContent != null ->
                     Box(
                         modifier = Modifier.size(RaftAppSize.HeaderIcon),
@@ -234,20 +243,12 @@ internal fun RaftPanelBackHeader(
                     .fillMaxWidth()
                     .padding(top = safeTop)
                     .height(RaftPanelHeaderHeight - RaftAppStroke.Thin)
-                    .padding(start = if (onBack != null) 3.dp else 16.dp, end = 6.dp),
+                    .padding(start = if (onBack != null) RaftBackButtonDefaults.EdgeInset else 16.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (onBack != null) {
-                RaftPanelAction(onClick = onBack, modifier = Modifier.size(44.dp)) {
-                    Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                        RaftLucideIcon(
-                            name = RaftLucideIconName.ArrowLeft,
-                            modifier = Modifier.size(22.dp),
-                            color = raftArgbHex(RaftColor.TextBlack)
-                        )
-                    }
-                }
+                RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
             }
             Column(
                 // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
@@ -345,12 +346,14 @@ internal fun RaftMainTabPageHeader(
     subtitle: String? = null,
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
-    contentStartPadding: Dp = RaftMainTabHeaderStartPadding,
+    onBack: (() -> Unit)? = null,
+    contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftMainTabHeaderStartPadding,
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     RaftTopPageHeader(
         title = title,
+        onBack = onBack,
         subtitle = subtitle,
         iconName = surface.iconName,
         modifier = modifier,
@@ -372,24 +375,6 @@ internal fun RaftHeaderRefreshIndicator(
         color = RaftColor.TextBlackArgb,
         spinning = true
     )
-}
-
-@Composable
-internal fun RaftTopPageHeaderAction(
-    icon: RaftLucideIconName,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    RaftPanelAction(
-        onClick = onClick,
-        modifier = modifier.size(SectionHeaderActionSize)
-    ) {
-        RaftLucideIcon(
-            name = icon,
-            modifier = Modifier.size(SectionHeaderActionIconSize),
-            color = raftArgbHex(RaftColor.TextMuted)
-        )
-    }
 }
 
 /**

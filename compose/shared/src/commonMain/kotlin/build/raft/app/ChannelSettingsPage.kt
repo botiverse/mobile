@@ -277,12 +277,7 @@ private fun ChannelSettingsPageScreen() {
                 iconName = RaftLucideIconName.Settings,
                 backgroundColor = RaftColor.SurfaceWhite,
                 refreshing = settingsState.refreshing,
-                leadingContent = {
-                    RaftTopPageHeaderAction(
-                        icon = RaftLucideIconName.ArrowLeft,
-                        onClick = router::closePage
-                    )
-                }
+                onBack = router::closePage
             )
             when {
                 channel != null ->
@@ -725,9 +720,7 @@ private fun ChannelSettingsInvalidRouteScreen(onBack: () -> Unit) {
         RaftTopPageHeader(
             title = stringResource(MR.strings.channel_settings_title),
             iconName = RaftLucideIconName.Settings,
-            leadingContent = {
-                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
-            }
+            onBack = onBack
         )
         ChannelSettingsMessage(
             title = stringResource(MR.strings.channel_settings_unavailable),
