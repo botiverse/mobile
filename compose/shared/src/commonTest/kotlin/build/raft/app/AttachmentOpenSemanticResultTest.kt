@@ -135,6 +135,7 @@ class AttachmentOpenSemanticResultTest {
                     "failed"
                 },
                 statusOf = { it },
+                errorKindOf = { "http_status" },
                 trace = { events += it }
             )
         assertEquals(RaftFilePreviewExternalOpenTraceResult.HostTerminal("failed"), completed)
@@ -144,7 +145,7 @@ class AttachmentOpenSemanticResultTest {
                 "resolved",
                 "file_preview_open stage=host_handoff committedRequired=false trackProgress=true",
                 "host",
-                "file_preview_open stage=host_terminal status=failed"
+                "file_preview_open stage=host_terminal status=failed errorKind=http_status"
             ),
             events
         )
@@ -172,10 +173,19 @@ class AttachmentOpenSemanticResultTest {
                 "resolved:",
                 "file_preview_open stage=host_handoff committedRequired=true trackProgress=false",
                 "host:",
-                "file_preview_open stage=host_terminal status=opened"
+                "file_preview_open stage=host_terminal status=opened errorKind=none"
             ),
             publicEvents
         )
+    }
+
+    @Test
+    fun hostErrorKindIsLoggedOnlyAsAShortIdentifier() {
+        assertEquals("none", raftAttachmentOpenDiagnosticErrorKind(null))
+        assertEquals("none", raftAttachmentOpenDiagnosticErrorKind(" "))
+        assertEquals("storage_prepare", raftAttachmentOpenDiagnosticErrorKind("Storage_Prepare"))
+        assertEquals("other", raftAttachmentOpenDiagnosticErrorKind("https://r2.example/x?sig=abc"))
+        assertEquals("other", raftAttachmentOpenDiagnosticErrorKind("a".repeat(41)))
     }
 
     @Test
