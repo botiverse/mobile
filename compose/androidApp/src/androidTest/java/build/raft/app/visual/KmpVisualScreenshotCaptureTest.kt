@@ -192,6 +192,20 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureActivityTabSegments() {
+        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the four segments
+        // (All / Unread / Mentions / Notifications) and the 5-tab bar with the Activity badge.
+        listOf("all", "unread", "mentions", "notifications").forEach { segment ->
+            captureKmpComponentCase(
+                caseId = "screens.activity-tab.$segment",
+                pageName = "compose_activity_tab_visual",
+                pageData = JSONObject().put("segment", segment),
+                crop = FULL_VIEWPORT_CROP
+            )
+        }
+    }
+
+    @Test
     fun captureAndroidFloatingTabbarStates() {
         captureKmpComponentCase(
             caseId = "components.navigation.tabbar.android-floating",

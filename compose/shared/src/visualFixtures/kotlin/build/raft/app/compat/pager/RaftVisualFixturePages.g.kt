@@ -4,6 +4,7 @@ package build.raft.app.compat.pager
 
 internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
     mapOf(
+        "compose_activity_tab_visual" to { build.raft.app.ComposeRaftActivityTabVisualPage() },
         "compose_android_floating_tabbar_visual" to { build.raft.app.ComposeAndroidFloatingTabBarVisualPage() },
         "compose_announcement_modal_visual" to { build.raft.app.ComposeAnnouncementModalVisualPage() },
         "compose_app_shell_restore_splash_visual" to { build.raft.app.ComposeAppShellRestoreSplashVisualPage() },
