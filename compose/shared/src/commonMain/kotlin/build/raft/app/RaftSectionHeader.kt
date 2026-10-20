@@ -57,6 +57,7 @@ internal val RaftMainTabHeaderTitleStyle: TextStyle
     get() = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
 internal val RaftTopPageHeaderContentStartPadding = 18.dp
 internal val RaftTopPageHeaderContentSpacing = 12.dp
+internal val RaftTopPageHeaderContentEndPadding = 16.dp
 
 internal enum class RaftMainTabHeaderSurface(
     val iconName: RaftLucideIconName
@@ -104,6 +105,7 @@ internal fun RaftTopPageHeader(
     topSafeAreaOverride: Dp? = null,
     headerHeight: Dp = RaftAppSize.PageHeaderHeight,
     contentStartPadding: Dp = RaftTopPageHeaderContentStartPadding,
+    contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
     contentSpacing: Dp = RaftTopPageHeaderContentSpacing,
     titleStyle: TextStyle = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     refreshing: Boolean = false,
@@ -124,6 +126,7 @@ internal fun RaftTopPageHeader(
             topSafeArea = topSafeArea,
             headerHeight = headerHeight,
             contentStartPadding = contentStartPadding,
+            contentEndPadding = contentEndPadding,
             contentSpacing = contentSpacing,
         ) {
             when {
@@ -202,7 +205,7 @@ internal fun RaftTopPageHeaderFrame(
     topSafeArea: Dp = 0.dp,
     headerHeight: Dp = RaftAppSize.PageHeaderHeight,
     contentStartPadding: Dp = RaftTopPageHeaderContentStartPadding,
-    contentEndPadding: Dp = 16.dp,
+    contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
     contentSpacing: Dp = RaftTopPageHeaderContentSpacing,
     content: @Composable RowScope.() -> Unit,
 ) {

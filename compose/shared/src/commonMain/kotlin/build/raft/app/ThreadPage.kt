@@ -1667,12 +1667,22 @@ internal const val ThreadReplyEmptyTitle = "No replies yet"
 internal const val ThreadReplyEmptyDetail = ""
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
-private val ThreadHeaderActionSize = 30.dp
-// raft head actions cast no shadow, so the group gap alone carries the former
-// 4dp gap + 2dp shadow inset.
-private val ThreadHeaderActionGroupSpacing = 6.dp
-private val ThreadHeaderActionIconSize = 16.dp
-private val ThreadHeaderActionLabelMinWidth = 46.dp
+// raft-ui `PanelAction` on a phone (`h-11 min-w-11`, `[&>svg]:size-[22px]`, text-foreground):
+// a 44dp frameless button carrying a 22dp glyph, so the hit area is the 44dp touch target.
+private val ThreadHeaderActionSize = 44.dp
+// raft-ui `panelHeadActions` on a phone: `gap-0.5`. The 44dp buttons carry 11dp of empty
+// inset on each side, so neighbouring glyphs still sit 24dp apart.
+private val ThreadHeaderActionGroupSpacing = 2.dp
+private val ThreadHeaderActionIconSize = 22.dp
+private val ThreadHeaderActionLabelMinWidth = 44.dp
+// raft `panelHeadEdges` on a phone + `panelHeadActions mr-[-3px]` / Back `-ml-[13px]`: the
+// Back button and the last trailing action both sit 3dp from the screen edge, which puts each
+// 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
+private val ThreadHeaderEdgeInset = 3.dp
+// The inline search bar keeps its own compact controls (former 30dp head action, 16dp glyph)
+// so the 44dp header PanelAction does not inflate the bar under the search field.
+private val ThreadInlineSearchActionSize = 30.dp
+private val ThreadInlineSearchActionIconSize = 16.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
 private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
@@ -16045,11 +16055,19 @@ internal fun ThreadPageHeader(
         title = localizedHeaderTitle,
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
+        contentStartPadding = ThreadHeaderEdgeInset,
+        // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
+        // without one the title keeps the default end padding instead of running to the edge.
+        contentEndPadding = if (showHeaderActions) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = ThreadHeaderContentSpacing,
-        leadingContent = {
-            RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
-        },
         titleLeadingContent = {
+            // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
+            // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
+            ThreadHeaderCompactAction(
+                icon = RaftLucideIconName.ArrowLeft,
+                onClick = onBack,
+                contentDescription = stringResource(MR.strings.common_back)
+            )
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -16744,9 +16762,9 @@ private fun ThreadHeaderFocusModeMenu(
             subscription.close()
         }
     }
-    RaftBrutalIconButton(
-        iconName = RaftLucideIconName.Ellipsis,
-        onClick = {
+    ThreadHeaderCompactAction(
+        icon = RaftLucideIconName.Ellipsis,
+        onClick = onClick@{
             // task #180 diagnostics (Argus): unconditional entry log. The previous device run
             // produced ZERO trace lines, which could not distinguish "the click never reached this
             // handler" from "the lines went somewhere else". This line fires before any guard.
@@ -16755,13 +16773,13 @@ private fun ThreadHeaderFocusModeMenu(
             val anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
             if (anchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")
-                return@RaftBrutalIconButton
+                return@onClick
             }
             // Already window space: the shell must not convert this again.
             val pageRootAnchor = anchor.rootOffsetOrNull()
             if (pageRootAnchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=root_offset_null")
-                return@RaftBrutalIconButton
+                return@onClick
             }
             // `rootOffset` is PAGE-root relative inside a Kuikly @Page. The shell draws in WINDOW
             // space, so add this page's measured window origin (1520 for the thread column, plus the
@@ -16794,10 +16812,6 @@ private fun ThreadHeaderFocusModeMenu(
                 ).toJson()
             )
         },
-        enabled = true,
-        size = 28.dp,
-        shadowOffset = RaftShadow.BrutalSmall,
-        iconSize = 14.dp,
         modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
         contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
     )
@@ -16820,13 +16834,14 @@ internal fun ThreadHeaderActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     minWidth: Dp = ThreadHeaderActionSize,
+    minHeight: Dp = ThreadHeaderActionSize,
     horizontalPadding: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
     // raft-ui `PanelAction`: ghost head action, no edge and no offset shadow.
     RaftPanelAction(
         onClick = onClick,
-        modifier = modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth),
+        modifier = modifier.heightIn(min = minHeight).widthIn(min = minWidth),
     ) {
         Box(modifier = Modifier.padding(horizontal = horizontalPadding), contentAlignment = Alignment.Center) {
             content()
@@ -16838,20 +16853,34 @@ internal fun ThreadHeaderActionButton(
 private fun ThreadHeaderCompactAction(
     icon: RaftLucideIconName,
     onClick: () -> Unit,
-    label: String? = null
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    contentDescription: String? = null,
+    actionSize: Dp = ThreadHeaderActionSize,
+    iconSize: Dp = ThreadHeaderActionIconSize
 ) {
     ThreadHeaderActionButton(
         onClick = onClick,
-        minWidth = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth,
-        horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Xs,
+        modifier =
+            if (contentDescription.isNullOrBlank()) {
+                modifier
+            } else {
+                modifier.semantics { this.contentDescription = contentDescription }
+            },
+        minWidth = if (label == null) actionSize else ThreadHeaderActionLabelMinWidth,
+        minHeight = actionSize,
+        // raft-ui `PanelAction` `px-2` once it carries a label next to its glyph.
+        horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Sm,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs, Alignment.CenterHorizontally)
         ) {
-            RaftLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = raftArgbHex(RaftColor.TextMuted))
+            // raft-ui `PanelAction` is `text-foreground`; the muted ink made the head read as disabled.
+            RaftLucideIcon(icon, Modifier.size(iconSize), color = raftArgbHex(RaftColor.TextBlack))
             label?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                // raft-ui `PanelAction`: `text-footnote font-bold` (13/18).
+                Text(it, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
                     color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -16862,6 +16891,12 @@ internal fun threadHeaderVisibleActionGapDp(): Float =
     ThreadHeaderActionGroupSpacing.value
 
 internal fun threadHeaderContentSpacingDp(): Float = ThreadHeaderContentSpacing.value
+
+internal fun threadHeaderActionSizeDp(): Float = ThreadHeaderActionSize.value
+
+internal fun threadHeaderActionIconSizeDp(): Float = ThreadHeaderActionIconSize.value
+
+internal fun threadHeaderEdgeInsetDp(): Float = ThreadHeaderEdgeInset.value
 
 internal fun threadHeaderChannelTitleGapDp(): Float =
     (ThreadHeaderContentSpacing + ThreadHeaderChannelTitleGapExtra).value
@@ -21215,14 +21250,14 @@ private fun ThreadMessagesListContent(
                     (shareSelectionActive || shareSelectionCaptureActive) &&
                         message.id in selectedShareMessageIds
                 val liveTodayEpochDay = LocalRaftTimeContextProvider.current?.todayEpochDay
-                val dateDividerLabel =
+                val dateDividerDay =
                     remember(
                         previousMessage?.timestampLabel,
                         message.timestampLabel,
                         renderConfig.timeContext.localOffsetMinutes,
                         liveTodayEpochDay
                     ) {
-                        threadDateDividerLabel(
+                        threadDateDividerDay(
                             previous = previousMessage,
                             next = message,
                             timeContext = renderConfig.dateDividerTimeContext(liveTodayEpochDay)
@@ -21241,8 +21276,8 @@ private fun ThreadMessagesListContent(
                                 drawContent()
                             }
                 ) {
-                    dateDividerLabel?.let { label ->
-                        ThreadDateDivider(label)
+                    dateDividerDay?.let { day ->
+                        ThreadDateDivider(day.localizedLabel())
                     }
                     Box(
                         modifier =
@@ -21906,7 +21941,7 @@ private fun ThreadInlineSearchBar(
             Box(
                 modifier =
                     Modifier
-                        .height(ThreadHeaderActionSize)
+                        .height(ThreadInlineSearchActionSize)
                         .widthIn(min = 40.dp)
                         .background(RaftColor.SurfaceWhite)
                         .padding(horizontal = RaftAppSpacing.Xs),
@@ -21920,8 +21955,18 @@ private fun ThreadInlineSearchBar(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            ThreadHeaderIconButton(icon = RaftLucideIconName.ChevronUp, onClick = onPrevious)
-            ThreadHeaderIconButton(icon = RaftLucideIconName.ChevronDown, onClick = onNext)
+            ThreadHeaderCompactAction(
+                icon = RaftLucideIconName.ChevronUp,
+                onClick = onPrevious,
+                actionSize = ThreadInlineSearchActionSize,
+                iconSize = ThreadInlineSearchActionIconSize
+            )
+            ThreadHeaderCompactAction(
+                icon = RaftLucideIconName.ChevronDown,
+                onClick = onNext,
+                actionSize = ThreadInlineSearchActionSize,
+                iconSize = ThreadInlineSearchActionIconSize
+            )
         }
     }
 }
@@ -21946,7 +21991,9 @@ internal data class ThreadInlineActionSpec(
 internal data class ThreadHistoryStatusSpec(
     val label: StringDesc,
     val leadingIcon: RaftLucideIconName? = null,
-    val secondaryLabel: String? = null
+    val secondaryLabel: String? = null,
+    /** When set, the secondary line is this reply count, localized at render time. */
+    val secondaryReplyCount: Int? = null
 )
 
 private fun ThreadTimelineSlice.threadSelectedShareMessages(
@@ -22068,6 +22115,7 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
     threadOlderMessagesStatusSpec(
         canLoadMoreBefore = timelineSlice.canLoadMoreBefore,
         secondaryLabel = timelineSlice.beginningReplyCountLabel,
+        secondaryReplyCount = timelineSlice.beginningReplyCount,
         durableLastKnown = timelineSlice.durableLastKnown,
         durableReachedOldest = timelineSlice.durableReachedOldest
     )
@@ -22075,6 +22123,7 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
 internal fun threadOlderMessagesStatusSpec(
     canLoadMoreBefore: Boolean,
     secondaryLabel: String? = null,
+    secondaryReplyCount: Int? = null,
     durableLastKnown: Boolean = false,
     durableReachedOldest: Boolean = false
 ): ThreadHistoryStatusSpec =
@@ -22085,7 +22134,12 @@ internal fun threadOlderMessagesStatusSpec(
         // conversation. Say what is true instead of claiming a boundary the frame cannot prove —
         // unless the stored window itself reaches the start (task #168): then it is the beginning.
         durableLastKnown && !durableReachedOldest -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
-        else -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
+        else ->
+            ThreadHistoryStatusSpec(
+                label = MR.strings.thread_state_beginning_conversation.desc(),
+                secondaryLabel = secondaryLabel,
+                secondaryReplyCount = secondaryReplyCount
+            )
     }
 
 /**
@@ -23840,10 +23894,16 @@ private fun ThreadHistoryStatusRow(
                 color = RaftColor.TextMutedGray
             )
         }
-        if (!spec.secondaryLabel.isNullOrBlank()) {
+        val secondaryText =
+            when (val count = spec.secondaryReplyCount) {
+                null -> spec.secondaryLabel
+                1 -> stringResource(MR.strings.thread_inline_reply_count_one)
+                else -> stringResource(MR.strings.thread_inline_reply_count_many, count)
+            }
+        if (!secondaryText.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
             Text(
-                text = spec.secondaryLabel,
+                text = secondaryText,
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray
             )
@@ -27231,11 +27291,17 @@ internal fun shouldSuppressCompactThreadAuthor(
 ): Boolean =
     previous?.isCompactContinuationBefore(next, localOffsetMinutes) == true
 
-internal fun threadDateDividerLabel(
+/** The local day a thread date divider names; rendered from string resources by [localizedLabel]. */
+internal data class ThreadDateDividerDay(
+    val epochDay: Long,
+    val todayEpochDay: Long?
+)
+
+internal fun threadDateDividerDay(
     previous: RaftThreadMessageItem?,
     next: RaftThreadMessageItem,
     timeContext: RaftTimeContext
-): String? {
+): ThreadDateDividerDay? {
     val localOffsetMinutes = timeContext.localOffsetMinutes
     val nextEpochDay = next.threadMessageLocalEpochDayOrNull(localOffsetMinutes) ?: return null
     val previousEpochDay = previous?.threadMessageLocalEpochDayOrNull(localOffsetMinutes)
@@ -27243,8 +27309,34 @@ internal fun threadDateDividerLabel(
     val todayEpochDay =
         timeContext.todayEpochDay
             ?: timeContext.nowEpochMillis?.let { threadLocalEpochDay(it, localOffsetMinutes) }
-    return threadDateDividerLabel(nextEpochDay, todayEpochDay)
+    return ThreadDateDividerDay(epochDay = nextEpochDay, todayEpochDay = todayEpochDay)
 }
+
+/** Canonical (English) divider label; the UI renders [ThreadDateDividerDay.localizedLabel]. */
+internal fun threadDateDividerLabel(
+    previous: RaftThreadMessageItem?,
+    next: RaftThreadMessageItem,
+    timeContext: RaftTimeContext
+): String? =
+    threadDateDividerDay(previous, next, timeContext)?.let { day ->
+        threadDateDividerLabel(day.epochDay, day.todayEpochDay)
+    }
+
+@Composable
+private fun ThreadDateDividerDay.localizedLabel(): String =
+    when {
+        todayEpochDay != null && epochDay == todayEpochDay -> stringResource(MR.strings.thread_date_divider_today)
+        todayEpochDay != null && epochDay == todayEpochDay - 1L -> stringResource(MR.strings.thread_date_divider_yesterday)
+        else -> {
+            val date = threadCivilDateFromEpochDay(epochDay)
+            stringResource(
+                MR.strings.thread_date_divider_date,
+                stringResource(ThreadWeekdayNameResources[threadWeekdayIndex(epochDay)]),
+                stringResource(ThreadMonthNameResources[date.month - 1]),
+                date.day
+            )
+        }
+    }
 
 private fun RaftThreadMessageItem.isCompactContinuationBefore(
     next: RaftThreadMessageItem,
@@ -27328,6 +27420,33 @@ private val ThreadWeekdayNames =
 
 private val ThreadMonthNames =
     listOf("JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER")
+
+private val ThreadWeekdayNameResources =
+    listOf(
+        MR.strings.thread_date_divider_weekday_sunday,
+        MR.strings.thread_date_divider_weekday_monday,
+        MR.strings.thread_date_divider_weekday_tuesday,
+        MR.strings.thread_date_divider_weekday_wednesday,
+        MR.strings.thread_date_divider_weekday_thursday,
+        MR.strings.thread_date_divider_weekday_friday,
+        MR.strings.thread_date_divider_weekday_saturday
+    )
+
+private val ThreadMonthNameResources =
+    listOf(
+        MR.strings.thread_date_divider_month_january,
+        MR.strings.thread_date_divider_month_february,
+        MR.strings.thread_date_divider_month_march,
+        MR.strings.thread_date_divider_month_april,
+        MR.strings.thread_date_divider_month_may,
+        MR.strings.thread_date_divider_month_june,
+        MR.strings.thread_date_divider_month_july,
+        MR.strings.thread_date_divider_month_august,
+        MR.strings.thread_date_divider_month_september,
+        MR.strings.thread_date_divider_month_october,
+        MR.strings.thread_date_divider_month_november,
+        MR.strings.thread_date_divider_month_december
+    )
 
 private const val ThreadMillisPerMinute = 60_000L
 private const val ThreadMillisPerDay = 86_400_000L
@@ -27854,12 +27973,16 @@ internal fun Set<String>.hasReplyComposerDraft(parentMessageId: String): Boolean
     parentMessageId in this
 
 internal fun RaftThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
-    val replyCount = originMessage?.replyCount ?: return null
+    val replyCount = threadBeginningReplyCount() ?: return null
     return buildString {
-        append(replyCount.coerceAtLeast(0))
+        append(replyCount)
         append(if (replyCount == 1) " reply" else " replies")
     }
 }
+
+/** Origin-projected reply count under "Beginning of conversation"; rendered via string resources. */
+internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? =
+    originMessage?.replyCount?.coerceAtLeast(0)
 
 private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem> =
     SharedTaskStatusChipMetas.map { option ->
