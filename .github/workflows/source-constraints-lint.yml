@@ -35,6 +35,8 @@ on:
       - "compose/shared/src/commonMain/resources/MR/*/strings.xml"
       - "third_party/kuikly-compose-markdown/**"
       - "scripts/ci/check_source_constraints.py"
+      - "scripts/ci/check_legacy_ui_ratchet.py"
+      - "scripts/ci/legacy_ui_ratchet_baseline.json"
       - "scripts/ci/check_string_edge_spaces.py"
       - "scripts/ci/verify_no_production_visual_pages.py"
       # verify_no_production_visual_pages.py also scans the platform production
@@ -67,6 +69,14 @@ jobs:
 
       - name: Enforce constraints
         run: python3 scripts/ci/check_source_constraints.py
+
+      # #proj-mobile 2026-10-20: the pre-raft-ui look (RaftBrutal* calls, thick ink
+      # borders) may only shrink while pages move to compose/designsystem.
+      - name: Self-test legacy UI ratchet
+        run: python3 scripts/ci/check_legacy_ui_ratchet.py --self-test
+
+      - name: Enforce legacy UI ratchet
+        run: python3 scripts/ci/check_legacy_ui_ratchet.py
 
       # task #189: runs inside this already-required job on purpose. A guard that
       # is only wired to an optional task is how verifyNoProductionVisualPages
