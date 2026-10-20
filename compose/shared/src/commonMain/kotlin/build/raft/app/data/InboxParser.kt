@@ -80,7 +80,35 @@ private data class WireInboxItem(
     // common
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
+    // SSOT per-scope read state (#632): InboxScopeReadFrontier in
+    // packages/shared/src/inboxScopeReadFrontier.ts
+    val readState: WireInboxReadState? = null,
 )
+
+/**
+ * `InboxScopeReadFrontier` (`{kind:"absent"} | {kind:"corrupt"} |
+ * {kind:"present", readStateVersion, maxReadSeq, latestActivity}`). Only the
+ * present frontier's `latestActivity` pair is consumed here.
+ */
+@Serializable
+private data class WireInboxReadState(
+    val kind: String? = null,
+    val latestActivity: WireInboxReadStateLatestActivity? = null,
+)
+
+@Serializable
+private data class WireInboxReadStateLatestActivity(
+    val messageId: String? = null,
+    val seq: String? = null,
+)
+
+/** The same-source pair or nothing: fail closed on absent/corrupt/half pairs. */
+private fun WireInboxReadState.latestActivitySeqOrNull(): String? {
+    if (kind != "present") return null
+    val pair = latestActivity ?: return null
+    if (pair.messageId.isNullOrBlank()) return null
+    return pair.seq?.takeIf(::isCanonicalActivitySeq)
+}
 
 @Serializable
 private data class WireThreadReplyPreview(
@@ -296,6 +324,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
                 diagnostics = diagnostics,
                 contract = MemberKindWireContract.InboxActor,
             ),
+        readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
     )
 }
 
@@ -342,6 +371,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
                 ?.strictTaskStatusOrNull("inbox_task", diagnostics),
         taskClaimedByName = taskClaimedByName,
         isFollowing = isFollowing,
+        readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
     )
 }
 

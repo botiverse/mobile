@@ -49,7 +49,6 @@ private const val SharedActivityRefreshContinuationSlack = 2
 private const val SharedActivityRefreshMaxNoProgressPages = 2
 private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
-private const val SharedActivityRealtimeBackgroundReconcileDelayMillis = 150L
 
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
@@ -101,7 +100,11 @@ class SharedActivityStore internal constructor(
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
-    private val realtimeBackgroundReconcileDelayMillis: Long = SharedActivityRealtimeBackgroundReconcileDelayMillis,
+    /** Realtime-triggered refetch throttle window (leading + trailing); user loads are never throttled. */
+    private val realtimeBackgroundRefreshIntervalMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
+    /** Monotonic clock for the throttle window and the local Done/read hold; injectable for virtual time. */
+    private val nowMillis: () -> Long = activityMonotonicClock(),
+    localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -115,8 +118,11 @@ class SharedActivityStore internal constructor(
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
-    private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
-    private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
+    // Local read / Done overlays: keep a confirmed mutation applied while the
+    // lagging Activity view still serves the click-time activity marker.
+    private val readOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
+    private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
+    private var lastResetLoadStartedAtMillis: Long? = null
     /**
      * Local duplicate-request fence for Activity Follow/Unfollow actions.
      * The server remains the authority for the eventual boolean; this set only
@@ -268,8 +274,9 @@ class SharedActivityStore internal constructor(
         clear()
         presentationStore.clear()
         synchronized(realtimeOwnerLock) {
-            unreadClearOverrides = emptyMap()
-            doneOverrides = emptyMap()
+            readOverlay.clear()
+            doneOverlay.clear()
+            lastResetLoadStartedAtMillis = null
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
             pendingThreadFollowMutations = emptySet()
@@ -736,7 +743,15 @@ class SharedActivityStore internal constructor(
                 unreadCount = nextUnreadCount,
                 firstUnreadMessageId =
                     existing.firstUnreadMessageId
-                        ?: message.id.takeIf { unreadIncrement > 0 }
+                        ?: message.id.takeIf { unreadIncrement > 0 },
+                // Keep the Done/read overlay marker in step with the patched row:
+                // a Done clicked on this row must cover this message too.
+                readStateLatestActivitySeq =
+                    message.seq
+                        ?.takeIf { it >= 0L }
+                        ?.toString()
+                        ?.takeIf { seq -> compareActivitySeq(seq, existing.readStateLatestActivitySeq) > 0 }
+                        ?: existing.readStateLatestActivitySeq
             ).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
@@ -825,10 +840,16 @@ class SharedActivityStore internal constructor(
     private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
         realtimeBackgroundReconcileDirty = true
         realtimeBackgroundReconcileJob?.let { return it }
+        // Leading + trailing throttle (web requestInboxBackgroundRefresh): the
+        // first request after a quiet window fetches immediately; requests inside
+        // the window coalesce into one trailing fetch at its end, so the latest
+        // state still arrives. The window is measured from the last reset load of
+        // ANY kind, and user-initiated loads never wait on it.
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
-                delay(realtimeBackgroundReconcileDelayMillis.coerceAtLeast(0L))
                 while (true) {
+                    val waitMillis = synchronized(realtimeOwnerLock) { realtimeBackgroundRefreshWaitMillisLocked() }
+                    if (waitMillis > 0L) delay(waitMillis)
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
                             if (realtimeBackgroundReconcileDirty) {
@@ -841,6 +862,17 @@ class SharedActivityStore internal constructor(
                         }
                     if (!shouldReconcile) return@launch
                     awaitCurrentLoadIdle()
+                    val restartedWindow =
+                        synchronized(realtimeOwnerLock) {
+                            if (realtimeBackgroundRefreshWaitMillisLocked() > 0L) {
+                                // A load started while we waited; fetch on that window's trailing edge.
+                                realtimeBackgroundReconcileDirty = true
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    if (restartedWindow) continue
                     load(
                         refresh = true,
                         pullRefresh = false,
@@ -852,6 +884,11 @@ class SharedActivityStore internal constructor(
             }
         realtimeBackgroundReconcileJob = job
         return job
+    }
+
+    private fun realtimeBackgroundRefreshWaitMillisLocked(): Long {
+        val lastStartedAt = lastResetLoadStartedAtMillis ?: return 0L
+        return (lastStartedAt + realtimeBackgroundRefreshIntervalMillis - nowMillis()).coerceAtLeast(0L)
     }
 
     private suspend fun awaitCurrentLoadIdle() {
@@ -994,6 +1031,7 @@ class SharedActivityStore internal constructor(
                     return@synchronized null
                 }
                 val generation = ++loadGeneration
+                if (refresh) lastResetLoadStartedAtMillis = nowMillis()
                 loadJob?.cancel()
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
@@ -1400,6 +1438,8 @@ class SharedActivityStore internal constructor(
         val current = _state.value
         val projectedContentData =
             (result as? DataResult.Content)?.data?.projectActivityFilter(current.selectedFilter)
+        val owner = overlayOwner(current)
+        var overlayAdjustedSummaryCounts: Pair<Int, Int>? = null
         val nextState =
             when (result) {
                 is DataResult.Content -> {
@@ -1408,8 +1448,17 @@ class SharedActivityStore internal constructor(
                     val pageItems =
                         projectedData.items
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
-                            .reconcileLocallyClearedUnreadItems(current.selectedFilter)
-                            .reconcileLocallyDoneItems()
+                            .reconcileLocallyClearedUnreadItems(current.selectedFilter, owner)
+                            .reconcileLocallyDoneItems(owner)
+                    // The app badge / Home summary consumes these counts: subtract
+                    // the rows the overlay still hides so totals do not bounce.
+                    overlayAdjustedSummaryCounts =
+                        maxOf(
+                            0,
+                            projectedData.totalUnreadCount -
+                                pageItems.suppressedUnreadCount -
+                                pageItems.suppressedDoneUnreadCount
+                        ) to maxOf(0, projectedData.totalCount - pageItems.removedDoneRows)
                     beforeRealtimeHighWaterFold()
                     val realtimeReconcile =
                         reconcileRealtimeHighWater(
@@ -1557,7 +1606,8 @@ class SharedActivityStore internal constructor(
                 if (!append && current.selectedFilter == InboxFilter.All) {
                     when (result) {
                         is DataResult.Content ->
-                            (projectedContentData ?: result.data).let { it.totalUnreadCount to it.totalCount }
+                            overlayAdjustedSummaryCounts
+                                ?: (projectedContentData ?: result.data).let { it.totalUnreadCount to it.totalCount }
                         is DataResult.Empty -> 0 to 0
                         is DataResult.Error,
                         is DataResult.NoPermission -> null
@@ -1693,7 +1743,8 @@ class SharedActivityStore internal constructor(
                 totalCount = if (previous.selectedFilter.keepsReadActivityRows()) snapshot.totalCount else 0,
                 totalUnreadCount = 0
             )
-        rememberUnreadCleared(snapshot.items)
+        val overlayOwner = overlayOwner(previous)
+        val readGenerations = rememberUnreadCleared(overlayOwner, snapshot.items)
         reduceState(SharedActivityIntent.MarkAllRead, previous.copy(snapshot = updatedSnapshot, errorCode = null))
         scope.launch {
             val serverId = currentServerId()
@@ -1716,12 +1767,11 @@ class SharedActivityStore internal constructor(
                     selected = selected || (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy)
                 }
             }
-            if (selected) {
-                onUnreadCountsChanged()
-            } else if (result is DataResult.Content || result is DataResult.Empty) {
+            if (selected || result is DataResult.Content || result is DataResult.Empty) {
+                readOverlay.confirmAll(overlayOwner, readGenerations)
                 onUnreadCountsChanged()
             } else {
-                forgetUnreadCleared(snapshot.items)
+                readOverlay.forgetAll(overlayOwner, readGenerations)
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_all_read_failed")
             }
@@ -1732,14 +1782,21 @@ class SharedActivityStore internal constructor(
         if (item.isUnfollowedActivityThread) return
         val previous = _state.value
         if (previous.snapshot == null) return
-        rememberDone(item)
+        // The overlay entry is pending (no expiry) until the server confirms the
+        // Done; confirmation starts this row's own hold.
+        val overlayOwner = overlayOwner(previous)
+        val doneGeneration = overlayOwner?.let { owner -> doneOverlay.remember(owner, item) }
         if (item.kind == InboxItemKind.MentionAction) {
+            // Local-only resolution: no server write to wait for.
+            if (overlayOwner != null && doneGeneration != null) {
+                doneOverlay.confirm(overlayOwner, item.key, doneGeneration)
+            }
             removeItemOptimistically(item)
             return
         }
         val targetChannelId = item.readReceiptChannelId()
         if (targetChannelId == null) {
-            forgetDone(item.key)
+            if (overlayOwner != null) doneOverlay.forget(overlayOwner, item.key, doneGeneration)
             refreshAfterFailure(previous, "activity_thread_channel_missing")
             return
         }
@@ -1752,9 +1809,12 @@ class SharedActivityStore internal constructor(
                     inboxRepository.markDone(targetChannelId)
                 }
             if (result !is DataResult.Content && result !is DataResult.Empty) {
-                forgetDone(item.key)
+                if (overlayOwner != null) doneOverlay.forget(overlayOwner, item.key, doneGeneration)
                 refreshAfterFailure(previous, "activity_mark_done_failed")
             } else {
+                if (overlayOwner != null && doneGeneration != null) {
+                    doneOverlay.confirm(overlayOwner, item.key, doneGeneration)
+                }
                 onUnreadCountsChanged()
             }
         }
@@ -1915,7 +1975,8 @@ class SharedActivityStore internal constructor(
             return
         }
         val key = item.key
-        rememberUnreadCleared(item)
+        val overlayOwner = overlayOwner(previous)
+        val readGenerations = rememberUnreadCleared(overlayOwner, listOf(item))
         val updatedItems =
             if (previous.selectedFilter.keepsReadActivityRows()) {
                 snapshot.items.map { existing ->
@@ -1944,10 +2005,11 @@ class SharedActivityStore internal constructor(
             val serverId = currentServerId()
             val result = readReceiptRepository.markChannelReadAll(targetChannelId)
             if (result !is DataResult.Content && result !is DataResult.Empty) {
-                forgetUnreadCleared(key)
+                readOverlay.forgetAll(overlayOwner, readGenerations)
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_read_failed")
             } else {
+                readOverlay.confirmAll(overlayOwner, readGenerations)
                 onUnreadCountsChanged()
             }
         }
@@ -1967,7 +2029,9 @@ class SharedActivityStore internal constructor(
                 }
             readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
             if (matchingUnread.isEmpty()) return@synchronized
-            rememberUnreadCleared(matchingUnread)
+            // The coordinator owns the write and reports only failures back
+            // (handleReadReceiptFailure), so the hold starts at prediction time.
+            rememberUnreadCleared(overlayOwner(current), matchingUnread, confirmed = true)
             val matchingKeys = matchingUnread.mapTo(mutableSetOf(), InboxItem::key)
             readPredictionItemKeys = readPredictionItemKeys + (prediction.channelId to matchingKeys)
             val removedUnreadCount = matchingUnread.sumOf(InboxItem::unreadCount)
@@ -2364,84 +2428,69 @@ class SharedActivityStore internal constructor(
             .mapNotNull { it.parentChannelId }
             .toSet()
 
-    private fun rememberUnreadCleared(items: List<InboxItem>) {
-        val unreadItems = items.filter { it.unreadCount > 0 }
-        if (unreadItems.isEmpty()) return
-        unreadClearOverrides =
-            unreadClearOverrides +
-                unreadItems.associate { item ->
-                    item.key to ActivityUnreadClearOverride(item.activityUnreadAnchor())
-                }
+    private fun overlayOwner(state: SharedActivityState = _state.value): ActivityOverlayOwner? {
+        val serverId = state.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val userId = state.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return ActivityOverlayOwner(serverId, userId)
     }
 
-    private fun rememberUnreadCleared(item: InboxItem) {
-        if (item.unreadCount <= 0) return
-        unreadClearOverrides =
-            unreadClearOverrides +
-                (item.key to ActivityUnreadClearOverride(item.activityUnreadAnchor()))
+    /** Records a local read for every unread row; returns key -> overlay generation. */
+    private fun rememberUnreadCleared(
+        owner: ActivityOverlayOwner?,
+        items: List<InboxItem>,
+        confirmed: Boolean = false
+    ): Map<String, Long> {
+        if (owner == null) return emptyMap()
+        return items
+            .filter { it.unreadCount > 0 }
+            .associate { item -> item.key to readOverlay.remember(owner, item, confirmed) }
     }
 
-    private fun forgetUnreadCleared(items: List<InboxItem>) {
-        if (unreadClearOverrides.isEmpty()) return
-        val keys = items.mapTo(mutableSetOf()) { it.key }
-        unreadClearOverrides = unreadClearOverrides.filterKeys { it !in keys }
+    private fun ActivityLocalMutationOverlay.confirmAll(
+        owner: ActivityOverlayOwner?,
+        generations: Map<String, Long>
+    ) {
+        if (owner == null) return
+        generations.forEach { (key, generation) -> confirm(owner, key, generation) }
+    }
+
+    private fun ActivityLocalMutationOverlay.forgetAll(
+        owner: ActivityOverlayOwner?,
+        generations: Map<String, Long>
+    ) {
+        if (owner == null) return
+        generations.forEach { (key, generation) -> forget(owner, key, generation) }
     }
 
     private fun forgetUnreadCleared(key: String) {
-        if (key in unreadClearOverrides) {
-            unreadClearOverrides = unreadClearOverrides - key
-        }
+        overlayOwner()?.let { owner -> readOverlay.forget(owner, key) }
     }
 
-    private fun rememberDone(item: InboxItem) {
-        doneOverrides =
-            doneOverrides +
-                (item.key to ActivityDoneOverride(item.activityUnreadAnchor()))
-    }
-
-    private fun forgetDone(key: String) {
-        if (key in doneOverrides) {
-            doneOverrides = doneOverrides - key
-        }
-    }
-
-    private fun List<InboxItem>.reconcileLocallyClearedUnreadItems(filter: InboxFilter): ActivityUnreadReconcileResult {
-        if (unreadClearOverrides.isEmpty()) {
+    private fun List<InboxItem>.reconcileLocallyClearedUnreadItems(
+        filter: InboxFilter,
+        owner: ActivityOverlayOwner?
+    ): ActivityUnreadReconcileResult {
+        if (owner == null || !readOverlay.hasEntries(owner)) {
             return ActivityUnreadReconcileResult(items = this)
         }
-        val nextOverrides = unreadClearOverrides.toMutableMap()
         val reconciled = mutableListOf<InboxItem>()
         var suppressedUnreadCount = 0
         var removedUnreadRows = 0
         for (item in this) {
-            val override = nextOverrides[item.key]
-            if (override == null) {
+            // An already-read row keeps its entry: a later stale copy may still
+            // carry the pre-read unread state for the same activity marker.
+            if (item.unreadCount <= 0 || !readOverlay.holds(owner, item)) {
                 reconciled += item
                 continue
             }
-            if (item.unreadCount <= 0) {
-                nextOverrides.remove(item.key)
-                reconciled += item
-                continue
-            }
-            val incomingAnchor = item.activityUnreadAnchor()
-            val staleUnread =
-                override.unreadAnchor == null ||
-                    incomingAnchor == override.unreadAnchor
-            if (staleUnread) {
-                suppressedUnreadCount += item.unreadCount
-                val clearedItem = item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
-                if (filter.keepsReadActivityRows()) {
-                    reconciled += clearedItem
-                } else {
-                    removedUnreadRows += 1
-                }
+            suppressedUnreadCount += item.unreadCount
+            val clearedItem = item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+            if (filter.keepsReadActivityRows()) {
+                reconciled += clearedItem
             } else {
-                nextOverrides.remove(item.key)
-                reconciled += item
+                removedUnreadRows += 1
             }
         }
-        unreadClearOverrides = nextOverrides
         return ActivityUnreadReconcileResult(
             items = reconciled,
             suppressedUnreadCount = suppressedUnreadCount,
@@ -2449,37 +2498,27 @@ class SharedActivityStore internal constructor(
         )
     }
 
-    private fun ActivityUnreadReconcileResult.reconcileLocallyDoneItems(): ActivityReconcileResult {
-        if (doneOverrides.isEmpty()) {
+    private fun ActivityUnreadReconcileResult.reconcileLocallyDoneItems(
+        owner: ActivityOverlayOwner?
+    ): ActivityReconcileResult {
+        if (owner == null || !doneOverlay.hasEntries(owner)) {
             return ActivityReconcileResult(
                 items = items,
                 suppressedUnreadCount = suppressedUnreadCount,
                 removedUnreadRows = removedUnreadRows
             )
         }
-        val nextOverrides = doneOverrides.toMutableMap()
         val reconciled = mutableListOf<InboxItem>()
         var suppressedDoneUnreadCount = 0
         var removedDoneRows = 0
         for (item in items) {
-            val override = nextOverrides[item.key]
-            if (override == null) {
-                reconciled += item
-                continue
-            }
-            val incomingAnchor = item.activityUnreadAnchor()
-            val staleDone =
-                override.activityAnchor == null ||
-                    incomingAnchor == override.activityAnchor
-            if (staleDone) {
+            if (doneOverlay.holds(owner, item)) {
                 suppressedDoneUnreadCount += item.unreadCount
                 removedDoneRows += 1
             } else {
-                nextOverrides.remove(item.key)
                 reconciled += item
             }
         }
-        doneOverrides = nextOverrides
         return ActivityReconcileResult(
             items = reconciled,
             suppressedUnreadCount = suppressedUnreadCount,
@@ -2489,14 +2528,6 @@ class SharedActivityStore internal constructor(
         )
     }
 }
-
-private data class ActivityUnreadClearOverride(
-    val unreadAnchor: MessageId?
-)
-
-private data class ActivityDoneOverride(
-    val activityAnchor: MessageId?
-)
 
 private data class ActivityUnreadReconcileResult(
     val items: List<InboxItem>,
