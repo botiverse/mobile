@@ -33,6 +33,35 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun restoredAuthInstallationIdWithoutSessionIsRegenerated() = runBlocking {
+        val keyValue = InMemoryRaftKeyValueStore()
+        // A restored install: the id survived, the session did not.
+        keyValue.putString(RAFT_AUTH_INSTALLATION_ID_RECORD_KEY, "ari_00000000000000000000000000000001")
+        val store = KeyValueAuthSessionStore(keyValue)
+
+        assertTrue(store.discardAuthInstallationIdWithoutSession())
+        assertNull(keyValue.getString(RAFT_AUTH_INSTALLATION_ID_RECORD_KEY))
+        assertEquals(
+            "ari_ffffffffffffffffffffffffffffffff",
+            store.readOrCreateAuthInstallationId("ari_ffffffffffffffffffffffffffffffff"),
+        )
+    }
+
+    @Test
+    fun authInstallationIdWithSessionIsKeptAtStartup() = runBlocking {
+        val keyValue = InMemoryRaftKeyValueStore()
+        val store = KeyValueAuthSessionStore(keyValue)
+        store.replaceAuthenticatedSession(sampleSession())
+        store.readOrCreateAuthInstallationId("ari_00000000000000000000000000000001")
+
+        assertFalse(store.discardAuthInstallationIdWithoutSession())
+        assertEquals(
+            "ari_00000000000000000000000000000001",
+            store.readOrCreateAuthInstallationId("ari_ffffffffffffffffffffffffffffffff"),
+        )
+    }
+
+    @Test
     fun durableAttemptAndSuccessorCommitShareOneSessionRecord() = runBlocking {
         val keyValue = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValue)

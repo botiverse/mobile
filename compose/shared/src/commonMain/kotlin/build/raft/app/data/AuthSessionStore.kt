@@ -1116,6 +1116,29 @@ class KeyValueAuthSessionStore(
                 }
         }
 
+    /**
+     * Startup guard against cloned installs. An auth installation id with no session record next to it
+     * did not come from this install's own sign-in (for example a backup or device-transfer restore of an
+     * older build that still copied the auth store). Dropping it makes the next refresh mint a fresh id,
+     * so two devices never present the same installation identity to the server.
+     *
+     * Atomic under the store lock, so a sign-in racing with this call either lands first (the id is
+     * kept) or after (the id is minted fresh on its first refresh).
+     *
+     * @return true when an orphaned id was dropped.
+     */
+    suspend fun discardAuthInstallationIdWithoutSession(): Boolean {
+        val discarded =
+            mutex.withLock {
+                if (readSessionRecordLocked() != null) return@withLock false
+                if (store.getString(RAFT_AUTH_INSTALLATION_ID_RECORD_KEY) == null) return@withLock false
+                store.putString(RAFT_AUTH_INSTALLATION_ID_RECORD_KEY, null)
+                true
+            }
+        if (discarded) diagnosticsLogger("auth_installation_id_discarded reason=no_session")
+        return discarded
+    }
+
     override suspend fun rotateTokensAndClearRefreshAttemptIfMatch(
         expectedAccountId: String,
         expectedAccessToken: String,
