@@ -7323,8 +7323,9 @@ internal fun RaftAppAvatar(
         }
     }
     // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
-    // never circles.
-    val frameModifier = modifier.clip(RoundedCornerShape(RaftAppRadius.Sticker))
+    // never circles. The border follows the same shape as the clip (Hands dd79da45 follow-up).
+    val frameShape = RoundedCornerShape(RaftAppRadius.Sticker)
+    val frameModifier = modifier.clip(frameShape)
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
