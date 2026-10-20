@@ -214,6 +214,29 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.isSpecified
+import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionValue
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.input.pointer.pointerInput
@@ -427,6 +450,99 @@ internal fun membersEditableHumanServerRoles(
             if (currentRole == MembersHumanServerRole.Member) listOf(MembersHumanServerRole.Admin)
             else emptyList()
         else -> emptyList()
+    }
+}
+
+/** Web `getHumanDepartureLabel`: a person who left or was removed shows that instead of a role. */
+internal enum class MembersHumanDeparture { Left, Removed }
+
+internal fun membersHumanDeparture(membershipStatus: String?): MembersHumanDeparture? =
+    when (membershipStatus?.trim()?.lowercase()) {
+        "left" -> MembersHumanDeparture.Left
+        "removed" -> MembersHumanDeparture.Removed
+        else -> null
+    }
+
+internal fun membersHumanIsSelf(member: MemberProfile, currentUserId: String?): Boolean {
+    val selfId = currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    return member.kind == MemberKind.Human && member.id.value.trim() == selfId
+}
+
+/**
+ * Web shows Info and Created Agents only for a person of this server; a profile reached
+ * through another server (`isRemoteJointHuman`) shows the name, handle and description.
+ */
+internal fun membersHumanShowsServerFacts(accessMode: MemberDetailAccessMode): Boolean =
+    accessMode == MemberDetailAccessMode.LocalFull
+
+/**
+ * The role chip of a human profile (web HumanDetailPanel `ROLE_CONFIG`): a role is a fact
+ * about the person, so owner, admin and member are the same neutral soft badge; a guest
+ * comes from outside and reads as the information badge; no role is the muted "Unknown".
+ */
+internal enum class MembersHumanRoleBadge(val badgeVariant: RaftBadgeVariant) {
+    Owner(RaftBadgeVariant.Default),
+    Admin(RaftBadgeVariant.Default),
+    Member(RaftBadgeVariant.Default),
+    Guest(RaftBadgeVariant.Information),
+    Unknown(RaftBadgeVariant.Muted)
+}
+
+internal fun membersHumanRoleBadge(serverRole: String?, roleDescription: String?): MembersHumanRoleBadge {
+    fun String?.toBadgeOrNull(): MembersHumanRoleBadge? =
+        when (this?.trim()?.lowercase()) {
+            "owner" -> MembersHumanRoleBadge.Owner
+            "admin" -> MembersHumanRoleBadge.Admin
+            "member" -> MembersHumanRoleBadge.Member
+            "guest" -> MembersHumanRoleBadge.Guest
+            else -> null
+        }
+    return serverRole.toBadgeOrNull() ?: roleDescription.toBadgeOrNull() ?: MembersHumanRoleBadge.Unknown
+}
+
+internal data class MembersJoinedDate(val year: Int, val month: Int, val day: Int)
+
+/** The local calendar day of a `joinedAt` timestamp, or null when it is missing or unparseable. */
+internal fun String?.membersJoinedDateOrNull(timeContext: RaftTimeContext): MembersJoinedDate? {
+    val trimmed = this?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return null
+    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
+    val date = membersReminderCivilDateFromEpochDay(membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay))
+    return MembersJoinedDate(year = date.year, month = date.month, day = date.day)
+}
+
+/**
+ * The month token of `member_joined_date` (web `formatDate` with `month: "short"`): "Sep" in
+ * English, "9" where the locale writes 2026年9月11日. [monthsCsv] is the localized twelve.
+ */
+internal fun membersJoinedMonthLabel(monthsCsv: String, month: Int): String =
+    monthsCsv.split(',').getOrNull(month - 1)?.trim()?.takeIf { it.isNotEmpty() } ?: month.toString()
+
+/**
+ * Route data for the profile of an agent listed under a human's Created Agents (web
+ * CreatedAgentRow opens the agent profile). Keeps the human page's time context and
+ * source server so a remote server's agent resolves against the same server.
+ */
+internal fun RaftMemberDetailPayload.toCreatedAgentDetailPageData(
+    agentId: MemberId,
+    sourceServerId: ServerId?
+): JSONObject? {
+    val selected = agentId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "members-detail-created-agent-${instanceId.ifBlank { "member" }}-$selected")
+        put("memberId", selected)
+        put("memberKind", MemberKind.Agent.memberKindWireValue())
+        (sourceServerId ?: identity?.sourceServerId)?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
+            put("sourceServerId", it)
+        }
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+        if (agentPanelTabOrder.isNotEmpty()) {
+            put("agentPanelTabOrder", JSONArray().apply { agentPanelTabOrder.forEach(::put) })
+        }
     }
 }
 
@@ -1555,7 +1671,28 @@ private val membersHumanDetailVisualMember = MemberProfile(
     avatarLabel = "A",
     presence = Presence.Active,
     joinedAt = "2026-06-18T00:00:00.000Z",
-    membershipStatus = "active"
+    membershipStatus = "active",
+    // Web HumanDetailPanel lists the agents this person created as inset list rows.
+    createdAgents = listOf(
+        AgentProfile(
+            id = MemberId("visual-agent-created-1"),
+            userId = "visual-agent-created-1",
+            displayName = "Product UX",
+            handle = "@product-ux",
+            runtime = "claude",
+            presence = Presence.Active,
+            agentStatus = AgentStatus.Online
+        ),
+        AgentProfile(
+            id = MemberId("visual-agent-created-2"),
+            userId = "visual-agent-created-2",
+            displayName = "Release Notes",
+            handle = "@release-notes",
+            runtime = "codex",
+            presence = Presence.Offline,
+            agentStatus = AgentStatus.Offline
+        )
+    )
 )
 
 private val membersAgentDetailVisualScopeSet = AgentScopeSet(
@@ -3404,6 +3541,7 @@ internal fun MemberDetailPageContent(
     val directMessageOpenError = stringResource(MR.strings.member_error_open_direct_message)
     val directMessageOpenErrorTemplate = membersStringTemplate(MR.strings.member_error_open_direct_message_detail)
     val directMessagePermissionError = stringResource(MR.strings.member_error_open_direct_message_permission)
+    val openProfileFailed = stringResource(MR.strings.member_error_open_profile)
     val payload = embeddedPayload ?: remember(pager.pageData.params.toString()) {
         pager.pageData.params.toRaftMemberDetailPayload()
     }
@@ -4194,7 +4332,24 @@ internal fun MemberDetailPageContent(
                                 onUnavailableAction = { provider.bridge.toast(it) }
                             )
                         },
-                        onUnavailableAction = { bridge.toast(it) }
+                        onUnavailableAction = { bridge.toast(it) },
+                        onOpenCreatedAgent = { agent ->
+                            val pageData =
+                                payload.toCreatedAgentDetailPageData(
+                                    agentId = agent.id,
+                                    sourceServerId = current.member.serverId ?: current.server.id
+                                )
+                            if (pageData == null) {
+                                bridge.toast(openProfileFailed)
+                            } else {
+                                pager.openRaftPage(
+                                    pageName = MEMBER_DETAIL_PAGE,
+                                    pageData = pageData,
+                                    storeScopeOverride = provider.storeScope,
+                                    onMissingScope = { bridge.toast(openProfileFailed) }
+                                )
+                            }
+                        }
                     ),
                     humanRole = MembersHumanRoleInputs(
                         humanActorRole = current.server.role,
@@ -5341,7 +5496,9 @@ private class MembersDetailActions(
     val onRemoveMember: (() -> Unit)? = null,
     val onOpenUrl: (String) -> Unit,
     val onOpenReminderMessage: (String) -> Unit = {},
-    val onUnavailableAction: (String) -> Unit
+    val onUnavailableAction: (String) -> Unit,
+    /** Opens the profile of an agent listed under a human's Created Agents. */
+    val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null
 )
 
 private class MembersAgentDetailPresentation(
@@ -5414,6 +5571,7 @@ private fun MembersDetailContent(
     val onOpenUrl = actions.onOpenUrl
     val onOpenReminderMessage = actions.onOpenReminderMessage
     val onUnavailableAction = actions.onUnavailableAction
+    val onOpenCreatedAgent = actions.onOpenCreatedAgent
     val pageVisibleTick = presentation.pageVisibleTick
     val initialVisualMode = presentation.initialVisualMode
     val initialAgentTab = presentation.initialAgentTab
@@ -5874,27 +6032,38 @@ private fun MembersDetailContent(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             val runtimeErrorText = member.membersAgentRuntimeErrorText(detail, agentStatusIndicatorState)
-            MembersDetailHeader(
-                member = member,
-                currentUserId = currentUserId,
-                currentServerId = currentServerId,
-                detail = detail,
-                deleted = deleted,
-                canManage = canManage,
-                onBack = onBack,
-                onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
-                onOpenDirectMessage = onOpenDirectMessage,
-                onCopyMemberId = onCopyMemberId,
-                agentStatusIndicatorState = agentStatusIndicatorState,
-                memberAvatarResolver = memberAvatarResolver,
-                onManagementMenuAnchorResolverReady = { managementMenuAnchorResolver = it },
-                onRequestManagementMenu = { anchor ->
-                    if (anchor != null) {
-                        managementMenuAnchor = anchor
-                        managementMenuOpen = true
+            if (member.kind == MemberKind.Human) {
+                MembersHumanDetailHeader(
+                    member = member,
+                    currentUserId = currentUserId,
+                    currentServerId = currentServerId,
+                    memberAvatarResolver = memberAvatarResolver,
+                    onBack = onBack,
+                    onOpenDirectMessage = onOpenDirectMessage
+                )
+            } else {
+                MembersDetailHeader(
+                    member = member,
+                    currentUserId = currentUserId,
+                    currentServerId = currentServerId,
+                    detail = detail,
+                    deleted = deleted,
+                    canManage = canManage,
+                    onBack = onBack,
+                    onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
+                    onOpenDirectMessage = onOpenDirectMessage,
+                    onCopyMemberId = onCopyMemberId,
+                    agentStatusIndicatorState = agentStatusIndicatorState,
+                    memberAvatarResolver = memberAvatarResolver,
+                    onManagementMenuAnchorResolverReady = { managementMenuAnchorResolver = it },
+                    onRequestManagementMenu = { anchor ->
+                        if (anchor != null) {
+                            managementMenuAnchor = anchor
+                            managementMenuOpen = true
+                        }
                     }
-                }
-            )
+                )
+            }
             val runtimeErrorBanner =
                 membersAgentRuntimeErrorBannerState(
                     memberKind = member.kind,
@@ -6147,7 +6316,6 @@ private fun MembersDetailContent(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                 ) {
                     item(key = "member-detail-${member.id.value}-human-content") {
                         MembersHumanDetailSections(
@@ -6165,7 +6333,7 @@ private fun MembersDetailContent(
                             onRemoveMember = onRemoveMember?.takeIf {
                                 member.membershipStatus != "removed"
                             },
-                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                            onOpenCreatedAgent = onOpenCreatedAgent
                         )
                     }
                     item(key = "member-detail-${member.id.value}-bottom-spacer") {
@@ -6411,6 +6579,89 @@ private fun DataResult<AgentWorkspaceTreeSnapshot>.toMembersWorkspaceTreeState()
         is DataResult.Error -> MembersAgentWorkspaceTreeState.Error(error)
         is DataResult.NoPermission -> MembersAgentWorkspaceTreeState.NoPermission(blocker)
     }
+
+// raft-ui PanelHeader on a phone: Back and the trailing action are 44dp ghost icon buttons
+// sitting 3dp from the screen edges, so their 22dp glyphs mirror each other.
+private val MembersHumanHeaderEdgeInset = 3.dp
+private val MembersHumanHeaderContentSpacing = 6.dp
+
+/**
+ * The human profile head (web HumanDetailPanel `PanelHeader`): Back, the `md` avatar sticker,
+ * the name (PanelTitle) over the `@handle` (Space Mono 12/16 hint), and the Message action
+ * as a ghost PanelAction.
+ */
+@Composable
+private fun MembersHumanDetailHeader(
+    member: MemberProfile,
+    currentUserId: String?,
+    currentServerId: String?,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
+    onBack: () -> Unit,
+    onOpenDirectMessage: () -> Unit
+) {
+    val canMessage =
+        membersDirectMessageEligibility(
+            member = member,
+            currentUserId = currentUserId,
+            currentServerId = currentServerId
+        ) != MembersDirectMessageEligibility.Unavailable
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val backLabel = stringResource(MR.strings.common_back)
+    val messageLabel = stringResource(MR.strings.member_label_message)
+    RaftTopPageHeader(
+        title = member.displayName,
+        backgroundColor = RaftColor.Canvas,
+        contentStartPadding = MembersHumanHeaderEdgeInset,
+        contentEndPadding = if (canMessage) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+        contentSpacing = MembersHumanHeaderContentSpacing,
+        showBodyTopBanner = false,
+        titleLeadingContent = {
+            RaftIconButton(
+                onClick = onBack,
+                tooltip = backLabel,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg
+            ) {
+                MembersHumanGlyph(RaftLucideIconName.ArrowLeft, 22.dp)
+            }
+            MembersStickerAvatar(member, RaftAvatarSize.Md, memberAvatarResolver)
+        },
+        titleContent = {
+            Column(modifier = Modifier.weight(1f)) {
+                RaftText(
+                    text = member.displayName,
+                    style = typography.headline,
+                    color = colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                RaftText(
+                    text = member.detailHandle,
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        trailingContent =
+            if (canMessage) {
+                {
+                    RaftIconButton(
+                        onClick = onOpenDirectMessage,
+                        tooltip = messageLabel,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg
+                    ) {
+                        MembersHumanGlyph(RaftLucideIconName.MessageSquare, 22.dp)
+                    }
+                }
+            } else {
+                null
+            }
+    )
+}
 
 @Composable
 private fun MembersDetailHeader(
@@ -7911,6 +8162,11 @@ private fun MembersAgentRuntimeErrorAction(
     )
 }
 
+// Web HumanDetailPanel (raft-ui ProfilePanelBody): each section is a full-bleed hairline
+// Separator over a `px-5 py-4` body; the hero row is `px-5 py-5 gap-4`.
+private val MembersHumanSectionPaddingX = 20.dp
+private val MembersHumanSectionPaddingY = 16.dp
+
 @Composable
 private fun MembersHumanDetailSections(
     member: MemberProfile,
@@ -7925,80 +8181,157 @@ private fun MembersHumanDetailSections(
     ownerCount: Int? = null,
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
     onRemoveMember: (() -> Unit)? = null,
+    onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        MembersHumanProfileSummary(member, memberAvatarResolver)
+    val departure = membersHumanDeparture(member.membershipStatus)
+    val isSelf = membersHumanIsSelf(member, currentUserId)
+    Column(modifier = modifier.fillMaxWidth()) {
+        MembersHumanProfileSummary(
+            member = member,
+            departure = departure,
+            isSelf = isSelf,
+            memberAvatarResolver = memberAvatarResolver
+        )
         MembersHumanDescriptionSection(member)
-        MembersHumanInfoSection(
-            member = member,
-            timeContext = timeContext,
-            actorRole = actorRole,
-            accessMode = accessMode,
-            currentUserId = currentUserId,
-            currentServerId = currentServerId,
-            ownerCount = ownerCount,
-            onUpdateRole = onUpdateRole
-        )
-        MembersHumanCreatedAgentsSection(
-            member = member,
-            agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = memberAvatarResolver,
-            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
-        )
+        // Web hides Info and Created Agents for a person seen through another server
+        // (`isRemoteJointHuman`) or a channel summary projection.
+        if (membersHumanShowsServerFacts(accessMode)) {
+            MembersHumanInfoSection(
+                member = member,
+                departure = departure,
+                timeContext = timeContext,
+                actorRole = actorRole,
+                accessMode = accessMode,
+                currentUserId = currentUserId,
+                currentServerId = currentServerId,
+                ownerCount = ownerCount,
+                onUpdateRole = onUpdateRole
+            )
+            MembersHumanCreatedAgentsSection(
+                member = member,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                onOpenCreatedAgent = onOpenCreatedAgent
+            )
+        }
         if (onRemoveMember != null) {
             MembersHumanActionsSection(onRemoveMember)
         }
     }
 }
 
+/** One profile section: a full-width hairline, then the eyebrow and [content] in `px-5 py-4`. */
+@Composable
+private fun MembersHumanSection(
+    title: String,
+    count: String? = null,
+    titleGap: Dp = 12.dp,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        RaftSeparator()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MembersHumanSectionPaddingX, vertical = MembersHumanSectionPaddingY)
+        ) {
+            RaftSectionEyebrow(text = title, count = count, modifier = Modifier.padding(bottom = titleGap))
+            content()
+        }
+    }
+}
+
+/** A Lucide glyph drawn in the enclosing raft-ui component's ink (`currentColor`). */
+@Composable
+private fun MembersHumanGlyph(name: RaftLucideIconName, size: Dp) {
+    val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
+    RaftLucideIcon(name, modifier = Modifier.size(size), color = raftArgbHex(ink))
+}
+
+/**
+ * raft-ui Avatar (the square sticker) around the member's resolved photo / pixel avatar.
+ * [RaftAvatarSize.Xl] is web `AvatarSlot context="profile-hero"`, Md the panel head and list rows.
+ */
+@Composable
+private fun MembersStickerAvatar(
+    member: MemberProfile,
+    size: RaftAvatarSize,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
+) {
+    val resolvedAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id.value)
+    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+        member.avatarWireValueForAvatarSlot()
+    }
+    RaftAvatar(
+        type = if (member.kind == MemberKind.Agent) RaftAvatarType.Agent else RaftAvatarType.Human,
+        size = size,
+        image = {
+            RaftAppAvatar(
+                avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue,
+                label = member.avatarLabel,
+                // The face fills the inside of the sticker's two 1.5dp edges.
+                avatarSize = size.edge - RaftAppStroke.Control * 2,
+                borderWidth = 0.dp,
+                cacheSubject = member.raftAvatarCacheSubject(),
+                cacheServerId = member.serverId?.value
+            )
+        }
+    )
+}
+
 @Composable
 private fun MembersHumanProfileSummary(
     member: MemberProfile,
+    departure: MembersHumanDeparture?,
+    isSelf: Boolean,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = RaftAppSpacing.Md),
+            .padding(horizontal = MembersHumanSectionPaddingX, vertical = 20.dp),
         verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        MembersAvatar(
-            member = member,
-            avatarSize = 74.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-        ) {
-            Text(
+        MembersStickerAvatar(member, RaftAvatarSize.Xl, memberAvatarResolver)
+        Column(modifier = Modifier.weight(1f)) {
+            // raft-ui PanelTitle: the name reads the same in the head and the body.
+            RaftText(
                 text = member.displayName,
-                style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
-                color = RaftColor.TextBlack,
+                style = typography.headline,
+                color = colors.foreground,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Row(
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                modifier = Modifier.padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                RaftText(
                     text = member.detailHandle,
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
-                    color = RaftColor.TextMutedGray,
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (member.membershipStatus == "removed") {
-                    MembersHumanRoleChip(stringResource(MR.strings.member_role_removed), RaftColor.EmptyStateGray)
+                if (departure != null) {
+                    RaftBadge(
+                        text = departure.localizedLabel(),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Muted
+                    )
+                }
+                if (isSelf) {
+                    RaftBadge(
+                        text = stringResource(MR.strings.member_label_you_suffix),
+                        appearance = RaftBadgeAppearance.Outline
+                    )
                 }
             }
         }
@@ -8007,25 +8340,14 @@ private fun MembersHumanProfileSummary(
 
 @Composable
 private fun MembersHumanDescriptionSection(member: MemberProfile) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description).raftDisplayUppercase())
-        val descriptionMissing = member.description.isNullOrBlank()
-        Text(
-            text = member.description?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_state_no_description),
-            style = RaftType.Body.copy(
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                fontStyle = if (descriptionMissing) FontStyle.Italic else FontStyle.Normal
-            ),
-            color = if (descriptionMissing) {
-                RaftColor.TextMutedGray.copy(alpha = 0.75f)
-            } else {
-                RaftColor.TextBlack
-            }
+    val colors = RaftTheme.colors
+    val description = member.description?.takeIf { it.isNotBlank() }
+    // Web: eyebrow `mb-1`, then `text-callout text-foreground-muted`; the empty state is hint ink.
+    MembersHumanSection(title = stringResource(MR.strings.member_section_description), titleGap = 4.dp) {
+        RaftText(
+            text = description ?: stringResource(MR.strings.member_state_no_description),
+            style = RaftTheme.typography.callout,
+            color = if (description == null) colors.foregroundHint else colors.foregroundMuted
         )
     }
 }
@@ -8033,6 +8355,7 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
 @Composable
 private fun MembersHumanInfoSection(
     member: MemberProfile,
+    departure: MembersHumanDeparture?,
     timeContext: RaftTimeContext,
     actorRole: String?,
     accessMode: MemberDetailAccessMode,
@@ -8042,7 +8365,15 @@ private fun MembersHumanInfoSection(
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)?
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    val joined = member.joinedAt?.takeIf { it.isNotBlank() }?.membersAgentCreatedDate(timeContext)
+    val joinedDate = member.joinedAt.membersJoinedDateOrNull(timeContext)
+    val joined = joinedDate?.let { date ->
+        stringResource(
+            MR.strings.member_joined_date,
+            membersJoinedMonthLabel(stringResource(MR.strings.member_joined_date_months), date.month),
+            date.day.toString(),
+            date.year.toString()
+        )
+    }
     val initialRole = member.serverRole.toMembersHumanServerRoleOrNull()
         ?: member.roleDescription.toMembersHumanServerRoleOrNull()
     var displayedRole by remember(member.id.value, initialRole?.wireValue) { mutableStateOf(initialRole) }
@@ -8053,6 +8384,7 @@ private fun MembersHumanInfoSection(
     var roleMenuExpanded by remember(member.id.value) { mutableStateOf(false) }
     var savingRole by remember(member.id.value) { mutableStateOf(false) }
     var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
     val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
@@ -8067,40 +8399,86 @@ private fun MembersHumanInfoSection(
         currentServerId = currentServerId,
         ownerCount = ownerCount
     )
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
-    ) {
-        MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).raftDisplayUppercase())
-        MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
-            if (editingRole) {
-                Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
-                    MembersServerRoleEditor(
-                        displayValue = draftRole.localizedLabel(),
-                        badgeBackgroundColor = draftRole.backgroundColor,
-                        expanded = roleMenuExpanded,
-                        enabled = !savingRole,
-                        saving = savingRole,
-                        saveEnabled = draftRole != displayedRole,
-                        options = editableRoles.map { role ->
-                            RaftUiSelectionOption(
-                                id = role.wireValue,
-                                label = role.localizedLabel(),
-                                selected = role == draftRole
-                            )
-                        },
-                        selectedId = draftRole.wireValue,
-                        error = roleError,
-                        onToggle = { roleMenuExpanded = !roleMenuExpanded },
-                        onSelect = { roleId ->
-                            roleId.toMembersHumanServerRoleOrNull()?.let {
-                                draftRole = it
-                                roleMenuExpanded = false
-                                roleError = null
+    val canEditRole = departure == null && onUpdateRole != null && editableRoles.isNotEmpty()
+    val roleBadge = membersHumanRoleBadge(
+        serverRole = displayedRole?.wireValue ?: member.serverRole,
+        roleDescription = member.roleDescription
+    )
+    val roleHelpLabel = stringResource(MR.strings.member_title_human_roles)
+    val editRoleLabel = stringResource(MR.strings.member_action_edit_role)
+    MembersHumanSection(title = stringResource(MR.strings.member_section_info)) {
+        RaftDescriptionList {
+            Item(
+                term = if (departure != null) {
+                    stringResource(MR.strings.member_label_status)
+                } else {
+                    stringResource(MR.strings.member_label_role)
+                },
+                termAccessory = if (departure != null) {
+                    null
+                } else {
+                    {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RaftIconButton(
+                                onClick = { roleHelpOpen = true },
+                                tooltip = roleHelpLabel,
+                                variant = RaftButtonVariant.Ghost
+                            ) {
+                                RaftGlyphIcon(RaftGlyph.Info, size = 14.dp)
                             }
-                        },
-                        onSave = {
+                            if (canEditRole && !editingRole) {
+                                RaftIconButton(
+                                    onClick = {
+                                        draftRole = editableRoles.first()
+                                        roleError = null
+                                        roleMenuExpanded = true
+                                        editingRole = true
+                                    },
+                                    tooltip = editRoleLabel,
+                                    variant = RaftButtonVariant.Ghost
+                                ) {
+                                    MembersHumanGlyph(RaftLucideIconName.Pencil, 14.dp)
+                                }
+                            }
+                        }
+                    }
+                }
+            ) {
+                when {
+                    departure != null ->
+                        RaftBadge(
+                            text = departure.localizedLabel(),
+                            appearance = RaftBadgeAppearance.Soft,
+                            variant = RaftBadgeVariant.Muted
+                        )
+                    editingRole && canEditRole ->
+                        // TODO(human-profile): the inline role editor is shared with the agent
+                        // profile and still uses the older chip/button styling.
+                        MembersServerRoleEditor(
+                            displayValue = draftRole.localizedLabel(),
+                            badgeBackgroundColor = draftRole.backgroundColor,
+                            expanded = roleMenuExpanded,
+                            enabled = !savingRole,
+                            saving = savingRole,
+                            saveEnabled = draftRole != displayedRole,
+                            options = editableRoles.map { role ->
+                                RaftUiSelectionOption(
+                                    id = role.wireValue,
+                                    label = role.localizedLabel(),
+                                    selected = role == draftRole
+                                )
+                            },
+                            selectedId = draftRole.wireValue,
+                            error = roleError,
+                            onToggle = { roleMenuExpanded = !roleMenuExpanded },
+                            onSelect = { roleId ->
+                                roleId.toMembersHumanServerRoleOrNull()?.let {
+                                    draftRole = it
+                                    roleMenuExpanded = false
+                                    roleError = null
+                                }
+                            },
+                            onSave = {
                                 onUpdateRole?.let { update -> scope.launch {
                                     savingRole = true
                                     roleError = null
@@ -8136,102 +8514,84 @@ private fun MembersHumanInfoSection(
                                     }
                                     savingRole = false
                                 } }
-                        },
-                        onCancel = {
-                            draftRole = displayedRole ?: MembersHumanServerRole.Member
-                            roleError = null
-                            roleMenuExpanded = false
-                            editingRole = false
-                        }
-                    )
-                }
-            } else {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MembersHumanRoleChip(
-                        label = displayedRole?.localizedLabel()
-                            ?: member.roleDescription?.takeIf { it.isNotBlank() }
-                            ?: stringResource(MR.strings.member_role_member),
-                        backgroundColor = displayedRole?.backgroundColor ?: member.membersHumanRoleChipColor()
-                    )
-                    if (onUpdateRole != null && editableRoles.isNotEmpty()) {
-                        MembersProfilePencilButton(
-                            onClick = {
-                                draftRole = editableRoles.first()
+                            },
+                            onCancel = {
+                                draftRole = displayedRole ?: MembersHumanServerRole.Member
                                 roleError = null
-                                roleMenuExpanded = true
-                                editingRole = true
+                                roleMenuExpanded = false
+                                editingRole = false
                             }
                         )
-                    }
+                    else ->
+                        RaftBadge(
+                            text = roleBadge.localizedLabel(),
+                            appearance = RaftBadgeAppearance.Soft,
+                            variant = roleBadge.badgeVariant
+                        )
+                }
+            }
+            member.email?.takeIf { it.isNotBlank() }?.let { email ->
+                Item(term = stringResource(MR.strings.member_label_email)) {
+                    RaftDescriptionValue(email)
+                }
+            }
+            joined?.takeIf { it.isNotBlank() }?.let { joinedText ->
+                Item(term = stringResource(MR.strings.member_label_joined)) {
+                    RaftDescriptionValue(joinedText, mono = true)
                 }
             }
         }
-        member.email?.takeIf { it.isNotBlank() }?.let { email ->
-            MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
-                Text(
-                    text = email,
-                    style = RaftType.Input.copy(fontFamily = RaftMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        joined?.takeIf { it.isNotBlank() }?.let { joinedDate ->
-            MembersHumanInfoItem(label = stringResource(MR.strings.member_label_joined)) {
-                Text(
-                    text = joinedDate,
-                    style = RaftType.Input.copy(fontFamily = RaftMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+    }
+    if (roleHelpOpen) {
+        MembersHumanRoleHelpDialog(onDismiss = { roleHelpOpen = false })
     }
 }
 
 @Composable
-private fun MembersHumanInfoItem(
-    label: String,
-    content: @Composable () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
-        Text(
-            text = label,
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        content()
+private fun MembersHumanDeparture.localizedLabel(): String =
+    when (this) {
+        MembersHumanDeparture.Left -> stringResource(MR.strings.member_status_left)
+        MembersHumanDeparture.Removed -> stringResource(MR.strings.member_role_removed)
     }
-}
 
 @Composable
-private fun MembersHumanRoleChip(
-    label: String,
-    backgroundColor: Color
-) {
-    Box(
-        modifier = Modifier
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-            .background(backgroundColor)
-            .padding(horizontal = RaftAppSpacing.Sm, vertical = 3.dp)
+private fun MembersHumanRoleBadge.localizedLabel(): String =
+    when (this) {
+        MembersHumanRoleBadge.Owner -> stringResource(MR.strings.member_role_owner)
+        MembersHumanRoleBadge.Admin -> stringResource(MR.strings.member_role_admin)
+        MembersHumanRoleBadge.Member -> stringResource(MR.strings.member_role_member)
+        MembersHumanRoleBadge.Guest -> stringResource(MR.strings.channel_member_role_guest)
+        MembersHumanRoleBadge.Unknown -> stringResource(MR.strings.member_role_unknown)
+    }
+
+@Composable
+private fun MembersHumanRoleHelpDialog(onDismiss: () -> Unit) {
+    RaftUnifiedDialog(
+        title = stringResource(MR.strings.member_title_human_roles),
+        onDismiss = onDismiss,
+        // Web RolePermissionHelpDialog: DialogCard max-w-md, rows stack-y-2.
+        maxWidth = 448.dp
     ) {
-        Text(
-            text = label,
-            style = RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            MembersAgentRoleHelpRow(
+                role = stringResource(MR.strings.member_role_owner),
+                summary = stringResource(MR.strings.member_roles_help_owner_summary),
+                details = stringResource(MR.strings.member_roles_help_owner_details)
+            )
+            MembersAgentRoleHelpRow(
+                role = stringResource(MR.strings.member_role_admin),
+                summary = stringResource(MR.strings.member_roles_help_admin_summary),
+                details = stringResource(MR.strings.member_roles_help_human_admin_details)
+            )
+            MembersAgentRoleHelpRow(
+                role = stringResource(MR.strings.member_role_member),
+                summary = stringResource(MR.strings.member_roles_help_member_summary),
+                details = stringResource(MR.strings.member_roles_help_human_member_details)
+            )
+        }
     }
 }
 
@@ -8437,47 +8797,31 @@ private fun MembersHumanCreatedAgentsSection(
     member: MemberProfile,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    fixtureStatusFallbackEnabled: Boolean = false
+    fixtureStatusFallbackEnabled: Boolean = false,
+    onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null
 ) {
     val createdAgents = member.createdAgents
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+    MembersHumanSection(
+        title = stringResource(MR.strings.member_section_created_agents),
+        count = createdAgents.size.toString()
     ) {
-        MembersDetailSectionDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-        ) {
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents).raftDisplayUppercase())
-            Text(
-                text = createdAgents.size.toString(),
-                style = RaftType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
-            )
-        }
         if (createdAgents.isEmpty()) {
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.member_state_no_created_agents),
-                style = RaftType.Body.copy(
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    fontStyle = FontStyle.Italic
-                ),
-                color = RaftColor.TextMutedGray.copy(alpha = 0.75f)
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foregroundHint
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-            ) {
-                createdAgents.forEach { agent ->
+            // Web: raft-ui ListRowGroup (the inset card) of AvatarListRows, hairlines between rows.
+            RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+                createdAgents.forEachIndexed { index, agent ->
                     MembersHumanCreatedAgentRow(
                         agent = agent,
+                        divider = index > 0,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
-                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+                        onClick = onOpenCreatedAgent?.let { open -> { open(agent) } }
                     )
                 }
             }
@@ -8487,22 +8831,15 @@ private fun MembersHumanCreatedAgentsSection(
 
 @Composable
 private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).raftDisplayUppercase())
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.member_action_remove_member),
-            leadingIcon = RaftLucideIconName.Trash2,
-            minHeight = 40.dp,
-            backgroundColor = RaftColor.AccentRed,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = 3.dp),
-            onClick = onRemoveMember
+    MembersHumanSection(title = stringResource(MR.strings.member_section_actions)) {
+        // Web: raft-ui Button size="lg" variant="danger", full width, Trash2 18.
+        RaftButton(
+            text = stringResource(MR.strings.member_action_remove_member),
+            onClick = onRemoveMember,
+            variant = RaftButtonVariant.Danger,
+            size = RaftButtonSize.Lg,
+            leadingIcon = { MembersHumanGlyph(RaftLucideIconName.Trash2, 18.dp) },
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -8510,9 +8847,11 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
 @Composable
 private fun MembersHumanCreatedAgentRow(
     agent: AgentProfile,
+    divider: Boolean,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    fixtureStatusFallbackEnabled: Boolean = false
+    fixtureStatusFallbackEnabled: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     val profile = remember(agent) { agent.toStaticMembersProfile() }
     val observedIndicatorState =
@@ -8526,55 +8865,27 @@ private fun MembersHumanCreatedAgentRow(
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
-    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
-    val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
     val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.25f))
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = RaftAppSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MembersAvatar(
-            member = profile,
-            avatarSize = 32.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = profile.displayName,
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
-                    ?: profile.detailRoleLabel,
-                style = RaftType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+    // Web CreatedAgentRow: AvatarListRow with the list-row avatar, the name, the runtime as the
+    // mono subtitle and the StatusDot on the right; the row opens the agent's profile.
+    RaftListRow(
+        title = profile.displayName,
+        onClick = onClick,
+        divider = divider,
+        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+            ?: profile.detailRoleLabel,
+        leading = { MembersStickerAvatar(profile, RaftAvatarSize.Md, memberAvatarResolver) },
+        trailing = observedDisplayState?.let { observed ->
+            {
+                // Unknown is not Offline: no dot until something is observed (task #256).
+                RaftStatusIndicator(
+                    color = observed.color,
+                    size = 10.dp,
+                    pulsing = observed.pulsing
+                )
+            }
         }
-        // Unknown is not Offline: no dot until something is observed (task #256).
-        observedDisplayState?.let { observed ->
-            RaftStatusIndicator(
-                color = observed.color,
-                size = 10.dp,
-                pulsing = observed.pulsing
-            )
-        }
-    }
+    )
 }
 
 private val MembersAgentAvatarPickerCellSize = 40.dp
@@ -14080,14 +14391,6 @@ private val MemberProfile.detailRoleLabel: String
                 MemberKind.System -> "System"
                 MemberKind.External -> "External"
             }
-
-private fun MemberProfile.membersHumanRoleChipColor(): Color =
-    when (roleDescription?.trim()?.lowercase()) {
-        "owner" -> RaftColor.AccentOrange
-        "admin" -> RaftColor.AccentPink
-        "member" -> RaftColor.AccentLavender
-        else -> if (membershipStatus == "removed") RaftColor.EmptyStateGray else RaftColor.AccentLavender
-    }
 
 private fun MemberProfile.membersResolvedAgentStatus(
     summaryStatus: String?,
