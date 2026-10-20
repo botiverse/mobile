@@ -25,15 +25,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -644,15 +645,22 @@ private fun RaftLookFilterPopover(
                     modifier = Modifier.weight(1f)
                 )
                 if (showClearWhenSelected && selectedIds.isNotEmpty()) {
+                    // raft-ui ComboboxClear: an `h-7 px-2` ghost in `text-footnote` semibold
+                    // `foreground-muted`.
                     Box(
-                        modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 10.dp, vertical = 4.dp)
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(RaftAppRadius.Control))
+                            .clickable(onClick = onClear)
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = stringResource(MR.strings.common_clear),
-                            style = RaftType.Caption
-                                .copy(fontSize = 12.sp, lineHeight = 16.sp, textDecoration = TextDecoration.Underline)
+                            style = RaftType.Body
+                                .copy(fontSize = 13.sp, lineHeight = 18.sp)
                                 .withRaftFontWeight(FontWeight.SemiBold),
-                            color = RaftColor.TextBlack,
+                            color = RaftColor.TextMuted,
                             maxLines = 1
                         )
                     }
