@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -80,8 +82,15 @@ fun MarkdownTable(
     val tableStoke = LocalMarkdownColors.current.tableStroke
     val tableSeparatorThickness = LocalMarkdownDimens.current.tableSeparatorThickness
 
+    // Raft: a wide table scrolls sideways; at its start a back-direction drag goes to the host's
+    // full-page back swipe, away from it the table keeps the drag.
+    val tableScrollState = rememberLazyListState()
+    val tableBackSwipe = rememberRaftBackSwipeScroll(tableScrollState)
     LazyRow(
+        state = tableScrollState,
+        userScrollEnabled = tableBackSwipe.userScrollEnabled,
         modifier = Modifier
+            .then(tableBackSwipe.modifier)
             .fillMaxWidth()
             .wrapContentHeight()
             .bouncesEnable(false)

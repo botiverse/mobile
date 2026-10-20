@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.runtime.Composable
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
@@ -49,6 +50,8 @@ internal fun RaftTasksDetailOverlay(
     bottomInset: Dp,
     content: @Composable (Modifier) -> Unit,
 ) {
+    // A right swipe must not pop the page underneath the open task detail.
+    RaftBlockBackSwipe()
     Box(modifier = Modifier.fillMaxSize().padding(bottom = bottomInset)) {
     // Touch guard under the whole overlay: Compose-level events that the panel does not consume
     // (it hosts a native child page outside Compose hit testing) stop here instead of reaching

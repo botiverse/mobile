@@ -63,8 +63,8 @@ class RaftBackSwipeTest {
         val chips = Rect(0f, 120f, 400f, 160f)
         fun regions(pagerConsumes: Boolean, chipsConsume: Boolean) =
             listOf(
-                RaftBackSwipeRegionSnapshot(pager) { pagerConsumes },
-                RaftBackSwipeRegionSnapshot(chips) { chipsConsume },
+                RaftBackSwipeRegionSnapshot({ pager }, { pagerConsumes }),
+                RaftBackSwipeRegionSnapshot({ chips }, { chipsConsume }),
             )
         // Pager on its first page, chip row at its start: the host takes the back swipe.
         assertFalse(raftBackSwipeConsumedAt(Offset(200f, 140f), regions(false, false)))
@@ -78,21 +78,42 @@ class RaftBackSwipeTest {
     }
 
     @Test
-    fun emptyBoundsNeverMatch() {
-        val offscreen = listOf(RaftBackSwipeRegionSnapshot(Rect.Zero) { true })
-        assertFalse(raftBackSwipeConsumedAt(Offset.Zero, offscreen))
+    fun emptyOrMissingBoundsNeverMatch() {
+        assertFalse(raftBackSwipeConsumedAt(Offset.Zero, listOf(RaftBackSwipeRegionSnapshot({ Rect.Zero }, { true }))))
+        assertFalse(raftBackSwipeConsumedAt(Offset.Zero, listOf(RaftBackSwipeRegionSnapshot({ null }, { true }))))
+    }
+
+    @Test
+    fun wholePageRegionsMatchEverywhere() {
+        val overlay = listOf(RaftBackSwipeRegionSnapshot({ null }, { true }, wholePage = true))
+        assertTrue(raftBackSwipeConsumedAt(Offset(-5f, 9000f), overlay))
+    }
+
+    @Test
+    fun overSlopAndFlingVelocity() {
+        assertEquals(-4f, raftOverSlopPx(-14f, slop))
+        assertEquals(3f, raftOverSlopPx(13f, slop))
+        // Finger velocity left in LTR is forward, clamped to the platform maximum.
+        assertEquals(800f, raftForwardFlingVelocity(-800f, isLtr = true, maximumFlingVelocity = 8000f))
+        assertEquals(8000f, raftForwardFlingVelocity(-20000f, isLtr = true, maximumFlingVelocity = 8000f))
+        assertEquals(-8000f, raftForwardFlingVelocity(-20000f, isLtr = false, maximumFlingVelocity = 8000f))
     }
 
     @Test
     fun registryConvertsHostPointsAndForgetsUnregisteredRegions() {
         val registry = RaftBackSwipeRegions()
         registry.density = 3f
-        val region = registry.register { true }
-        assertFalse(registry.contentConsumesBackSwipeAtPoint(50.0, 50.0), "unplaced region has empty bounds")
-        region.bounds = Rect(0f, 300f, 1206f, 2400f)
+        var bounds: Rect? = null
+        val region = registry.register(bounds = { bounds }, consumesBackSwipe = { true })
+        assertFalse(registry.contentConsumesBackSwipeAtPoint(50.0, 50.0), "unplaced region has no bounds")
+        bounds = Rect(0f, 300f, 1206f, 2400f)
         assertTrue(registry.contentConsumesBackSwipeAtPoint(50.0, 200.0)) // 150, 600 px
         assertFalse(registry.contentConsumesBackSwipeAtPoint(50.0, 50.0)) // 150, 150 px: header
         registry.unregister(region)
         assertFalse(registry.contentConsumesBackSwipeAtPoint(50.0, 200.0))
+        val overlay = registry.registerWholePage()
+        assertTrue(registry.contentConsumesBackSwipeAtPoint(1.0, 1.0))
+        registry.unregister(overlay)
+        assertEquals(0, registry.regionCount)
     }
 }

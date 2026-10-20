@@ -300,6 +300,7 @@ internal fun ReleaseNotesWebViewBody(
     RaftBackHandler(
         enabled = handlesPageBack,
         label = "release_notes_webview",
+        blocksBackSwipe = false,
         onBack = {
             performSettingsWebViewBack(
                 canGoBack = navigationState.canGoBack,

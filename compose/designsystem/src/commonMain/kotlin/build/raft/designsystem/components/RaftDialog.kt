@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -166,6 +167,8 @@ fun RaftDialog(
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
+    // A right swipe must not pop the page underneath an open dialog.
+    RaftBlockBackSwipe()
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
@@ -285,6 +288,8 @@ fun RaftSheet(
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
+    // A right swipe must not pop the page underneath an open dialog.
+    RaftBlockBackSwipe()
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),

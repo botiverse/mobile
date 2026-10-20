@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -457,6 +458,8 @@ private fun ThreadInlineAudioSeekBar(
             .pointerInput(seekEnabled, totalTimeMs) {
                 detectTapGestures(onTap = { offset -> if (seekEnabled) onSeek(timeAt(offset.x)) })
             }
+            // The seek bar keeps horizontal drags from the host back swipe.
+            .raftKeepsBackSwipe(seekEnabled)
             .pointerInput(seekEnabled, totalTimeMs) {
                 detectHorizontalDragGestures(
                     onDragStart = { offset ->
