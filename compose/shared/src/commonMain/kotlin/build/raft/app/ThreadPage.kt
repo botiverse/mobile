@@ -32850,6 +32850,7 @@ private fun ThreadMembersPagerRow(
         trailingIcon = RaftLucideIconName.UserMinus.takeIf { member.canRemove && !removing },
         trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
         onTrailingClick = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
+        trailingContentDescription = stringResource(MR.strings.member_action_remove_member),
         onClick = { onOpen(member) }
     )
 }

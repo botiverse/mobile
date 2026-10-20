@@ -421,6 +421,7 @@ private fun AddComputerCommandRow(
         RaftBrutalIconButton(
             iconName = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
             onClick = { onIntent(SharedSettingsIntent.CopyAddComputerCommand(copyTarget)) },
+            contentDescription = stringResource(if (copied) MR.strings.common_copied else MR.strings.common_copy),
             size = 30.dp,
             backgroundColor = RaftColor.SurfaceWhite
         )

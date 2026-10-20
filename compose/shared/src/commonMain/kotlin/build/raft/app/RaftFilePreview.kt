@@ -8130,6 +8130,7 @@ private fun RaftFilePreviewVideoControls(
             RaftBrutalIconButton(
                 iconName = if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play,
                 onClick = { if (canPlay) onTogglePlay() },
+                contentDescription = stringResource(if (isPlaying) MR.strings.common_pause else MR.strings.common_play),
                 enabled = canPlay,
                 size = 30.dp,
                 iconSize = 16.dp,
@@ -9070,6 +9071,7 @@ internal fun RaftFilePreviewOverflowMenuButton(
         onClick = {
             menuAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
         },
+        contentDescription = stringResource(MR.strings.tab_more),
         size = 30.dp,
         modifier = modifier.raftCaptureLiveRootAnchor(menuAnchor)
     )

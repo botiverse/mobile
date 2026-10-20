@@ -252,6 +252,8 @@ private fun ThreadInlineVideoSurface(
                                 VideoPlayControl.PLAY
                             }
                     },
+                    contentDescription =
+                        stringResource(if (playState == PlayState.PLAYING) MR.strings.common_pause else MR.strings.common_play),
                     modifier = Modifier.align(Alignment.BottomEnd).padding(RaftAppSpacing.Sm),
                     backgroundColor = RaftColor.SurfaceWhite,
                     size = 34.dp

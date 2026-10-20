@@ -364,6 +364,7 @@ internal fun ThreadInlineAudioControls(
         RaftBrutalIconButton(
             iconName = if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play,
             onClick = onTogglePlay,
+            contentDescription = stringResource(if (isPlaying) MR.strings.common_pause else MR.strings.common_play),
             enabled = canPlay,
             size = 28.dp,
             iconSize = 14.dp,

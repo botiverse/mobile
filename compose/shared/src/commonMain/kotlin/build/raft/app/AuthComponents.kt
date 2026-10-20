@@ -473,6 +473,10 @@ internal fun AuthTextField(
                         RaftBrutalIconButton(
                             iconName = if (passwordVisible) RaftLucideIconName.EyeOff else RaftLucideIconName.Eye,
                             onClick = { passwordVisible = !passwordVisible },
+                            contentDescription =
+                                stringResource(
+                                    if (passwordVisible) MR.strings.common_hide_password else MR.strings.common_show_password
+                                ),
                             enabled = enabled,
                             size = 28.dp,
                             iconSize = 15.dp

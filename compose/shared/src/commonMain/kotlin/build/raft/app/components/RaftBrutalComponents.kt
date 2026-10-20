@@ -1756,12 +1756,13 @@ internal fun RaftAnchoredToolbarChip(
 }
 
 /**
- * Legacy-named icon button; renders the design-system [RaftIconButton] (`icon-md` 32dp up to
- * a 38dp [size], `icon-lg` 44dp above), its variant from [backgroundColor]
- * ([raftIconButtonVariantFor]: the paper default is the ghost icon button). The design
- * system has no long-press action, no unlabelled icon button (its tooltip is required) and
- * no icon button under 24dp, so those callers keep the raft-look box ([RaftLookIconButton]).
- * The border / shadow / disabled-colour parameters of the retired brutal look are ignored.
+ * Legacy-named icon button; renders the design-system [RaftIconButton] (size from
+ * [raftIconButtonSizeFor]: `xs` 24dp, `sm` 28dp, `icon-md` 32dp, `icon-lg` 44dp), its variant
+ * from [backgroundColor] ([raftIconButtonVariantFor]: the paper default is the ghost icon
+ * button), named and tooltipped by [contentDescription] (required from 24dp up: the design
+ * system's icon button needs a name). The design system has no icon button under 24dp, so
+ * those callers keep the raft-look box ([RaftLookIconButton]). The border / shadow /
+ * disabled-colour parameters of the retired brutal look are ignored.
  * Prefer `build.raft.designsystem.components.RaftIconButton` in new code.
  */
 @Suppress("UNUSED_PARAMETER")
@@ -1789,7 +1790,7 @@ internal fun RaftBrutalIconButton(
     iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
 ) {
     val tooltip = contentDescription?.takeIf { it.isNotBlank() }
-    if (onLongClick != null || tooltip == null || size < 24.dp) {
+    if (size < 24.dp) {
         RaftLookIconButton(
             iconName = iconName,
             onClick = onClick,
@@ -1813,7 +1814,9 @@ internal fun RaftBrutalIconButton(
         modifier = modifier,
         variant = raftIconButtonVariantFor(backgroundColor),
         size = raftIconButtonSizeFor(size),
-        enabled = enabled
+        enabled = enabled,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel
     ) {
         // An explicit ink stays (media controls on a scrim); the legacy black follows the variant.
         val explicitInk = iconColor.takeIf { enabled && it != RaftLegacyIconInkArgb }
