@@ -79,6 +79,23 @@ class RaftMarkdownTaskRefChipTest {
     }
 
     @Test
+    fun taskChipsKeepAGapFromCjkPunctuationAndEachOther() {
+        val body = "（#92）和#209#7"
+        val statuses = mapOf(92 to TaskStatus.InReview, 209 to TaskStatus.Done)
+        val annotated = paragraph(body, raftMarkdownAnnotator(content = body, taskStatuses = statuses))
+        val boxes = annotated.raftInlineBoxRanges()
+        assertEquals(3, boxes.size)
+        val gap = "\uFFFC\u2060"
+        // Every chip is flanked by its reserved margin, so "（" / "）" and a neighbouring chip never touch it.
+        assertTrue(annotated.text.startsWith("（$gap"), annotated.text)
+        boxes.forEach { box ->
+            assertEquals(gap, annotated.text.substring(box.start - 2, box.start))
+            assertEquals("\u2060\uFFFC", annotated.text.substring(box.end, box.end + 2))
+        }
+        assertTrue(annotated.raftMarkdownInlineContentIds().contains(raftInlineGapInlineId(2.dp)))
+    }
+
+    @Test
     fun taskChipInlineContentIsBuiltOncePerTheme() {
         val light = raftMarkdownTaskChipInlineContent(dark = false)
         val dark = raftMarkdownTaskChipInlineContent(dark = true)

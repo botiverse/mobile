@@ -101,7 +101,8 @@ internal data class RaftTaskStatusPixelStyle(
  * edge, `rounded-sticker`, `px-1.5`, bold sticker-ink text, no pixel.
  *
  * Horizontal padding is carried by placeholders ([leadingGap], [trailingGap]) inside the boxed
- * range because the painted box does not reserve advance width (see [RaftInlineBoxStyle]).
+ * range (the pixel lives in the leading one); the box's margin is reserved outside it by
+ * [withRaftInlineBox].
  */
 @Immutable
 internal data class RaftMarkdownTaskChipStyle(
@@ -124,6 +125,9 @@ private val RaftMarkdownTaskChipPaddingEnd = 6.dp
 private val RaftMarkdownTaskBadgePaddingX = 6.dp
 private val RaftMarkdownTaskBadgeEdge = 1.5.dp
 private val RaftMarkdownTaskChipVerticalPadding = 1.dp
+// Outer gap reserved by withRaftInlineBox so adjacent chips / CJK punctuation never touch the
+// chip (web `mx-0.5`-sized breathing room; the chip padding itself lives in the lead/trail gaps).
+private val RaftMarkdownTaskChipMargin = 2.dp
 
 internal fun raftMarkdownTaskChipStyle(
     status: TaskStatus?,
@@ -140,6 +144,8 @@ internal fun raftMarkdownTaskChipStyle(
                     paddingTop = RaftMarkdownTaskChipVerticalPadding,
                     paddingBottom = RaftMarkdownTaskChipVerticalPadding,
                     cornerRadius = RaftAppRadius.Sticker,
+                marginStart = RaftMarkdownTaskChipMargin,
+                marginEnd = RaftMarkdownTaskChipMargin,
                 ),
             pixel = null,
             textColor = RaftUiPalette.inactiveForeground,
@@ -156,6 +162,8 @@ internal fun raftMarkdownTaskChipStyle(
                 paddingTop = RaftMarkdownTaskChipVerticalPadding,
                 paddingBottom = RaftMarkdownTaskChipVerticalPadding,
                 cornerRadius = RaftAppRadius.Sticker,
+                marginStart = RaftMarkdownTaskChipMargin,
+                marginEnd = RaftMarkdownTaskChipMargin,
             ),
         pixel =
             RaftTaskStatusPixelStyle(

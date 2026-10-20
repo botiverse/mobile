@@ -1293,7 +1293,8 @@ private object RaftMarkdownTextProvider : TextProvider {
         val resolvedInlineContent =
             remember(resolvedText, inlineContent, permalinkContent) {
                 resolvedText.filteredRaftMarkdownInlineContent(
-                    inlineContent + permalinkContent.inlineContent
+                    inlineContent + permalinkContent.inlineContent +
+                        raftInlineGapInlineContent(resolvedText.raftMarkdownInlineContentIds())
                 )
             }
         logMarkdownSpike(
