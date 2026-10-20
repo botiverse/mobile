@@ -18784,11 +18784,6 @@ private fun ThreadMessagesListContent(
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
     // whole thread open, so a row keeps its state when it scrolls away and back.
     val longMessageCollapseController = remember(threadInstanceKey) { RaftLongMessageCollapseController() }
-    LaunchedEffect(longMessageCollapseController, listState) {
-        snapshotFlow { listState.raw.layoutInfo.viewportSize }
-            .distinctUntilChanged()
-            .collect { size -> longMessageCollapseController.onViewportMeasured(size.width, size.height) }
-    }
     LaunchedEffect(longMessageCollapseController, renderPayload.focusedMessageId, renderPayload.focusedMessageRequestNonce) {
         // A jump to a message shows it in full (its target may sit in the clipped part).
         longMessageCollapseController.autoExpand(renderPayload.focusedMessageId)
@@ -18980,12 +18975,19 @@ private fun ThreadMessagesListContent(
     val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
     LaunchedEffect(longMessageCollapseController, activeInlineSearchMessageId, inlineSearchQuery) {
         val messageId = activeInlineSearchMessageId ?: return@LaunchedEffect
-        val body =
-            renderPayload.originMessage?.takeIf { it.id == messageId }?.body
-                ?: renderPayload.messages.firstOrNull { it.id == messageId }?.body
+        val message =
+            renderPayload.originMessage?.takeIf { it.id == messageId }
+                ?: renderPayload.messages.firstOrNull { it.id == messageId }
                 ?: return@LaunchedEffect
+        // The body as shown: the translation when one is displayed, plus the original.
+        val shownTranslation =
+            if (translationStore != null) {
+                resolveThreadMessageTranslationUi(message, translationState)?.displayBody
+            } else {
+                null
+            }
         // Search matches are per message; a hit in the body may sit in the clipped part.
-        if (raftLongMessageSearchHitInBody(body, inlineSearchQuery)) {
+        if (listOfNotNull(message.body, shownTranslation).any { body -> raftLongMessageSearchHitInBody(body, inlineSearchQuery) }) {
             longMessageCollapseController.autoExpand(messageId)
         }
     }
@@ -20963,6 +20965,13 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    .raftLongMessageCollapseViewport(
+                        controller = longMessageCollapseController,
+                        verticalContentPaddingPx =
+                            with(LocalDensity.current) {
+                                (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp).roundToPx()
+                            }
+                    )
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     .touchListenerWithConfiguration { type, position, touchSlop ->
@@ -24801,65 +24810,65 @@ private fun ThreadMessageCardContent(
                                     if (translation?.pendingPlaceholder == true) {
                                         ThreadMessageTranslationPendingPlaceholder()
                                     } else {
-                                    RaftLongMessageCollapsibleBody(
-                                        controller = longMessageCollapse,
-                                        messageId = message.id,
-                                        contentKey = "${message.id}:${bodyForRender.length}:${bodyForRender.hashCode()}",
-                                        alignEnd = alignOwnMessageRight,
-                                        onToggle = {
-                                            tapMovementGate.rejectChildAction("long_message_toggle")
-                                            onToggleLongMessage()
-                                        }
-                                    ) {
-                                    if (richContentEnabled) {
-                                        val markdownRenderSignature =
-                                            remember(message.id, bodyForRender) {
-                                                if (bodyForRender == message.body) {
-                                                    message.threadMarkdownRenderSignature()
-                                                } else {
-                                                    message.copy(body = bodyForRender).threadMarkdownRenderSignature()
-                                                }
+                                        RaftLongMessageCollapsibleBody(
+                                            controller = longMessageCollapse,
+                                            messageId = message.id,
+                                            contentKey = "${message.id}:${bodyForRender.length}:${bodyForRender.hashCode()}",
+                                            alignEnd = alignOwnMessageRight,
+                                            onToggle = {
+                                                tapMovementGate.rejectChildAction("long_message_toggle")
+                                                onToggleLongMessage()
                                             }
-                                        LaunchedEffect(markdownRenderSignature) {
-                                            diagnosticsLogger(
-                                                "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                                    "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                                    "sourceBodyLen=${renderedBody.length} " +
-                                                    "bodyHash=${bodyForRender.hashCode().toString(16)} " +
-                                                    "context=$markdownTagContextSignature"
-                                            )
+                                        ) {
+                                            if (richContentEnabled) {
+                                                val markdownRenderSignature =
+                                                    remember(message.id, bodyForRender) {
+                                                        if (bodyForRender == message.body) {
+                                                            message.threadMarkdownRenderSignature()
+                                                        } else {
+                                                            message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                        }
+                                                    }
+                                                LaunchedEffect(markdownRenderSignature) {
+                                                    diagnosticsLogger(
+                                                        "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                            "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                            "sourceBodyLen=${renderedBody.length} " +
+                                                            "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                            "context=$markdownTagContextSignature"
+                                                    )
+                                                }
+                                                key(markdownRenderSignature) {
+                                                    RaftMarkdownBody(
+                                                        body = bodyForRender,
+                                                        fillWidth = !alignOwnMessageRight,
+                                                        textStyle = messageBodyTextStyle,
+                                                        highlightedMentions = highlightedMentions,
+                                                        isTagValid = isMarkdownTagValid,
+                                                        resolveTagLabel = resolveMarkdownTagLabel,
+                                                        inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                        activeTagKey = activeMarkdownTagKey,
+                                                        onOpenTagAction = { tag, actionId ->
+                                                            tapMovementGate.rejectChildAction("markdown_tag")
+                                                            onOpenMarkdownTag(tag, actionId)
+                                                        },
+                                                        onOpenUrl = { url ->
+                                                            tapMovementGate.rejectChildAction("markdown_url")
+                                                            onOpenMarkdownUrl(url)
+                                                        },
+                                                        performanceKey = messagePerformanceKey,
+                                                        performanceLogger = diagnosticsLogger
+                                                    )
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = bodyForRender,
+                                                    style = messageBodyTextStyle,
+                                                    color = RaftColor.TextBlack,
+                                                    modifier = Modifier
+                                                )
+                                            }
                                         }
-                                        key(markdownRenderSignature) {
-                                            RaftMarkdownBody(
-                                                body = bodyForRender,
-                                                fillWidth = !alignOwnMessageRight,
-                                                textStyle = messageBodyTextStyle,
-                                                highlightedMentions = highlightedMentions,
-                                                isTagValid = isMarkdownTagValid,
-                                                resolveTagLabel = resolveMarkdownTagLabel,
-                                                inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                                activeTagKey = activeMarkdownTagKey,
-                                                onOpenTagAction = { tag, actionId ->
-                                                    tapMovementGate.rejectChildAction("markdown_tag")
-                                                    onOpenMarkdownTag(tag, actionId)
-                                                },
-                                                onOpenUrl = { url ->
-                                                    tapMovementGate.rejectChildAction("markdown_url")
-                                                    onOpenMarkdownUrl(url)
-                                                },
-                                                performanceKey = messagePerformanceKey,
-                                                performanceLogger = diagnosticsLogger
-                                            )
-                                        }
-                                    } else {
-                                        Text(
-                                            text = bodyForRender,
-                                            style = messageBodyTextStyle,
-                                            color = RaftColor.TextBlack,
-                                            modifier = Modifier
-                                        )
-                                    }
-                                    }
                                     }
                                 }
                                 if (alignOwnMessageRight) {

@@ -7,7 +7,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -24,10 +24,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftLongMessageCollapseConversationPreference
+import build.raft.app.data.RaftLongMessageCollapseDetailKind
+import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.RaftLongMessageCollapsePreferenceRevision
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
@@ -88,17 +91,23 @@ internal fun raftLongMessageCollapseThresholdPx(
 ): Int = if (viewportHeightPx <= 0) 0 else (viewportHeightPx * fraction).roundToInt()
 
 /**
- * Whether a body is collapsible after a measurement. One-way: once collapsible it stays so for
- * the same content (an image that finishes loading only ever adds height, and a placeholder that
- * shrinks must not make the toggle flap). Without a threshold yet nothing collapses.
+ * Whether a body is collapsible after a measurement. The body must exceed the threshold by
+ * [minHiddenPx] to start collapsing; once it has collapsed ([wasCollapsible]) it stays so while it
+ * is still taller than the threshold at all. That hysteresis absorbs small shrinks (a placeholder
+ * swapped for a loaded image) without the toggle flapping, while a threshold that grows past the
+ * content (rotation, a taller viewport) drops the toggle instead of leaving one that does nothing.
+ * Without a threshold yet nothing collapses.
  */
 internal fun raftLongMessageCollapsible(
     wasCollapsible: Boolean,
     contentHeightPx: Int,
     thresholdPx: Int,
     minHiddenPx: Int
-): Boolean =
-    wasCollapsible || (thresholdPx > 0 && contentHeightPx > thresholdPx + minHiddenPx.coerceAtLeast(0))
+): Boolean {
+    if (thresholdPx <= 0) return false
+    val slack = if (wasCollapsible) 0 else minHiddenPx.coerceAtLeast(0)
+    return contentHeightPx > thresholdPx + slack
+}
 
 /** The height of the body's visible window. */
 internal fun raftLongMessageVisibleBodyHeight(
@@ -182,41 +191,52 @@ internal fun raftLongMessageToggleScrollPlan(
  */
 @Stable
 internal class RaftLongMessageCollapseController {
-    private val expandedIds = mutableStateMapOf<String, Boolean>()
-    private val collapsibleKeys = mutableStateMapOf<String, Boolean>()
+    // One MutableState per key: a row reads only its own entry, so a toggle or a newly collapsible
+    // body recomposes/remeasures that row alone (a SnapshotStateMap read subscribes to the map).
+    private val expandedIds = HashMap<String, MutableState<Boolean>>()
+    private val collapsibleKeys = HashMap<String, MutableState<Boolean>>()
     private val contentHeights = HashMap<String, Int>()
     private var viewport: RaftLongMessageViewport? = null
 
     var thresholdPx by mutableIntStateOf(0)
         private set
 
+    /** Called from the list container's measure pass, so the first frame already has a threshold. */
     fun onViewportMeasured(width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
         val next = raftLongMessageStableViewport(viewport, RaftLongMessageViewport(width, height))
         viewport = next
-        thresholdPx = raftLongMessageCollapseThresholdPx(next.height)
+        val threshold = raftLongMessageCollapseThresholdPx(next.height)
+        if (threshold != thresholdPx) thresholdPx = threshold
     }
 
-    fun isExpanded(messageId: String): Boolean = expandedIds[messageId] == true
+    private fun expandedState(messageId: String): MutableState<Boolean> =
+        expandedIds.getOrPut(messageId) { mutableStateOf(false) }
+
+    private fun collapsibleState(contentKey: String): MutableState<Boolean> =
+        collapsibleKeys.getOrPut(contentKey) { mutableStateOf(false) }
+
+    fun isExpanded(messageId: String): Boolean = expandedState(messageId).value
 
     fun setExpanded(messageId: String, expanded: Boolean) {
-        if (expanded) expandedIds[messageId] = true else expandedIds.remove(messageId)
+        val state = expandedState(messageId)
+        if (state.value != expanded) state.value = expanded
     }
 
     /** Jump-to-message and in-body search hits open the message fully. */
     fun autoExpand(messageId: String?) {
         val id = messageId?.takeIf { it.isNotBlank() } ?: return
-        if (!isExpanded(id)) expandedIds[id] = true
+        setExpanded(id, true)
     }
 
-    fun isCollapsible(contentKey: String): Boolean = collapsibleKeys[contentKey] == true
+    fun isCollapsible(contentKey: String): Boolean = collapsibleState(contentKey).value
 
-    /** Records a measurement and returns whether the body is collapsible (one-way latch). */
+    /** Records a measurement and returns whether the body is collapsible (see [raftLongMessageCollapsible]). */
     fun recordMeasurement(messageId: String, contentKey: String, contentHeightPx: Int, minHiddenPx: Int): Boolean {
         contentHeights[messageId] = contentHeightPx
-        val was = collapsibleKeys[contentKey] == true
-        val now = raftLongMessageCollapsible(was, contentHeightPx, thresholdPx, minHiddenPx)
-        if (now && !was) collapsibleKeys[contentKey] = true
+        val state = collapsibleState(contentKey)
+        val now = raftLongMessageCollapsible(state.value, contentHeightPx, thresholdPx, minHiddenPx)
+        if (now != state.value) state.value = now
         return now
     }
 
@@ -229,6 +249,26 @@ internal class RaftLongMessageCollapseController {
         return if (expanding) hidden else -hidden
     }
 }
+
+/**
+ * Feeds the list container's own constraints (minus its content padding) to [controller] in the
+ * measure pass, before any row is measured: the threshold follows the visible list area and is
+ * known on the first frame.
+ */
+internal fun Modifier.raftLongMessageCollapseViewport(
+    controller: RaftLongMessageCollapseController,
+    verticalContentPaddingPx: Int
+): Modifier =
+    layout { measurable, constraints ->
+        if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
+            controller.onViewportMeasured(
+                constraints.maxWidth,
+                (constraints.maxHeight - verticalContentPaddingPx).coerceAtLeast(0)
+            )
+        }
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
 
 private class RaftLongMessageBodyLayoutState {
     var collapsible: Boolean = false
@@ -249,17 +289,16 @@ internal fun RaftLongMessageCollapsibleBody(
     onToggle: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    if (controller == null) {
-        content()
-        return
-    }
+    // The wrapper stays in the tree when collapse is off (controller null) so switching the
+    // setting does not rebuild the message body; it then measures and places the content as is.
     val density = LocalDensity.current
     val minHiddenPx = with(density) { RaftLongMessageCollapseMinHiddenDp.dp.roundToPx() }
     val fadePx = with(density) { RaftLongMessageCollapseFadeDp.dp.toPx() }
     val toggleRowPx = with(density) { RaftLongMessageCollapseToggleRowDp.dp.roundToPx() }
-    val expanded = controller.isExpanded(messageId)
-    val latched = controller.isCollapsible(contentKey)
+    val expanded = controller?.isExpanded(messageId) == true
+    val collapsible = controller?.isCollapsible(contentKey) == true
     val layoutState = remember(contentKey) { RaftLongMessageBodyLayoutState() }
+    val fadePaint = remember { Paint() }
     Layout(
         content = {
             Layout(
@@ -268,7 +307,7 @@ internal fun RaftLongMessageCollapsibleBody(
                     Modifier
                         // Hit testing: content below the visible window must not take taps meant
                         // for rows underneath. Drawing is clipped in the same frame below.
-                        .then(if (latched && !expanded) Modifier.clipToBounds() else Modifier)
+                        .then(if (collapsible && !expanded) Modifier.clipToBounds() else Modifier)
                         .drawWithContent {
                             if (!layoutState.clipped) {
                                 drawContent()
@@ -278,7 +317,7 @@ internal fun RaftLongMessageCollapsibleBody(
                             val height = size.height
                             clipRect(0f, 0f, width, height) {
                                 val canvas = drawContext.canvas
-                                canvas.saveLayer(Rect(0f, 0f, width, height), Paint())
+                                canvas.saveLayer(Rect(0f, 0f, width, height), fadePaint)
                                 this@drawWithContent.drawContent()
                                 val fade = minOf(fadePx, height)
                                 drawRect(
@@ -302,32 +341,38 @@ internal fun RaftLongMessageCollapsibleBody(
                 val width =
                     (placeables.maxOfOrNull { it.width } ?: 0).coerceIn(constraints.minWidth, constraints.maxWidth)
                 val contentHeight = placeables.maxOfOrNull { it.height } ?: 0
-                val collapsible = controller.recordMeasurement(messageId, contentKey, contentHeight, minHiddenPx)
+                val nowCollapsible =
+                    controller?.recordMeasurement(messageId, contentKey, contentHeight, minHiddenPx) == true
                 val visibleHeight =
-                    raftLongMessageVisibleBodyHeight(contentHeight, controller.thresholdPx, collapsible, expanded)
-                layoutState.collapsible = collapsible
+                    raftLongMessageVisibleBodyHeight(
+                        contentHeight,
+                        controller?.thresholdPx ?: 0,
+                        nowCollapsible,
+                        expanded
+                    )
+                layoutState.collapsible = nowCollapsible
                 val clipped = visibleHeight < contentHeight
                 if (layoutState.clipped != clipped) layoutState.clipped = clipped
                 layout(width, visibleHeight) {
                     placeables.forEach { it.place(0, 0) }
                 }
             }
-            if (latched) {
+            if (collapsible) {
                 RaftLongMessageToggle(expanded = expanded, alignEnd = alignEnd, onClick = onToggle)
             }
         }
     ) { measurables, constraints ->
         val body = measurables[0].measure(constraints.copy(minHeight = 0))
-        val collapsible = layoutState.collapsible
+        val showToggle = layoutState.collapsible
         val toggle =
-            if (collapsible) {
+            if (showToggle) {
                 measurables.getOrNull(1)?.measure(constraints.copy(minWidth = 0, minHeight = 0))
             } else {
                 null
             }
         // The toggle row's space is reserved as soon as the body measures collapsible, even in
         // the frame before the toggle is composed, so the row height changes only once.
-        val toggleHeight = if (collapsible) toggleRowPx else 0
+        val toggleHeight = if (showToggle) toggleRowPx else 0
         val width = max(body.width, toggle?.width ?: 0).coerceIn(constraints.minWidth, constraints.maxWidth)
         layout(width, body.height + toggleHeight) {
             body.place(0, 0)
@@ -405,10 +450,10 @@ internal fun rememberRaftLongMessageCollapseConversationSetting(
 @Composable
 internal fun RaftLongMessageCollapseConversationPreference.localizedDetail(): String =
     stringResource(
-        when {
-            followsGlobal && globalEnabled -> MR.strings.conversation_long_message_collapse_follows_global_on
-            followsGlobal -> MR.strings.conversation_long_message_collapse_follows_global_off
-            effective -> MR.strings.conversation_long_message_collapse_override_on
-            else -> MR.strings.conversation_long_message_collapse_override_off
+        when (raftLongMessageCollapseDetailKind(globalEnabled, channelOverride)) {
+            RaftLongMessageCollapseDetailKind.FollowsGlobalOn -> MR.strings.conversation_long_message_collapse_follows_global_on
+            RaftLongMessageCollapseDetailKind.FollowsGlobalOff -> MR.strings.conversation_long_message_collapse_follows_global_off
+            RaftLongMessageCollapseDetailKind.OverrideOn -> MR.strings.conversation_long_message_collapse_override_on
+            RaftLongMessageCollapseDetailKind.OverrideOff -> MR.strings.conversation_long_message_collapse_override_off
         }
     )

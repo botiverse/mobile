@@ -1548,7 +1548,6 @@ HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$15$1;->invokeSuspend(Ljava/lan
 HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$18$1$1$4$1$5$2;->invoke(Landroidx/compose/runtime/Composer;I)V
 HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$18$1$1$4$1$5$2;->invoke(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$18$1$1$4$1$5$messageBodyBlock$1$1$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
-HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$18$1$1$4$1$5$messageBodyBlock$1;-><init>(Lbuild/raft/app/ThreadMessageTranslationUi;ZZLbuild/raft/app/ThreadLongMessageRenderPlan;ZLbuild/raft/app/RaftThreadMessageItem;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/Set;Lkotlin/jvm/functions/Function1;Lbuild/raft/app/ThreadMessageTapMovementGate;Lkotlin/jvm/functions/Function2;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Ljava/lang/String;)V
 HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$18$1$1$4$1$5$messageBodyBlock$1;->invoke(Landroidx/compose/runtime/Composer;I)V
 HSPLbuild/raft/app/ThreadPageKt$ThreadMessageCard$18$1$1$4$1$5$messageBodyBlock$1;->invoke(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/ThreadPageKt$ThreadMessagesList$15$1$$ExternalSyntheticLambda0;->invoke()Ljava/lang/Object;
