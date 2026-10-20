@@ -1,6 +1,6 @@
 {
   "comment": "Pinned Web design sources. Bump with update_sources.sh; versions must match slock packages/web (raft-ui, tailwindcss) at the pinned commit.",
-  "slockCommit": "b09755fcefeaea6286e42f0445388da97d98f1fe",
+  "slockCommit": "3383c86a853bf6c9076ae48aeff474f1120156f2",
   "sources": {
     "tailwind": {
       "path": "source/tailwindcss-4.3.3/theme.css",
@@ -8,19 +8,19 @@
       "sha256": "443d7af364200f8ec8352dc78e39485a118a1840d498c97967bf0ae402b39167"
     },
     "raftUiStyles": {
-      "path": "source/raft-ui-0.7.1/styles.css",
-      "origin": "npm:@botiverse/raft-ui@0.7.1/dist/styles.css",
-      "sha256": "03a09bc2cc12b8af610fc1af09d1ecc27144987baa8e19ff8cdcc776e59c1ce6"
+      "path": "source/raft-ui-0.10.3/styles.css",
+      "origin": "npm:@botiverse/raft-ui@0.10.3/dist/styles.css",
+      "sha256": "88b63110918e5a1018ab7852a20aecbcab18988cbc43a76da8b15024f7d9e28e"
     },
     "raftUiFoundation": {
-      "path": "source/raft-ui-0.7.1/foundation.css",
-      "origin": "npm:@botiverse/raft-ui@0.7.1/dist/foundation.css",
-      "sha256": "8bea55d645010db8b5064594d1f0f454ed8e48e2a8d523c21946d4300d18c108"
+      "path": "source/raft-ui-0.10.3/foundation.css",
+      "origin": "npm:@botiverse/raft-ui@0.10.3/dist/foundation.css",
+      "sha256": "69d8677d3d39d91b312e9909c3b8f21b575e749bbe6da358b1e72d55fd6ca5b7"
     },
     "web": {
       "path": "source/raft-web/index.css",
-      "origin": "botiverse/slock@b09755fcefeaea6286e42f0445388da97d98f1fe:packages/web/src/index.css",
-      "sha256": "e661c0943fed16c93fd5cd8b7d2fec6bed807a0a9ff54baa61e2a0559d5c0237"
+      "origin": "botiverse/slock@3383c86a853bf6c9076ae48aeff474f1120156f2:packages/web/src/index.css",
+      "sha256": "49c5fc2ffce4a07f229d9318f0ee12d7ac272d35e5737455d22cf8c07a3ab4b9"
     }
   }
 }
