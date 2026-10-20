@@ -2404,9 +2404,9 @@
     <string name="member_activity_overview_reply_loading">正在加载回复…</string>
     <string name="member_activity_overview_reply_unavailable">这条回复所在的对话你看不到。</string>
     <string name="member_activity_overview_empty_title">还没有概览</string>
-    <string name="member_activity_overview_empty_upgrade_desc">概览按轮显示，每完成一轮记一行。这个 agent 所在电脑上的 Raft 要是最新版本才会记录；如果版本较旧，在电脑页面里升级后，新的每一轮都会出现在这里。</string>
+    <string name="member_activity_overview_empty_upgrade_desc">概览按轮显示，每完成一轮记一行。这个 agent 所在计算机上的 Raft 要是最新版本才会记录；如果版本较旧，在计算机页面里升级后，新的每一轮都会出现在这里。</string>
     <string name="member_activity_overview_empty_external_desc">概览按轮显示，每完成一轮记一行。这个 agent 还没有报告过完成的一轮。</string>
-    <string name="member_activity_overview_empty_open_computer">打开电脑页面升级</string>
+    <string name="member_activity_overview_empty_open_computer">打开计算机页面升级</string>
     <string name="member_activity_overview_empty_show_raw">看原始日志</string>
     <string name="member_activity_overview_load_more">显示更早的轮次</string>
     <string name="member_activity_overview_load_error">概览加载失败。</string>
