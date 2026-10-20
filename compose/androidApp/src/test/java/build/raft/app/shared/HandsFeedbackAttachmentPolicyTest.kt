@@ -5,15 +5,21 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
-import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class HandsFeedbackAttachmentPolicyTest {
+    // The boundary case allocates two ~200 MB files; let JUnit delete them so local
+    // runs do not fill a tmpfs /tmp.
+    @get:Rule
+    val tmp = TemporaryFolder()
+
     @Test
     fun policyUsesHandsSdkLimits() {
         assertEquals(HandsFeedback.MAX_ATTACHMENTS, HandsFeedbackAttachmentPolicy.maxAttachments)
@@ -23,7 +29,7 @@ class HandsFeedbackAttachmentPolicyTest {
 
     @Test
     fun largeFileWithinPresignLimitIsNotRejectedByHost() {
-        val directory = createTempDirectory("hands-feedback-policy").toFile()
+        val directory = tmp.newFolder("hands-feedback-policy")
         val file = File(directory, "recording.mp4")
         RandomAccessFile(file, "rw").use { it.setLength(22_566_817L) }
 
@@ -32,7 +38,7 @@ class HandsFeedbackAttachmentPolicyTest {
 
     @Test
     fun exactPresignBoundaryIsAcceptedAndOverLimitIsSizeFailure() {
-        val directory = createTempDirectory("hands-feedback-boundary").toFile()
+        val directory = tmp.newFolder("hands-feedback-boundary")
         val exact = File(directory, "exact.mp4")
         val over = File(directory, "over.mp4")
         RandomAccessFile(exact, "rw").use { it.setLength(HandsFeedback.PRESIGN_MAX_BYTES) }
@@ -59,7 +65,7 @@ class HandsFeedbackAttachmentPolicyTest {
 
     @Test
     fun diagnosticsIsOmittedWhenAUserAttachmentUsesPresign() {
-        val directory = createTempDirectory("hands-feedback-diagnostics").toFile()
+        val directory = tmp.newFolder("hands-feedback-diagnostics")
         val largeUserFile = File(directory, "recording.mp4")
         val diagnostics = File(directory, "diagnostics.zip")
         RandomAccessFile(largeUserFile, "rw").use {
