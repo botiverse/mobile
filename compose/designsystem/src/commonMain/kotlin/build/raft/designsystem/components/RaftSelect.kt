@@ -53,7 +53,7 @@ internal data class RaftSelectTriggerLook(
 )
 
 /**
- * select.tsx trigger (an outline Button restyled as a field): `layer-card`, 1.5dp
+ * select.tsx trigger (an outline Button restyled as a field): `layer-card`, 1dp
  * `line-strong` edge, the value in `foreground` or the placeholder in `foreground-hint`,
  * a `foreground-hint` chevron. Invalid turns the edge `danger-strong`. Disabled takes the
  * button's disabled look (`fill-muted`, `line-hairline`, `foreground-disabled`).
@@ -78,7 +78,7 @@ internal fun raftSelectTriggerLook(
 
 /**
  * raft-ui 0.8.0 Select trigger: the field that opens a Select's list. At least 44dp,
- * control radius, 1.5dp `line-strong` edge on `layer-card`, 14dp before the text and 12dp
+ * control radius, 1dp `line-field` edge on `layer-card`, 14dp before the text and 12dp
  * after the 16dp chevron (inside the edge), 8dp gap. The [value] is `text-subhead`
  * semibold `foreground`; with no value the [placeholder] ("Select a role") is medium
  * `foreground-hint`. Inside a [RaftField] the text takes the field type (16/24) so it
@@ -121,7 +121,7 @@ fun RaftSelectTrigger(
             .raftFocusRing(focused, RaftRadius.Control, colors)
             .background(look.fill, shape)
             .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
-            .border(RaftStroke.Control, look.border, shape)
+            .border(RaftStroke.Field, look.border, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .semantics {
                 if (label != null) contentDescription = if (shown.isEmpty()) label else "$label, $shown"
@@ -132,7 +132,7 @@ fun RaftSelectTrigger(
                 }
                 if (invalid && enabled) error(field.error ?: RaftInvalidValueMessage)
             }
-            .padding(start = 14.dp + RaftStroke.Control, end = 12.dp + RaftStroke.Control, top = 6.dp, bottom = 6.dp),
+            .padding(start = 14.dp + RaftStroke.Field, end = 12.dp + RaftStroke.Field, top = 6.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -22,6 +22,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -53,7 +55,7 @@ object RaftTextFieldDefaults {
 /** Resolved colours of a field box (input, input group, textarea) in one state. */
 internal data class RaftFieldBoxLook(
     val fill: Color,
-    /** The 1.5dp border, always drawn (Input: "Always draw the ink border"). */
+    /** The 1dp `line-field` border, always drawn (Input: "Always draw the ink border"). */
     val border: Color,
     val text: Color,
     val placeholder: Color,
@@ -62,7 +64,7 @@ internal data class RaftFieldBoxLook(
 )
 
 /**
- * input.recipe.ts / input-group.tsx / textarea.tsx: `layer-card` with a 1.5dp `line-strong`
+ * input.recipe.ts / input-group.tsx / textarea.tsx: `layer-card` with a 1dp `line-field`
  * border; invalid turns the border `danger-strong` and changes nothing else; disabled is
  * `fill-muted`, a `line-hairline` border and `foreground-disabled` type. Disabled wins
  * over invalid: nobody can fix a disabled field. [readOnly] (page hand-off item 5, the
@@ -98,7 +100,7 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
 
 /**
  * raft-ui 0.8.0 Input, and InputGroup when it has addons: one line of text in a 44dp box,
- * a 1.5dp `line-strong` border on `layer-card`, control radius, 12dp side padding and
+ * a 1dp `line-field` border on `layer-card`, control radius, 12dp side padding and
  * the field type (`text-field`, 16/24 regular).
  *
  * Controlled: show [value] and update it from [onValueChange].
@@ -259,8 +261,8 @@ fun RaftTextarea(
                         .fillMaxWidth()
                         .heightIn(min = minHeight)
                         .raftFieldChrome(look, focused)
-                        // CSS `py-2.5 px-3` sit inside the 1.5dp border.
-                        .padding(horizontal = 12.dp + RaftStroke.Control, vertical = 10.dp + RaftStroke.Control),
+                        // CSS `py-2.5 px-3` sit inside the 1dp border.
+                        .padding(horizontal = 12.dp + RaftStroke.Field, vertical = 10.dp + RaftStroke.Field),
                 ) {
                     if (value.isEmpty() && placeholder != null) {
                         RaftText(placeholder, style = raftFieldTextStyle(look.placeholder))
@@ -303,14 +305,21 @@ internal fun raftCounterAlarm(count: Int, limit: Int, invalid: Boolean): Boolean
 @Composable
 private fun raftFieldTextStyle(color: Color): TextStyle = RaftTheme.typography.field.copy(color = color)
 
-/** The field box: focus ring outside, fill, and the 1.5dp border inside. */
+/**
+ * The field box: focus ring outside, fill, and the 1dp `line-field` border inside. A tap
+ * focuses a text field but draws no ring (the caret marks it); the ring shows after keyboard
+ * navigation only (raft-ui 0.9.6 input modality, raft-design States > Focus).
+ */
 @Composable
 private fun Modifier.raftFieldChrome(look: RaftFieldBoxLook, focused: Boolean): Modifier {
     val shape = RoundedCornerShape(RaftRadius.Control)
+    val ring =
+        focused &&
+            (LocalInputModeManager.current.inputMode == InputMode.Keyboard || LocalRaftFocusedPreview.current)
     return this
-        .raftFocusRing(focused, RaftRadius.Control, RaftTheme.colors)
+        .raftFocusRing(ring, RaftRadius.Control, RaftTheme.colors)
         .background(look.fill, shape)
-        .border(RaftStroke.Control, look.border, shape)
+        .border(RaftStroke.Field, look.border, shape)
 }
 
 @Composable
@@ -327,8 +336,8 @@ private fun RaftInputBox(
 ) {
     // input-group.tsx: an addon is `px-3`, trimmed to 8dp (icon) / 2dp (text) on the
     // control's side, and the control drops its own padding on that side. All of it sits
-    // inside the 1.5dp border.
-    val edge = 12.dp + RaftStroke.Control
+    // inside the 1dp border.
+    val edge = 12.dp + RaftStroke.Field
     val hasStart = leading != null || prefix != null
     val hasEnd = trailing != null || suffix != null
     Row(
