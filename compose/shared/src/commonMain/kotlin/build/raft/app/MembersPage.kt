@@ -7989,28 +7989,28 @@ private fun MembersHumanProfileSummary(
     member: MemberProfile,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
+    // raft-ui ProfilePanel head: the sticker avatar, the name in `text-title` and the handle
+    // in Space Mono hint ink.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = RaftAppSpacing.Md),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
     ) {
-        MembersAvatar(
+        MembersRaftAvatar(
             member = member,
-            avatarSize = 74.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
+            size = RaftAvatarSize.Lg,
+            memberAvatarResolver = memberAvatarResolver
         )
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Text(
+            RaftText(
                 text = member.displayName,
-                style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
-                color = RaftColor.TextBlack,
+                style = RaftTheme.typography.title,
+                color = RaftTheme.colors.foreground,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -8018,10 +8018,10 @@ private fun MembersHumanProfileSummary(
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                RaftText(
                     text = member.detailHandle,
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 14.sp, lineHeight = 18.sp),
-                    color = RaftColor.TextMutedGray,
+                    style = RaftTheme.typography.monoMeta,
+                    color = RaftTheme.colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -8042,19 +8042,12 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
     ) {
         MembersDetailSectionDivider()
         MembersDetailSectionTitle(stringResource(MR.strings.member_section_description))
-        val descriptionMissing = member.description.isNullOrBlank()
-        Text(
-            text = member.description?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_state_no_description),
-            style = RaftType.Body.copy(
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                fontStyle = if (descriptionMissing) FontStyle.Italic else FontStyle.Normal
-            ),
-            color = if (descriptionMissing) {
-                RaftColor.TextMutedGray.copy(alpha = 0.75f)
-            } else {
-                RaftColor.TextBlack
-            }
+        val description = member.description?.takeIf { it.isNotBlank() }
+        // raft-ui callout body; an empty value is hint ink, not italics (as the agent page).
+        RaftText(
+            text = description ?: stringResource(MR.strings.member_state_no_description),
+            style = RaftTheme.typography.callout,
+            color = if (description == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground
         )
     }
 }
@@ -8200,24 +8193,12 @@ private fun MembersHumanInfoSection(
         }
         member.email?.takeIf { it.isNotBlank() }?.let { email ->
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
-                Text(
-                    text = email,
-                    style = RaftType.Input.copy(fontFamily = RaftMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                MembersHumanInfoValue(text = email, maxLines = 2)
             }
         }
         joined?.takeIf { it.isNotBlank() }?.let { joinedDate ->
             MembersHumanInfoItem(label = stringResource(MR.strings.member_label_joined)) {
-                Text(
-                    text = joinedDate,
-                    style = RaftType.Input.copy(fontFamily = RaftMonoFamily, fontSize = 16.sp, lineHeight = 22.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                MembersHumanInfoValue(text = joinedDate, maxLines = 1)
             }
         }
     }
@@ -8228,19 +8209,26 @@ private fun MembersHumanInfoItem(
     label: String,
     content: @Composable () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
-        Text(
-            text = label,
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+    // The agent page's raft-ui DescriptionTerm over its value.
+    MembersAgentInfoField(label = label, modifier = Modifier.fillMaxWidth()) {
         content()
     }
+}
+
+@Composable
+private fun MembersHumanInfoValue(text: String, maxLines: Int) {
+    // Same value type as the agent page's Created date: Space Mono in foreground ink.
+    RaftText(
+        text = text,
+        style = RaftType.Body.copy(
+            fontFamily = RaftMonoFamily,
+            fontSize = MembersInfoValueFontSize,
+            lineHeight = MembersInfoValueLineHeight
+        ),
+        color = RaftTheme.colors.foreground,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable
@@ -8469,41 +8457,29 @@ private fun MembersHumanCreatedAgentsSection(
     fixtureStatusFallbackEnabled: Boolean = false
 ) {
     val createdAgents = member.createdAgents
+    // Same shape as the agent page's created agents: counted SectionEyebrow, hint-ink empty
+    // state, AvatarListRow rows in an inset group.
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-        ) {
-            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents))
-            Text(
-                text = createdAgents.size.toString(),
-                style = RaftType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextMutedGray.copy(alpha = 0.7f)
-            )
-        }
+        RaftSectionEyebrow(
+            text = stringResource(MR.strings.member_section_created_agents),
+            count = createdAgents.size.toString()
+        )
         if (createdAgents.isEmpty()) {
-            Text(
+            RaftText(
                 text = stringResource(MR.strings.member_state_no_created_agents),
-                style = RaftType.Body.copy(
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    fontStyle = FontStyle.Italic
-                ),
-                color = RaftColor.TextMutedGray.copy(alpha = 0.75f)
+                style = RaftTheme.typography.callout,
+                color = RaftTheme.colors.foregroundHint
             )
         } else {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-            ) {
-                createdAgents.forEach { agent ->
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                createdAgents.forEachIndexed { index, agent ->
                     MembersHumanCreatedAgentRow(
                         agent = agent,
+                        divider = index > 0,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
                         fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
@@ -8522,15 +8498,12 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
     ) {
         MembersDetailSectionDivider()
         MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions))
-        RaftBrutalActionButton(
+        // The agent page's raft-ui action button (Lg, full width); Danger as Delete Agent.
+        MembersAgentActionButton(
             label = stringResource(MR.strings.member_action_remove_member),
-            leadingIcon = RaftLucideIconName.Trash2,
-            minHeight = 40.dp,
-            backgroundColor = RaftColor.AccentRed,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = 3.dp),
+            iconName = RaftLucideIconName.Trash2,
+            enabled = true,
+            variant = RaftButtonVariant.Danger,
             onClick = onRemoveMember
         )
     }
@@ -8539,6 +8512,7 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
 @Composable
 private fun MembersHumanCreatedAgentRow(
     agent: AgentProfile,
+    divider: Boolean = false,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     fixtureStatusFallbackEnabled: Boolean = false
@@ -8555,55 +8529,29 @@ private fun MembersHumanCreatedAgentRow(
                 },
             fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
         )
-    val statusIndicatorState = observedIndicatorState ?: unknownMembersAgentStatusIndicatorState()
-    val statusDisplayState = statusIndicatorState.toMembersAgentStatusDisplayState()
     val observedDisplayState = observedIndicatorState?.toMembersAgentStatusDisplayState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.25f))
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = RaftAppSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        MembersAvatar(
-            member = profile,
-            avatarSize = 32.dp,
-            statusSize = 0.dp,
-            memberAvatarResolver = memberAvatarResolver,
-            showStatusOverlay = false
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = profile.displayName,
-                style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    // raft-ui AvatarListRow, as MembersAgentCreatedAgentRow.
+    RaftListRow(
+        title = profile.displayName,
+        divider = divider,
+        subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+            ?: profile.detailRoleLabel,
+        leading = {
+            MembersRaftAvatar(
+                member = profile,
+                size = RaftAvatarSize.Md,
+                memberAvatarResolver = memberAvatarResolver
             )
-            Text(
-                text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
-                    ?: profile.detailRoleLabel,
-                style = RaftType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        },
+        trailing = if (observedDisplayState != null) {
+            {
+                // Unknown is not Offline: no light until something is observed (task #256).
+                RaftStatusIndicator(color = observedDisplayState.color, size = 9.dp, pulsing = false)
+            }
+        } else {
+            null
         }
-        // Unknown is not Offline: no dot until something is observed (task #256).
-        observedDisplayState?.let { observed ->
-            RaftStatusIndicator(
-                color = observed.color,
-                size = 10.dp,
-                pulsing = observed.pulsing
-            )
-        }
-    }
+    )
 }
 
 private val MembersAgentAvatarPickerCellSize = 40.dp
