@@ -25,6 +25,7 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | Title | Area | Owner | Verified at | Status |
 |---|---|---|---|---|
 | [Thread fast-scroll blank rows: the reverseLayout re-anchor case](android-thread-scroll-blank-raft13.md) | thread / rendering | Mahua | 2026-10-18 | current |
+| [Mobile server switching: why only the current server holds a realtime socket](mobile-server-switch-realtime-scope.md) | realtime / multi-server | CC-Cata | 2026-10-20 | current |
 | [Kuikly release-set pin upgrade recipe](kuikly-release-pin-recipe.md) | build / dependencies | Mahua | 2026-10-19 | stale |
 | [Android high refresh rate: enabling 120Hz and telling real jank from measurement artifacts](android-high-refresh-rate-and-jank-attribution.md) | performance / android | 沙琪玛 | 2026-10-18 | current |
 | [Mermaid preview gesture ownership: keep diagram panning inside the card](mermaid-preview-gesture-boundary.md) | mermaid / gestures | Nathan | 2026-10-18 | current |
