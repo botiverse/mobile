@@ -273,6 +273,22 @@ fun RaftMenuSearchField(
     modifier: Modifier = Modifier,
     placeholder: String? = null,
     interactionSource: MutableInteractionSource? = null,
+) = RaftSearchRow(value, onValueChange, modifier, placeholder, interactionSource)
+
+/**
+ * [RaftMenuSearchField] with the room before the glyph and after the text as [inset]
+ * (12dp in a popup; 16dp in a sheet, on the page margin) and an optional
+ * [focusRequester] on the input itself (a sheet focuses its search row when it opens).
+ */
+@Composable
+internal fun RaftSearchRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    interactionSource: MutableInteractionSource? = null,
+    inset: Dp = 12.dp,
+    focusRequester: FocusRequester? = null,
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -285,14 +301,14 @@ fun RaftMenuSearchField(
             textStyle = style,
             cursorBrush = SolidColor(colors.foreground),
             interactionSource = source,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
             decorationBox = { inner ->
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 40.dp)
                         .raftInsetFocusOutline(raftIsFocused(source), colors.foreground)
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = inset),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

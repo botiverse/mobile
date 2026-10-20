@@ -179,6 +179,7 @@ Other checks:
 | `RaftSegmentedControl`, `RaftSegment` | SegmentedControl | Done | `fill-muted` track, sticker segment, counts, full width with weights (on its own line); never shrinks below its segments (`shrink-0`): in a narrow row it runs past the end |
 | `RaftToggleGroup`, `RaftToggleGroupItem` | ToggleGroup | Done | Same item as a segment; a toggle button (on / off), not a switch |
 | `RaftSelectTrigger`, `RaftSelect` | Select | Done | Value / placeholder, pressed, focused, invalid, disabled; field type inside a `RaftField`; read as a drop-down list with its label, value (or placeholder) and expanded state; the list is a dropdown menu exactly as wide as the trigger, and focus returns to the trigger after a keyboard pick |
+| `RaftCombobox`, `RaftMultiCombobox`, `RaftComboboxChipsTrigger`, `RaftComboboxOption`, `raftComboboxFilter`, `RaftComboboxSheetThreshold` | Combobox, ComboboxSelect (0.10.3) | Done | One or a few of many values, with search. Single: the field Select's trigger (`RaftSelectTrigger`, field type, label, error and invalid inside a `RaftField`); multiple: the same frame holding 28dp `fill-muted` chips (footnote semibold) that wrap, each with a 22dp remove button ("Remove Bugen"). Where the list opens (raft-ui team): a pick of at most `RaftComboboxSheetThreshold` (10, raft-design Select "one of up to 10 values") opens the Select's anchored list (no search, no keyboard; keyboard navigation and focus return as `RaftSelect`); more opens a bottom sheet (`RaftSheet`'s window and surface, titled by the label, full height) with the menu's search row at its top, not focused, so the keyboard comes up only on a tap; `create` (a value typed that is not an option) and `RaftMultiCombobox` always take the sheet, and with `create` the search row is focused on open and the first row offers "Use “text”" (+ glyph) unless the text is exactly an option's label. Rows keep the menu's metrics (36dp, callout medium; chosen bold + check; `brand-soft` highlight; optional leading icon / avatar and a caption description line), `text-caption` bold group labels, the caller's empty line ("No models match \"zz\"", a polite live region), Done for multiple, an optional Clear (28dp text button) at the end of the title. Search is `raftComboboxFilter`: every word of the query, ignoring case, in the label or a keyword. A single pick or a create closes the list; multiple stays open; Back and a tap outside close. Trigger: a drop-down list with label, value(s) and expanded state; each option one focus stop, selectable, with its selected state |
 | `RaftPickerTriggerButton` | PickerTriggerButton | Done | Rest (seam ring), applied filter (`info-soft`, no border), pressed, focused, invalid, disabled; 44dp touch target |
 | `RaftDropdownMenu`, `RaftMenuSurface`, `RaftMenuItem`, `RaftMenuLabel`, `RaftMenuSeparator`, `RaftMenuSearchField` | DropdownMenu, Select popup | Done | Hugs its rows (`IntrinsicSize.Max`, at least 240dp: so rows must answer intrinsic measurement, no `LazyColumn`, `RaftDescriptionList` or other subcomposed content unless a fixed `width` is passed); highlight `brand-soft`, current value bold + check, shortcut, disabled, an in-row top hairline (`divider`, CSS `border-t` inside the 36dp); the search row (16/24) takes the inset focus outline; keyboard: first row focused on open, arrows, Home / End, type-ahead; kept inside the safe area and above the keyboard |
 | `RaftDialog`, `RaftDialogSurface` | Dialog | Done | sm / md / lg, title, ×, description, body, footer; dialog radius 16. Cancel or a minor action in the footer (an announcement's "Not Now" too) is a `Ghost` button, never an underlined link |
@@ -263,7 +264,9 @@ Screenshot fixtures force these states with `LocalRaftPressedPreview`,
 every `RaftTooltip`, persistent; `icon_button_tooltip_*`) and `LocalRaftSpinnerStillStep`. `avatar_list_row_states_*`
 reproduces the visual-testing case `components.ui.avatar-list-row.states`; the
 interactive fixtures name their case ids in `InteractiveComponentScreenshotTest`.
-`menu_popup_*` renders a real menu and select list in their popups in a wide window. A real tap (not a
+`menu_popup_*` renders a real menu and select list in their popups in a wide window. `combobox_trigger_*`,
+`combobox_list_*` (the anchored list) and `combobox_sheet_*` (the sheet, create row included) hold the combobox as
+surfaces (no window); `RaftComboboxSemanticsTest` opens the real list and sheet, searches, creates and picks. A real tap (not a
 forced state) is checked by `RaftInteractionTest`: tapping an input draws the focus ring,
 a checkbox row toggles from its label, and a mouse over an icon button draws the press
 fill (and leaving removes it). `RaftDisplaySemanticsTest` and `RaftInteractiveSemanticsTest`
@@ -367,6 +370,18 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   (about 60% black) stands in for `layer-backdrop` (65% light / 60% dark). Dialogs appear
   without animation; the sheet slides up but closes without the slide, and has no swipe
   to dismiss or snap points (see the TODO above).
+- **Combobox on a phone.** raft-ui opens ComboboxSelect's list in a popup under the field;
+  on a phone the module opens a pick of more than `RaftComboboxSheetThreshold` values, a
+  `create` combobox and every multiple pick in a bottom sheet with the search row at its
+  top (raft-ui team, #proj-raft-ui; raft-design #617, overlays on a phone), and only
+  `create` focuses the search on open. The create row ("Use “text”", not raft-ui's
+  "Create “text”") comes first, where raft-ui appends it after the options. The sheet's
+  rows keep the menu's metrics (36dp, callout), not the Drawer page's 52dp place-to-go
+  rows, and a multiple pick marks rows with the check as Combobox does (not Select
+  `multiple`'s checkbox). The trigger is not an input: typing happens in the sheet, so
+  there is no type-to-filter in the field, no `maxTagCount` and no Left Arrow into the
+  chips. A chip's remove button is its 22dp box (no widened target); removing from the
+  sheet is the larger target. The sheet has no grab handle yet (as `RaftSheet`).
 - **Toast.** Only the surface: no host (stacking, timeout, swipe). The action's underline
   uses the font's default thickness and offset (CSS: 1.5px, 3px). `RaftToastSurface.Popover`
   is the pages' foreground in-app banner (hand-off §11); raft-ui itself puts every toast on

@@ -217,14 +217,27 @@ fun RaftSheetSurface(
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) = RaftSheetSurfaceImpl(title, modifier, description, clearNavigationBar = false, actions, content)
 
+/**
+ * The sheet surface behind [RaftSheetSurface] and [RaftSheet], with the parts the
+ * combobox's sheet adds: [headerAction] at the end of the title row (a text button such
+ * as Clear, bled into the 16dp margin so it doesn't grow the row), [pinned] edge to edge
+ * under the header (a search row that stays put while the list scrolls), and
+ * [fillContent]: [content] is laid out as given, without the sheet's scroll or padding
+ * (a lazy list that scrolls itself), and fills the sheet to its full height (82% of the
+ * window) with the actions under it. A fixture without a window must give the surface a
+ * height then.
+ */
 @Composable
-private fun RaftSheetSurfaceImpl(
+internal fun RaftSheetSurfaceImpl(
     title: String,
     modifier: Modifier,
     description: String?,
     clearNavigationBar: Boolean,
     actions: (@Composable ColumnScope.() -> Unit)?,
     content: (@Composable ColumnScope.() -> Unit)?,
+    headerAction: (@Composable () -> Unit)? = null,
+    pinned: (@Composable () -> Unit)? = null,
+    fillContent: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -243,20 +256,38 @@ private fun RaftSheetSurfaceImpl(
                 Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                RaftText(title, Modifier.semantics { heading() }, style = typography.headline, color = colors.foreground)
+                if (headerAction != null) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RaftText(title, Modifier.weight(1f).semantics { heading() }, style = typography.headline, color = colors.foreground)
+                        // A 28dp text button beside a 22dp title line: `-my-[3px] -mr-2`.
+                        Box(Modifier.raftBleed(end = 8.dp, vertical = 3.dp)) { headerAction() }
+                    }
+                } else {
+                    RaftText(title, Modifier.semantics { heading() }, style = typography.headline, color = colors.foreground)
+                }
                 if (description != null) RaftText(description, style = typography.callout, color = colors.foregroundMuted)
             }
+            pinned?.invoke()
             if (content != null) {
-                Column(
-                    Modifier
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    content = content,
-                )
+                if (fillContent) {
+                    Column(Modifier.fillMaxWidth().weight(1f), content = content)
+                } else {
+                    Column(
+                        Modifier
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                        content = content,
+                    )
+                }
             }
             if (actions != null) {
-                Box(Modifier.weight(1f, fill = false))
+                // Pushes the actions to the bottom of a short sheet; filling content already does.
+                if (!fillContent) Box(Modifier.weight(1f, fill = false))
                 Column(
                     Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -287,6 +318,30 @@ fun RaftSheet(
     actions: (@Composable ColumnScope.() -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
+    RaftSheetWindow(onDismissRequest, modifier) { surfaceModifier ->
+        RaftSheetSurfaceImpl(
+            title = title,
+            modifier = surfaceModifier,
+            description = description,
+            clearNavigationBar = true,
+            actions = actions,
+            content = content,
+        )
+    }
+}
+
+/**
+ * The window of a [RaftSheet]: the platform dialog with its scrim, the slide up, a tap on
+ * the scrim and Back calling [onDismissRequest], and the 82% height cap. [surface] draws
+ * the sheet with the modifier it is given (the caller's [modifier] plus the slide, the
+ * tap guard and the cap); pass it a [RaftSheetSurfaceImpl] with `clearNavigationBar`.
+ */
+@Composable
+internal fun RaftSheetWindow(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    surface: @Composable (Modifier) -> Unit,
+) {
     val dismiss by rememberUpdatedState(onDismissRequest)
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
@@ -304,20 +359,14 @@ fun RaftSheet(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
             contentAlignment = Alignment.BottomCenter,
         ) {
-            RaftSheetSurfaceImpl(
-                title = title,
-                clearNavigationBar = true,
-                modifier =
-                    modifier
-                        .graphicsLayer { translationY = size.height * slide.value }
-                        .pointerInput(Unit) { detectTapGestures { } }
-                        .layout { measurable, constraints ->
-                            val placeable = measurable.measure(raftSheetConstraints(constraints))
-                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                        },
-                description = description,
-                actions = actions,
-                content = content,
+            surface(
+                modifier
+                    .graphicsLayer { translationY = size.height * slide.value }
+                    .pointerInput(Unit) { detectTapGestures { } }
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(raftSheetConstraints(constraints))
+                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                    },
             )
         }
     }
