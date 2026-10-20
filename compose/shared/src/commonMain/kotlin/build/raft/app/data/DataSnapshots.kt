@@ -1798,16 +1798,7 @@ enum class PushPreviewMode(val wireName: String) {
     Hidden("hidden");
 
     companion object {
-        /** Wire values persisted by builds before the three-state enum. Read-only: never written. */
-        private const val LegacyPrivateWireName = "private"
-
-        fun fromWire(value: String?): PushPreviewMode? {
-            val normalized = value?.trim()?.lowercase().orEmpty()
-            // A build before the three-state enum could persist "private". Map it onto Hidden so an
-            // existing choice keeps meaning "don't show the message", and stop writing it from here on.
-            if (normalized == LegacyPrivateWireName) return Hidden
-            return entries.firstOrNull { it.wireName == normalized }
-        }
+        fun fromWire(value: String?): PushPreviewMode? = entries.firstOrNull { it.wireName == value }
     }
 }
 

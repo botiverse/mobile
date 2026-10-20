@@ -728,33 +728,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun retiredPrivateWireValueReadsAsHidden() {
-        // Builds before the three-state enum persisted "private". It must keep meaning "don't show
-        // the message", and it must never be produced again.
-        assertEquals(PushPreviewMode.Hidden, PushPreviewMode.fromWire("private"))
-        assertEquals(PushPreviewMode.Hidden, PushPreviewMode.fromWire("  PRIVATE  "))
-        assertEquals(PushPreviewMode.Full, PushPreviewMode.fromWire("full"))
-        assertEquals(PushPreviewMode.SenderOnly, PushPreviewMode.fromWire("sender_only"))
-        assertEquals(PushPreviewMode.Hidden, PushPreviewMode.fromWire("hidden"))
-        assertNull(PushPreviewMode.fromWire("nonsense"))
-        assertNull(PushPreviewMode.fromWire(null))
-        assertTrue(PushPreviewMode.entries.none { it.wireName == "private" })
-    }
-
-    @Test
-    fun serverSnapshotMapsRetiredPrivateValueToHiddenSelection() = runBlocking {
-        val network =
-            FakeSettingsNetworkClient(
-                notificationSettingsJson =
-                    """{"serverPushMuted":false,"serverPushMentionsOnly":false,"serverPushMode":"all","pushPreviewMode":"private","pushPreviewModeSupported":true}"""
-            )
-        val repository = RealSettingsRepository(sampleStore(), network)
-
-        val snapshot = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
-        assertEquals(PushPreviewMode.Hidden.wireName, snapshot.pushPreviewMode.selectedKey)
-    }
-
-    @Test
     fun legacyServerDoesNotAdvertisePushPreviewPrivacy() = runBlocking {
         val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false}""")
         val repository = RealSettingsRepository(sampleStore(), network)
