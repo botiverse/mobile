@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -300,12 +301,15 @@ private fun MembersRuntimeUsageAccountCard(
     stale: Boolean,
     timeContext: RaftTimeContext?
 ) {
+    // raft-ui card nested in a dialog: rounded container with a hairline ring, not a
+    // square ink box (it clashed with the rounded dialog and button around it).
+    val shape = RoundedCornerShape(RaftAppRadius.Container)
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .background(if (stale) RaftColor.SurfaceCream else RaftColor.SurfaceWhite)
+                .background(if (stale) RaftColor.SurfaceCream else RaftColor.SurfaceWhite, shape)
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
