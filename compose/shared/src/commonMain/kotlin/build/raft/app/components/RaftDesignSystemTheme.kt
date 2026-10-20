@@ -43,13 +43,7 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
                 mono = raftMultiWeightFontFamily("mono")
             )
         }
-    val strings =
-        RaftStrings(
-            optional = stringResource(MR.strings.common_optional_suffix),
-            close = stringResource(MR.strings.common_close),
-            clear = stringResource(MR.strings.common_clear),
-            loading = stringResource(MR.strings.common_loading),
-        )
+    val strings = raftAppDesignSystemStrings()
     RaftTheme(appearance = appearance, fonts = fonts) {
         CompositionLocalProvider(
             LocalTextSelectionColors provides appSelectionColors,
@@ -57,4 +51,24 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
             content = content,
         )
     }
+}
+
+/**
+ * The design-system components' own words ([LocalRaftStrings]) in the UI language, from the
+ * app's `MR.strings`. Provided round every page ([RaftProvideDesignSystemStrings] in the pager
+ * host) and again inside [RaftDesignSystemTheme], whose [RaftTheme] sits below that.
+ */
+@Composable
+internal fun raftAppDesignSystemStrings(): RaftStrings =
+    RaftStrings(
+        optional = stringResource(MR.strings.common_optional_suffix),
+        close = stringResource(MR.strings.common_close),
+        clear = stringResource(MR.strings.common_clear),
+        loading = stringResource(MR.strings.common_loading),
+    )
+
+/** Provides [raftAppDesignSystemStrings] as [LocalRaftStrings] to [content]. */
+@Composable
+internal fun RaftProvideDesignSystemStrings(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRaftStrings provides raftAppDesignSystemStrings(), content = content)
 }
