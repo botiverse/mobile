@@ -2574,10 +2574,14 @@ internal open class RaftCmpActivity :
                     }
             )
 
+    // A pushed page builds its pageData in onCreate, before its window is attached, so
+    // rootWindowInsets is still null. Use the bars the previous host window last saw:
+    // reading zero drew the first frame's header under the status bar, then it jumped
+    // down once the real insets arrived (a one-frame flash on every page push).
     private fun androidStatusBarHeightPx(): Int {
-        val decorView = window?.decorView ?: return 0
+        val decorView = window?.decorView ?: return lastKnownStatusBarTopPx
         if (Build.VERSION.SDK_INT >= 30) {
-            val insets = decorView.rootWindowInsets ?: return 0
+            val insets = decorView.rootWindowInsets ?: return lastKnownStatusBarTopPx
             return insets.getInsets(WindowInsets.Type.statusBars()).top
         }
         @Suppress("DEPRECATION")
@@ -2587,9 +2591,9 @@ internal open class RaftCmpActivity :
     // Navigation bar and the gesture-mode taskbar can be reported under different
     // inset types; take the max so either presentation clears the composer.
     private fun androidNavigationBarHeightPx(): Int {
-        val decorView = window?.decorView ?: return 0
+        val decorView = window?.decorView ?: return lastKnownNavigationBarBottomPx
         if (Build.VERSION.SDK_INT >= 30) {
-            val insets = decorView.rootWindowInsets ?: return 0
+            val insets = decorView.rootWindowInsets ?: return lastKnownNavigationBarBottomPx
             val navigation = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
             val gestures =
                     insets.getInsets(WindowInsets.Type.systemGestures()).bottom
@@ -2719,6 +2723,8 @@ internal open class RaftCmpActivity :
         val key = "$top:$bottom:$hidden"
         if (key == lastPublishedInsetsKey) return
         lastPublishedInsetsKey = key
+        if (!hidden) lastKnownStatusBarTopPx = top
+        lastKnownNavigationBarBottomPx = bottom
         // Keep the stored pageData spec in sync with the latest authoritative
         // values so pages/children attached later already carry this snapshot —
         // a pager event alone would be missed by observers registered after it
@@ -2885,6 +2891,10 @@ internal open class RaftCmpActivity :
 
     companion object {
         private const val TAG = "SlockCmpHost"
+
+        // Last bars seen by any host window; seeds a new window before its own insets arrive.
+        @Volatile private var lastKnownStatusBarTopPx = 0
+        @Volatile private var lastKnownNavigationBarBottomPx = 0
         private const val ATTACHMENT_SAVE_AS_STATE_KEY = "slockAttachmentSaveAsState"
         private const val THREAD_CAMERA_CAPTURE_STATE_KEY = "slockThreadCameraCaptureState"
         const val PAGE_LOGIN = RaftPages.LOGIN
