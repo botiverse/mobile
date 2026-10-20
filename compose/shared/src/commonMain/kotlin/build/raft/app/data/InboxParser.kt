@@ -14,6 +14,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -45,6 +46,12 @@ private data class WireInboxItem(
     val channelType: String? = null,
     val lastMessageId: String? = null,
     val firstUnreadMessageId: String? = null,
+    val firstMentionMessageId: String? = null,
+    // Display content frontier and the storage-space Done frontier (decimal
+    // strings, channelService.ts InboxItem). `doneFrontierSeq` presence is read
+    // from the raw object: absent (older server) differs from present-null.
+    val latestActivitySeq: String? = null,
+    val doneFrontierSeq: String? = null,
     val lastMessageAt: String? = null,
     val lastMessagePreview: String? = null,
     val lastMessageSenderType: String? = null,
@@ -74,6 +81,7 @@ private data class WireInboxItem(
     val taskClaimedByName: String? = null,
     // thread follow state; only an explicit false means Unfollowed
     val isFollowing: Boolean? = null,
+    val unfollowedAt: String? = null,
     // mention_action
     val messageId: String? = null,
     val messagePreview: String? = null,
@@ -142,6 +150,7 @@ private data class WireInboxResponse(
     val hasMore: Boolean = false,
     val totalCount: Int? = null,
     val totalUnreadCount: Int? = null,
+    val activeUnreadCount: Int? = null,
 )
 
 @Serializable
@@ -239,14 +248,25 @@ data class SharedInboxSnapshot(
     val totalUnreadCount: Int,
     /** Number of server rows consumed for this page before client projection. */
     val rawItemCount: Int = items.size,
+    /** Wire `activeUnreadCount` (web rail dot); null on servers that omit it. */
+    val activeUnreadCount: Int? = null,
 )
 
 fun parseSharedInboxSnapshot(
     bodyText: String,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): SharedInboxSnapshot? = runCatching {
-    val decoded = inboxJson.decodeFromString(WireInboxResponse.serializer(), bodyText)
-    val rawItems = decoded.items.mapNotNull { it.toDomain(diagnostics) }.distinctBy { it.key }
+    val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
+    val decoded = inboxJson.decodeFromJsonElement(WireInboxResponse.serializer(), root)
+    val rawItemObjects = root["items"] as? JsonArray
+    val rawItems =
+        decoded.items
+            .mapIndexedNotNull { index, wire ->
+                val doneFrontierPresent =
+                    (rawItemObjects?.getOrNull(index) as? JsonObject)?.containsKey("doneFrontierSeq") == true
+                wire.toDomain(diagnostics)?.copy(doneFrontierSeqPresent = doneFrontierPresent)
+            }
+            .distinctBy { it.key }
     val items = rawItems.map(InboxItem::withActivityFollowStateProjection)
     val derivedCount = items.size
     val derivedUnread = items.sumOf { it.unreadCount }
@@ -278,6 +298,7 @@ fun parseSharedInboxSnapshot(
         totalCount = maxOf(decoded.totalCount ?: derivedCount, derivedCount),
         totalUnreadCount = projectedUnread,
         rawItemCount = decoded.items.size,
+        activeUnreadCount = decoded.activeUnreadCount,
     )
 }.getOrNull()
 
@@ -323,6 +344,9 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
                 contract = MemberKindWireContract.InboxActor,
             ),
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
+        doneFrontierSeq = doneFrontierSeq,
+        firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
     )
 }
 
@@ -370,6 +394,10 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         taskClaimedByName = taskClaimedByName,
         isFollowing = isFollowing,
         readStateLatestActivitySeq = readState?.latestActivitySeqOrNull(),
+        latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
+        doneFrontierSeq = doneFrontierSeq,
+        firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        unfollowedAt = unfollowedAt?.takeIf { it.isNotBlank() },
     )
 }
 

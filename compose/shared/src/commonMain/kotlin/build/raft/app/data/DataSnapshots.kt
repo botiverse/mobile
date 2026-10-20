@@ -63,8 +63,56 @@ data class InboxItem(
      * `latestActivitySeq`, which keeps a zero-reply parent fallback in another
      * seq domain. Used as the local Done/read overlay marker.
      */
-    val readStateLatestActivitySeq: String? = null
+    val readStateLatestActivitySeq: String? = null,
+    /**
+     * Wire `latestActivitySeq`: the display content frontier (decimal string).
+     * Realtime reply patches advance a row only on a strictly newer seq, like
+     * web `receiveThreadReply`. Null on servers that predate it.
+     */
+    val latestActivitySeq: String? = null,
+    /**
+     * Wire `doneFrontierSeq`, the storage-space frontier a Done must name
+     * (`throughActivitySeq`). Only meaningful with [doneFrontierSeqPresent]:
+     * a server that predates the field omits it entirely (legacy Done), while
+     * a present-but-null/invalid value fails closed (refresh, no write).
+     */
+    val doneFrontierSeq: String? = null,
+    /** Whether the wire row carried the `doneFrontierSeq` key at all. */
+    val doneFrontierSeqPresent: Boolean = false,
+    /** Wire `firstMentionMessageId` (unread-mention anchor), null when absent. */
+    val firstMentionMessageId: MessageId? = null,
+    /** Wire `unfollowedAt` for inline unfollowed thread rows (`isFollowing:false`). */
+    val unfollowedAt: String? = null
 )
+
+/**
+ * The frontier a Done request names, chosen exactly like web
+ * `inboxStore.markDone` (botiverse/slock 1bb70cbeb, inboxStore.ts:1417-1470).
+ */
+internal sealed interface ActivityDoneRequestFrontier {
+    /** The row predates `doneFrontierSeq`: omit the seq (server-side latest). */
+    data object Legacy : ActivityDoneRequestFrontier
+
+    /** `{throughActivitySeq, frontierSpace: "storage"}`. */
+    data class Storage(val throughActivitySeq: String) : ActivityDoneRequestFrontier
+
+    /** Present but unusable: an upgraded-server anomaly; refresh and do not write. */
+    data object Invalid : ActivityDoneRequestFrontier
+}
+
+internal fun InboxItem.activityDoneRequestFrontier(): ActivityDoneRequestFrontier {
+    if (!doneFrontierSeqPresent) return ActivityDoneRequestFrontier.Legacy
+    val seq = doneFrontierSeq?.takeIf { isCanonicalActivitySeq(it) && it != "0" }
+        ?: return ActivityDoneRequestFrontier.Invalid
+    return ActivityDoneRequestFrontier.Storage(seq)
+}
+
+internal fun ActivityDoneRequestFrontier.toInboxDoneFrontier(): InboxDoneFrontier? =
+    when (this) {
+        ActivityDoneRequestFrontier.Legacy -> InboxDoneFrontier.Legacy
+        is ActivityDoneRequestFrontier.Storage -> InboxDoneFrontier.Storage(throughActivitySeq)
+        ActivityDoneRequestFrontier.Invalid -> null
+    }
 
 /** True only for an explicitly server-projected, unfollowed thread row. */
 internal val InboxItem.isUnfollowedActivityThread: Boolean
@@ -999,7 +1047,12 @@ data class InboxSnapshot(
     val totalCount: Int = items.size,
     val totalUnreadCount: Int = items.sumOf { it.unreadCount },
     val hasMore: Boolean = false,
-    val nextOffset: Int? = null
+    val nextOffset: Int? = null,
+    /**
+     * Server `activeUnreadCount` (unread excluding mention-only channels; web
+     * drives its rail dot from it). Null when the server omits it.
+     */
+    val activeUnreadCount: Int? = null
 )
 
 internal fun InboxSnapshot.activityVisibleSummaryCounts(
@@ -1020,6 +1073,20 @@ internal fun InboxSnapshot.activityVisibleSummaryCounts(
 data class InboxDoneResult(
     val channelId: ChannelId
 )
+
+/**
+ * Request frontier for `POST /channels/inbox/done` and `POST
+ * /channels/threads/done` (botiverse/slock 1bb70cbeb, routes/channels.ts:1497,
+ * 2014). The server's compatibility matrix: an omitted seq takes the legacy
+ * "latest at request time" snapshot; a seq requires `frontierSpace:"storage"`.
+ */
+sealed interface InboxDoneFrontier {
+    /** Omit `throughActivitySeq` and `frontierSpace` (server predates `doneFrontierSeq`). */
+    data object Legacy : InboxDoneFrontier
+
+    /** Send `{throughActivitySeq, frontierSpace:"storage"}`. */
+    data class Storage(val throughActivitySeq: String) : InboxDoneFrontier
+}
 
 data class ChannelSnapshot(
     val server: ServerSummary,

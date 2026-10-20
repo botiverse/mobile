@@ -826,6 +826,10 @@ class SharedActivityStore internal constructor(
      */
     private fun InboxItem.advancedActivityFrontier(realtimeSeq: Long?): String? {
         val existing = readStateLatestActivitySeq ?: return null
+        // A storage-frontier Done (`doneFrontierSeq` present) covers only the
+        // served frontier, so the marker stays on the served row (web never
+        // moves it on a socket patch); legacy Done covers latest-at-request.
+        if (doneFrontierSeqPresent) return existing
         val candidate = realtimeSeq?.takeIf { it >= 0L }?.toString() ?: return existing
         return if (compareActivitySeq(candidate, existing) > 0) candidate else existing
     }
@@ -1798,17 +1802,32 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun markDone(item: InboxItem) {
-        if (item.isUnfollowedActivityThread) return
+    private fun markDone(requestedItem: InboxItem) {
+        if (requestedItem.isUnfollowedActivityThread) return
         val previous = _state.value
         if (previous.snapshot == null) return
         val overlayOwner = overlayOwner(previous)
-        if (item.kind == InboxItemKind.MentionAction) {
+        if (requestedItem.kind == InboxItemKind.MentionAction) {
             // Local-only resolution: there is no server write and no newer marker
             // that could ever retire it, so it lives outside the expiring overlay
             // (a 90s hold would let the unresolved row come back).
-            if (overlayOwner != null) rememberResolvedMentionAction(overlayOwner, item.key)
-            removeItemOptimistically(item)
+            if (overlayOwner != null) rememberResolvedMentionAction(overlayOwner, requestedItem.key)
+            removeItemOptimistically(requestedItem)
+            return
+        }
+        // Web inboxStore.markDone (slock 1bb70cbeb, inboxStore.ts:1417-1470):
+        // bind Done to the row this store currently holds and name its
+        // storage-space frontier. A row from a server that predates
+        // `doneFrontierSeq` takes the legacy body; a present-but-unusable
+        // frontier (or a row no longer held) refreshes and writes nothing.
+        val item = previous.items.firstOrNull { it.key == requestedItem.key }
+        val frontier = item?.activityDoneRequestFrontier()?.toInboxDoneFrontier()
+        if (item == null || frontier == null) {
+            diagnosticsLogger(
+                "activity_mark_done result=refused reason=${if (item == null) "row_not_held" else "invalid_done_frontier"} " +
+                    "itemKey=${requestedItem.key}"
+            )
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             return
         }
         val targetChannelId = item.readReceiptChannelId()
@@ -1828,16 +1847,20 @@ class SharedActivityStore internal constructor(
             withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
                 val result =
                     if (item.kind == InboxItemKind.Thread) {
-                        conversationRepository.markThreadDone(targetChannelId)
+                        conversationRepository.markThreadDone(targetChannelId, frontier)
                     } else {
-                        inboxRepository.markDone(targetChannelId)
+                        inboxRepository.markDone(targetChannelId, frontier)
                     }
                 if (result !is DataResult.Content && result !is DataResult.Empty) {
+                    // 409/412 (frontier moved / space required) land here too: like
+                    // web, drop the hold and take the refreshed row; never replay.
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
                     refreshAfterFailure(previous, "activity_mark_done_failed")
                 } else {
                     doneOverlay.confirmAll(overlayOwner, doneGenerations)
                     onUnreadCountsChanged()
+                    // Web refreshes after a confirmed Done with the hold still armed.
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
                 }
             }
         }

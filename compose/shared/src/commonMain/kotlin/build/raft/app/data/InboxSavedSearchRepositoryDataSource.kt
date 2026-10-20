@@ -14,6 +14,16 @@ private val inboxSavedSearchRepositoryJson = Json {
     encodeDefaults = true
 }
 
+/** Done bodies omit absent frontier fields instead of encoding JSON null. */
+internal val inboxDoneRequestJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+    explicitNulls = false
+}
+
+/** The only `frontierSpace` the server accepts (routes/channels.ts:1497, 2014). */
+internal const val InboxDoneFrontierSpaceStorage = "storage"
+
 private suspend fun RaftNetworkClient.inbox(
     priority: DataRequestPriority,
     filter: InboxFilter,
@@ -123,14 +133,14 @@ class RealInboxRepository(
         limit: Int
     ): DataResult<InboxSnapshot> = load(serverId, filter, limit, offset)
 
-    override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> {
+    override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> {
         sessionStore.readSession() ?: return authRequired()
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
             block = {
                 networkClient.markInboxDone(
                     DataRequestPriority.Foreground,
-                    buildSharedInboxDoneBody(channelId)
+                    buildSharedInboxDoneBody(channelId, frontier)
                 )
             },
             errorTextDecoder = HomeNetworkResponse::inboxRouteErrorTextOrNull,
@@ -176,6 +186,7 @@ class RealInboxRepository(
                     totalCount = parsed.totalCount,
                     totalUnreadCount = parsed.totalUnreadCount,
                     hasMore = parsed.hasMore,
+                    activeUnreadCount = parsed.activeUnreadCount,
                     // Keep page advancement based on raw server rows. The
                     // client may project every row out of an attention filter
                     // when a lagging/older server includes an unfollowed
@@ -392,13 +403,31 @@ private data class SavedMessageCheckRequestBody(
     val messageIds: List<String>
 )
 
+/**
+ * `POST /channels/inbox/done` body (botiverse/slock 1bb70cbeb,
+ * routes/channels.ts:1497). Null fields are omitted, never sent as JSON null:
+ * the server treats a present `throughActivitySeq` without `frontierSpace` as
+ * 412 DONE_FRONTIER_SPACE_REQUIRED.
+ */
 @Serializable
 private data class InboxDoneRequestBody(
-    val channelId: String
+    val channelId: String,
+    val throughActivitySeq: String? = null,
+    val frontierSpace: String? = null
 )
 
-private fun buildSharedInboxDoneBody(channelId: ChannelId): String =
-    inboxSavedSearchRepositoryJson.encodeToString(InboxDoneRequestBody(channelId = channelId.value))
+private fun buildSharedInboxDoneBody(channelId: ChannelId, frontier: InboxDoneFrontier): String =
+    inboxDoneRequestJson.encodeToString(
+        when (frontier) {
+            InboxDoneFrontier.Legacy -> InboxDoneRequestBody(channelId = channelId.value)
+            is InboxDoneFrontier.Storage ->
+                InboxDoneRequestBody(
+                    channelId = channelId.value,
+                    throughActivitySeq = frontier.throughActivitySeq,
+                    frontierSpace = InboxDoneFrontierSpaceStorage
+                )
+        }
+    )
 
 private fun buildSharedSavedMessageCheckBody(messageIds: List<String>): String =
     inboxSavedSearchRepositoryJson.encodeToString(SavedMessageCheckRequestBody(messageIds = messageIds))

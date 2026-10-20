@@ -1241,7 +1241,7 @@ class SharedActivityStoreTest {
                     }
                 }
 
-                override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+                override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> =
                     DataResult.Content(InboxDoneResult(channelId))
             }
         val store = activityStore(scope, inbox)
@@ -1299,7 +1299,7 @@ class SharedActivityStoreTest {
                     )
                 }
 
-                override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+                override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> =
                     DataResult.Content(InboxDoneResult(channelId))
             }
         val store = activityStore(scope, inbox)
@@ -1352,7 +1352,7 @@ class SharedActivityStoreTest {
                         )
                     )
 
-                override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+                override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> =
                     DataResult.Content(InboxDoneResult(channelId))
             }
         val store = activityStore(scope, inbox)
@@ -4366,7 +4366,7 @@ class SharedActivityStoreTest {
         ): DataResult<InboxSnapshot> =
             DataResult.Empty(EmptyReason.NoInboxItems)
 
-        override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+        override suspend fun markDone(channelId: ChannelId, frontier: InboxDoneFrontier): DataResult<InboxDoneResult> =
             DataResult.Content(InboxDoneResult(channelId))
 
         fun completeNext(item: InboxItem) {
