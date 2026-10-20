@@ -80,6 +80,23 @@ class ThreadRepliesSyncDomainTest {
     }
 
     @Test
+    fun firstFrameOnUnseenScopeFoldsIntoRenderedBaselineButNeverOverridesAcceptedScope() {
+        val host = ThreadRepliesSyncHost()
+        val baseline = initialThreadRepliesReadModel((1L..3L).map { reply(it) }, 3, InlineThreadReplyPreviewLimit)
+        // Cold cache: the Store renders 3 rows the host has never accepted.
+        val live = assertNotNull(host.ingestFrame(page, frame(seq = 5, count = 5), baseline = baseline))
+        assertEquals(listOf("reply-2", "reply-3", "reply-5"), live.model.replies.map { it.messageId })
+        assertEquals(5, live.model.replyCount)
+        // A reconnect replay of a baseline reply is a no-op, not a spurious row.
+        val replay = assertNotNull(host.ingestFrame(page, frame(seq = 3, count = 5), baseline = baseline))
+        assertEquals(live.model, replay.model)
+        // Once accepted, a (stale) baseline is ignored.
+        val stale = initialThreadRepliesReadModel((7L..9L).map { reply(it) }, 9, InlineThreadReplyPreviewLimit)
+        val next = assertNotNull(host.ingestFrame(page, frame(seq = 6, count = 6), baseline = stale))
+        assertEquals(listOf("reply-3", "reply-5", "reply-6"), next.model.replies.map { it.messageId })
+    }
+
+    @Test
     fun invalidEnvelopeFailsClosed() {
         val host = ThreadRepliesSyncHost()
         assertNull(host.ingestFrame(page, frame(seq = 4, count = 4, producer = "other")))
