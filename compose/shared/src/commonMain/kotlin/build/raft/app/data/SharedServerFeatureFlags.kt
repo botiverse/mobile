@@ -14,6 +14,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -111,6 +115,13 @@ private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
  */
 const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
+/**
+ * Agent Activity tab per-turn Overview (slock task #17). The same key the web reads (slock
+ * `ACTIVITY_OVERVIEW_WEB_FLAG_KEY`), so one switch turns the overview on for every client.
+ * Off (or unresolved), the Activity tab is the raw log only, as before.
+ */
+const val ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY: String = "activity_overview_web_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -129,6 +140,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
+    ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
 )
 
 /**
@@ -267,6 +279,14 @@ class SharedServerFeatureFlags(
     // per-server prefetches from losing one another's snapshot updates.
     @Volatile
     private var snapshots: Map<String, ServerFeatureFlagSnapshot> = emptyMap()
+
+    private val _revision = MutableStateFlow(0L)
+
+    /**
+     * Bumped whenever an accepted evaluation replaces a server snapshot. UI that gates on
+     * [isEnabled] keys its read on this so it follows an evaluation that lands after first frame.
+     */
+    val revision: StateFlow<Long> = _revision.asStateFlow()
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
@@ -461,6 +481,7 @@ class SharedServerFeatureFlags(
             } else {
                 acceptedGenerationByServer[serverId.value] = requestGeneration
                 snapshots = snapshots + (serverId.value to snapshot)
+                _revision.update { it + 1 }
                 true
             }
         }
