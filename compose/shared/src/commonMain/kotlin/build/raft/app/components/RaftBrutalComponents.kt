@@ -75,6 +75,7 @@ import build.raft.app.raftResolvedKeyboardOptions
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftFieldLabelSize
@@ -107,7 +108,7 @@ import kotlinx.coroutines.delay
  * | RaftBrutalBadge (3)                          | RaftBadge (soft); RaftBrutalBadgeButton (0) removed        |
  * | RaftBrutalDropdownMenuSurface (3) / Row (2)  | RaftMenuSurface + RaftMenuItem                             |
  * | RaftBrutalDropdownMenu (2)                   | app popover positioning around RaftMenuSurface             |
- * | RaftBrutalModalLayer (2) / Header (2)        | dialog header from RaftText headline + ghost RaftIconButton |
+ * | RaftBrutalModalLayer (2) / Header (2)        | RaftDialogHeader; Header removed                           |
  * | RaftBrutalTextarea (2)                       | RaftTextarea (no TextFieldValue / focus-hook overload yet) |
  * | RaftBrutalPanel (1)                          | no generic popover surface yet (raft-look kept)            |
  * | RaftBrutalPanelShell (1) / ListShell (1)     | removed: RaftListRowGroup at the call sites                |
@@ -120,8 +121,7 @@ internal data class RaftModalShellModel(
     val title: String,
     val subtitle: String = "",
     val overlayAlpha: Float = 0.60f,
-    val maxWidth: Dp = 384.dp,
-    val dismissIcon: RaftLucideIconName = RaftLucideIconName.X
+    val maxWidth: Dp = 384.dp
 )
 
 internal data class RaftActionSheetRowModel(
@@ -328,54 +328,6 @@ internal val RaftFormFieldSize.raftFieldLabelSize: RaftFieldLabelSize
     get() = if (this == RaftFormFieldSize.Compact) RaftFieldLabelSize.Sm else RaftFieldLabelSize.Md
 
 @Composable
-internal fun RaftBrutalModalHeader(
-    model: RaftModalShellModel,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    // raft-ui DialogHeader (as RaftDialogSurface): px-5 pt-5, `headline` title, `subhead`
-    // muted description, the ghost `icon-md` close pulled into the corner. The body stays
-    // the caller's (lazy lists, own padding), so only the header is the dialog's.
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 14.dp, top = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f).padding(top = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            RaftText(
-                text = model.title,
-                style = RaftTheme.typography.headline,
-                color = RaftTheme.colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (model.subtitle.isNotBlank()) {
-                RaftText(
-                    text = model.subtitle,
-                    style = RaftTheme.typography.subhead,
-                    color = RaftTheme.colors.foregroundMuted,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        RaftIconButton(
-            onClick = onDismiss,
-            tooltip = stringResource(MR.strings.common_close),
-            variant = RaftButtonVariant.Ghost
-        ) {
-            RaftSlotIcon(model.dismissIcon)
-        }
-    }
-}
-
-@Composable
 internal fun RaftBrutalModalLayer(
     model: RaftModalShellModel,
     onDismiss: () -> Unit,
@@ -405,7 +357,12 @@ internal fun RaftBrutalModalLayer(
                         .raftFloatingContentClickTarget()
                         .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
             ) {
-                RaftBrutalModalHeader(model = model, onDismiss = onDismiss)
+                // raft-ui DialogHeader: the body stays the caller's (lazy lists, own padding).
+                RaftDialogHeader(
+                    title = model.title,
+                    description = model.subtitle.takeIf { it.isNotBlank() },
+                    onClose = onDismiss
+                )
                 content()
             }
         }

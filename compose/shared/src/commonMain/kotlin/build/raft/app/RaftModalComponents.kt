@@ -9,7 +9,7 @@ import build.raft.app.components.RaftBrutalActionSheetRow
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftSectionEyebrow
-import build.raft.app.components.RaftBrutalModalHeader
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.app.components.RaftBrutalModalLayer
 import build.raft.app.components.RaftActionSheetRowModel
 import build.raft.app.components.RaftModalShellModel
@@ -656,9 +656,10 @@ private fun RaftModalHeader(
     subtitle: String,
     onDismiss: () -> Unit
 ) {
-    RaftBrutalModalHeader(
-        model = RaftModalShellModel(title = title, subtitle = subtitle),
-        onDismiss = onDismiss
+    RaftDialogHeader(
+        title = title,
+        description = subtitle.takeIf { it.isNotBlank() },
+        onClose = onDismiss
     )
 }
 
