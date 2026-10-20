@@ -19,13 +19,13 @@ class ThreadHeaderActionSpacingTest {
     }
 
     @Test
-    fun leftHeaderSlotsUseHalfTheCanonicalPageHeaderGap() {
-        assertEquals(12f, RaftTopPageHeaderContentSpacing.value)
-        assertEquals(RaftTopPageHeaderContentSpacing.value / 2f, threadHeaderContentSpacingDp())
+    fun leftHeaderSlotsUseRaftPhonePanelHeadGap() {
+        // raft-ui `panelHeader` on a phone: `max-md:gap-2` between Back, the tile and the title.
+        assertEquals(8f, threadHeaderContentSpacingDp())
     }
 
     @Test
-    fun channelTitleGetsAQuietlyLargerGap() {
+    fun channelTitleSitsOneGapAfterTheLocationTile() {
         assertEquals(8f, threadHeaderChannelTitleGapDp())
     }
 }

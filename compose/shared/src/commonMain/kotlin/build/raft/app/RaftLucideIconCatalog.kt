@@ -57,6 +57,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Dices("dices"),
     Download("download"),
     Ellipsis("ellipsis"),
+    EllipsisVertical("ellipsis-vertical"),
     Maximize2("maximize-2"),
     Menu("menu"),
     Eraser("eraser"),

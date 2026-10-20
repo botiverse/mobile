@@ -1795,10 +1795,14 @@ private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // Keep the mobile header on the same canonical inline token instead of a
 // smaller one-off dot.
 private val ThreadHeaderDmAgentActivityDotSize = RaftStatusIndicatorTokens.InlineSize
-private val ThreadHeaderChannelTileSize = 34.dp
-private val ThreadHeaderChannelIconSize = 16.dp
-private val ThreadHeaderContentSpacing = 6.dp
-private val ThreadHeaderChannelTitleGapExtra = 2.dp
+// raft-ui `PanelHeaderIcon`: the 27dp location tile (`size-[27px]`) with a 14dp glyph
+// (`[&_svg]:size-3.5 stroke-2`); the DM avatar slot keeps the tile's former 34dp.
+private val ThreadHeaderChannelTileSize = 27.dp
+private val ThreadHeaderChannelIconSize = 14.dp
+private val ThreadHeaderDmAvatarSize = 34.dp
+// raft-ui `panelHeader` on a phone: `max-md:gap-2` between Back, the tile, the title and actions.
+private val ThreadHeaderContentSpacing = 8.dp
+private val ThreadHeaderChannelTitleGapExtra = 0.dp
 
 private object ThreadReactionGlyphDiagnostics {
     private val loggedKeys = mutableSetOf<String>()
@@ -5169,6 +5173,9 @@ internal fun ThreadHeaderVisualScreen() {
     val payload = remember {
         RaftThreadScreenPayload(
             instanceId = "visual-thread-header",
+            // The web case renders ChatPanel for the `channel-home` channel, whose header carries
+            // Search ("Search this channel") beside Settings.
+            sourceThreadId = "channel-home",
             title = "#首页专修",
             subtitle = "Home shell, server badge, and bottom dock polish",
             status = "content",
@@ -16205,7 +16212,6 @@ internal fun ThreadPageHeader(
                 headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
                     payload.threadHeaderSearchAction() != null ||
                     threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind) ||
-                    payload.showMembersAction ||
                     payload.threadHeaderOpenInParentActionVisible()
             )
     RaftTopPageHeader(
@@ -16256,7 +16262,8 @@ internal fun ThreadPageHeader(
                     Modifier
                         .weight(1f)
                         .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
+                verticalArrangement = Arrangement.Top
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -16305,9 +16312,6 @@ internal fun ThreadPageHeader(
                     }
                     if (threadHeaderSettingsActionVisible(payload.showSettingsAction, headerDisplay.surfaceKind)) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.Settings, onClick = onShowSettings)
-                    }
-                    if (payload.showMembersAction) {
-                        ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
                     if (payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = RaftLucideIconName.MapPin, onClick = onOpenInChannel)
@@ -16459,13 +16463,13 @@ private fun ThreadDmPeerAvatarTile(
     Box(
         modifier =
             Modifier
-                .size(ThreadHeaderChannelTileSize)
+                .size(ThreadHeaderDmAvatarSize)
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
-            avatarSize = ThreadHeaderChannelTileSize,
+            avatarSize = ThreadHeaderDmAvatarSize,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId,
             fallbackFill = fallbackFill
@@ -16979,15 +16983,6 @@ private fun ThreadHeaderFocusModeMenu(
 
 internal const val FOCUS_MODE_MENU_ITEM_ID = "thread-focus-mode"
 internal const val FOLLOW_THREAD_MENU_ITEM_ID = "thread-toggle-follow"
-
-@Composable
-private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
-    ThreadHeaderCompactAction(
-        icon = RaftLucideIconName.Users,
-        onClick = onClick,
-        label = count.takeIf { it > 0 }?.toString()
-    )
-}
 
 @Composable
 internal fun ThreadHeaderActionButton(
