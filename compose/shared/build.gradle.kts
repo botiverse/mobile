@@ -151,7 +151,8 @@ kotlin {
                 implementation(libs.cmp.ui.backhandler)
                 implementation(libs.cmp.lifecycle.viewmodel.compose)
                 implementation(libs.cmp.lifecycle.runtime.compose)
-                // Coil 3.6.x is built against Kotlin 2.4 / CMP foundation 1.12.
+                // Coil 3.5.x is built against Kotlin 2.4 / CMP foundation 1.11 (3.6+ needs foundation 1.12, i.e.
+                // compileSdk 37 + AGP 9.1).
                 implementation(libs.coil.compose)
                 // CMP switch: SVG decoding for the Raft image loader (assets://*.svg icons, inline
                 // SVG, svg avatars) — the Kuikly adapters decoded SVG natively.

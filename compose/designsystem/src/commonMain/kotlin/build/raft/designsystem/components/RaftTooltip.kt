@@ -105,7 +105,7 @@ fun RaftTooltip(
             tooltip = {
                 PlainTooltip(
                     modifier = Modifier.raftFloatShadow(RaftTheme.isDark, RaftRadius.Chip),
-                    // Material3 1.4 (CMP 1.12) replaced `caretSize` with a caret Shape;
+                    // Material3 1.4 (CMP 1.11+) replaced `caretSize` with a caret Shape;
                     // TooltipDefaults.caretShape(size) draws the same triangle.
                     caretShape = TooltipDefaults.caretShape(RaftTooltipMetrics.CaretSize),
                     shape = RoundedCornerShape(RaftRadius.Chip),

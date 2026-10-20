@@ -16,7 +16,7 @@ kotlin {
 
     androidTarget {
         compilerOptions {
-            // Compose Multiplatform 1.12 Android artifacts are JVM 11 bytecode with inline functions.
+            // Compose Multiplatform 1.11 Android artifacts are JVM 11 bytecode with inline functions.
             jvmTarget.set(JvmTarget.JVM_11)
         }
         publishLibraryVariants("release")

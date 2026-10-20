@@ -200,7 +200,7 @@ internal fun RaftPullToRefreshIndicator(
     modifier: Modifier = Modifier,
 ) {
     val colors = RaftTheme.colors
-    // Material3 1.4 (CMP 1.12) replaced `Modifier.pullToRefreshIndicator` with
+    // Material3 1.4 (CMP 1.11+) replaced `Modifier.pullToRefreshIndicator` with
     // `PullToRefreshDefaults.IndicatorBox` (same 40dp box, clip, translation, elevation and
     // `maxDistance` = the old `threshold` default). The hairline edge used to be a `.border`
     // chained after the indicator modifier, i.e. inside the translated layer; it is now drawn

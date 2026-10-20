@@ -723,7 +723,7 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
         listOf(
             ":androidApp:releaseRuntimeClasspath",
             ":shared:commonMainImplementationDependenciesMetadata",
-            ":shared:androidReleaseRuntimeClasspath"
+            ":shared:releaseRuntimeClasspath"
         )
     )
     variantName.set("release")
@@ -822,7 +822,7 @@ dependencies {
     implementation(libs.androidx.profileinstaller)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
-    // Pinned to the AndroidX Compose runtime line CMP 1.12.x is built against.
+    // Pinned to the AndroidX Compose runtime line CMP 1.11.x is built against.
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
