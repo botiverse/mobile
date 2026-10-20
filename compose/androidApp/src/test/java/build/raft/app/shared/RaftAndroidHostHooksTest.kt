@@ -46,11 +46,14 @@ class RaftAndroidHostHooksTest {
                             raftOpenRenderLease(
                                 io,
                                 open = {
-                                    // Covers the FAST path: `open` returns synchronously and the
-                                    // cancel is issued from inside it, so `withContext` may return
-                                    // before the cancellation is observed. `ensureActive()` in
-                                    // `raftOpenRenderLease` is what makes this deterministic --
-                                    // without it the lease would be handed to a cancelled caller.
+                                    // Covers the SUSPENDED path, not the fast one. The
+                                    // `runBlocking` below blocks the io thread until the test
+                                    // completes `jobRef`, so the caller genuinely suspends and
+                                    // `withContext` dispatches back with the cancellation observed.
+                                    // Removing `ensureActive()` therefore does NOT fail this test --
+                                    // it still exercises the catch branch, which is a different
+                                    // contract. Kept because it pins that branch against the
+                                    // original flake; see the note on coverage in #3249.
                                     runBlocking { jobRef.await() }.cancel()
                                     lease
                                 },
@@ -75,11 +78,15 @@ class RaftAndroidHostHooksTest {
         try {
             val lease = Lease()
             val failure = CompletableDeferred<Throwable?>()
-            // Covers the SLOW path: the cancel is observed only after `open` is already
-            // suspended, so `withContext(NonCancellable)` still completes and the boundary
-            // check inside it has nothing to report. This case cannot flake because the
-            // test waits for `entered` before cancelling and for `cancelled` before `open`
-            // returns; it stays green even if `ensureActive()` is removed.
+            // Also a SUSPENDED path, made explicit: the test waits for `entered` before
+            // cancelling and for `cancelled` before `open` returns, so it cannot flake.
+            // Like the case above it stays green if `ensureActive()` is removed.
+            //
+            // NOT COVERED ANYWHERE: the fast path `ensureActive()` exists for -- `open`
+            // returning without the caller ever suspending, where `withContext` neither
+            // dispatches nor checks cancellation. No test here reaches it; removing
+            // `ensureActive()` turns nothing red. Its necessity rests on DispatchedCoroutine
+            // semantics, not on a regression test.
             val entered = CompletableDeferred<Job>()
             val cancelled = CompletableDeferred<Unit>()
             val job =
