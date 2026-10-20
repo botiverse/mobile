@@ -1,5 +1,6 @@
 package build.raft.app.image
 
+import coil3.ImageLoader
 import coil3.PlatformContext
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -77,3 +78,6 @@ private fun NSData.toRaftByteArray(): ByteArray {
     out.usePinned { pinned -> memcpy(pinned.addressOf(0), bytes, length) }
     return out
 }
+
+/** iOS has no hardware-bitmap config: Coil's defaults apply unchanged. */
+internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder = this
