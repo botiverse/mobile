@@ -104,7 +104,7 @@ class AndroidShellTaskReuseConnectedTest {
                 replacementPageData.getString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID),
             )
         } finally {
-            activityManager.appTasks.firstOrNull { it.taskInfo.taskId == firstTaskId }?.finishAndRemoveTask()
+            activityManager.appTasks.firstOrNull { it.taskInfo?.taskId == firstTaskId }?.finishAndRemoveTask()
             AndroidShellWindowRegistry.clearForTest()
         }
     }
@@ -130,7 +130,7 @@ class AndroidShellTaskReuseConnectedTest {
 
             assertEquals(1, waitForTaskActivityCount(activityManager, taskId, expectedCount = 1))
         } finally {
-            activityManager.appTasks.firstOrNull { it.taskInfo.taskId == taskId }?.finishAndRemoveTask()
+            activityManager.appTasks.firstOrNull { it.taskInfo?.taskId == taskId }?.finishAndRemoveTask()
             AndroidShellWindowRegistry.clearForTest()
         }
     }
@@ -215,7 +215,7 @@ class AndroidShellTaskReuseConnectedTest {
 
     private fun appShellTaskCount(activityManager: ActivityManager, packageName: String): Int =
         activityManager.appTasks.count { appTask ->
-            appTask.taskInfo.baseActivity?.let { component ->
+            appTask.taskInfo?.baseActivity?.let { component ->
                 component.packageName == packageName &&
                     component.className == RaftAppShellActivity::class.java.name
             } == true
@@ -274,7 +274,7 @@ class AndroidShellTaskReuseConnectedTest {
         var lastCount = -1
         while (SystemClock.uptimeMillis() < deadline) {
             lastCount = activityManager.appTasks
-                .map { it.taskInfo }
+                .mapNotNull { it.taskInfo }
                 .firstOrNull { it.taskId == taskId }
                 ?.numActivities
                 ?: -1
