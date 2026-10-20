@@ -1,6 +1,7 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
@@ -81,6 +83,10 @@ val LocalRaftFieldState = compositionLocalOf { RaftFieldState() }
  * - Screen readers read the control by [label] (its content description).
  * - [enabled] = false turns label, description and error `foreground-disabled` and
  *   disables the control. Disabled wins over invalid.
+ * - [labelTrailing]: a small control at the end of the label's row, centred on it, 8dp
+ *   from the label: a [RaftSwitch] that turns the field on, or a [RaftTextLink] ("Clear",
+ *   "Reset"). The row takes the field's full width; the label ellipsizes, never the slot.
+ *   It is not part of the label: give it its own name.
  *
  * ```
  * RaftField(label = "Agent name", description = "Shown in chat and on tasks.") {
@@ -98,11 +104,25 @@ fun RaftField(
     optional: Boolean = false,
     required: Boolean = false,
     labelSize: RaftFieldLabelSize = RaftFieldLabelSize.Md,
+    labelTrailing: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val invalid = error != null
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (label != null) {
+        if (labelTrailing != null) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    if (label != null) {
+                        RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional, required = required, maxLines = 1)
+                    }
+                }
+                labelTrailing()
+            }
+        } else if (label != null) {
             RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional, required = required)
         }
         CompositionLocalProvider(
@@ -122,7 +142,8 @@ fun RaftField(
  * raft-ui `FieldLabel` on its own (for custom field layouts). See [RaftField]. The
  * required asterisk and the "(optional)" suffix follow the text after a space (`ml-1`).
  * It takes the full line height of its style (raft-ui 0.8.0 dropped `leading-none`), so
- * a control beside it can centre on that line ([RaftFieldItem]).
+ * a control beside it can centre on that line ([RaftFieldItem]). [maxLines] cuts a long
+ * label with an ellipsis (a label beside a [RaftField] `labelTrailing` slot takes one line).
  */
 @Composable
 fun RaftFieldLabel(
@@ -132,6 +153,7 @@ fun RaftFieldLabel(
     enabled: Boolean = true,
     optional: Boolean = false,
     required: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
 ) {
     val colors = RaftTheme.colors
     val ink = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
@@ -145,7 +167,7 @@ fun RaftFieldLabel(
                 withStyle(SpanStyle(color = markInk, fontWeight = FontWeight.Normal)) { append(" (optional)") }
             }
         }
-    RaftText(annotated, modifier, style = raftFieldLabelStyle(size), color = ink)
+    RaftText(annotated, modifier, style = raftFieldLabelStyle(size), color = ink, maxLines = maxLines, overflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Clip else TextOverflow.Ellipsis)
 }
 
 /**

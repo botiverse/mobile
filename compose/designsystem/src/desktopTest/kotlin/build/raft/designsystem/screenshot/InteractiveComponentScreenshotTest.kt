@@ -194,6 +194,16 @@ class InteractiveComponentScreenshotTest {
                         RaftTextField("raft-labs", {}, prefix = "/")
                     }
                     RaftField(label = "Small label", labelSize = RaftFieldLabelSize.Sm) { RaftTextField("", {}, placeholder = "Wug") }
+                    Caption("Label row trailing: a switch, a text link")
+                    RaftField(
+                        label = "Custom instructions",
+                        labelTrailing = { RaftSwitch(checked = true, onCheckedChange = {}, label = "Use Custom Instructions") },
+                    ) { RaftTextField("Answer in English.", {}) }
+                    RaftField(
+                        label = "Allowed domains for sign-in by email link",
+                        optional = true,
+                        labelTrailing = { RaftTextLink("Clear", {}, style = RaftTheme.typography.footnote) },
+                    ) { RaftTextField("slock.ai", {}) }
                     Caption("FieldItem md, sm: the control on the label's first line")
                     RaftFieldItem("Don't remind me again") { RaftCheckbox(true, {}) }
                     RaftFieldItem("Don't remind me again", size = RaftFieldLabelSize.Sm) { RaftCheckbox(true, {}) }

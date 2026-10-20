@@ -134,6 +134,28 @@ class RaftInteractiveSemanticsTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
         }
 
+    /** A control beside the label keeps its own name; the field's control is still named by the label. */
+    @Test
+    fun aFieldLabelTrailingControlIsNamedOnItsOwn() =
+        runComposeUiTest {
+            var on by mutableStateOf(false)
+            setContent(
+                themed {
+                    RaftField(
+                        label = "Custom instructions",
+                        labelTrailing = { RaftSwitch(checked = on, onCheckedChange = { on = it }, label = "Use Custom Instructions") },
+                    ) {
+                        RaftTextField("", {}, placeholder = "Answer in English.")
+                    }
+                },
+            )
+            onNodeWithContentDescription("Custom instructions").assertIsDisplayed()
+            onNodeWithContentDescription("Use Custom Instructions")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+                .performClick()
+            assertTrue(on, "the trailing switch works")
+        }
+
     @Test
     fun aSelectTriggerSaysItsNameValueAndState() =
         runComposeUiTest {
