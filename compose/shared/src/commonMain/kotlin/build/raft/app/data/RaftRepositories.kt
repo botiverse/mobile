@@ -740,6 +740,7 @@ data class SettingsServerSidebarOrderUpdateRequest(
     val agentOrder: List<String>? = null,
     val dmOrder: List<String>? = null,
     val channelSortMode: String? = null,
+    val jointChannelSortMode: String? = null,
     val dmSortMode: String? = null,
     val pinnedSortMode: String? = null,
     val pinned: List<SettingsServerSidebarPinnedItem>? = null,

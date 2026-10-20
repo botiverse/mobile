@@ -85,6 +85,7 @@ private object SharedHomeIdentityPersistSpec :
                     intent is SharedHomeIntent.TogglePinned ||
                     intent is SharedHomeIntent.SetPinnedSortMode ||
                     intent is SharedHomeIntent.SetChannelSortMode ||
+                    intent is SharedHomeIntent.SetJointChannelSortMode ||
                     intent is SharedHomeIntent.ReorderSidebar ||
                     intent is SharedHomeIntent.ReorderServers ||
                     intent is SharedHomeIntent.CloseDirectMessage ||

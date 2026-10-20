@@ -1481,6 +1481,9 @@ data class SettingsServerSidebarOrderSnapshot(
     val hiddenDmIds: List<String> = emptyList(),
     val channelPanelTabOrder: List<String> = emptyList(),
     val agentPanelTabOrder: List<String> = emptyList(),
+    // Web keeps the Joint Channels sort mode separate from Channels
+    // (sidebar-order `jointChannelSortMode`).
+    val jointChannelSortMode: String = "manual",
     // task #512: web "channel sections" port. Mirrors the wire fields of
     // GET/PATCH /servers/:id/sidebar-order (web packages/web/src/store/sidebarSections.ts).
     val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),

@@ -19853,6 +19853,19 @@ private fun SharedHomeScreen(
                 activityUnreadCount = activityUnreadCount
             )
             val homeShellLabels = RaftHomeShellLabels.localized()
+            // Web "Hide Empty Sections": a device-local display preference.
+            val hideEmptySectionsStore = remember {
+                runCatching {
+                    build.raft.app.data.KeyValueRaftSidebarHideEmptySectionsStore(
+                        build.raft.app.data.raftSharedPreferenceStore()
+                    )
+                }.getOrNull()
+            }
+            var hideEmptySections by remember(hideEmptySectionsStore) {
+                mutableStateOf(
+                    hideEmptySectionsStore?.read() ?: build.raft.app.data.RaftSidebarHideEmptySectionsDefault
+                )
+            }
             RaftStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
@@ -19892,6 +19905,7 @@ private fun SharedHomeScreen(
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
                 channelOrder = snapshot.sidebarOrder?.channelOrder.orEmpty(),
                 channelSortMode = snapshot.sidebarOrder?.channelSortMode ?: "manual",
+                jointChannelSortMode = snapshot.sidebarOrder?.jointChannelSortMode ?: "manual",
                 dmOrder = snapshot.sidebarOrder?.dmOrder.orEmpty(),
                 dmSortMode = snapshot.sidebarOrder?.dmSortMode ?: "manual",
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
@@ -19903,6 +19917,7 @@ private fun SharedHomeScreen(
                 customSections = snapshot.sidebarOrder?.customSections.orEmpty(),
                 sectionOrder = snapshot.sidebarOrder?.sectionOrder.orEmpty(),
                 sectionPlacements = snapshot.sidebarOrder?.sectionPlacements.orEmpty(),
+                hideEmptySections = hideEmptySections,
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
@@ -19989,14 +20004,28 @@ private fun SharedHomeScreen(
                 onChannelSortModeChange = { mode ->
                     onIntent(SharedHomeIntent.SetChannelSortMode(mode))
                 },
+                onJointChannelSortModeChange = { mode ->
+                    onIntent(SharedHomeIntent.SetJointChannelSortMode(mode))
+                },
+                onHideEmptySectionsChange = { hide ->
+                    hideEmptySections = hide
+                    hideEmptySectionsStore?.write(hide)
+                },
                 onSidebarOrderChange = { target, order ->
                     onIntent(target.toReorderSidebarIntent(order))
                 },
                 onSidebarSectionSortModeChange = { sectionId, mode ->
                     onIntent(SharedHomeIntent.SetSidebarSectionSortMode(sectionId, mode))
                 },
-                onSidebarSectionCreate = { name, emoji ->
-                    onIntent(SharedHomeIntent.CreateSidebarSection(name, emoji))
+                onSidebarSectionCreate = { request ->
+                    onIntent(
+                        SharedHomeIntent.CreateSidebarSection(
+                            name = request.name,
+                            emoji = request.emoji,
+                            moveConversationId = request.moveConversationId,
+                            insertBeforeSectionId = request.insertBeforeSectionId
+                        )
+                    )
                 },
                 onSidebarSectionRename = { sectionId, name, emoji ->
                     onIntent(SharedHomeIntent.RenameSidebarSection(sectionId, name, emoji))
