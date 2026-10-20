@@ -1339,7 +1339,6 @@ class SettingsRepositoryDataSourceTest {
         private var currentPushPreviewMode =
             if (notificationSettingsJson.contains("\"private\"")) "private" else "full"
         private val canonicalNotificationModeSupported = notificationSettingsJson.contains("serverPushMode")
-        private val pushPreviewModeSupported = notificationSettingsJson.contains("pushPreviewMode")
         var machinesServerId: String? = null
             private set
         var workspacesMachineId: String? = null
@@ -1532,7 +1531,7 @@ class SettingsRepositoryDataSourceTest {
                 }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "GET" ->
                     response(if (canonicalNotificationModeSupported) {
-                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"${if (pushPreviewModeSupported) ",\"pushPreviewMode\":\"$currentPushPreviewMode\"" else ""}}"""
+                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"}"""
                     } else {
                         """{"serverPushMuted":${currentServerPushMode == "none"}}"""
                     })
@@ -1550,7 +1549,7 @@ class SettingsRepositoryDataSourceTest {
                         currentPushPreviewMode = if (bodyText.contains("\"private\"")) "private" else "full"
                     }
                     response(if (canonicalNotificationModeSupported) {
-                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"${if (pushPreviewModeSupported) ",\"pushPreviewMode\":\"$currentPushPreviewMode\"" else ""}}"""
+                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"}"""
                     } else {
                         """{"serverPushMuted":${currentServerPushMode == "none"}}"""
                     })
