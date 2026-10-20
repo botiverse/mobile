@@ -38,7 +38,12 @@ class RaftAndroidHostHooksTest {
         try {
             val lease = Lease()
             val failure = CompletableDeferred<Throwable?>()
-            val jobRef = CompletableDeferred<Job>()
+            // `entered` lets the test cancel only after `open` is already running, and
+            // `cancelled` lets it wait for that cancellation to be observed. Without both
+            // the cancel could land after the lease was handed over, the call would return
+            // normally, and `failure` would be null -- a scheduling-dependent flake.
+            val entered = CompletableDeferred<Job>()
+            val cancelled = CompletableDeferred<Unit>()
             val job =
                 launch(start = CoroutineStart.LAZY) {
                     val result =
@@ -47,7 +52,8 @@ class RaftAndroidHostHooksTest {
                                 io,
                                 open = {
                                     // The request is cancelled while the lease is being acquired.
-                                    runBlocking { jobRef.await() }.cancel()
+                                    entered.complete(coroutineContext[Job]!!)
+                                    runBlocking { cancelled.await() }
                                     lease
                                 },
                                 close = { it.closes.incrementAndGet() },
@@ -55,8 +61,9 @@ class RaftAndroidHostHooksTest {
                         }
                     failure.complete(result.exceptionOrNull())
                 }
-            jobRef.complete(job)
             job.start()
+            entered.await().cancel()
+            cancelled.complete(Unit)
             job.join()
             assertTrue(failure.await() is CancellationException)
             assertEquals(1, lease.closes.get())
