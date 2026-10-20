@@ -97,6 +97,25 @@ val AppLocale.stringDescLocaleType: StringDesc.LocaleType
             AppLocale.Japanese -> StringDesc.LocaleType.Custom(requireNotNull(kmmResourceLocaleTag))
         }
 
+/**
+ * The BCP 47 tag of the language the app UI is actually shown in. An explicit
+ * choice is its own tag; [AppLocale.System] resolves the device language
+ * against the shipped catalogs (Chinese -> Simplified Chinese, Japanese) and
+ * otherwise falls back to the English base catalog, as resource lookup does.
+ */
+fun AppLocale.displayLanguageTag(systemLanguage: String?): String =
+    when (this) {
+        AppLocale.English,
+        AppLocale.SimplifiedChinese,
+        AppLocale.Japanese -> languageTag
+        AppLocale.System ->
+            when (systemLanguage?.trim()?.lowercase()?.replace('_', '-')?.substringBefore('-')) {
+                "zh" -> AppLocale.SimplifiedChinese.languageTag
+                "ja" -> AppLocale.Japanese.languageTag
+                else -> AppLocale.English.languageTag
+            }
+    }
+
 data class LocaleSnapshot(
     val current: AppLocale,
     val supported: List<AppLocale> = AppLocale.entries

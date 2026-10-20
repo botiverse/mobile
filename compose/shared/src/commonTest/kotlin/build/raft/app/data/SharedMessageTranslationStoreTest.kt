@@ -75,7 +75,7 @@ class SharedMessageTranslationStoreTest {
         authStore: RaftAuthSessionStore = FakeAuthSessionStore(),
         translationMode: () -> TranslationModePreference = { TranslationModePreference.Automatic },
         translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
-        systemLanguage: () -> String? = { null }
+        displayLanguage: () -> String? = { null }
     ): SharedMessageTranslationStore =
         SharedMessageTranslationStore(
             authStore = authStore,
@@ -83,7 +83,7 @@ class SharedMessageTranslationStoreTest {
             scope = scope,
             translationMode = translationMode,
             translationTargetLanguage = translationTargetLanguage,
-            systemLanguage = systemLanguage
+            displayLanguage = displayLanguage
         )
 
     @Test
@@ -104,10 +104,10 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun systemTargetUsesCurrentDeviceLanguage() = runBlocking {
+    fun noPreferenceTargetFollowsDisplayLanguage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
-        val store = store(api, scope, systemLanguage = { "ja-JP" })
+        val store = store(api, scope, displayLanguage = { "ja" })
 
         store.ensureSettingsLoaded()
 
@@ -116,12 +116,17 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun systemTargetIsIndependentFromExplicitAppLanguage() = runBlocking {
+    fun noPreferenceTargetUsesExplicitAppLanguageOverDeviceLanguage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
-        // The store deliberately receives only the device-language provider;
-        // an explicit App Language preference is not part of this resolution path.
-        val store = store(api, scope, systemLanguage = { "zh-Hans" })
+        // botiverse/slock#10449: with no saved target, translate into the UI
+        // language. App language Simplified Chinese on an English device -> zh-cn.
+        val store =
+            store(
+                api,
+                scope,
+                displayLanguage = { AppLocale.SimplifiedChinese.displayLanguageTag(systemLanguage = "en-US") }
+            )
 
         store.ensureSettingsLoaded()
         store.requestAutoTranslations(listOf(candidate()))
@@ -132,15 +137,15 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun systemTargetReadsRuntimeDeviceLanguageForEveryRequest() = runBlocking {
+    fun noPreferenceTargetReadsCurrentDisplayLanguageForEveryRequest() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
-        var deviceLanguage = "en-US"
-        val store = store(api, scope, systemLanguage = { deviceLanguage })
+        var appLocale = AppLocale.English
+        val store = store(api, scope, displayLanguage = { appLocale.displayLanguageTag(systemLanguage = "ko-KR") })
 
         store.ensureSettingsLoaded()
         store.requestAutoTranslations(listOf(candidate(messageId = "m1")))
-        deviceLanguage = "ja-JP"
+        appLocale = AppLocale.Japanese
         store.requestAutoTranslations(listOf(candidate(messageId = "m2")))
 
         assertEquals(listOf("en", "ja"), api.batchCalls.map { it.second })
@@ -148,7 +153,7 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun explicitTargetOverridesDeviceLanguage() = runBlocking {
+    fun explicitTargetOverridesDisplayLanguage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
         val store =
@@ -156,7 +161,7 @@ class SharedMessageTranslationStoreTest {
                 api,
                 scope,
                 translationTargetLanguage = { "ko" },
-                systemLanguage = { "ja-JP" }
+                displayLanguage = { "ja-JP" }
             )
 
         store.ensureSettingsLoaded()

@@ -2557,7 +2557,11 @@ internal class RaftSharedStoreProvider private constructor(
                         translationTargetLanguage = {
                             KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationTargetLanguageSync()
                         },
-                        systemLanguage = ::currentSystemLanguageTag,
+                        displayLanguage = {
+                            KeyValueLocalePreferenceStore(sharedPreferenceStore)
+                                .readLocaleSync()
+                                .displayLanguageTag(currentSystemLanguageTag())
+                        },
                         diagnosticsLogger = sharedInfoLogger("SlockMessageTranslation", "shared_message_translation")
                     ),
                 messageBodyFontSizeStore = messageBodyFontSizeStore,

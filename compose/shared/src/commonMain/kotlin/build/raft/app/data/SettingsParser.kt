@@ -970,6 +970,9 @@ private fun WireSettingsJoinLink.toSettingsServerJoinLinkSnapshot(): SettingsSer
             },
         usageLabel = useCount?.let { "$it uses" },
         expiresAtLabel = expiresAt?.takeIf { it.isNotBlank() },
+        maxUses = maxUses?.takeIf { it > 0 },
+        expiresAt = expiresAt?.takeIf { it.isNotBlank() },
+        useCount = useCount,
     )
 }
 

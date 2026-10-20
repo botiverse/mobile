@@ -2247,8 +2247,6 @@ internal fun MembersPageContent(
         )
     }
     val scope = rememberCoroutineScope()
-    val manageInvitesForbidden = stringResource(MR.strings.member_error_manage_invites_forbidden)
-    val loadJoinLinkFailed = stringResource(MR.strings.member_error_load_join_link)
     val openProfileFailed = stringResource(MR.strings.member_error_open_profile)
     val computersStore = remember(computersApiClient, scope) {
         SharedComputersStore(
@@ -2519,69 +2517,34 @@ internal fun MembersPageContent(
         }
     }
 
-    // Task #43 step 3: humans "+" invite flow state. Mirrors the React
-    // `InviteHumanDialog.tsx` (join link + emails + send). Join link
-    // auto-loads on first open; if none exist, the data source creates
-    // one (no expiry, no max-uses). Sending POSTs one `/servers/{id}/invites`
-    // per non-empty email.
-    var inviteJoinLinkLoading by remember { mutableStateOf(false) }
-    var inviteJoinLinkUrl by remember { mutableStateOf<String?>(null) }
-    var inviteJoinLinkWebBaseUrl by remember { mutableStateOf<String?>(null) }
-    var inviteJoinLinkCopied by remember { mutableStateOf(false) }
-    fun loadInviteJoinLink() {
-        if (serverId.isBlank() || inviteJoinLinkLoading) return
-        inviteJoinLinkLoading = true
-        scope.launch {
-            val webBaseUrl =
-                when (val developer = settingsCapabilities.loadDeveloper()) {
-                    is DataResult.Content -> developer.data.webUrl
-                    else -> null
-                }
-            val listed = membersDataSource.loadJoinLinks(serverId)
-            val existing = (listed as? DataResult.Content)?.data.orEmpty().firstOrNull()
-            val result = if (existing != null) {
-                DataResult.Content(existing)
-            } else {
-                membersDataSource.ensureJoinLink(serverId)
-            }
-            inviteJoinLinkLoading = false
-            when (result) {
-                is DataResult.Content -> {
-                    inviteJoinLinkWebBaseUrl = webBaseUrl
-                    inviteJoinLinkUrl = normalizeInviteHumanJoinUrl(result.data.url, webBaseUrl)
-                }
-                is DataResult.NoPermission ->
-                    bridge.toast(manageInvitesForbidden)
-                is DataResult.Error ->
-                    bridge.toast("$loadJoinLinkFailed: ${result.error.userFacingMessage(errorStrings)}")
-                is DataResult.Empty -> Unit
-            }
+    // Humans "+" invite: web `InviteHumanDialog.tsx` (email / link tabs, link limits,
+    // update / revoke), rendered by the shared dialog host.
+    val inviteGuestFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val inviteCanOfferGuest =
+        remember(serverId, inviteGuestFlagRevision) {
+            serverId.isNotBlank() &&
+                sharedStores.serverFeatureFlags.isEnabled(
+                    build.raft.app.model.ServerId(serverId),
+                    InviteHumanGuestFeatureFlagKey
+                )
         }
-    }
-    val inviteHumanSubmitHandler: suspend (List<String>) -> DataResult<Unit> =
-        remember(membersDataSource, serverId) {
-            { emails ->
-                if (serverId.isBlank()) {
-                    DataResult.Error(ScreenError(code = "server_id_missing", retryable = false))
-                } else {
-                    val results = emails.map { email ->
-                        membersDataSource.sendInvite(serverId, email)
-                    }
-                    when {
-                        results.isEmpty() ->
-                            DataResult.Empty(EmptyReason.NoSettingsAvailable)
-                        results.all { it is DataResult.Content } ->
-                            DataResult.Content(Unit)
-                        else ->
-                            DataResult.Error(
-                                membersFirstScreenErrorOrFallback(results, "invite_send_failed")
-                            )
-                    }
-                }
+    val inviteHumanDialog: (@Composable (() -> Unit) -> Unit)? =
+        if (payload.canInviteHumans && serverId.isNotBlank()) {
+            { onDismiss ->
+                SharedServerInviteHumanDialogHost(
+                    serverId = serverId,
+                    membersDataSource = membersDataSource,
+                    canOfferGuest = inviteCanOfferGuest,
+                    loadWebBaseUrl = {
+                        (settingsCapabilities.loadDeveloper() as? DataResult.Content)?.data?.webUrl
+                    },
+                    copyToPasteboard = bridge::copyToPasteboard,
+                    onDismiss = onDismiss
+                )
             }
+        } else {
+            null
         }
-    val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
-        inviteHumanSubmitHandler.takeIf { payload.canInviteHumans }
 
     val agentPanelTabOrder =
         if (agentPanelTabOrderState.serverId == serverId) {
@@ -2686,17 +2649,7 @@ internal fun MembersPageContent(
             createAgentServerId = serverId,
             createAgentTakenAgentNames = localMembers.takenAgentNames()
         ),
-        inviteHuman = MembersInviteHumanInputs(
-            inviteHumanSubmit = inviteHumanSubmit,
-            inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
-            inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
-            inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-            inviteHumanJoinLinkCopy = { url ->
-                bridge.copyToPasteboard(url)
-                inviteJoinLinkCopied = true
-            },
-            inviteHumanLoadJoinLink = { loadInviteJoinLink() }
-        ),
+        inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = inviteHumanDialog),
         // Task #409: persist per-machine collapse under the session user id.
         currentUserId = membersCurrentUserId,
         agentGroupCollapseStore = membersAgentGroupCollapseStore,
@@ -5182,15 +5135,10 @@ internal fun List<MemberProfile>.takenAgentNames(): List<String> =
 internal class MembersInviteHumanInputs(
     /**
      * Optional invite-human flow. When non-null, the humans section "+" opens
-     * a [SharedInviteHumanDialog] and submit is forwarded to this host
-     * callback. Mirrors the [MembersCreateAgentInputs.createAgentSubmit] pattern.
+     * this dialog (the host renders [SharedServerInviteHumanDialogHost]); its
+     * argument closes it. Null hides the entry.
      */
-    val inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
-    val inviteHumanJoinLinkLoading: Boolean = false,
-    val inviteHumanJoinLinkUrl: String? = null,
-    val inviteHumanJoinLinkCopied: Boolean = false,
-    val inviteHumanJoinLinkCopy: (String) -> Unit = {},
-    val inviteHumanLoadJoinLink: () -> Unit = {}
+    val inviteHumanDialog: (@Composable (onDismiss: () -> Unit) -> Unit)? = null
 )
 
 @Composable
@@ -5289,12 +5237,7 @@ internal fun MembersListContent(
     val createAgentFormStore = createAgent.createAgentFormStore
     val createAgentServerId = createAgent.createAgentServerId
     val createAgentTakenAgentNames = createAgent.createAgentTakenAgentNames
-    val inviteHumanSubmit = inviteHuman.inviteHumanSubmit
-    val inviteHumanJoinLinkLoading = inviteHuman.inviteHumanJoinLinkLoading
-    val inviteHumanJoinLinkUrl = inviteHuman.inviteHumanJoinLinkUrl
-    val inviteHumanJoinLinkCopied = inviteHuman.inviteHumanJoinLinkCopied
-    val inviteHumanJoinLinkCopy = inviteHuman.inviteHumanJoinLinkCopy
-    val inviteHumanLoadJoinLink = inviteHuman.inviteHumanLoadJoinLink
+    val inviteHumanDialog = inviteHuman.inviteHumanDialog
     val errorStrings = localizedErrorPresentationStrings()
     val displayTitle =
         canonicalMembersDisplayText(
@@ -5347,21 +5290,16 @@ internal fun MembersListContent(
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
     var createAgentErrorFields by remember { mutableStateOf(emptySet<String>()) }
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
-    var inviteHumanSubmitting by remember { mutableStateOf(false) }
-    var inviteHumanError by remember { mutableStateOf<String?>(null) }
     val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
     val createAgentFailed = stringResource(MR.strings.member_error_create_agent)
     val createAgentForbidden = stringResource(MR.strings.member_error_create_agent_forbidden)
     val createAgentFormRefreshed = stringResource(MR.strings.agent_create_error_form_refreshed)
     val createAgentNameTaken = stringResource(MR.strings.agent_create_error_name_taken)
     val createAgentFormRefreshFailed = stringResource(MR.strings.agent_create_error_form_refresh_failed)
-    val sendInvitesFailed = stringResource(MR.strings.member_error_send_invites)
-    val sendInvitesForbidden = stringResource(MR.strings.member_error_send_invites_forbidden)
-    val canInviteHumans = payload.canInviteHumans && inviteHumanSubmit != null
+    val canInviteHumans = payload.canInviteHumans && inviteHumanDialog != null
     LaunchedEffect(canInviteHumans) {
         if (!canInviteHumans) {
             activeInviteHuman = false
-            inviteHumanError = null
         }
     }
     val lazyItemCount =
@@ -5678,54 +5616,8 @@ internal fun MembersListContent(
             }
         )
     }
-    val inviteSubmit: (suspend (List<String>) -> DataResult<Unit>)? = inviteHumanSubmit
-    if (activeInviteHuman && inviteSubmit != null) {
-        val scope = rememberCoroutineScope()
-        // Load the join link when the dialog opens. Cheap: one GET (and at
-        // most one POST if the list is empty), both gated on the user's
-        // manage-invite permission via the data source.
-        LaunchedEffect(Unit) {
-            if (inviteHumanJoinLinkUrl == null && !inviteHumanJoinLinkLoading) {
-                inviteHumanLoadJoinLink()
-            }
-        }
-        SharedInviteHumanDialog(
-            submitting = inviteHumanSubmitting,
-            errorMessage = inviteHumanError,
-            joinLinkLoading = inviteHumanJoinLinkLoading,
-            joinLinkUrl = inviteHumanJoinLinkUrl,
-            copied = inviteHumanJoinLinkCopied,
-            onCopyJoinLink = inviteHumanJoinLinkCopy,
-            onDismiss = {
-                if (!inviteHumanSubmitting) {
-                    activeInviteHuman = false
-                    inviteHumanError = null
-                }
-            },
-            onSubmit = { emails ->
-                inviteHumanSubmitting = true
-                inviteHumanError = null
-                scope.launch {
-                    val result = inviteSubmit(emails)
-                    inviteHumanSubmitting = false
-                    when (result) {
-                        is DataResult.Content -> {
-                            activeInviteHuman = false
-                            inviteHumanError = null
-                        }
-                        is DataResult.Empty -> {
-                            inviteHumanError = emptyResponseMessage
-                        }
-                        is DataResult.Error -> {
-                            inviteHumanError = "$sendInvitesFailed: ${result.error.userFacingMessage(errorStrings)}"
-                        }
-                        is DataResult.NoPermission -> {
-                            inviteHumanError = sendInvitesForbidden
-                        }
-                    }
-                }
-            }
-        )
+    if (activeInviteHuman && canInviteHumans) {
+        inviteHumanDialog?.invoke { activeInviteHuman = false }
     }
 }
 

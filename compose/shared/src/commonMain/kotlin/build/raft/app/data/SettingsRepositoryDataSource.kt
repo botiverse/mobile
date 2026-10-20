@@ -990,7 +990,7 @@ class RealSettingsRepository(
         }
         val email = request.email.trim()
         if (email.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return settingsCreateServerInvite(server.id, email)
+        return settingsCreateServerInvite(server.id, email, request.role)
     }
 
     /**
@@ -2071,7 +2071,11 @@ class RealSettingsRepository(
             }
         )
 
-    private suspend fun settingsCreateServerInvite(serverId: String, email: String): DataResult<SettingsServerActionResult> =
+    private suspend fun settingsCreateServerInvite(
+        serverId: String,
+        email: String,
+        role: String? = null
+    ): DataResult<SettingsServerActionResult> =
         executeTypedSettings(
             source = "settings_server_invite_create",
             contractCode = "settings_server_invite_contract_mismatch",
@@ -2079,7 +2083,7 @@ class RealSettingsRepository(
                 networkClient.createSettingsServerInvite(
                     DataRequestPriority.Foreground,
                     serverId,
-                    buildSharedSettingsServerInviteCreateBody(email)
+                    buildSharedSettingsServerInviteCreateBody(email, role)
                 )
             },
             errorTextDecoder = HomeNetworkResponse::settingsInviteRouteErrorTextOrNull,
@@ -3239,10 +3243,10 @@ fun buildSharedSettingsServerProfileUpdateBody(
     }.toString()
 
 @Serializable
-data class SettingsServerInviteCreateRequestBody(val email: String)
+data class SettingsServerInviteCreateRequestBody(val email: String, val role: String? = null)
 
-fun buildSharedSettingsServerInviteCreateBody(email: String): String =
-    settingsRepositoryJson.encodeToString(SettingsServerInviteCreateRequestBody(email))
+fun buildSharedSettingsServerInviteCreateBody(email: String, role: String? = null): String =
+    settingsRepositoryJson.encodeToString(SettingsServerInviteCreateRequestBody(email, role))
 
 @Serializable
 data class SettingsServerJoinLinkCreateRequestBody(

@@ -37,6 +37,8 @@ class TranslationTargetLanguagesTest {
         assertEquals("en", TranslationTargetLanguages.resolve("browser", "en-GB"))
         assertEquals("ja", TranslationTargetLanguages.resolve("system", "ja-JP"))
         assertEquals("ko", TranslationTargetLanguages.resolve("other", "ko-KR"))
+        // Web (botiverse/slock#10449) stores the no-preference choice as "display".
+        assertEquals("zh-cn", TranslationTargetLanguages.resolve("display", "zh-CN"))
         assertEquals("en", TranslationTargetLanguages.resolve("browser", "fr-FR"))
         assertEquals("en", TranslationTargetLanguages.resolve("browser", null))
     }

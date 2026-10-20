@@ -712,7 +712,9 @@ data class SettingsServerProfileUpdateRequest(
 )
 
 data class SettingsServerInviteCreateRequest(
-    val email: String
+    val email: String,
+    /** `member` | `guest` (server `POST /servers/:id/invites`); null lets the server default to member. */
+    val role: String? = null
 )
 
 data class SettingsServerDeleteRequest(

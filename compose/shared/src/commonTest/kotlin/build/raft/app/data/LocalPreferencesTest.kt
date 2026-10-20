@@ -210,7 +210,7 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun legacyBrowserTranslationTargetRemainsSystemAfterUpgrade() = runBlocking {
+    fun legacyBrowserTranslationTargetRemainsNoPreferenceAfterUpgrade() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         store.putString("settings.translationTargetLanguage", "browser")
         val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
@@ -219,7 +219,31 @@ class LocalPreferencesTest {
 
         assertEquals(TranslationTargetLanguages.System, restored)
         assertEquals("browser", store.getString("settings.translationTargetLanguage"))
-        assertEquals("ja", TranslationTargetLanguages.resolve(restored, "ja-JP"))
+        assertEquals("ja", TranslationTargetLanguages.resolve(restored, AppLocale.Japanese.displayLanguageTag("en-US")))
+    }
+
+    @Test
+    fun displayLanguageTagIsTheLanguageTheUiIsShownIn() {
+        // (app locale, device language) -> no-preference translation target.
+        val cases =
+            listOf(
+                Triple(AppLocale.English, "ja-JP", "en"),
+                Triple(AppLocale.SimplifiedChinese, "en-US", "zh-cn"),
+                Triple(AppLocale.Japanese, "zh-Hans-CN", "ja"),
+                Triple(AppLocale.System, "ja-JP", "ja"),
+                Triple(AppLocale.System, "zh_TW", "zh-cn"),
+                // No Korean / French UI catalog: the UI falls back to English.
+                Triple(AppLocale.System, "ko-KR", "en"),
+                Triple(AppLocale.System, "fr-FR", "en"),
+                Triple(AppLocale.System, null, "en"),
+            )
+        cases.forEach { (locale, device, expected) ->
+            assertEquals(
+                expected,
+                TranslationTargetLanguages.resolve(TranslationTargetLanguages.System, locale.displayLanguageTag(device)),
+                "$locale on $device"
+            )
+        }
     }
 
     @Test

@@ -11,8 +11,9 @@ data class TranslationTargetLanguageOption(
 @RaftCoreInternalApi
 object TranslationTargetLanguages {
     /**
-     * Persisted/wire value retained for compatibility with the web setting.
-     * On mobile this option means the device's current system language.
+     * The no-preference choice: translate into the app's current display (UI)
+     * language, like web "Same as display language" (botiverse/slock#10449).
+     * The persisted value keeps its legacy `browser` spelling.
      */
     const val System = "browser"
     const val Browser = System
@@ -20,7 +21,7 @@ object TranslationTargetLanguages {
 
     val options: List<TranslationTargetLanguageOption> =
         listOf(
-            TranslationTargetLanguageOption(System, "System language"),
+            TranslationTargetLanguageOption(System, "Same as display language"),
             TranslationTargetLanguageOption("en", "English"),
             TranslationTargetLanguageOption("zh-cn", "Simplified Chinese"),
             TranslationTargetLanguageOption("zh-tw", "Traditional Chinese"),
@@ -35,9 +36,13 @@ object TranslationTargetLanguages {
 
     private val supportedKeys = options.drop(1).mapTo(mutableSetOf()) { it.key }
 
-    fun resolve(targetLanguage: String?, systemLanguage: String?): String =
+    /**
+     * The language to translate into: an explicit [targetLanguage], else (no
+     * preference) the [displayLanguage] tag, the app's current UI language.
+     */
+    fun resolve(targetLanguage: String?, displayLanguage: String?): String =
         normalize(targetLanguage)
-            ?: if (isSystem(targetLanguage)) normalizeSystemLanguage(systemLanguage) else Fallback
+            ?: if (isSystem(targetLanguage)) normalizeSystemLanguage(displayLanguage) else Fallback
 
     fun normalizeSystemLanguage(value: String?): String {
         val normalized = value.normalizedLanguageTag() ?: return Fallback
@@ -75,7 +80,7 @@ object TranslationTargetLanguages {
     }
 
     private fun isSystem(value: String?): Boolean =
-        value.normalizedLanguageTag().let { it == null || it == System || it == "other" || it == "system" }
+        value.normalizedLanguageTag().let { it == null || it == System || it == "display" || it == "other" || it == "system" }
 
     private fun String?.normalizedLanguageTag(): String? =
         this?.trim()?.lowercase()?.replace('_', '-')?.takeIf { it.isNotEmpty() }
