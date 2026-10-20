@@ -3129,7 +3129,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun readStateIdentityEventDoesNotAddASecondRealtimeBackgroundReconcile() = runBlocking {
+    fun readStateEventWithoutARowFrontierTakesOneCanonicalReconcile() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val stale = threadItem("thread-channel-1", unreadCount = 2).copy(replyCount = 2)
         val canonical =
@@ -3175,7 +3175,9 @@ class SharedActivityStoreTest {
             )
         )
         assertEquals(2, loadCountAfterRealtime)
-        assertEquals(loadCountAfterRealtime, inbox.initialLoadCount)
+        // The row carries no read-state frontier, so the read cannot be
+        // projected locally; it takes exactly one canonical reconcile.
+        assertEquals(loadCountAfterRealtime + 1, inbox.initialLoadCount)
         val patched = store.state.value.items.single()
         assertEquals(MessageId("message-new"), patched.latestActivityMessageId)
         assertEquals("Realtime preview", patched.latestActivityPreview)

@@ -13,6 +13,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.ServerId
@@ -947,6 +948,7 @@ class SharedActivityStore internal constructor(
         if (event.serverId != null && event.serverId != serverId) return
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         var acceptedHere = false
+        val reconcileJobs = mutableListOf<Job>()
         event.scopes.forEach { readScope ->
             val productionOwner =
                 readReceiptOwnerFactory
@@ -978,16 +980,83 @@ class SharedActivityStore internal constructor(
                     "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
                         "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
                 )
-                acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
+                if (result == PerReceiverReadStateFactResult.Accepted) {
+                    acceptedHere = true
+                    projectRemoteReadLocked(
+                        channelId = readScope.scopeId.value,
+                        maxReadSeq = maxReadSeq,
+                        intent = SharedActivityIntent.ApplyRealtimeEvent(event)
+                    )?.let(reconcileJobs::add)
+                }
             }
         }
-        if (acceptedHere) {
-            diagnosticsLogger("activity_read_state_patch result=checkpoint_only reason=identity_only_event")
-            onUnreadCountsChanged()
+        reconcileJobs.forEach(Job::start)
+        if (acceptedHere) onUnreadCountsChanged()
+    }
+
+    /**
+     * Cross-device / cross-tab read (web applyReadStateUpdate ->
+     * inboxStore.applyReadStateProjection, botiverse/slock 1bb70cbeb
+     * applyReadStateUpdate.ts:8-30, inboxStore.ts:1666-1707). Web projects a
+     * read only when it can prove what it covers; here that proof is the row's
+     * own authority frontier (`readState.latestActivity.seq`, same read-state
+     * domain as `maxReadSeq`). A covered row is cleared (and leaves Unread)
+     * with a read hold so a lagging refresh cannot resurrect it; a row the read
+     * may not fully cover gets a throttled canonical reconcile instead.
+     */
+    private fun projectRemoteReadLocked(
+        channelId: String,
+        maxReadSeq: Long,
+        intent: SharedActivityIntent
+    ): Job? {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return null
+        val matching =
+            snapshot.items.filter { item -> item.unreadCount > 0 && item.readReceiptChannelId()?.value == channelId }
+        if (matching.isEmpty()) return null
+        val readSeq = maxReadSeq.takeIf { it >= 0L }?.toString()
+        val (covered, uncovered) =
+            matching.partition { item ->
+                val frontier = item.readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+                frontier != null && compareActivitySeq(readSeq, frontier) >= 0
+            }
+        if (covered.isNotEmpty()) {
+            rememberUnreadCleared(overlayOwner(current), covered, confirmed = true)
+            val coveredKeys = covered.mapTo(mutableSetOf(), InboxItem::key)
+            val keepsRows = current.selectedFilter.keepsReadActivityRows()
+            val items =
+                if (keepsRows) {
+                    snapshot.items.map { item ->
+                        if (item.key in coveredKeys) {
+                            item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                        } else {
+                            item
+                        }
+                    }
+                } else {
+                    snapshot.items.filterNot { item -> item.key in coveredKeys }
+                }
+            reduceState(
+                intent,
+                current.copy(
+                    snapshot =
+                        snapshot.copy(
+                            items = items,
+                            totalCount = if (keepsRows) snapshot.totalCount else maxOf(0, snapshot.totalCount - covered.size),
+                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - covered.sumOf(InboxItem::unreadCount))
+                        )
+                )
+            )
         }
+        diagnosticsLogger(
+            "activity_read_state_patch scopeId=$channelId maxReadSeq=$maxReadSeq " +
+                "projected=${covered.size} reconcile=${uncovered.isNotEmpty()}"
+        )
+        return if (uncovered.isNotEmpty()) scheduleRealtimeBackgroundReconcileLocked() else null
     }
 
     internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
+        var reconcileJob: Job? = null
         val accepted = synchronized(realtimeOwnerLock) {
             val current = _state.value
             val serverId = current.ownerServerId ?: return@synchronized false
@@ -1002,8 +1071,28 @@ class SharedActivityStore internal constructor(
                 "activity_read_state_patch result=durable_v1_projection scopeId=${fact.channelId} " +
                     "version=${fact.readStateVersion} maxReadSeq=${fact.maxReadSeq}"
             )
+            reconcileJob =
+                projectRemoteReadLocked(
+                    channelId = fact.channelId,
+                    maxReadSeq = fact.maxReadSeq,
+                    intent =
+                        SharedActivityIntent.ApplyRealtimeEvent(
+                            PerReceiverReadStateChanged(
+                                serverId = ServerId(serverId),
+                                scopes =
+                                    listOf(
+                                        PerReceiverReadStateScope(
+                                            scopeId = ChannelId(fact.channelId),
+                                            maxReadSeq = fact.maxReadSeq,
+                                            readStateVersion = fact.readStateVersion
+                                        )
+                                    )
+                            )
+                        )
+                )
             true
         }
+        reconcileJob?.start()
         if (accepted) onUnreadCountsChanged()
     }
 
