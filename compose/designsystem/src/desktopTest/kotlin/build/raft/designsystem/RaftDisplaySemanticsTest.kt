@@ -24,9 +24,11 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
@@ -35,6 +37,8 @@ import androidx.compose.ui.use
 import build.raft.designsystem.components.LocalRaftPulseClock
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftDescriptionList
@@ -149,6 +153,33 @@ class RaftDisplaySemanticsTest {
             button.requestFocus()
             button.assertIsFocused()
             button.performClick()
+            assertEquals(0, clicks)
+        }
+
+    /** The tooltip names an icon button for screen readers; a tap clicks it. */
+    @Test
+    fun anIconButtonIsNamedByItsTooltip() =
+        runComposeUiTest {
+            var clicks = 0
+            setContent(themed { RaftIconButton(onClick = { clicks++ }, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost) {} })
+            // The bubble is not there until a long press or a hover.
+            onNode(hasText("Add Reaction")).assertDoesNotExist()
+            onNodeWithContentDescription("Add Reaction")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .performClick()
+            assertEquals(1, clicks)
+        }
+
+    /** A long press opens the tooltip bubble and does not also click. */
+    @Test
+    fun aLongPressOnAnIconButtonShowsItsTooltipWithoutClicking() =
+        runComposeUiTest {
+            var clicks = 0
+            setContent(themed { RaftIconButton(onClick = { clicks++ }, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost) {} })
+            mainClock.autoAdvance = false
+            onNodeWithContentDescription("Add Reaction").performTouchInput { longClick() }
+            mainClock.advanceTimeBy(300)
+            onNode(hasText("Add Reaction")).assertExists()
             assertEquals(0, clicks)
         }
 

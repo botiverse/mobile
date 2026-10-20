@@ -91,7 +91,10 @@ internal data class RaftButtonLook(
     val edge: Color,
     /** The die-cut edge outside a sticker (`ring-sticker-edge`): transparent in light. */
     val outerRing: Color,
-    /** Laid over [fill] while pressed (CSS `press-overlay*`); transparent when disabled. */
+    /**
+     * Laid over [fill] while pressed or hovered (CSS `hover:` / `active:` `press-overlay*`,
+     * `bg-fill-pressed`, `bg-fill-frame-pressed`); transparent when disabled.
+     */
     val pressOverlay: Color,
 )
 
@@ -188,8 +191,9 @@ private fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant
 /**
  * The shared box of [RaftButton] and [RaftIconButton]: a 1.5dp border inside the box
  * (transparent on frameless variants, so every variant has the same box), control radius,
- * the sticker's die-cut edge, the press overlay, the focus ring outside it all, and
- * [LocalRaftContentColor] set to the ink for the content.
+ * the sticker's die-cut edge, the press overlay (also on mouse / trackpad hover, as on the
+ * web; never a Material ripple), the focus ring outside it all, and [LocalRaftContentColor]
+ * set to the ink for the content.
  */
 @Composable
 private fun RaftButtonBox(
@@ -204,7 +208,8 @@ private fun RaftButtonBox(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val active = enabled && !loading
-    val pressed = active && raftIsPressed(source)
+    // raft-ui shows the same overlay on `hover:` and `active:`.
+    val pressed = active && (raftIsPressed(source) || raftIsHovered(source))
     // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
     // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
@@ -246,8 +251,9 @@ private fun RaftButtonBox(
  *   (14dp), 15/20, 18dp icons; `xl` 52dp, 20dp, 16/24, 18dp icons; gap 8dp.
  * - Stickers ([RaftButtonVariant.Primary], `Warning`, `Danger`): `sticker-ink` border and
  *   type, plus a 1.5dp `sticker-edge` ring outside (the die-cut edge in dark).
- * - Pressed: one overlay over the resting fill (`sticker-pressed` on a sticker,
- *   `fill-pressed` on paper and ghost, `fill-frame-pressed` on the frame).
+ * - Pressed, and hovered by a mouse or trackpad: one overlay over the resting fill
+ *   (`sticker-pressed` on a sticker, `fill-pressed` on paper and ghost,
+ *   `fill-frame-pressed` on the frame), inside the button's radius. No ripple.
  * - Focus (keyboard only): the focus ring outside the box, under a sticker's die-cut edge.
  * - Disabled: `fill-muted`, `line-hairline` border, `foreground-disabled` type, no die-cut
  *   edge (a disabled button is no longer a sticker). An `OnFrame` button only greys its type.
@@ -320,14 +326,23 @@ fun RaftButton(
  *
  * A phone top bar uses `variant = Ghost, size = Lg`; a tool alone in content `Default`;
  * Send `Primary`. A disabled ghost or on-frame icon button only greys its icon; the
- * others take the shared disabled look. [contentDescription] names the action in Title
- * Case ("Add Reaction"). [icon] is drawn in an icon-size box with
+ * others take the shared disabled look.
+ *
+ * Pressed (and hovered by a mouse or trackpad) it lays the variant's press overlay inside
+ * its radius, as the web does on hover: `fill-pressed` on a ghost or default button,
+ * `fill-frame-pressed` on the frame, `sticker-pressed` on a sticker. Disabled, no fill.
+ *
+ * [tooltip] names the action in Title Case ("Add Reaction"). It is required: an icon
+ * alone does not say what it does. It is the button's content description for screen
+ * readers, and the label of a [RaftTooltip] shown on a long press, or while a mouse
+ * hovers (also when disabled, as raft-ui's tooltip on a disabled button). A long press
+ * that opens the tooltip does not click. [icon] is drawn in an icon-size box with
  * [LocalRaftContentColor] set to the button ink.
  */
 @Composable
 fun RaftIconButton(
     onClick: () -> Unit,
-    contentDescription: String,
+    tooltip: String,
     modifier: Modifier = Modifier,
     variant: RaftButtonVariant = RaftButtonVariant.Default,
     size: RaftIconButtonSize = RaftIconButtonSize.Md,
@@ -345,15 +360,17 @@ fun RaftIconButton(
             size == RaftIconButtonSize.Md -> 32.dp to 18.dp
             else -> 44.dp to 22.dp
         }
-    RaftButtonBox(
-        look = look,
-        onClick = onClick,
-        modifier = modifier.size(box).semantics { this.contentDescription = contentDescription },
-        enabled = enabled,
-        loading = loading,
-        loadingLabel = loadingLabel,
-        interactionSource = interactionSource,
-    ) {
-        Box(Modifier.size(glyph), contentAlignment = Alignment.Center) { icon() }
+    RaftTooltip(text = tooltip, modifier = modifier) {
+        RaftButtonBox(
+            look = look,
+            onClick = onClick,
+            modifier = Modifier.size(box).semantics { this.contentDescription = tooltip },
+            enabled = enabled,
+            loading = loading,
+            loadingLabel = loadingLabel,
+            interactionSource = interactionSource,
+        ) {
+            Box(Modifier.size(glyph), contentAlignment = Alignment.Center) { icon() }
+        }
     }
 }

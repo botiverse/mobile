@@ -24,8 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
+import build.raft.designsystem.components.LocalRaftHoveredPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
+import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftAgentStateChip
 import build.raft.designsystem.components.RaftAgentTag
 import build.raft.designsystem.components.RaftAvatar
@@ -93,8 +95,9 @@ import kotlin.test.Test
 
 /**
  * PR 2 display components: one golden per component x appearance holding its state
- * matrix (see [ComponentScreenshotTest] for the conventions). Pressed and focused cells
- * are forced through [LocalRaftPressedPreview] / [LocalRaftFocusedPreview]; spinners are
+ * matrix (see [ComponentScreenshotTest] for the conventions). Pressed, hovered and focused
+ * cells are forced through [LocalRaftPressedPreview] / [LocalRaftHoveredPreview] /
+ * [LocalRaftFocusedPreview], open tooltips through [LocalRaftTooltipPreview]; spinners are
  * frozen on their first step.
  *
  * Visual-testing case ids (mobile DRI hand-off): [avatarListRow] reproduces
@@ -106,9 +109,9 @@ import kotlin.test.Test
 class DisplayComponentScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
 
-    private fun capture(name: String, content: @Composable () -> Unit) =
+    private fun capture(name: String, settleFrames: Int = 0, content: @Composable () -> Unit) =
         appearances.forEach { appearance ->
-            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance) {
+            RaftScreenshot.capture("${name}_${appearance.name.lowercase()}", appearance, settleFrames = settleFrames) {
                 CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) { content() }
             }
         }
@@ -197,7 +200,7 @@ class DisplayComponentScreenshotTest {
     fun iconButton() =
         capture("icon_button") {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Caption("Md (32, 36 on the frame) and Lg (44): rest, pressed, focused, disabled")
+                Caption("Md (32, 36 on the frame) and Lg (44): rest, pressed, hovered, focused, disabled")
                 RaftButtonVariant.entries.forEach { variant ->
                     val onFrame = variant == RaftButtonVariant.OnFrame
                     Row(
@@ -207,11 +210,11 @@ class DisplayComponentScreenshotTest {
                     ) {
                         Caption(variant.name, Modifier.width(72.dp))
                         RaftIconButtonSize.entries.forEach { size ->
-                            listOf("Rest", "Pressed", "Focused", "Disabled").forEach { state ->
-                                StateCell(pressed = state == "Pressed", focused = state == "Focused") {
+                            listOf("Rest", "Pressed", "Hovered", "Focused", "Disabled").forEach { state ->
+                                StateCell(pressed = state == "Pressed", focused = state == "Focused", hovered = state == "Hovered") {
                                     RaftIconButton(
                                         onClick = {},
-                                        contentDescription = "Add Reaction",
+                                        tooltip = "Add Reaction",
                                         variant = variant,
                                         size = size,
                                         enabled = state != "Disabled",
@@ -221,6 +224,31 @@ class DisplayComponentScreenshotTest {
                             Box(Modifier.width(12.dp))
                         }
                     }
+                }
+            }
+        }
+
+    /**
+     * The long-press / hover tooltip of an icon button, open: above a ghost button with
+     * room above it, below one at the top of the window. The button under it is pressed.
+     */
+    @Test
+    fun iconButtonTooltip() =
+        capture("icon_button_tooltip", settleFrames = 2) {
+            CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
+                Box(Modifier.width(360.dp).height(150.dp)) {
+                    StateCell(pressed = true) {
+                        RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost, modifier = Modifier.align(Alignment.TopStart).padding(start = 48.dp)) {
+                            Glyph(RaftGlyph.Plus, 18.dp)
+                        }
+                    }
+                    RaftIconButton(
+                        onClick = {},
+                        tooltip = "Copy Connect Command",
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Lg,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    ) { Glyph(RaftGlyph.Copy, 22.dp) }
                 }
             }
         }
@@ -584,7 +612,7 @@ class DisplayComponentScreenshotTest {
                         Item(
                             "Role",
                             termAccessory = {
-                                RaftIconButton(onClick = {}, contentDescription = "Explain Member Roles", variant = RaftButtonVariant.Ghost) {
+                                RaftIconButton(onClick = {}, tooltip = "Explain Member Roles", variant = RaftButtonVariant.Ghost) {
                                     Glyph(RaftGlyph.Info, 14.dp)
                                 }
                             },
@@ -603,7 +631,7 @@ class DisplayComponentScreenshotTest {
                     RaftCodeBlock(
                         "npx @raft/agent connect --token rft_9c2b1f7e4a8d4c0e9b6f3a2d1c0b9a8f",
                         action = {
-                            RaftIconButton(onClick = {}, contentDescription = "Copy Connect Command", variant = RaftButtonVariant.Ghost) {
+                            RaftIconButton(onClick = {}, tooltip = "Copy Connect Command", variant = RaftButtonVariant.Ghost) {
                                 Glyph(RaftGlyph.Copy)
                             }
                         },
@@ -626,10 +654,11 @@ class DisplayComponentScreenshotTest {
     // Fixture parts ------------------------------------------------------------------
 
     @Composable
-    private fun StateCell(pressed: Boolean = false, focused: Boolean = false, content: @Composable () -> Unit) {
+    private fun StateCell(pressed: Boolean = false, focused: Boolean = false, hovered: Boolean = false, content: @Composable () -> Unit) {
         CompositionLocalProvider(
             LocalRaftPressedPreview provides pressed,
             LocalRaftFocusedPreview provides focused,
+            LocalRaftHoveredPreview provides hovered,
             content = content,
         )
     }

@@ -4,8 +4,10 @@
 JetBrains Compose Multiplatform (1.8.2, Kotlin 2.1.21). It is the base for screens that
 move off Kuikly (see the CMP migration assessment, §3.2 `:ui-cmp`).
 
-- Depends only on `compose.runtime`, `compose.foundation`, `compose.ui` and
-  `compose.components.resources`. No Kuikly, no Material 3, no `:shared`.
+- Depends only on `compose.runtime`, `compose.foundation`, `compose.ui`,
+  `compose.components.resources` and `compose.material3`. Material 3 is used for
+  `TooltipBox` / `PlainTooltip` only (positioning and gestures of `RaftTooltip`); nothing
+  is drawn in Material's colours, type or ripple. No Kuikly, no `:shared`.
 - Targets: `androidTarget`, `iosX64` / `iosArm64` / `iosSimulatorArm64`, and
   `jvm("desktop")`. The desktop target exists only to render the screenshot tests
   offscreen; nothing ships on it.
@@ -154,7 +156,8 @@ Other checks:
 | `RaftBadge` | Badge | Done | Solid / Soft / Outline x 8 variants, disabled look, icon slot. Not clickable |
 | `RaftUnreadCount`, `RaftMentionMarker`, `RaftMutedCount`, `RaftAgentTag`, `RaftAgentStateChip` | Badge, Status | Done | Count (99+, read as "N unread" with the full number), @ marker, gray muted count, `agent` tag, agent state chips |
 | `RaftSpinner` | Spinner | Done | Pixel spinner, xs–lg, inverse, `stillStep` for stills and reduced motion |
-| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed, focus ring, disabled, busy (focusable, semantics disabled, taps ignored). No underlined-text variant: that is `RaftTextLink` |
+| `RaftButton`, `RaftIconButton` | Button | Done | 6 variants, md / lg / xl and icon md / lg; pressed and mouse hover (the press overlay, as the web's `hover:`; no ripple), focus ring, disabled (no overlay), busy (focusable, semantics disabled, taps ignored). No underlined-text variant: that is `RaftTextLink`. `RaftIconButton(onClick, tooltip, …)`: `tooltip` is required, names the action in Title Case, is the content description, and is shown as a `RaftTooltip` on a long press or mouse hover (a long press that opens it does not click) |
+| `RaftTooltip` | Tooltip | Done | The dark HUD bubble (`layer-hud`, `foreground-on-hud`, `radius-chip`, 10 x 4dp padding, footnote 13/18 medium, `shadow-float`) with a 10 x 5.25dp caret, 8dp above the anchor (below when there is no room). Long press or mouse hover; not focusable; dismisses itself. Material3 `TooltipBox` + `PlainTooltip`, so its width caps at 200dp (raft-ui: 320dp) |
 | `RaftTextLink`, `appendRaftTextLink` | TextLink | Done | Muted (default, on its own) and strong (ink 600, inside a sentence); no height, padding or border, takes the text's size; 1.5dp underline 3dp under the baseline; pressed (the web's hover look), focus ring on a 2dp radius, disabled. Inside a sentence: `appendRaftTextLink` in the `AnnotatedString` of a `RaftText` (or a `RaftBanner` description) |
 | `RaftCard`, `RaftCardSection` | Card | Done | Default, inset, option; header (leading / trailing), body, footer. An option card with `onClick` is one target: press, focus ring, radio / checkbox role and `selected` |
 | `RaftAvatar`, `RaftAvatarGroup`, `RaftAvatarGroupCount` | Avatar | Done | 7 sizes, agent / human, initials (first grapheme of each word), placeholder, presence light cut out of the current surface, die-cut edge, stack |
@@ -243,6 +246,8 @@ Internal modifiers every component draws its states with; none takes layout room
 - `raftInsetFocusOutline`: 2dp `foreground` inside the box, for rows touching an edge.
 - `raftPressOverlay` / `raftPressOverlayColor`: `fill-pressed`, `sticker-pressed` or
   `fill-frame-pressed` over the fill; press never changes the fill or moves anything.
+  Buttons also draw it while a mouse or trackpad hovers them (`raftIsHovered`; the
+  `clickable` emits the hover interactions), as raft-ui does on `hover:`.
 - `raftFloatShadow` / `raftOverlaySurface`: `shadow-float` drawn as a stack of rounded
   rects that add up to the CSS Gaussian (no platform blur, so Android below API 31 matches),
   plus the `line-seam` ring and fill of every overlay (menus, dialogs, sheets, toasts). The
@@ -254,12 +259,15 @@ Internal modifiers every component draws its states with; none takes layout room
   control must be free, as a neighbour hit first wins.
 
 Screenshot fixtures force these states with `LocalRaftPressedPreview`,
-`LocalRaftFocusedPreview` and `LocalRaftSpinnerStillStep`. `avatar_list_row_states_*`
+`LocalRaftHoveredPreview`, `LocalRaftFocusedPreview`, `LocalRaftTooltipPreview` (opens
+every `RaftTooltip`, persistent; `icon_button_tooltip_*`) and `LocalRaftSpinnerStillStep`. `avatar_list_row_states_*`
 reproduces the visual-testing case `components.ui.avatar-list-row.states`; the
 interactive fixtures name their case ids in `InteractiveComponentScreenshotTest`.
 `menu_popup_*` renders a real menu and select list in their popups in a wide window. A real tap (not a
 forced state) is checked by `RaftInteractionTest`: tapping an input draws the focus ring,
-and a checkbox row toggles from its label. `RaftDisplaySemanticsTest` and
+a checkbox row toggles from its label, and a mouse over an icon button draws the press
+fill (and leaving removes it). `RaftDisplaySemanticsTest` also checks that a long press
+opens an icon button's tooltip without clicking it. `RaftDisplaySemanticsTest` and
 `RaftInteractiveSemanticsTest` (compose ui-test) check semantics, keyboard navigation,
 popup widths, the widened touch target and the tab strip's scroll.
 
@@ -303,9 +311,13 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Disabled solid badge keeps its die-cut edge in dark.** badge.tsx (0.7.1 and 0.8.0) removes only
   the inset ink edge when disabled and keeps `ring-sticker-edge`; the Dark mode doc says
   a disabled button is no longer a sticker. The module follows the component source.
-- **No hover.** Touch has no hover; only the pressed overlay is drawn. A `RaftTextLink`
-  has no fill to lay an overlay on, so pressed takes its hover look (muted turns ink;
-  strong's underline turns pink).
+- **Hover only from a mouse.** Touch has no hover; pressed draws the web's hover look.
+  Buttons and icon buttons also take it under a mouse or trackpad pointer. A
+  `RaftTextLink` has no fill to lay an overlay on, so pressed takes its hover look (muted
+  turns ink; strong's underline turns pink).
+- **Tooltip on a long press.** The web opens an icon button's tooltip on hover; touch
+  opens it on a long press (and a mouse still on hover). The label is required on
+  `RaftIconButton`, so every icon-only action has a name and a tooltip.
 - **TextLink inside a sentence** is a span of the sentence's text (`appendRaftTextLink`),
   with a click target over its words on each line it takes (one node for focus and
   screen readers, on its first line), and its underline and focus ring drawn under the
