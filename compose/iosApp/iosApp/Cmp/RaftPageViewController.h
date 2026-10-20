@@ -40,6 +40,16 @@ NS_ASSUME_NONNULL_BEGIN
                            sendEvent:(void (^)(NSString *event, NSDictionary *data))sendEvent
     NS_SWIFT_NAME(attachContent(_:sendEvent:));
 
+/**
+ * Page -> host: whether the page's Compose content at a point (in the content controller's view)
+ * would consume a back-direction drag (Kotlin `RaftIosPage.contentConsumesBackSwipe`). Set by
+ * `RaftPageControllerFactory`; nil means nothing consumes.
+ */
+@property (nonatomic, copy, nullable) BOOL (^raftBackSwipeContentProbe)(CGPoint pointInContent);
+
+/** Full-page back swipe probe: [locationInView] is in this controller's view. */
+- (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView;
+
 /** Host -> page event (a pager event on the CMP page). No-op before content is attached. */
 - (void)raftSendEvent:(NSString *)event data:(NSDictionary *)data;
 
