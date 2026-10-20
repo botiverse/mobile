@@ -1514,6 +1514,9 @@ private fun SharedActivityList(
                 raftPullToRefreshItem()
                 if (conversationListEntries != null) {
                     // activity_conversation_list_v0: one compact row per conversation, pinned first.
+                    // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
+                    // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
+                    // theme token with the rest of Activity's dark-mode pass.
                     items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
                         when (entry) {
                             is ActivityConversationListEntry.Section ->
