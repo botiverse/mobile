@@ -10,8 +10,6 @@ import build.raft.app.components.RaftBrutalBadgeButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalTextarea
 import build.raft.app.components.RaftAttentionDot
-import build.raft.app.components.RaftCheckMarker
-import build.raft.app.components.RaftCheckMarkerShape
 import build.raft.app.components.RaftCheckboxLabelRow
 import build.raft.app.components.RaftFormField
 import build.raft.app.components.RaftFormFieldLabelStyle
@@ -310,38 +308,6 @@ internal fun UiCheckboxVisualContent() {
             RaftCheckboxLabelRow(label = "As Task selected", checked = true, size = 20.dp)
             RaftCheckboxLabelRow(label = "Permission row unchecked", checked = false, size = 20.dp)
             RaftCheckboxLabelRow(label = "Disabled checked", checked = true, enabled = false, size = 20.dp, modifier = Modifier.alpha(0.6f))
-        }
-    }
-}
-
-@Composable
-internal fun UiCheckMarkerVisualContent() {
-    // web `ui-check-marker`: three raft-ui <CheckboxIndicator> rows (all the fixed size-5 =
-    // 20px indicator) in a `flex flex-col gap-3 text-sm font-bold` stack, each row `gap-3`.
-    // The third is `shape="circle"` checked, which web draws as a black disc with the check
-    // mark; RaftCheckMarker's Circle is the product radio (dot) - a component gap, not
-    // something this fixture can paper over.
-    Box(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .height(112.dp)
-                .background(RaftColor.Canvas)
-                .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftCheckMarker(checked = true, size = 20.dp)
-                Text("Square checked", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftCheckMarker(checked = false, size = 20.dp)
-                Text("Square unchecked", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftCheckMarker(checked = true, shape = RaftCheckMarkerShape.Circle, size = 20.dp)
-                Text("Circle yellow", style = UiTextSmBold, color = RaftColor.TextBlack)
-            }
         }
     }
 }

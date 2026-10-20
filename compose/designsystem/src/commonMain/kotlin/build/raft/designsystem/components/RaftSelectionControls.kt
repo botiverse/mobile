@@ -182,17 +182,64 @@ internal fun raftToggleableState(checked: Boolean, indeterminate: Boolean): Togg
         else -> ToggleableState.Off
     }
 
+/** raft-ui CheckboxIndicator `shape`. */
+enum class RaftCheckboxShape {
+    /** The checkbox: sticker radius. */
+    Square,
+
+    /**
+     * A round box with the same look (an ink disc with the check knocked out when checked).
+     * raft-ui keeps it for picker rows that already draw circles; Checkbox > Rules: don't
+     * use it for a checkbox, round is for switches and radios.
+     */
+    Circle,
+}
+
+/**
+ * raft-ui 0.8.0 CheckboxIndicator (the check marker): the 20dp checkbox box drawn on its
+ * own, with no input, role or focus, for a row or menu item that carries the checkbox
+ * semantics itself. Same looks as [RaftCheckbox]: unchecked is an empty box with a 1.5dp
+ * `line-strong` edge; checked an ink block with the check knocked out ([indeterminate]:
+ * a minus); disabled greys it. [shape] [RaftCheckboxShape.Circle] draws the same looks
+ * in a circle: checked, a black disc with the check (not a radio's dot).
+ */
 @Composable
-private fun RaftCheckboxBox(checked: Boolean, indeterminate: Boolean, enabled: Boolean, focused: Boolean, modifier: Modifier) {
+fun RaftCheckboxIndicator(
+    checked: Boolean,
+    modifier: Modifier = Modifier,
+    shape: RaftCheckboxShape = RaftCheckboxShape.Square,
+    indeterminate: Boolean = false,
+    enabled: Boolean = true,
+) {
+    RaftCheckboxBox(
+        checked = checked || indeterminate,
+        indeterminate = indeterminate,
+        enabled = enabled,
+        focused = false,
+        modifier = modifier,
+        shape = shape,
+    )
+}
+
+@Composable
+private fun RaftCheckboxBox(
+    checked: Boolean,
+    indeterminate: Boolean,
+    enabled: Boolean,
+    focused: Boolean,
+    modifier: Modifier,
+    shape: RaftCheckboxShape = RaftCheckboxShape.Square,
+) {
     val colors = RaftTheme.colors
     val look = raftCheckboxLook(checked, enabled, colors)
-    val shape = RoundedCornerShape(RaftRadius.Sticker)
+    val radius = if (shape == RaftCheckboxShape.Circle) RaftCheckSize / 2 else RaftRadius.Sticker
+    val boxShape = RoundedCornerShape(radius)
     Box(
         modifier
             .size(RaftCheckSize)
-            .raftFocusRing(focused, RaftRadius.Sticker, colors)
-            .background(look.fill, shape)
-            .border(RaftStroke.Control, look.border, shape),
+            .raftFocusRing(focused, radius, colors)
+            .background(look.fill, boxShape)
+            .border(RaftStroke.Control, look.border, boxShape),
         contentAlignment = Alignment.Center,
     ) {
         if (checked) {
