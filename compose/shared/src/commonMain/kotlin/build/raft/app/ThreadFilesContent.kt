@@ -351,7 +351,7 @@ internal fun threadFilesShouldRequestLoadMore(
 // AvatarListRow's card row): a `Card` (layer-card, 1dp line-hairline, container radius) with
 // `px-4 py-3`; the 56dp type visual and the name/meta column top-aligned with `gap-3`; the
 // actions centred at the end. Under the web's 560dp container breakpoint the two inline
-// actions collapse into one ghost `icon-sm` overflow button (EllipsisVertical 14).
+// actions collapse into one ghost `icon-sm` overflow button (EllipsisVertical).
 @Composable
 private fun ThreadFileRow(
     item: RaftThreadFileItem,
@@ -370,7 +370,8 @@ private fun ThreadFileRow(
             .clip(shape)
             .background(RaftColor.Card, shape)
             .border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            // CSS `border` + `px-4 py-3`: the 1dp edge takes layout space on the web.
+            .padding(horizontal = 16.dp + RaftAppStroke.Thin, vertical = 12.dp + RaftAppStroke.Thin),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -449,7 +450,10 @@ private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
         modifier = Modifier
             .size(56.dp)
             .clip(shape)
-            .background(RaftColor.FillMuted, shape),
+            .background(RaftColor.FillMuted, shape)
+            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape)
+            // CSS `border`: the image, the icon and the corner chip sit inside the 1dp edge.
+            .padding(RaftAppStroke.Thin),
         contentAlignment = Alignment.Center
     ) {
         if (isImage && thumbnailUrl != null) {
@@ -471,7 +475,6 @@ private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
         threadFileTypeBadgeLabel(item.name)?.let { label ->
             ThreadFileTypeBadge(label = label, modifier = Modifier.align(Alignment.BottomStart))
         }
-        Box(Modifier.fillMaxSize().border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape))
     }
 }
 
@@ -480,26 +483,35 @@ private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
 @Composable
 private fun ThreadFileTypeBadge(label: String, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(RaftAppRadius.Sticker)
+    val ringShape = RoundedCornerShape(RaftAppRadius.Sticker + RaftAppStroke.Thin)
+    // `ring-1` is drawn outside the chip; in the corner of the clipped visual only its top and
+    // end edges show, so the ring is a 1dp-larger plate behind the chip's top-end.
     Box(
         modifier = modifier
-            .size(width = 28.dp, height = 14.dp)
-            .background(RaftColor.FillMuted, shape)
-            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape),
-        contentAlignment = Alignment.Center
+            .size(width = 28.dp + RaftAppStroke.Thin, height = 14.dp + RaftAppStroke.Thin)
+            .background(RaftColor.BorderHairline, ringShape),
+        contentAlignment = Alignment.BottomStart
     ) {
-        Text(
-            text = label,
-            style = RaftType.Caption.copy(
-                fontFamily = RaftMonoFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
-                lineHeight = 10.sp,
-                color = RaftColor.TextMuted
-            ),
-            color = RaftColor.TextMuted,
-            maxLines = 1,
-            softWrap = false
-        )
+        Box(
+            modifier = Modifier
+                .size(width = 28.dp, height = 14.dp)
+                .background(RaftColor.FillMuted, shape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = RaftType.Caption.copy(
+                    fontFamily = RaftMonoFamily,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    lineHeight = 10.sp,
+                    color = RaftColor.TextMuted
+                ),
+                color = RaftColor.TextMuted,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
     }
 }
 
@@ -561,7 +573,7 @@ internal fun RaftThreadFileItem.threadFileHasSourceTarget(): Boolean =
 internal fun RaftThreadFileItem.threadFileSourceFocusMessageId(): String? =
     messageId.takeIf { it.isNotBlank() }
 
-// Web `ChannelFileOverflowMenu`: a ghost `icon-sm` button (EllipsisVertical 14) opening a menu
+// Web `ChannelFileOverflowMenu`: a ghost `icon-sm` button (EllipsisVertical) opening a menu
 // with Jump to Original Message and Download File. While the file is downloading the button
 // shows the spinner and the menu stays shut.
 @Composable
@@ -584,7 +596,8 @@ private fun ThreadFileOverflowMenu(
             ) {
                 RaftLucideIcon(
                     name = if (busy) RaftLucideIconName.LoaderCircle else RaftLucideIconName.EllipsisVertical,
-                    modifier = Modifier.size(14.dp),
+                    // `size="icon-sm"` draws every glyph at 18dp, overriding the 14 the web passes.
+                    modifier = Modifier.size(18.dp),
                     color = raftArgbHex(RaftColor.TextBlack),
                     spinning = busy
                 )
