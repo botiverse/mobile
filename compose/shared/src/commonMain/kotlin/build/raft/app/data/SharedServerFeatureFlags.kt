@@ -111,6 +111,13 @@ private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
  */
 const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
+/**
+ * Agent Activity tab per-turn Overview (slock task #17). The same key the web reads (slock
+ * `ACTIVITY_OVERVIEW_WEB_FLAG_KEY`), so one switch turns the overview on for every client.
+ * Off (or unresolved), the Activity tab is the raw log only, as before.
+ */
+const val ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY: String = "activity_overview_web_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -129,6 +136,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
+    ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
 )
 
 /**

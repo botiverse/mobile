@@ -159,22 +159,26 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun webviewOnboardingIsRegisteredAndRequiresExplicitResolvedEnablement() = runBlocking {
-        val enabled = SharedServerFeatureFlags(
-            FakeApi(ok("""{"evaluations":[{"key":"$WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY","enabled":true}]}"""))
-        )
-        assertFalse(enabled.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
-        enabled.prefetch(server)
-        assertTrue(enabled.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
-        assertTrue(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+    fun optInFlagsAreRegisteredAndRequireExplicitResolvedEnablement() = runBlocking {
+        // Default-off keys: only an explicit resolved `enabled: true` turns them on.
+        for (key in listOf(WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY, ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)) {
+            val enabled = SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":true}]}"""))
+            )
+            assertFalse(enabled.isEnabled(server, key), key)
+            enabled.prefetch(server)
+            assertTrue(enabled.isEnabled(server, key), key)
+            assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)
 
-        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
-        missing.prefetch(server)
-        assertFalse(missing.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+            val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+            missing.prefetch(server)
+            assertFalse(missing.isEnabled(server, key), key)
 
-        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
-        assertFalse(failed.prefetch(server).resolved)
-        assertFalse(failed.isEnabled(server, WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY))
+            val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+            assertFalse(failed.prefetch(server).resolved)
+            assertFalse(failed.isEnabled(server, key), key)
+        }
+        assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
     }
 
     @Test
