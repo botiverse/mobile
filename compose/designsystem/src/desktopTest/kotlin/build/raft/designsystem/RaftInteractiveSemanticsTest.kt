@@ -58,6 +58,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -239,6 +240,20 @@ class RaftInteractiveSemanticsTest {
             assertEquals("", value)
             onNodeWithContentDescription("Clear Search").assertDoesNotExist()
             onNodeWithContentDescription("Search channels").assertIsDisplayed()
+        }
+
+    /** A standalone dialog header: the title is a heading and the × a named button that closes. */
+    @Test
+    fun aDialogHeaderHasAHeadingAndANamedClose() =
+        runComposeUiTest {
+            var closed = false
+            setContent(themed { RaftDialogHeader("Members", description = "Everyone in #design.", onClose = { closed = true }) })
+            onNodeWithText("Members").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+            onNodeWithText("Everyone in #design.").assertIsDisplayed()
+            onNodeWithContentDescription("Close")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .performClick()
+            assertTrue(closed)
         }
 
     @Test

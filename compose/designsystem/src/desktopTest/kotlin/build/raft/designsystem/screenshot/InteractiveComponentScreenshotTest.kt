@@ -44,6 +44,7 @@ import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftCheckboxShape
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftDropdownMenu
@@ -692,6 +693,34 @@ class InteractiveComponentScreenshotTest {
                 }
             }
         }
+
+    /**
+     * [RaftDialogHeader] on its own over a caller's body (a modal over a list): title only,
+     * with ×, with a description, and a title that wraps beside the ×.
+     */
+    @Test
+    fun dialogHeader() =
+        capture("dialog_header") {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                DialogHeaderCell { RaftDialogHeader("Members") }
+                DialogHeaderCell { RaftDialogHeader("Members", onClose = {}) }
+                DialogHeaderCell { RaftDialogHeader("Forward Message", description = "Pick where to send it.", onClose = {}) }
+                DialogHeaderCell { RaftDialogHeader("Connect a computer to run agents on your own machine", onClose = {}) }
+            }
+        }
+
+    @Composable
+    private fun DialogHeaderCell(header: @Composable () -> Unit) {
+        Column(Modifier.width(358.dp).background(RaftTheme.colors.layerPopover)) {
+            header()
+            RaftText(
+                "Body starts 6dp under the header.",
+                Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp),
+                style = RaftTheme.typography.subhead,
+                color = RaftTheme.colors.foregroundMuted,
+            )
+        }
+    }
 
     /**
      * A real [RaftDropdownMenu] and an open [RaftSelect] in their popups, in a window much
