@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.agentAvatarFallbackWireValue
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -180,5 +181,25 @@ class SharedInboxPanelAvatarIdentityTest {
             ActivitySenderAvatarPresentation(visible = true, contentStartPadding = 0.dp),
             activitySenderAvatarPresentation(enabled = true)
         )
+    }
+
+    @Test
+    fun activityFaceTakesTheMemberDirectoryAvatarThenTheItemThenTheKindDefault() {
+        val agent = ActivitySenderAvatarIdentity(MemberKind.Agent, avatarWireValue = null, label = "Lagoon", senderId = "agent-1")
+        val human = ActivitySenderAvatarIdentity(MemberKind.Human, avatarWireValue = null, label = "Ren", senderId = "human-1")
+
+        // The member directory wins over what the inbox item carries.
+        assertEquals(
+            "https://cdn.example/agent-1.png",
+            activityFaceAvatarWireValue("https://cdn.example/agent-1.png", agent.copy(avatarWireValue = "pixel:old"))
+        )
+        // No directory avatar: the item's own avatar.
+        assertEquals("pixel:old", activityFaceAvatarWireValue(null, agent.copy(avatarWireValue = "pixel:old")))
+        // Neither: an agent shows its pixel face, never a letter on the person fill.
+        assertEquals(agentAvatarFallbackWireValue("agent-1"), activityFaceAvatarWireValue(null, agent))
+        assertEquals(agentAvatarFallbackWireValue(""), activityFaceAvatarWireValue("  ", agent.copy(senderId = null)))
+        // A person with nothing to show stays null: the placeholder person.
+        assertEquals(null, activityFaceAvatarWireValue(null, human))
+        assertEquals("gravatar:abc", activityFaceAvatarWireValue("gravatar:abc", human))
     }
 }

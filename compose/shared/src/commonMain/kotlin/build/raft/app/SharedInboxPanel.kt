@@ -1,9 +1,6 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.SegmentedControl
-import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalBadge
 import build.raft.app.components.RaftBrutalTone
 import build.raft.app.components.TabPager
@@ -64,6 +61,7 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -128,6 +126,8 @@ import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftSegmentedControl
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -411,6 +411,15 @@ internal fun SharedHomeActivityScreen(
         remember(sharedStores.serverMembersStore, activitySummaryServerId) {
             raftScopedAgentStatusResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
         }
+    // Activity faces (senders, DM peers) load from this server's member directory, like Home DM rows.
+    val activityAvatarSource =
+        remember(sharedStores.serverMembersStore, activitySummaryServerId) {
+            val serverId = activitySummaryServerId.value.takeIf { it.isNotBlank() }
+            ActivityAvatarSource(
+                memberAvatarResolver = raftMemberAvatarResolver(sharedStores.serverMembersStore, serverId),
+                cacheServerId = serverId,
+            )
+        }
     val conversationList =
         remember(conversationListEnabled, conversationListContext, conversationListAgentStatusResolver) {
             val context = conversationListContext
@@ -504,6 +513,7 @@ internal fun SharedHomeActivityScreen(
         }
         wasActive = active
     }
+    CompositionLocalProvider(LocalActivityAvatarSource provides activityAvatarSource) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
         onOpenItem = { item ->
@@ -547,6 +557,7 @@ internal fun SharedHomeActivityScreen(
         scrollToTopRequest = scrollToTopRequest,
         modifier = modifier
     )
+    }
 }
 
 internal fun resolveActivityStableOrderEnabled(
@@ -1077,14 +1088,14 @@ private fun SharedActivityHeader(
     mainTab: Boolean = false
 ) {
     if (mainTab) {
-        // App-shell tab head (like Tasks / Members): the frame-layer header with the Activity
-        // sticker, the title and the stats line; a root tab has no back arrow.
+        // App-shell tab head: raft-ui top-level page, the frame layer with the page's name and the
+        // stats line, no icon sticker and no back arrow. The title starts on the 16dp phone margin,
+        // the edge of the filter tray and of the rows below it.
         RaftTopPageHeader(
             title = stringResource(MR.strings.tab_activity),
             subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
-            iconName = RaftMainTabHeaderSurface.Activity.iconName,
             topSafeAreaOverride = topSafeAreaPadding,
-            contentStartPadding = RaftMainTabHeaderStartPadding,
+            contentStartPadding = 16.dp,
             titleStyle = RaftMainTabHeaderTitleStyle,
             refreshing = refreshing,
             onTitleClick = onTitleClick,
@@ -1156,18 +1167,19 @@ private fun SharedActivityFilterBar(
             // row's end (xxchan: the tray must not stretch into an empty grey band).
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            SegmentedControl(
-                selectedValue = selectedFilter.wireValue,
-                options =
-                    InboxFilter.entries.map { filter ->
-                        SegmentedControlOption(value = filter.wireValue, label = filter.localizedLabel())
-                    },
-                onValueSelected = { value ->
-                    InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
-                },
+            // Design-system RaftSegmentedControl: the picked filter is the yellow sticker.
+            RaftSegmentedControl(
                 // Wrap content, but never push Mark all read off the row; 12dp keeps the gap.
                 modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)
-            )
+            ) {
+                InboxFilter.entries.forEach { filter ->
+                    RaftSegment(
+                        text = filter.localizedLabel(),
+                        selected = filter == selectedFilter,
+                        onClick = { onFilterSelected(filter) },
+                    )
+                }
+            }
             if (totalUnreadCount > 0) {
                 SharedActivityMarkAllReadButton(iconOnly = markAllReadIconOnly, onClick = onMarkAllRead)
             }
@@ -1675,8 +1687,9 @@ private fun SharedActivityList(
             }
         }
         if (stableOrderEnabled && updateTracking.pendingCount > 0) {
-            RaftBrutalActionButton(
-                label = stringResource(
+            // web `thread.newUpdates`: a 32dp outline button.
+            RaftButton(
+                text = stringResource(
                     if (updateTracking.pendingCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
                     updateTracking.pendingCount
                 ),
@@ -1697,10 +1710,6 @@ private fun SharedActivityList(
                     savePresentation()
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                minHeight = 30.dp,
-                minWidth = 0.dp,
-                shadowOffset = 2.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
             )
         }
         swipeDoneUndo.pending?.let { pending ->
@@ -2133,7 +2142,8 @@ internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
 // uploaded image, Gravatar, then User-icon placeholder), while system /
 // unknown render the app "SY" initials placeholder.
 internal val ActivitySenderAvatarSize = 32.dp
-private val ActivitySenderAvatarBorder = RaftAppStroke.Default
+// raft-ui Avatar edge: 1.5dp sticker ink at every size.
+private val ActivitySenderAvatarBorder = RaftAppStroke.Control
 private const val ActivitySenderAppInitials = "SY"
 
 internal data class ActivitySenderAvatarPresentation(
@@ -2212,14 +2222,7 @@ private fun SharedActivitySenderAvatar(
             // External senders render their wire avatar; the cache subject stays
             // null because external ids are never member-cache identities.
             MemberKind.External ->
-                RaftAppAvatar(
-                    avatarWireValue = identity.avatarWireValue,
-                    label = identity.label,
-                    avatarSize = ActivitySenderAvatarSize,
-                    borderWidth = ActivitySenderAvatarBorder,
-                    cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
-                    fallbackFill = raftAvatarFallbackFill(identity.senderKind)
-                )
+                ActivityMemberFace(identity = identity, avatarSize = ActivitySenderAvatarSize)
             MemberKind.System,
             null -> SharedActivityAppAvatar()
         }
@@ -2436,24 +2439,6 @@ internal fun InboxItem.activityTaskBadgeText(): String =
         .orEmpty()
 
 @Composable
-private fun SharedActivitySmallButton(
-    label: String,
-    iconName: RaftLucideIconName,
-    onClick: () -> Unit
-) {
-    RaftBrutalActionButton(
-        label = label,
-        leadingIcon = iconName,
-        minHeight = 30.dp,
-        minWidth = 0.dp,
-        shadowOffset = 2.dp,
-        backgroundColor = RaftColor.SurfaceWhite,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
-        onClick = onClick
-    )
-}
-
-@Composable
 private fun SharedActivityLoadingMoreRow() {
     Box(
         modifier =
@@ -2488,13 +2473,8 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
             color = RaftColor.TextMutedGray,
             modifier = Modifier.padding(end = 8.dp)
         )
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.common_retry),
-            minHeight = 30.dp,
-            minWidth = 0.dp,
-            shadowOffset = 2.dp,
-            backgroundColor = RaftColor.SurfaceWhite,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+        RaftButton(
+            text = stringResource(MR.strings.common_retry),
             onClick = onClick
         )
     }

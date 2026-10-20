@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
@@ -52,6 +54,8 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
+import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -387,6 +391,71 @@ internal fun InboxItem.activityConversationRowModel(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Avatars
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Where Activity faces load from: the server's member directory (the same [RaftMemberAvatarResolver]
+ * and Coil cache identity as the Home DM rows), so a sender or DM peer shows their real avatar even
+ * though inbox items carry no avatar of their own (web resolves them from its agent / member stores).
+ */
+@Immutable
+internal class ActivityAvatarSource(
+    val memberAvatarResolver: RaftMemberAvatarResolver,
+    val cacheServerId: String?,
+)
+
+internal val LocalActivityAvatarSource =
+    staticCompositionLocalOf { ActivityAvatarSource(EmptyRaftMemberAvatarResolver, cacheServerId = null) }
+
+/**
+ * The avatar an Activity face renders, web `AvatarSlot`: the member directory's avatar first, then the
+ * one the item carries, then the kind's own default (an agent's pixel face). A person with neither
+ * stays null and shows the placeholder person (web `humanPlaceholder`), never their initials.
+ */
+internal fun activityFaceAvatarWireValue(
+    memberAvatarWireValue: String?,
+    identity: ActivitySenderAvatarIdentity,
+): String? {
+    memberAvatarWireValue?.takeIf { it.isNotBlank() }?.let { return it }
+    val itemAvatar = identity.avatarWireValue?.takeIf { it.isNotBlank() }
+    val kind = identity.senderKind
+    val id = identity.senderId?.trim()?.takeIf { it.isNotEmpty() }
+    return if ((kind == MemberKind.Agent || kind == MemberKind.Human) && id != null) {
+        avatarWireValueForAvatarSlot(kind = kind, id = id, avatarWireValue = itemAvatar)
+    } else if (kind == MemberKind.Agent) {
+        itemAvatar ?: agentAvatarFallbackWireValue("")
+    } else {
+        itemAvatar
+    }
+}
+
+/**
+ * One person's or agent's face in Activity: raft-ui Avatar (sticker radius, 1.5dp ink edge) through the
+ * shared avatar pipeline, keyed by member for the image cache. Agents sit on `inactive`, people on
+ * their palette fill under the placeholder person.
+ */
+@Composable
+internal fun ActivityMemberFace(
+    identity: ActivitySenderAvatarIdentity,
+    avatarSize: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val source = LocalActivityAvatarSource.current
+    val memberAvatar = rememberRaftMemberAvatarWireValue(source.memberAvatarResolver, identity.senderId)
+    RaftAppAvatar(
+        avatarWireValue = activityFaceAvatarWireValue(memberAvatar, identity),
+        // Empty: a face that does not load shows the placeholder person, as on web, not a letter.
+        label = "",
+        modifier = modifier,
+        avatarSize = avatarSize,
+        cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
+        cacheServerId = source.cacheServerId,
+        fallbackFill = raftAvatarFallbackFill(identity.senderKind),
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
 // Composables
 // ---------------------------------------------------------------------------------------------
 
@@ -452,6 +521,12 @@ internal fun ActivityConversationListRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val hairline = colors.lineHairline
+    // Every compact row is the same height (raft-ui InboxItem density="compact": one line each for the
+    // title and the latest message): each line is a slot of its style's line height, so a task badge,
+    // an inline face or a fallback CJK glyph cannot make one row taller than its neighbours.
+    val density = LocalDensity.current
+    val titleLine = with(density) { typography.subhead.lineHeight.toDp() }
+    val bodyLine = with(density) { typography.callout.lineHeight.toDp() }
     val titleColor = if (model.strong) colors.foreground else colors.foregroundMuted
     val bodyColor = if (model.strong) colors.foreground else colors.foregroundMuted
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
@@ -511,6 +586,7 @@ internal fun ActivityConversationListRow(
                 ActivityConversationLeading(model, item, agentStatusResolver)
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
+                        modifier = Modifier.height(titleLine),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -550,18 +626,16 @@ internal fun ActivityConversationListRow(
                                         InlineTextContent(
                                             Placeholder(width, height, PlaceholderVerticalAlign.TextCenter)
                                         ) {
-                                            RaftAppAvatar(
-                                                avatarWireValue = identity.avatarWireValue,
-                                                label = identity.label,
-                                                modifier = Modifier.padding(end = 4.dp),
+                                            ActivityMemberFace(
+                                                identity = identity,
                                                 avatarSize = ConversationSenderAvatar,
-                                                borderWidth = 1.dp,
-                                                cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
+                                                modifier = Modifier.padding(end = 4.dp),
                                             )
                                         }
                                 )
                             }.orEmpty()
                         }
+                    Box(modifier = Modifier.height(bodyLine), contentAlignment = Alignment.CenterStart) {
                     RaftText(
                         text =
                             activityConversationBodyText(
@@ -583,8 +657,9 @@ internal fun ActivityConversationListRow(
                         overflow = TextOverflow.Ellipsis,
                         inlineContent = inlineContent,
                     )
+                    }
                 }
-                ActivityConversationTrailing(item, model, timeContext)
+                ActivityConversationTrailing(item, model, timeContext, lineHeight = titleLine, marksHeight = bodyLine)
             }
             if (showDoneAction) {
                 // Rule L (touch): the row's primary action is always on screen, never hover-only, with a
@@ -661,12 +736,15 @@ private fun ActivityConversationLeading(
                 statusSize = 9.dp,
                 statusPulsing = status?.pulsing == true,
             ) {
-                RaftAppAvatar(
-                    avatarWireValue = peer.avatarWireValue,
-                    label = label,
+                ActivityMemberFace(
+                    identity =
+                        ActivitySenderAvatarIdentity(
+                            senderKind = avatarKind,
+                            avatarWireValue = peer.avatarWireValue,
+                            label = label,
+                            senderId = peer.peerId,
+                        ),
                     avatarSize = ConversationLeadingAvatar,
-                    borderWidth = 1.5.dp,
-                    cacheSubject = raftMemberAvatarCacheSubject(avatarKind, peer.peerId),
                 )
             }
         } else {
@@ -709,9 +787,13 @@ private fun ActivityConversationTrailing(
     item: InboxItem,
     model: ActivityConversationRowModel,
     timeContext: RaftTimeContext?,
+    lineHeight: Dp,
+    marksHeight: Dp,
 ) {
     val colors = RaftTheme.colors
     Column(horizontalAlignment = Alignment.End) {
+        // The time sits beside the title line and the marks beside the body line (raft-ui compact).
+        Box(modifier = Modifier.height(lineHeight), contentAlignment = Alignment.CenterEnd) {
         RaftRelativeTimestampText(
             value = item.latestActivityAt ?: item.lastMessageAt,
             timeContext = timeContext,
@@ -721,8 +803,9 @@ private fun ActivityConversationTrailing(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 96.dp),
         )
+        }
         Row(
-            modifier = Modifier.height(20.dp),
+            modifier = Modifier.height(marksHeight),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
