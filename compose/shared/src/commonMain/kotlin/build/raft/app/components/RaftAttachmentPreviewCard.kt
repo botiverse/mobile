@@ -111,8 +111,11 @@ internal fun RaftAttachmentPreviewCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            // On touch each 24dp button's hit area is expanded to the minimum touch target;
+            // 12dp apart keeps the expanded areas of Preview and Download from overlapping
+            // (raft-ui 0.8.2: touch actions 12px apart).
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (loading) {
