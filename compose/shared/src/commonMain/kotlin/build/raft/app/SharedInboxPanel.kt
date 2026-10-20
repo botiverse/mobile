@@ -981,6 +981,7 @@ private fun SharedActivityFilterBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // raft-ui 0.8.0 SegmentedControl hugs its items; the tray never stretches.
             SegmentedControl(
                 selectedValue = selectedFilter.wireValue,
                 options =
@@ -989,9 +990,9 @@ private fun SharedActivityFilterBar(
                     },
                 onValueSelected = { value ->
                     InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
-                },
-                modifier = Modifier.weight(1f)
+                }
             )
+            Spacer(Modifier.weight(1f))
             if (totalUnreadCount > 0) {
                 RaftBrutalActionButton(
                     label = stringResource(MR.strings.inbox_action_mark_all_read),
