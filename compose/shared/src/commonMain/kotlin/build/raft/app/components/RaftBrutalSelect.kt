@@ -1,46 +1,23 @@
 package build.raft.app.components
 
-import build.raft.app.RaftColor
-import build.raft.app.RaftFloatingDefaultViewportGap
-import build.raft.app.RaftFloatingVerticalPlacement
-import build.raft.app.RaftLucideIcon
-import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftLiveRootAnchorRef
-import build.raft.app.RaftPopoverAnchor
-import build.raft.app.RaftPopoverLocalPoint
-import build.raft.app.RaftModalAnchoredPopover
-import build.raft.app.RaftType
-import build.raft.app.raftCaptureLiveRootAnchor
-import build.raft.app.withRaftFontWeight
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import build.raft.app.compat.ui.NestedScrollMode
-import build.raft.app.compat.ui.nestedScroll
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuLabel
+import build.raft.designsystem.components.RaftSelectTrigger
 
 internal data class RaftBrutalSelectOption(
     val id: String,
@@ -62,43 +39,13 @@ internal fun raftSelectMenuWidth(
     }
 
 /**
- * raft-ui select popup height: the rows (at least one, so an empty list still shows its
- * row) plus the popup's `p-1.5` inset on both edges, capped at [maxMenuHeight]. The seam
- * ring is drawn over the content and adds no height.
+ * Legacy-named select; renders the design-system Select: a [RaftSelectTrigger] (44dp field,
+ * value or placeholder, chevron) opening a [RaftDropdownMenu] as wide as the trigger (at
+ * least 220dp) with a [RaftMenuItem] per option (the current one bold with a check) and a
+ * [RaftMenuLabel] per group heading. [selectedLabel] overrides the trigger text (a value
+ * the options do not list). [rowHeight], [triggerHeight] and [maxMenuHeight] only shaped
+ * the retired register and are ignored: the menu scrolls inside the design-system cap.
  */
-internal fun raftBrutalSelectListHeight(
-    optionCount: Int,
-    rowHeight: Dp,
-    maxMenuHeight: Dp
-): Dp =
-    ((optionCount.coerceAtLeast(1) * rowHeight.value).dp + RaftMetrics.PopupPadding * 2)
-        .coerceAtMost(maxMenuHeight)
-
-/** raft-ui `SelectGroupLabel`: `px-2.5 pt-2 pb-1` around a 12/16 caption = 28dp. */
-internal val RaftSelectGroupLabelHeight = 28.dp
-
-/** raft-ui select popup minimum width (`min-w-[max(var(--anchor-width),220px)]`). */
-internal val RaftSelectMinWidth = 220.dp
-
-/**
- * raft select popup height: 36dp items and 28dp group labels plus the `p-1.5` inset on
- * both edges, capped at [maxMenuHeight].
- */
-internal fun raftSelectListHeight(
-    options: List<RaftBrutalSelectOption>,
-    maxMenuHeight: Dp
-): Dp {
-    val rows =
-        if (options.isEmpty()) {
-            RaftMetrics.MenuRowHeight.value
-        } else {
-            options.sumOf { option ->
-                (if (option.header) RaftSelectGroupLabelHeight else RaftMetrics.MenuRowHeight).value.toDouble()
-            }.toFloat()
-        }
-    return (rows.dp + RaftMetrics.PopupPadding * 2).coerceAtMost(maxMenuHeight)
-}
-
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalSelectField(
@@ -114,161 +61,45 @@ internal fun RaftBrutalSelectField(
     maxMenuHeight: Dp = 220.dp
 ) {
     val selectedOption = options.firstOrNull { it.id == selectedId }
-    val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
-    RaftSelectField(
-        options = options,
-        selectedId = selectedId,
-        onSelect = onSelect,
-        modifier = modifier,
-        displayLabel = displayLabel,
-        placeholder = selectedLabel.isBlank() && selectedOption == null,
-        enabled = enabled,
-        triggerHeight = raftFieldHeight(triggerHeight),
-        maxMenuHeight = maxMenuHeight
-    )
-}
-
-/**
- * raft-ui 0.6.0 Select: [RaftLookSelectTrigger] plus a popup on the overlay surface
- * (container radius, popover layer, seam ring, float shadow, 6dp inset). Items are 36dp
- * control-radius rows in callout 14/20 medium; the selected item is bold with a trailing
- * 16dp check (no fill), group headers are 12/16 bold hint captions, disabled rows take
- * the disabled ink. The popup opens 4dp below the trigger, at least as wide as it.
- */
-@Composable
-private fun RaftSelectField(
-    options: List<RaftBrutalSelectOption>,
-    selectedId: String,
-    onSelect: (RaftBrutalSelectOption) -> Unit,
-    modifier: Modifier,
-    displayLabel: String,
-    placeholder: Boolean,
-    enabled: Boolean,
-    triggerHeight: Dp,
-    maxMenuHeight: Dp
-) {
+    val value = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { null }
     var expanded by remember { mutableStateOf(false) }
-    var triggerAnchorValue by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var triggerRootWidthPx by remember { mutableStateOf(0f) }
-    val triggerAnchor = remember { RaftLiveRootAnchorRef(identity = "raft_select") }
+    var triggerWidthPx by remember { mutableStateOf(0) }
     val density = LocalDensity.current
-    val menuWidth = raftSelectMenuWidth(triggerRootWidthPx, density.density).coerceAtLeast(RaftSelectMinWidth)
-    val rowHeight = RaftMetrics.MenuRowHeight
-    val popupInset = RaftMetrics.PopupPadding
-    val listHeight = raftSelectListHeight(options, maxMenuHeight)
-    val sideOffset = 4.dp
-    Column(modifier = modifier.fillMaxWidth()) {
-        RaftLookSelectTrigger(
-            label = displayLabel,
-            placeholder = placeholder,
+    val trigger = remember { FocusRequester() }
+    Box(modifier = modifier.fillMaxWidth()) {
+        RaftSelectTrigger(
+            value = value,
+            onClick = { expanded = !expanded },
             modifier =
-                Modifier.raftCaptureLiveRootAnchor(triggerAnchor) { size ->
-                    triggerRootWidthPx = size.width.toFloat()
-                },
+                Modifier
+                    .fillMaxWidth()
+                    .focusRequester(trigger)
+                    .onSizeChanged { triggerWidthPx = it.width },
+            placeholder = placeholder,
             enabled = enabled,
             expanded = expanded,
-            height = triggerHeight,
-            onClick = {
-                if (expanded) {
-                    expanded = false
-                } else {
-                    triggerAnchor.resolve(RaftPopoverLocalPoint.Exact(Offset.Zero))?.let { anchor ->
-                        triggerAnchorValue = anchor
-                        expanded = true
-                    }
-                }
-            }
+            onCollapse = { expanded = false }
         )
-        if (expanded && enabled && triggerAnchorValue != null) {
-            val contentSize =
-                with(density) {
-                    Size(
-                        width = menuWidth.toPx(),
-                        height = listHeight.toPx()
+        RaftDropdownMenu(
+            expanded = expanded && enabled,
+            onDismissRequest = { expanded = false },
+            width = raftSelectMenuWidth(triggerWidthPx.toFloat(), density.density).coerceAtLeast(220.dp),
+            offset = 4.dp,
+            returnFocusTo = trigger
+        ) {
+            options.forEach { option ->
+                if (option.header) {
+                    RaftMenuLabel(option.label)
+                } else {
+                    RaftMenuItem(
+                        text = option.label,
+                        onClick = {
+                            expanded = false
+                            onSelect(option)
+                        },
+                        enabled = option.enabled,
+                        checked = option.id == selectedId
                     )
-                }
-            RaftModalAnchoredPopover(
-                anchor = triggerAnchorValue!!,
-                contentSize = contentSize,
-                onDismiss = { expanded = false },
-                viewportGap = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() },
-                verticalOffset = with(density) { (triggerHeight + sideOffset).toPx() },
-                verticalOffsetAbove = with(density) { sideOffset.toPx() },
-                verticalPlacement = RaftFloatingVerticalPlacement.Auto
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .width(menuWidth)
-                            .height(listHeight)
-                            // Keeps taps on empty popup space off the dismiss barrier while
-                            // letting the rows and the list's scroll win.
-                            .clickable(onClick = {})
-                            .raftLookOverlaySurface()
-                ) {
-                    LazyColumn(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(listHeight)
-                                .padding(popupInset)
-                                .nestedScroll(
-                                    scrollUp = NestedScrollMode.SELF_ONLY,
-                                    scrollDown = NestedScrollMode.SELF_ONLY
-                                )
-                    ) {
-                        items(options.size, key = { idx -> options[idx].id }) { idx ->
-                            val option = options[idx]
-                            val selected = selectedId == option.id
-                            val rowEnabled = option.enabled && !option.header
-                            Row(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .height(if (option.header) RaftSelectGroupLabelHeight else rowHeight)
-                                        .clickable(enabled = rowEnabled) {
-                                            expanded = false
-                                            onSelect(option)
-                                        }
-                                        .padding(
-                                            start = RaftMetrics.MenuItemPaddingHorizontal,
-                                            end = RaftMetrics.MenuItemPaddingHorizontal,
-                                            top = if (option.header) RaftMetrics.MenuLabelPaddingTop else 0.dp,
-                                            bottom = if (option.header) RaftMetrics.MenuLabelPaddingBottom else 0.dp
-                                        ),
-                                horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = option.label,
-                                    style =
-                                        if (option.header) {
-                                            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp).withRaftFontWeight(FontWeight.Bold)
-                                        } else {
-                                            RaftType.Body
-                                                .withRaftFontWeight(if (selected) FontWeight.Bold else FontWeight.Medium)
-                                        },
-                                    color =
-                                        when {
-                                            option.header -> RaftColor.ForegroundHint
-                                            rowEnabled -> RaftColor.TextBlack
-                                            else -> RaftColor.ForegroundDisabled
-                                        },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                if (selected) {
-                                    RaftLucideIcon(
-                                        RaftLucideIconName.Check,
-                                        modifier = Modifier.size(RaftMetrics.MenuIconSize),
-                                        color = RaftColor.TextBlackArgb,
-                                        strokeWidth = 2f
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
