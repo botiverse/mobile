@@ -16,14 +16,43 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+// The viewport-fraction tests run without the fixed 320dp cap.
+private const val NoCap = Int.MAX_VALUE
+
 class RaftLongMessageCollapseTest {
     // --- threshold -------------------------------------------------------------------------
 
     @Test
-    fun thresholdIsEightyPercentOfViewportAndZeroWithoutViewport() {
-        assertEquals(1600, raftLongMessageCollapseThresholdPx(2000))
-        assertEquals(0, raftLongMessageCollapseThresholdPx(0))
-        assertEquals(0, raftLongMessageCollapseThresholdPx(-5))
+    fun thresholdIsTheWebFixedHeightCappedAtEightyPercentOfViewport() {
+        // 320dp at density 2.75 = 880px: a phone viewport clips at the web's fixed height.
+        assertEquals(880, raftLongMessageCollapseThresholdPx(2000, maxThresholdPx = 880))
+        // A short viewport (landscape, split screen) clips at 80% so the toggle stays on screen.
+        assertEquals(720, raftLongMessageCollapseThresholdPx(900, maxThresholdPx = 880))
+        assertEquals(1600, raftLongMessageCollapseThresholdPx(2000, maxThresholdPx = NoCap))
+        assertEquals(0, raftLongMessageCollapseThresholdPx(0, maxThresholdPx = 880))
+        assertEquals(0, raftLongMessageCollapseThresholdPx(-5, maxThresholdPx = 880))
+    }
+
+    @Test
+    fun aMessageOfAboutHalfAPhoneScreenCollapses() {
+        // Regression (Android build 5): with the threshold at 80% of the viewport a body had to be
+        // taller than ~1730px of a 2000px list before it collapsed, so ordinary long messages
+        // rendered in full. At the web's 320dp a ~440dp body collapses.
+        val controller = RaftLongMessageCollapseController()
+        controller.onViewportMeasured(1080, 2000, maxThresholdPx = 880)
+        assertEquals(880, controller.thresholdPx)
+        assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 132))
+        assertEquals(880, raftLongMessageVisibleBodyHeight(1200, controller.thresholdPx, collapsible = true, expanded = false))
+        // A body only a little taller than 320dp still renders in full.
+        assertFalse(controller.recordMeasurement("m2", "m2:a", contentHeightPx = 960, minHiddenPx = 132))
+    }
+
+    @Test
+    fun keyboardDoesNotLowerTheThresholdBelowTheFixedHeight() {
+        val controller = RaftLongMessageCollapseController()
+        controller.onViewportMeasured(1080, 2000, maxThresholdPx = 880)
+        controller.onViewportMeasured(1080, 900, maxThresholdPx = 880) // IME open
+        assertEquals(880, controller.thresholdPx)
     }
 
     @Test
@@ -59,7 +88,7 @@ class RaftLongMessageCollapseTest {
     @Test
     fun lateLoadingImageTurnsBodyCollapsibleAndSmallShrinksDoNotFlapIt() {
         val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000) // threshold 1600
+        controller.onViewportMeasured(1080, 2000, maxThresholdPx = NoCap) // threshold 1600
         assertFalse(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 900, minHiddenPx = 48))
         assertFalse(controller.isCollapsible("m1:a"))
         // Image finishes loading: taller than the threshold.
@@ -74,10 +103,10 @@ class RaftLongMessageCollapseTest {
     @Test
     fun toggleDisappearsWhenTheThresholdGrowsPastTheContent() {
         val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 1000) // threshold 800
+        controller.onViewportMeasured(1080, 1000, maxThresholdPx = NoCap) // threshold 800
         assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 48))
         // Rotation to a taller viewport: threshold 1600 > content, nothing left to hide.
-        controller.onViewportMeasured(1200, 2000)
+        controller.onViewportMeasured(1200, 2000, maxThresholdPx = NoCap)
         assertFalse(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 48))
         assertFalse(controller.isCollapsible("m1:a"))
         assertEquals(1200, raftLongMessageVisibleBodyHeight(1200, 1600, collapsible = false, expanded = false))
@@ -93,7 +122,7 @@ class RaftLongMessageCollapseTest {
     @Test
     fun editedContentIsMeasuredAfresh() {
         val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000)
+        controller.onViewportMeasured(1080, 2000, maxThresholdPx = NoCap)
         assertTrue(controller.recordMeasurement("m1", "m1:long", contentHeightPx = 3000, minHiddenPx = 48))
         assertFalse(controller.recordMeasurement("m1", "m1:short", contentHeightPx = 300, minHiddenPx = 48))
     }
@@ -101,7 +130,7 @@ class RaftLongMessageCollapseTest {
     @Test
     fun expandedStateIsPerMessageIdAndSurvivesRemeasurement() {
         val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000)
+        controller.onViewportMeasured(1080, 2000, maxThresholdPx = NoCap)
         controller.recordMeasurement("m1", "m1:a", 3000, 48)
         controller.setExpanded("m1", true)
         // Row scrolled away and back: measured again, still expanded.
@@ -115,7 +144,7 @@ class RaftLongMessageCollapseTest {
     @Test
     fun toggleHeightDeltaIsTheHiddenPart() {
         val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000)
+        controller.onViewportMeasured(1080, 2000, maxThresholdPx = NoCap)
         controller.recordMeasurement("m1", "m1:a", 3000, 48)
         assertEquals(1400, controller.toggleHeightDelta("m1", expanding = true))
         assertEquals(-1400, controller.toggleHeightDelta("m1", expanding = false))

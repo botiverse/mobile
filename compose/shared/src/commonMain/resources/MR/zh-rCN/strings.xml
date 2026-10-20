@@ -1772,7 +1772,7 @@
     <string name="settings_mobile_compact_enabled">隐藏重复头像</string>
     <string name="settings_mobile_compact_disabled">显示每条消息的头像</string>
     <string name="settings_mobile_long_message_collapse">折叠长消息</string>
-    <string name="settings_mobile_long_message_collapse_detail">超过屏幕大部分高度的消息会被折叠，点「展开全文」查看完整内容。各频道和私信可在各自的设置中单独开关。</string>
+    <string name="settings_mobile_long_message_collapse_detail">长消息会折叠为预览，点「展开全文」查看完整内容。各频道和私信可在各自的设置中单独开关。</string>
     <string name="settings_mobile_long_message_collapse_enabled">长消息折叠显示</string>
     <string name="settings_mobile_long_message_collapse_disabled">显示完整消息</string>
     <string name="conversation_long_message_collapse">折叠长消息</string>
