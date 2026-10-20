@@ -514,7 +514,9 @@ private fun HomeActivityRouterContent(
     // task #45: while the desktop-mode setting is OFF the surface must behave as a
     // plain mobile page — a retained workspace selection (kept for the OFF->ON round
     // trip) must neither steal Back nor render the detail slot.
-    RaftBackHandler(enabled = activityAdaptiveEnabled && selection != null) {
+    // A retained split-view selection is page state, not a transient overlay: keep the
+    // full-page back swipe (iPad split view would otherwise never pop while a detail is open).
+    RaftBackHandler(enabled = activityAdaptiveEnabled && selection != null, blocksBackSwipe = false) {
         val current = activityWorkspaceStore.snapshot().workspace ?: return@RaftBackHandler
         val dismissed =
             reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.DismissDetail)

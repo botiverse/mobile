@@ -1,5 +1,6 @@
 package build.raft.app.compat.ui
 
+import build.raft.designsystem.gesture.LocalRaftBackSwipeActive
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
@@ -70,7 +71,13 @@ val LocalRaftPageActive = compositionLocalOf { true }
 @Composable
 fun RaftProvidePageActive(active: Boolean, content: @Composable () -> Unit) {
     val parentActive = LocalRaftPageActive.current
-    CompositionLocalProvider(LocalRaftPageActive provides (parentActive && active), content = content)
+    val pageActive = parentActive && active
+    CompositionLocalProvider(
+        LocalRaftPageActive provides pageActive,
+        // Inactive kept-alive content may keep stale bounds: its back-swipe regions never report.
+        LocalRaftBackSwipeActive provides pageActive,
+        content = content,
+    )
 }
 
 /** A back handler's effective `enabled`: the caller's flag AND the enclosing page being active. */

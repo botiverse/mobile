@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.designsystem.gesture.rememberRaftBackSwipeRegion
+import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
@@ -13542,7 +13542,7 @@ private fun ThreadImagePreviewOverlay(
             Column(modifier = Modifier.fillMaxSize()) {
                 val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
                 // Past the first image a back-direction drag pages the preview, not the host's back swipe.
-                val galleryBackSwipe = rememberRaftBackSwipeRegion {
+                val galleryBackSwipe = Modifier.raftBackSwipeRegion {
                     hasMultiple && currentPreviewState.currentIndex > 0
                 }
                 Box(

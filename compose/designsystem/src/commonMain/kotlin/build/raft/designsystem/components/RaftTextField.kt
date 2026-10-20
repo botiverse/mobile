@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -145,7 +146,8 @@ fun RaftTextField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.raftFieldSemantics(field.label, invalid, enabled, field.error),
+        // Focused: cursor and selection drags (and single-line scrolling) keep the drag.
+        modifier = modifier.raftKeepsBackSwipe(focused).raftFieldSemantics(field.label, invalid, enabled, field.error),
         enabled = enabled,
         readOnly = readOnly,
         textStyle = raftFieldTextStyle(look.text),
@@ -187,7 +189,8 @@ fun RaftTextField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.raftFieldSemantics(field.label, invalid, enabled, field.error),
+        // Focused: cursor and selection drags (and single-line scrolling) keep the drag.
+        modifier = modifier.raftKeepsBackSwipe(focused).raftFieldSemantics(field.label, invalid, enabled, field.error),
         enabled = enabled,
         readOnly = readOnly,
         textStyle = raftFieldTextStyle(look.text),
@@ -239,6 +242,8 @@ fun RaftTextarea(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight, max = maxHeight)
+                    // Focused: cursor and selection drags keep the drag from the host back swipe.
+                    .raftKeepsBackSwipe(focused)
                     .raftFieldSemantics(field.label, invalid, enabled, field.error),
             enabled = enabled,
             readOnly = readOnly,

@@ -91,6 +91,7 @@ private fun RaftInAppBrowserScreen() {
     RaftBackHandler(
         enabled = true,
         label = "in_app_browser",
+        blocksBackSwipe = false,
         onBack = ::goBackOrClose,
     )
 

@@ -2,6 +2,8 @@
 
 package build.raft.app
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
+import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -1326,6 +1328,8 @@ fun Modal(
     onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
+    // A right swipe must not pop the page underneath an open modal.
+    RaftBlockBackSwipe()
     Dialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
         properties = raftModalDialogPropertiesWithoutScrim()
@@ -1864,8 +1868,13 @@ internal fun TextField(
             }
         }
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
+    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
+    // host's full-page back swipe.
+    val keepsBackSwipe = remember { mutableStateOf(false) }
     BasicTextField(
-        modifier = updatedModifier,
+        modifier = updatedModifier
+            .raftKeepsBackSwipe(keepsBackSwipe.value)
+            .onFocusChanged { keepsBackSwipe.value = it.isFocused },
         value = value,
         onValueChange = currentOnValueChange,
         textStyle = resolvedTextStyle,
@@ -2028,13 +2037,18 @@ internal fun TextField(
             onValueChange = onValueChangeRecordingLive,
         )
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
+    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
+    // host's full-page back swipe.
+    val keepsBackSwipe = remember { mutableStateOf(false) }
     // The field gets the backport's toolbar so its own hide() calls do not close a multi-tap menu.
     val fieldToolbar = if (raftPlatformTextFieldNeedsMultiTapBackport()) multiTapSelection.fieldToolbar else LocalTextToolbar.current
     CompositionLocalProvider(LocalTextToolbar provides fieldToolbar) {
         BasicTextField(
             // Outside the field's own pointer modifiers, so its Main pass runs after the field's tap
             // handler has placed the cursor.
-            modifier = multiTapSelectionModifier.then(updatedModifier),
+            modifier = multiTapSelectionModifier.then(updatedModifier)
+                .raftKeepsBackSwipe(keepsBackSwipe.value)
+                .onFocusChanged { keepsBackSwipe.value = it.isFocused },
             value = value,
             onValueChange = onValueChangeRecordingLive,
             textStyle = resolvedTextStyle,

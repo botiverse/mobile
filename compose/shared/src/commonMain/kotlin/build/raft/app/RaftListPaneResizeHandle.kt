@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +80,7 @@ internal fun RaftListPaneResizeHandle(
                 .fillMaxHeight()
                 .onGloballyPositioned { handleRootX = it.positionInRoot().x }
                 .raftNativeDispatchCapture()
+                .raftKeepsBackSwipe()
                 .pointerInput(densityValue) {
                     var dragOriginRootX = 0f
                     detectHorizontalDragGestures(
