@@ -2019,6 +2019,7 @@ internal fun TextField(
         rememberRaftTextFieldMultiTapSelection(
             enabled =
                 enabled &&
+                    !readOnly &&
                     visualTransformation == VisualTransformation.None &&
                     raftPlatformTextFieldNeedsMultiTapBackport(),
             composedValue = value,
@@ -2027,7 +2028,8 @@ internal fun TextField(
         )
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
     // The field gets the backport's toolbar so its own hide() calls do not close a multi-tap menu.
-    CompositionLocalProvider(LocalTextToolbar provides multiTapSelection.fieldToolbar) {
+    val fieldToolbar = if (raftPlatformTextFieldNeedsMultiTapBackport()) multiTapSelection.fieldToolbar else LocalTextToolbar.current
+    CompositionLocalProvider(LocalTextToolbar provides fieldToolbar) {
         BasicTextField(
             // Outside the field's own pointer modifiers, so its Main pass runs after the field's tap
             // handler has placed the cursor.

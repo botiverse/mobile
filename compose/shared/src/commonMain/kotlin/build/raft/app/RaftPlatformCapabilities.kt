@@ -156,6 +156,7 @@ internal expect fun raftPlatformTabPagerStartEdgeInsetDp(): Float
  */
 internal expect fun raftPlatformTabPagerOverscrollEnabled(): Boolean
 
+/**
  * Whether the value-based text field needs [raftTextFieldMultiTapSelection] for touch
  * double-tap (word) / triple-tap (paragraph) selection. Android's androidx foundation 1.8.2 lacks
  * it (added in 1.10.0); CMP 1.8.2 iOS already implements it in its Cupertino text field pointer.

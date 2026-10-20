@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -296,6 +297,8 @@ internal fun rememberRaftTextFieldMultiTapSelection(
 ): Pair<Modifier, RaftTextFieldMultiTapSelectionController> {
     val platformToolbar = LocalTextToolbar.current
     val controller = remember(platformToolbar) { RaftTextFieldMultiTapSelectionController(platformToolbar) }
+    // Leaving composition (navigation without a blur) must not strand our floating toolbar.
+    DisposableEffect(controller) { onDispose { controller.retire() } }
     @Suppress("DEPRECATION") // LocalClipboard (suspend) is not needed for plain text.
     val clipboard = LocalClipboardManager.current
     val latestOnValueChange by rememberUpdatedState(onValueChange)
