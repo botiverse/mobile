@@ -1636,8 +1636,7 @@ class SharedInboxPanelTest {
         assertEquals(
             SharedActivityFooterBadgeVisual(
                 tone = RaftBrutalTone.Cyan,
-                leadingIcon = RaftLucideIconName.Play,
-                foregroundColor = TaskStatus.InProgress.sharedTaskStatusChipMeta().foregroundColor
+                leadingIcon = RaftLucideIconName.Play
             ),
             SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress)
         )
@@ -1666,17 +1665,6 @@ class SharedInboxPanelTest {
         assertEquals(RaftBrutalTone.Lavender, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).tone)
         assertEquals(RaftBrutalTone.Lime, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).tone)
         assertEquals(RaftBrutalTone.Stone, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).tone)
-    }
-
-    @Test
-    fun activityTaskBadgeForegroundUsesConversationTaskChipToken() {
-        TaskStatus.entries.forEach { status ->
-            assertEquals(
-                status.sharedTaskStatusChipMeta().foregroundColor,
-                SharedActivityFooterSlot.Task.badgeVisual(status).foregroundColor,
-                "foreground drift for $status"
-            )
-        }
     }
 
     @Test
