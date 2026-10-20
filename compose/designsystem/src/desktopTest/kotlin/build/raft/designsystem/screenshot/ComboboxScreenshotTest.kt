@@ -16,6 +16,7 @@ import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
+import build.raft.designsystem.components.raftAvatarInitials
 import build.raft.designsystem.components.LocalRaftMenuFieldType
 import build.raft.designsystem.components.RaftComboboxChipsTrigger
 import build.raft.designsystem.components.RaftComboboxMenuRows
@@ -113,7 +114,7 @@ class ComboboxScreenshotTest {
                         options = models,
                         isSelected = { it == "sonnet" },
                         onPick = {},
-                        emptyText = { "No models match \"$it\"" },
+                        emptyText = { "No models match “$it”" },
                         searchPlaceholder = "Search models",
                         onClear = {},
                         modifier = Modifier.height(sheetHeight),
@@ -128,12 +129,12 @@ class ComboboxScreenshotTest {
                         options = people,
                         isSelected = { it == "bugen" || it == "cindy" },
                         onPick = {},
-                        emptyText = { "No one matches \"$it\"" },
+                        emptyText = { "No one matches “$it”" },
                         searchPlaceholder = "Search people",
                         onClear = {},
                         onDone = {},
                         optionLeading = { option ->
-                            RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Xs, initials = option.label)
+                            RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Xs, initials = raftAvatarInitials(option.label, RaftAvatarSize.Xs))
                         },
                         modifier = Modifier.height(sheetHeight),
                     )
@@ -147,7 +148,7 @@ class ComboboxScreenshotTest {
                         options = listOf(RaftComboboxOption("design", "#design"), RaftComboboxOption("dev", "#dev")),
                         isSelected = { false },
                         onPick = {},
-                        emptyText = { "No channels match \"$it\"" },
+                        emptyText = { "No channels match “$it”" },
                         searchPlaceholder = "Search channels",
                         optionLeading = { RaftGlyphIcon(RaftGlyph.AtSign) },
                         modifier = Modifier.height(sheetHeight),
@@ -162,7 +163,7 @@ class ComboboxScreenshotTest {
                         options = models,
                         isSelected = { false },
                         onPick = {},
-                        emptyText = { "No models match \"$it\"" },
+                        emptyText = { "No models match “$it”" },
                         searchPlaceholder = "Search or type a model",
                         onCreate = {},
                         modifier = Modifier.height(sheetHeight),
@@ -196,7 +197,7 @@ class ComboboxScreenshotTest {
                             isSelected = { it == "cindy" },
                             onPick = {},
                             emptyText = { "No one" },
-                            optionLeading = { option -> RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Xs, initials = option.label) },
+                            optionLeading = { option -> RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Xs, initials = raftAvatarInitials(option.label, RaftAvatarSize.Xs)) },
                         )
                     }
                 }
