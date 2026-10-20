@@ -62,6 +62,7 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
                 diskCache { DiskCache.Builder().directory(diskDirectory).maxSizeBytes(RAFT_IMAGE_DISK_CACHE_BYTES).build() }
             }
         }
+        .raftPlatformImageLoaderDefaults()
         .components {
             add(RaftManagedImageCommitInterceptor(memoryCache))
             add(RaftImageSourceMapper)
@@ -73,6 +74,17 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
     raftBuiltImageLoader.value = loader
     return loader
 }
+
+/**
+ * Platform defaults for the Raft loader. Android: never decode into `Bitmap.Config.HARDWARE`.
+ * Every Raft image is drawn through Compose (`drawImage` of a raw [androidx.compose.ui.graphics.ImageBitmap]
+ * or a Coil painter), and a hardware bitmap throws `IllegalArgumentException: Software rendering
+ * doesn't support hardware bitmaps` as soon as the view is drawn into a software `Canvas`
+ * (view-to-bitmap snapshots, share/screenshot paths, some OEM accessibility services, the visual
+ * capture harness's `root.draw(Canvas(bitmap))`). Hardware bitmaps also cannot be read back
+ * (`readPixels`), which raw-ImageBitmap callers may do.
+ */
+internal expect fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder
 
 /**
  * Managed avatar bookkeeping around a load:

@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,8 +86,9 @@ internal fun <T> RaftTabbedScaffold(
     // so the 2-3 thread mode tabs render real content during swipe transitions
     // and stay alive across back-and-forth swipes without reload or loading
     // placeholder flicker. Platform gesture policy is injected via
-    // raftPlatformTabPagerStartEdgeInsetDp. iOS uses 0dp; native back-gesture
-    // arbitration yields to the pager while it can consume the drag.
+    // raftPlatformTabPagerStartEdgeInsetDp. iOS uses 0dp: TabPager reports to the
+    // host's full-page back swipe (rememberRaftBackSwipeScroll) — on the first page a
+    // back-direction drag pops the page, past it the pager keeps the drag.
     TabPager(
         selectedIndex = raftTabbedScaffoldPageIndex(tabs, selectedKey),
         onSelectedIndexChange = { index ->
@@ -153,10 +156,15 @@ internal fun RaftTopTabBar(
             .height(RaftTopTabBarDefaults.Height + RaftAppSpacing.Md + RaftAppStroke.Thin)
             .background(RaftColor.Canvas)
     ) {
+        val rowState = rememberLazyListState()
+        val backSwipe = rememberRaftBackSwipeScroll(rowState)
         LazyRow(
+            state = rowState,
+            userScrollEnabled = backSwipe.userScrollEnabled,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .then(backSwipe.modifier)
                 .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm),
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xxs),
             verticalAlignment = Alignment.CenterVertically

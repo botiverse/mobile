@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.model.MemberKind
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -173,14 +172,6 @@ class MembersAgentTabOrderTest {
         assertEquals("member-detail-agent-1-tab-Profile", profileKey)
         assertEquals(profileKey, membersAgentDetailBodyItemKey("agent-1", MembersAgentDetailTab.Profile))
         assertNotEquals(profileKey, chatKey)
-    }
-
-    @Test
-    fun shortAgentTabsUseSharedTopTabMinimumWidth() {
-        assertEquals(98.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Activity))
-        assertEquals(98.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Profile))
-        assertEquals(98.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Apps))
-        assertEquals(112.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Reminders))
     }
 
     @Test

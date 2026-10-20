@@ -31,22 +31,18 @@ internal enum class RaftStatusIndicatorShape {
 internal object RaftStatusIndicatorTokens {
     // raft-ui 0.6.0 status lights are square pixels (`rounded-[2px] border-[1.5px]
     // border-sticker-ink`). The app theme is always a raft register, so the default
-    // shape/edge follow [RaftAppThemeState]; brutal-only previews pass their own.
-    val Shape: RaftStatusIndicatorShape
-        get() = if (RaftAppThemeState.theme.isAmbient) RaftStatusIndicatorShape.Square else RaftStatusIndicatorShape.Circle
+    // shape/edge are the raft ones; brutal-only previews pass their own.
+    val Shape: RaftStatusIndicatorShape = RaftStatusIndicatorShape.Square
     // #90 React parity: bump avatar overlay size 9dp → 11dp to match React
     // `StatusDot size="lg"` (`size-[11px]`). Inline / server-unread sizes
     // match React `size="md"` (10dp ≈ 10px) and stay unchanged.
     val AvatarSize: Dp = 11.dp
     // raft `md` presence / attention pixel is 9px.
-    val InlineSize: Dp
-        get() = if (RaftAppThemeState.theme.isAmbient) 9.dp else 10.dp
-    val ServerUnreadSize: Dp
-        get() = if (RaftAppThemeState.theme.isAmbient) 9.dp else 10.dp
-    val BorderWidth: Dp
-        get() = if (RaftAppThemeState.theme.isAmbient) RaftAppStroke.Control else RaftAppStroke.Thin
+    val InlineSize: Dp = 9.dp
+    val ServerUnreadSize: Dp = 9.dp
+    val BorderWidth: Dp = RaftAppStroke.Control
     val BorderColor: Color
-        get() = if (RaftAppThemeState.theme.isAmbient) RaftColor.StickerInk else RaftColor.BorderBlack
+        get() = RaftColor.StickerInk
 }
 
 @Composable

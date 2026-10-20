@@ -5,6 +5,7 @@ import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ConversationRepository
+import build.raft.app.data.InboxDoneFrontier
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
@@ -181,7 +182,7 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
 
     override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
 
-    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
+    override suspend fun markThreadDone(threadChannelId: ChannelId, frontier: InboxDoneFrontier): DataResult<ThreadActionResult> = error("unused")
 
     override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
 

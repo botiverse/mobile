@@ -981,9 +981,12 @@ class RealConversationRepository private constructor(
             networkClient.unfollowThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
         }
 
-    override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
+    override suspend fun markThreadDone(
+        threadChannelId: ChannelId,
+        frontier: InboxDoneFrontier
+    ): DataResult<ThreadActionResult> =
         threadAction(threadChannelId, source = "thread_done") {
-            networkClient.markThreadDone(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
+            networkClient.markThreadDone(DataRequestPriority.Foreground, threadChannelId.toThreadDoneBody(frontier))
         }
 
     override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
@@ -1986,6 +1989,31 @@ data class ParentMessageThreadRequestBody(val parentMessageId: String)
 private fun ChannelId.toThreadActionBody(): String =
     conversationRepositoryJson.encodeToString(
         ThreadChannelActionRequestBody(threadChannelId = value)
+    )
+
+/**
+ * `POST /channels/threads/done` body (botiverse/slock 1bb70cbeb,
+ * routes/channels.ts:2014): same omitted-vs-storage matrix as inbox Done.
+ */
+@Serializable
+private data class ThreadDoneRequestBody(
+    val threadChannelId: String,
+    val throughActivitySeq: String? = null,
+    val frontierSpace: String? = null,
+)
+
+private fun ChannelId.toThreadDoneBody(frontier: InboxDoneFrontier): String =
+    inboxDoneRequestJson.encodeToString(
+        ThreadDoneRequestBody.serializer(),
+        when (frontier) {
+            InboxDoneFrontier.Legacy -> ThreadDoneRequestBody(threadChannelId = value)
+            is InboxDoneFrontier.Storage ->
+                ThreadDoneRequestBody(
+                    threadChannelId = value,
+                    throughActivitySeq = frontier.throughActivitySeq,
+                    frontierSpace = InboxDoneFrontierSpaceStorage,
+                )
+        }
     )
 
 private fun MessageId.toParentMessageThreadBody(): String =

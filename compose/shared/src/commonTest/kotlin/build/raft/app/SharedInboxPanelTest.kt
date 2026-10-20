@@ -166,12 +166,12 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun openingActivityRowsLeavesReadAcknowledgementToTheDestinationStore() {
+    fun openingAnUnreadActivityRowMarksThatRowReadLikeWeb() {
         val opened = activityItem(key = "thread:opened").copy(unreadCount = 2)
-        val promotedWhileNavigating = activityItem(key = "thread:promoted").copy(unreadCount = 1)
 
-        assertEquals(null, opened.activityOpenReadIntent())
-        assertEquals(null, promotedWhileNavigating.activityOpenReadIntent())
+        assertEquals(build.raft.app.data.SharedActivityIntent.MarkRead(opened), opened.activityOpenReadIntent())
+        assertEquals(null, activityItem(key = "thread:read").activityOpenReadIntent())
+        assertEquals(null, opened.copy(kind = InboxItemKind.Thread, isFollowing = false).activityOpenReadIntent())
     }
 
     @Test
@@ -1611,7 +1611,7 @@ class SharedInboxPanelTest {
             SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff),
             SharedActivityFooterSlot.Unfollowed.badgeVisual()
         )
-        assertFalse(item.activityShowsDoneAction())
+        assertTrue(item.activityShowsDoneAction(), "web keeps Done on unfollowed rows")
         assertTrue(item.copy(isFollowing = true).activityShowsDoneAction())
     }
 
@@ -1628,7 +1628,7 @@ class SharedInboxPanelTest {
         val unfollowed = followed.copy(key = "thread:unfollowed", isFollowing = false)
 
         assertEquals(listOf("toggle-read", "done", "unfollow-thread"), activityContextMenuActionIds(followed))
-        assertEquals(listOf("follow-thread"), activityContextMenuActionIds(unfollowed))
+        assertEquals(listOf("done", "follow-thread"), activityContextMenuActionIds(unfollowed))
     }
 
     @Test

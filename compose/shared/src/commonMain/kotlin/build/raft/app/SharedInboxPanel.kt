@@ -1,5 +1,8 @@
 package build.raft.app
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import build.raft.app.components.raftCardSurface
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -121,7 +124,6 @@ import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
-private val ActivitySelectedRowShadowOffset = 2.dp
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -147,6 +149,8 @@ internal fun SharedHomeActivityScreen(
     // selection identity (threadId) is the source of truth for the row
     // highlight; a stale checkpoint key must not resurface.
     externalSelectedThreadId: String? = null,
+    // Activity hosted as an app-shell bottom tab: main-tab header.
+    mainTab: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val pager = LocalActivity.current.getPager() as Pager
@@ -432,6 +436,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
         externalSelectedThreadId = externalSelectedThreadId,
+        mainTab = mainTab,
         modifier = modifier
     )
 }
@@ -612,7 +617,8 @@ internal fun SharedHomeActivityScreen(
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
-    externalSelectedThreadId: String? = null
+    externalSelectedThreadId: String? = null,
+    mainTab: Boolean = false
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -630,6 +636,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = presentationStore,
         foregroundEpoch = 0L,
         externalSelectedThreadId = externalSelectedThreadId,
+        mainTab = mainTab,
         modifier = modifier
     )
 }
@@ -718,7 +725,8 @@ private fun SharedActivityPanelContent(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
-    externalSelectedThreadId: String? = null
+    externalSelectedThreadId: String? = null,
+    mainTab: Boolean = false
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     // task #232 (#2224 review blocker 1): the panel owns per-page scroll
@@ -745,6 +753,7 @@ private fun SharedActivityPanelContent(
             totalCount = state.totalCount,
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
+            mainTab = mainTab,
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
             onTitleClick = {
@@ -938,16 +947,28 @@ private fun SharedActivityHeader(
     onClose: (() -> Unit)?,
     topSafeAreaPadding: Dp,
     refreshing: Boolean,
-    onTitleClick: (() -> Unit)? = null
+    onTitleClick: (() -> Unit)? = null,
+    mainTab: Boolean = false
 ) {
+    if (mainTab) {
+        // App-shell tab head (like Tasks / Members): the frame-layer header with the Activity
+        // sticker, the title and the stats line; a root tab has no back arrow.
+        RaftTopPageHeader(
+            title = stringResource(MR.strings.tab_activity),
+            subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
+            iconName = RaftMainTabHeaderSurface.Activity.iconName,
+            topSafeAreaOverride = topSafeAreaPadding,
+            contentStartPadding = RaftMainTabHeaderStartPadding,
+            titleStyle = RaftMainTabHeaderTitleStyle,
+            refreshing = refreshing,
+            onTitleClick = onTitleClick,
+            showBodyTopBanner = false,
+        )
+        return
+    }
     RaftTopPageHeader(
         title = stringResource(MR.strings.home_nav_activity),
-        subtitle =
-            if (totalUnreadCount > 0) {
-                stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
-            } else {
-                stringResource(MR.strings.activity_header_active_count, totalCount)
-            },
+        subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
         backgroundColor = RaftColor.SurfaceWhite,
         topSafeAreaOverride = topSafeAreaPadding,
         refreshing = refreshing,
@@ -961,6 +982,27 @@ private fun SharedActivityHeader(
         showBodyTopBanner = false,
     )
 }
+
+@Composable
+private fun SharedActivityMarkAllReadButton(onClick: () -> Unit) {
+    RaftBrutalActionButton(
+        label = stringResource(MR.strings.inbox_action_mark_all_read),
+        minHeight = 28.dp,
+        minWidth = 0.dp,
+        shadowOffset = 2.dp,
+        backgroundColor = RaftColor.SurfaceWhite,
+        textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): String =
+    if (totalUnreadCount > 0) {
+        stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
+    } else {
+        stringResource(MR.strings.activity_header_active_count, totalCount)
+    }
 
 @Composable
 private fun SharedActivityFilterBar(
@@ -977,7 +1019,9 @@ private fun SharedActivityFilterBar(
                     .height(52.dp)
                     .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // raft-ui SegmentedControl: the tray hugs its segments; Mark all read sits at the
+            // row's end (xxchan: the tray must not stretch into an empty grey band).
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             SegmentedControl(
                 selectedValue = selectedFilter.wireValue,
@@ -988,21 +1032,14 @@ private fun SharedActivityFilterBar(
                 onValueSelected = { value ->
                     InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
                 },
-                modifier = Modifier.weight(1f)
+                // Wrap content, but never push Mark all read off the row; 12dp keeps the gap.
+                modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)
             )
             if (totalUnreadCount > 0) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.inbox_action_mark_all_read),
-                    minHeight = 28.dp,
-                    minWidth = 0.dp,
-                    shadowOffset = 2.dp,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    onClick = onMarkAllRead
-                )
+                SharedActivityMarkAllReadButton(onClick = onMarkAllRead)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
     }
 }
 
@@ -1329,6 +1366,7 @@ private fun SharedActivityList(
                         .padding(top = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                raftPullToRefreshItem()
                 items(items = renderedItems, key = { item -> item.key }) { item ->
                     SharedActivityRow(
                         item = item,
@@ -1492,7 +1530,6 @@ private fun SharedActivityList(
                     }
                 },
                 selectedId = "",
-                uppercaseLabels = false,
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
                     when (id) {
@@ -1556,12 +1593,19 @@ internal fun activityPresentationOwnerIdentity(
     filter: InboxFilter,
 ): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
 
-internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
-    // The destination store acknowledges the stable channel/thread identity after it is loaded
-    // and visible. Activity rows can reorder while navigation is in flight, so the list must not
-    // infer or write read state from its transient presentation snapshot.
-    return null
-}
+/**
+ * Opening an unread row marks it read immediately, like web `handleOpen`
+ * (botiverse/slock 1bb70cbeb, ThreadsInbox.tsx:830-833). The row passed here is
+ * the committed gesture's current row (resolved by key against the live list),
+ * so a reorder during navigation cannot redirect the read; the destination
+ * store's own acknowledgement still follows and is idempotent.
+ */
+internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? =
+    if (unreadCount > 0 && !isUnfollowedActivityThread && kind != InboxItemKind.MentionAction) {
+        SharedActivityIntent.MarkRead(this)
+    } else {
+        null
+    }
 
 /**
  * Menu membership is a pure projection of the row's server-owned follow
@@ -1571,9 +1615,9 @@ internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
 internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
     buildList {
         if (item.isUnfollowedActivityThread) {
-            // An unfollowed terminal row is historical context. It has no
-            // read/unread or Done affordance; the only valid action is an
-            // explicit Follow, which clears the server tombstone.
+            // Web InboxContextMenu: an unfollowed row has no read/unread toggle
+            // (the server zeroes its attention) but keeps Done, then Follow.
+            add("done")
             if (item.kind == InboxItemKind.Thread) add("follow-thread")
             return@buildList
         }
@@ -1600,34 +1644,22 @@ internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityRep
     )
 }
 
+/**
+ * An Activity row's surface: the raft-ui card row (container radius, `layer-card`, 1dp
+ * hairline); the selected row takes the `info-soft` wash. No ink frame, no offset shadow.
+ */
 @Composable
 private fun SharedActivitySelectedRowSurface(
     selected: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit
 ) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(end = ActivitySelectedRowShadowOffset, bottom = ActivitySelectedRowShadowOffset)
-    ) {
-        if (selected) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
-                    .background(RaftColor.ShadowBlack)
-            )
-        }
+    Box(modifier = modifier.fillMaxWidth()) {
         content(
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(
-                    RaftAppStroke.Default,
-                    if (selected) RaftColor.BorderBlack else RaftColor.TextBlack.copy(alpha = 0.3f)
-                )
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
+                .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
         )
     }
 }
@@ -1953,7 +1985,13 @@ internal fun InboxItem.activityDoneClickIdentity(
     presentationOwnerIdentity: String = "",
 ): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
-internal fun InboxItem.activityShowsDoneAction(): Boolean = !isUnfollowedActivityThread
+/**
+ * Web always offers Done, including on an unfollowed thread row (slock
+ * 1bb70cbeb ThreadsInbox.tsx:375-392, InboxContextMenu.tsx:115-120): the server
+ * keeps such a row in All until it is marked Done, so it must stay clearable.
+ */
+@Suppress("UnusedReceiverParameter")
+internal fun InboxItem.activityShowsDoneAction(): Boolean = true
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -2235,6 +2273,7 @@ private fun SharedActivityRefreshableStateBody(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            raftPullToRefreshItem()
             item(key = "activity_state") {
                 SharedActivityStateBody(
                     title = title,

@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.components.RaftAttachmentPreviewCard
 import build.raft.app.components.RaftAttachmentPreviewCardWidth
@@ -357,8 +359,13 @@ private val ThreadMessageMenuVisualViewportHeight = 844.dp
 
 @Composable
 internal fun ThreadMessageVisualScreen() {
+    val visualFixture = (LocalActivity.current.getPager() as Pager).pageData.params.optString("visualFixture")
     ThreadReactionAtlasProvider {
-        ThreadMessageVisualScreenContent()
+        CompositionLocalProvider(
+            LocalRaftMarkdownTaskStatuses provides threadVisualFixtureTaskStatuses(visualFixture)
+        ) {
+            ThreadMessageVisualScreenContent()
+        }
     }
 }
 @Composable

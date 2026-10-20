@@ -462,6 +462,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                 body = display.second.takeIf { it.isNotBlank() },
                 statusActivity = entry.activityKind ?: entry.activity,
                 statusDetail = entry.detail,
+                statusDetailKind = entry.detailKind,
                 isSubagent = entry.subagent != null,
                 subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
                 refTextEnabled = true
@@ -490,6 +491,7 @@ private fun WireActivityLogEntry.trajectoryEntry(
     toolInput: String? = null,
     statusActivity: String? = null,
     statusDetail: String? = null,
+    statusDetailKind: String? = null,
     isSubagent: Boolean = false,
     subagentType: String? = null,
     expandable: Boolean = false,
@@ -506,6 +508,7 @@ private fun WireActivityLogEntry.trajectoryEntry(
         toolInput = toolInput?.sanitizeActivityText(),
         statusActivity = statusActivity,
         statusDetail = statusDetail,
+        statusDetailKind = statusDetailKind,
         isSubagent = isSubagent,
         subagentType = subagentType,
         expandable = expandable,

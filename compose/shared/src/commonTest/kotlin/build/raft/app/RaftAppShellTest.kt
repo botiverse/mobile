@@ -1439,16 +1439,22 @@ class RaftAppShellTest {
             appShellBottomTabs(
                 selectedKey = "members",
                 homeLabel = "localized-home",
+                activityLabel = "localized-activity",
                 tasksLabel = "localized-tasks",
                 membersLabel = "localized-members",
-                settingsLabel = "localized-settings"
+                settingsLabel = "localized-settings",
+                activityBadgeCount = 7
             )
 
+        // artin 2026-10-20: five tabs, Activity second, badge only on Activity.
+        assertEquals(listOf("home", "activity", "tasks", "members", "settings"), tabs.map { it.key })
         assertEquals(
-            listOf("localized-home", "localized-tasks", "localized-members", "localized-settings"),
+            listOf("localized-home", "localized-activity", "localized-tasks", "localized-members", "localized-settings"),
             tabs.map { it.label }
         )
-        assertEquals(listOf(false, false, true, false), tabs.map { it.selected })
+        assertEquals(listOf(false, false, false, true, false), tabs.map { it.selected })
+        assertEquals(listOf(0, 7, 0, 0, 0), tabs.map { it.badgeCount })
+        assertEquals(RaftLucideIconName.Activity, tabs[1].iconName)
     }
 
     @Test
@@ -1471,7 +1477,7 @@ class RaftAppShellTest {
             listOf(
                 RaftLucideIconName.Ellipsis,
                 RaftLucideIconName.MessageCircle,
-                RaftLucideIconName.Bell,
+                RaftLucideIconName.Activity,
                 RaftLucideIconName.House
             ),
             tabs.map { it.iconName }

@@ -17,7 +17,7 @@ internal class ThreadFollowersVisualPage : BasePager() {
         val elegant = pageData.params.optBoolean("elegant", false)
         val single = pageData.params.optBoolean("single", false)
         setContent {
-            RaftThemeProvider(if (elegant) elegantTheme else brutalTheme) {
+            RaftThemeProvider(if (elegant) elegantTheme else raftLightTheme) {
                 FollowersVisualContent(single)
             }
         }

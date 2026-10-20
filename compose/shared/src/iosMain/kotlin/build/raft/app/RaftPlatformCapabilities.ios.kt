@@ -8,6 +8,10 @@ import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
+import build.raft.app.components.RaftPullToRefreshStyle
+
+internal actual fun raftPlatformNativePullToRefreshStyle(): RaftPullToRefreshStyle =
+    RaftPullToRefreshStyle.Cupertino
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = false
 
@@ -103,3 +107,6 @@ internal actual fun raftSlugSlashCenteringOffsetDp(): Float = 0f
 
 /** Native pop arbitration yields to paging while it can consume the drag. */
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
+
+/** Cupertino rubber band can stick at an offset when its spring is cancelled; see expect. */
+internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = false

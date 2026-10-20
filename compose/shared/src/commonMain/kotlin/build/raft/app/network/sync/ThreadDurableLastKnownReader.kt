@@ -28,6 +28,13 @@ internal data class ThreadDurableLastKnownFrame(
  * (task #1137): the channel was empty when last seen, which is an answer, not a miss.
  */
 internal interface ThreadDurableLastKnownReader {
+    /**
+     * Last known reply-preview windows (Hands dd79da45), read beside the frame so the first frame
+     * of a cold-started screen carries its replies blocks. Null: no durable reply windows.
+     */
+    val replyWindowCache: RaftThreadReplyWindowCache?
+        get() = null
+
     suspend fun read(partition: DurablePartitionKey, channelId: SyncScopeId): ThreadDurableLastKnownFrame?
 
     /**
@@ -114,6 +121,7 @@ internal class CanonicalMessageV2DurableLastKnownReader(
     private val store: CanonicalMessageV2Store,
     private val isEnabledForServer: (serverId: String) -> Boolean,
     private val logger: (String) -> Unit = {},
+    override val replyWindowCache: RaftThreadReplyWindowCache? = null,
 ) : ThreadDurableLastKnownReader {
     override suspend fun read(partition: DurablePartitionKey, channelId: SyncScopeId): ThreadDurableLastKnownFrame? =
         readScope(partition, channelId, CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS)

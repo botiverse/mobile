@@ -129,7 +129,7 @@ GESTURE_OWNER_REGIONS = (
     (
         HOME_COMPONENTS,
         "private fun DirectMessageRow(",
-        "private fun DirectMessageStatusDot(",
+        "private fun ChannelAvatar(",
         "home-direct-message-row",
     ),
     (SHARED_TASKS_PAGE, "private fun SharedTaskCard(", "internal fun tasksStatusChipClickIdentity(", "tasks-card"),

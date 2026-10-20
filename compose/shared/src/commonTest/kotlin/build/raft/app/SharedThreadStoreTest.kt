@@ -40,6 +40,7 @@ import build.raft.app.data.ChannelUpdateResult
 import build.raft.app.data.ChannelVisibility
 import build.raft.app.data.ChannelSnapshot
 import build.raft.app.data.ConversationRepository
+import build.raft.app.data.InboxDoneFrontier
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.CreateChannelResult
 import build.raft.app.data.DataResult
@@ -17612,7 +17613,7 @@ class SharedThreadStoreTest {
 
         override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
 
-        override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
+        override suspend fun markThreadDone(threadChannelId: ChannelId, frontier: InboxDoneFrontier): DataResult<ThreadActionResult> = error("unused")
 
         override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
 

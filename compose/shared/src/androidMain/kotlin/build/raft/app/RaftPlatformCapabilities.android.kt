@@ -3,6 +3,10 @@ package build.raft.app
 import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
+import build.raft.app.components.RaftPullToRefreshStyle
+
+internal actual fun raftPlatformNativePullToRefreshStyle(): RaftPullToRefreshStyle =
+    RaftPullToRefreshStyle.Material
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = true
 
@@ -85,3 +89,5 @@ internal actual fun raftFeedbackWebViewClientKind(): String = "android"
 internal actual fun raftSlugSlashCenteringOffsetDp(): Float = -1.5f
 
 internal actual fun raftPlatformTabPagerStartEdgeInsetDp(): Float = 0f
+
+internal actual fun raftPlatformTabPagerOverscrollEnabled(): Boolean = true

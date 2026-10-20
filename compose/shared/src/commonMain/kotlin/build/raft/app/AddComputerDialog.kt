@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.raftOptionSurface
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTextField
@@ -340,8 +341,7 @@ private fun AddComputerTypeCard(
 ) {
     Row(
         modifier = modifier
-            .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, if (enabled || selected) RaftColor.BorderBlack else RaftColor.EmptyStateGray)
+            .raftOptionSurface(selected = selected, enabled = enabled || selected)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -350,11 +350,11 @@ private fun AddComputerTypeCard(
         RaftLucideIcon(
             iconName,
             modifier = Modifier.size(18.dp),
-            color = if (enabled || selected) "#FF000000" else "#66000000"
+            color = raftArgbHex(if (enabled || selected) RaftColor.TextBlack else RaftColor.ForegroundDisabled)
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                title.raftDisplayUppercase(),
+                title,
                 // Web AddMachineDialog type cards: text-sm title, text-xs detail.
                 style = RaftType.Button.copy(
                     fontSize = 14.sp,

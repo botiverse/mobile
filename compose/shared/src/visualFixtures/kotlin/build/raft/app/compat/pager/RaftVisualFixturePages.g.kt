@@ -4,6 +4,7 @@ package build.raft.app.compat.pager
 
 internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
     mapOf(
+        "compose_activity_tab_visual" to { build.raft.app.ComposeRaftActivityTabVisualPage() },
         "compose_android_floating_tabbar_visual" to { build.raft.app.ComposeAndroidFloatingTabBarVisualPage() },
         "compose_announcement_modal_visual" to { build.raft.app.ComposeAnnouncementModalVisualPage() },
         "compose_app_shell_restore_splash_visual" to { build.raft.app.ComposeAppShellRestoreSplashVisualPage() },
@@ -23,6 +24,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_channel_settings_pinned_panel_visual" to { build.raft.app.ComposeChannelSettingsPinnedPanelVisualPage() },
         "compose_create_agent_builtin_dialog_visual" to { build.raft.app.ComposeCreateAgentBuiltInDialogVisualPage() },
         "compose_create_agent_dialog_visual" to { build.raft.app.ComposeCreateAgentDialogVisualPage() },
+        "compose_create_agent_state_visual" to { build.raft.app.ComposeCreateAgentStateVisualPage() },
         "compose_dm_settings_panel_visual" to { build.raft.app.ComposeDirectMessageSettingsPanelVisualPage() },
         "compose_file_preview_editor_visual" to { build.raft.app.ComposeRaftFilePreviewEditorVisualPage() },
         "compose_floating_overlay_touch_guard_visual" to { build.raft.app.ComposeRaftFloatingOverlayTouchGuardVisualPage() },
@@ -33,6 +35,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_home_activity_visual" to { build.raft.app.ComposeHomeActivityVisualPage() },
         "compose_home_app_update_banner_visual" to { build.raft.app.ComposeHomeAppUpdateBannerVisualPage() },
         "compose_home_create_channel_dialog_visual" to { build.raft.app.ComposeHomeCreateChannelDialogVisualPage() },
+        "compose_home_dm_agent_activity_visual" to { build.raft.app.ComposeHomeDmAgentActivityVisualPage() },
         "compose_home_loading_visual" to { build.raft.app.ComposeHomeLoadingVisualPage() },
         "compose_home_notification_center_visual" to { build.raft.app.ComposeHomeNotificationCenterVisualPage() },
         "compose_home_notification_trigger_states_visual" to { build.raft.app.ComposeHomeNotificationTriggerStatesVisualPage() },
@@ -61,6 +64,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_lucide_catalog_atlas_visual" to { build.raft.app.ComposeLucideCatalogAtlasVisualPage() },
         "compose_lucide_state_atlas_visual" to { build.raft.app.ComposeLucideStateAtlasVisualPage() },
         "compose_markdown_rerender_visual" to { build.raft.app.ComposeMarkdownRerenderVisualPage() },
+        "compose_members_agent_detail_state_visual" to { build.raft.app.ComposeMembersAgentDetailStateVisualPage() },
         "compose_members_agent_detail_visual" to { build.raft.app.ComposeMembersAgentDetailVisualPage() },
         "compose_members_restart_dialog_visual" to { build.raft.app.ComposeMembersRestartDialogVisualPage() },
         "compose_raft_ui_avatar_visual" to { build.raft.app.ComposeRaftUiAvatarVisualPage() },
@@ -87,6 +91,7 @@ internal val raftVisualFixturePageFactories: Map<String, () -> Pager> =
         "compose_raft_ui_wip_toggle_group_visual" to { build.raft.app.ComposeRaftUiWipToggleGroupVisualPage() },
         "compose_realtime_canonical_final_actual_host" to { build.raft.app.RealtimeCanonicalFinalActualHostPage() },
         "compose_search_recovery_visual" to { build.raft.app.SearchRecoveryVisualPage() },
+        "compose_settings_computers_visual" to { build.raft.app.SettingsComputersVisualFixture() },
         "compose_settings_page_visual" to { build.raft.app.ComposeSettingsPageVisualPage() },
         "compose_settings_route_visual" to { build.raft.app.ComposeSettingsRouteVisualPage() },
         "compose_settings_row_visual" to { build.raft.app.ComposeSettingsRowVisualPage() },

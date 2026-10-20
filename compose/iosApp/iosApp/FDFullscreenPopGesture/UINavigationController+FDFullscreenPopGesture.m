@@ -31,6 +31,9 @@
 @property (nonatomic, weak) UINavigationController *navigationController;
 @property (nonatomic, assign) BOOL touchBeganInEdgeZone;
 @property (nonatomic, weak) UIView *touchView;
+/// The page the touch began on and the start point in its view (content-consumption probe).
+@property (nonatomic, weak) UIViewController *touchPage;
+@property (nonatomic, assign) CGPoint touchLocationInPage;
 
 @end
 
@@ -173,6 +176,8 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
     UINavigationController *navigationController = self.navigationController;
     UIViewController *topViewController = navigationController.viewControllers.lastObject;
     CGPoint location = [touch locationInView:gestureRecognizer.view];
+    self.touchPage = topViewController;
+    self.touchLocationInPage = [touch locationInView:topViewController.view];
     RaftInteractivePopTouchAdmission admission = {
         .navigationStackCount = navigationController.viewControllers.count,
         .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
@@ -191,9 +196,14 @@ static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
 {
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
     CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
+    // Compose scrollers are not UIScrollViews: the page reports whether its content at the touch
+    // start can still scroll in the back direction (TabPager past page 0, a row away from its start).
+    BOOL (^contentProbe)(CGPoint) = self.touchPage.fd_interactivePopContentConsumesBackSwipe;
     RaftInteractivePopGestureAdmission admission = {
         .touchBeganInEdgeZone = self.touchBeganInEdgeZone,
         .transitioning = [[self.navigationController valueForKey:@"_isTransitioning"] boolValue],
+        .contentConsumesBackSwipe =
+            self.touchBeganInEdgeZone && contentProbe != nil && contentProbe(self.touchLocationInPage),
         .translationX = translation.x,
         .translationY = translation.y,
         .velocityX = velocity.x,
@@ -343,12 +353,12 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
             ? (RaftPageViewController *)viewController
             : nil;
     if (renderViewController) {
-        // Every pushed page can be returned from, but only from the leading edge strip:
-        // CMP content has no UIScrollView, so the delegate cannot see a Compose horizontal
-        // scroller consuming a right drag and full-screen admission would steal it.
-        // TODO(cmp-switch): restore full-screen admission once shared code reports
-        // horizontal-scroll consumption to the host.
-        renderViewController.fd_interactivePopAllowsFullScreen = NO;
+        // Every pushed page can be swiped back from anywhere, like a native page. CMP content has
+        // no UIScrollView: its horizontal scrollers report back-direction consumption through
+        // fd_interactivePopContentConsumesBackSwipe (shared rememberRaftBackSwipeScroll), and at
+        // their start they leave back drags unconsumed so the Compose touch recogniser does not
+        // claim them first.
+        renderViewController.fd_interactivePopAllowsFullScreen = YES;
     }
     [self fd_setConversationForwardGestureEnabled:
         renderViewController.raftConversationForwardGestureEnabled && renderViewController.raftIsAppShellPage];
@@ -527,6 +537,16 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
 - (void)setFd_prefersNavigationBarHidden:(BOOL)hidden
 {
     objc_setAssociatedObject(self, @selector(fd_prefersNavigationBarHidden), @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (BOOL (^)(CGPoint))fd_interactivePopContentConsumesBackSwipe
+{
+    return objc_getAssociatedObject(self, _cmd);
+}
+
+- (void)setFd_interactivePopContentConsumesBackSwipe:(BOOL (^)(CGPoint))probe
+{
+    objc_setAssociatedObject(self, @selector(fd_interactivePopContentConsumesBackSwipe), probe, OBJC_ASSOCIATION_COPY_NONATOMIC);
 }
 
 - (CGFloat)fd_interactivePopMaxAllowedInitialDistanceToLeftEdge

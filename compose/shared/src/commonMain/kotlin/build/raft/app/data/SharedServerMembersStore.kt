@@ -14,6 +14,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
+import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.isAgentFallbackAvatarWireValue
 import build.raft.app.raftAvatarDiagnosticsHash
@@ -303,6 +304,12 @@ data class SharedServerMemberStatus(
     val status: AgentStatus?,
     val presence: Presence,
     val statusLabel: String? = null,
+    /** agent:activity `detailKind` behind [statusLabel]; null when unknown. */
+    val detailKind: String? = null,
+    /** Normalized tool name when [statusLabel] is a client-built tool label. */
+    val activityToolName: String? = null,
+    /** The agent's runtime id (profile `roleDescription` for agents); null for humans/unknown. */
+    val runtime: String? = null,
     /**
      * External agents carry no managed liveness; the indicator must render them
      * as external regardless of [status]/[presence]. Required (no default) so a
@@ -413,6 +420,9 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             status = presenceFact.agentStatus ?: this?.agentStatus,
             presence = presenceFact.presence,
             statusLabel = presenceFact.statusLabel,
+            detailKind = presenceFact.detailKind,
+            activityToolName = presenceFact.activityToolName,
+            runtime = this?.agentRuntimeOrNull(),
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.
             external = this?.isExternal == true,
@@ -423,10 +433,15 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     return SharedServerMemberStatus(
         status = agentStatus,
         presence = presence,
+        runtime = agentRuntimeOrNull(),
         external = isExternal,
         lastSeenAt = resolvedLastSeenAt
     )
 }
+
+/** Agent profiles carry the runtime id in `roleDescription` (see `WireAgent.toMemberProfile`). */
+private fun MemberProfile.agentRuntimeOrNull(): String? =
+    roleDescription?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
 
 /**
  * Server-scoped members directory shared by surfaces that need server members.
@@ -499,7 +514,13 @@ class SharedServerMembersStore internal constructor(
             }
         }
             .distinctUntilChanged()
-    }
+    },
+    /**
+     * Durable avatar references (Hands dd79da45): authoritative loads record each member's rendered
+     * avatar so the avatar resolvers can paint it on a cold start before the directory refetch.
+     * Null keeps the store memory-only (tests, fixtures).
+     */
+    private val avatarRefStore: RaftMemberAvatarRefStore? = null
 ) {
     private val mutex = Mutex()
     private val publishedProcessVersionsByOwner = mutableMapOf<SharedServerChannelMembersOwnerBinding, Long>()
@@ -515,6 +536,22 @@ class SharedServerMembersStore internal constructor(
         presenceOwner(serverId)?.let(presenceRegistry::current).orEmpty()
 
     /** Returns a profile only while it is still active in this server. */
+    /**
+     * The last authoritative avatar wire value persisted for [memberId] in [serverId], or null. Read
+     * only as a fallback while the in-memory directory has no avatar for the member yet.
+     */
+    fun durableMemberAvatarWireValue(serverId: ServerId?, memberId: String?): String? {
+        val refStore = avatarRefStore ?: return null
+        val serverKey = serverId?.value?.normalizedServerMembersId() ?: return null
+        return refStore.avatarWireValue(serverKey, memberId, avatarRefOwnerKey(serverKey))
+    }
+
+    /** `environment|account` of the current auth binding for [serverKey], or null when not bound. */
+    private fun avatarRefOwnerKey(serverKey: String): String? =
+        presenceOwner(ServerId(serverKey))
+            ?.takeIf { owner -> owner.serverId.trim() == serverKey }
+            ?.let { owner -> "${owner.environmentId.trim()}|${owner.accountId.trim()}" }
+
     fun memberProfile(serverId: ServerId, memberId: String): MemberProfile? {
         val cleanServerId = serverId.value.normalizedServerMembersId() ?: return null
         val profile = _state.value.memberProfile(serverId, memberId) ?: return null
@@ -1083,6 +1120,13 @@ class SharedServerMembersStore internal constructor(
             current.copy(
                 profileCacheByServerId = current.profileCacheByServerId + (key to merged)
             )
+        if (authoritativeAvatar) {
+            recordDurableAvatarRefs(
+                key = key,
+                profiles = profiles.mapNotNull { profile -> merged[profile.id.value.trim()] },
+                authoritativeAbsence = false
+            )
+        }
     }
 
     /**
@@ -2671,6 +2715,30 @@ class SharedServerMembersStore internal constructor(
             _state.value.copy(
                 entriesByServerId = _state.value.entriesByServerId + (key to entry)
             )
+        if (entry.status == SharedServerMembersLoadStatus.Loaded && entry.members.isNotEmpty()) {
+            recordDurableAvatarRefs(key, entry.members, authoritativeAbsence = true)
+        }
+    }
+
+    /**
+     * [authoritativeAbsence]: a loaded directory is complete for its members, so a member whose
+     * avatar resolves to nothing really has none (the stale reference is dropped). Sparse profile
+     * sources only add or replace references.
+     */
+    private fun recordDurableAvatarRefs(
+        key: String,
+        profiles: Collection<MemberProfile>,
+        authoritativeAbsence: Boolean
+    ) {
+        val refStore = avatarRefStore ?: return
+        val avatars = LinkedHashMap<String, String?>()
+        profiles.forEach { profile ->
+            val memberId = profile.id.value.trim().takeIf { it.isNotEmpty() } ?: return@forEach
+            val avatar = profile.avatarWireValueForRenderedAvatar()?.trim()?.takeIf { it.isNotEmpty() }
+            if (avatar != null || authoritativeAbsence) avatars[memberId] = avatar
+        }
+        // A load that finishes after an auth change has no current owner binding: drop its write.
+        refStore.record(key, avatarRefOwnerKey(key.trim()), avatars)
     }
 
     private fun putChannelSlice(

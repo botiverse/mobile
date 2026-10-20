@@ -34,6 +34,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_register" to { build.raft.app.ComposeRegisterPage() },
         "compose_release_notes" to { build.raft.app.ComposeReleaseNotesPage() },
         "compose_settings_account" to { build.raft.app.ComposeSettingsAccountPage() },
+        "compose_settings_computers" to { build.raft.app.RaftSettingsComputersPage() },
         "compose_settings_hands_feedback" to { build.raft.app.ComposeSettingsHandsFeedbackPage() },
         "compose_settings_home" to { build.raft.app.ComposeSettingsHomePage() },
         "compose_settings_native_detail" to { build.raft.app.ComposeSettingsNativeDetailPage() },

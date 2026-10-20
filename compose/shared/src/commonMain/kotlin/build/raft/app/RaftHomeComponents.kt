@@ -11,7 +11,6 @@ import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftAppSkeletonVariant
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataResult
@@ -33,6 +32,7 @@ import build.raft.app.data.SettingsServerSidebarSectionPlacement
 import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_AGENT
 import build.raft.app.data.SIDEBAR_SECTION_ITEM_KIND_CHANNEL
 import build.raft.app.data.normalizeSidebarSectionOrder
+import build.raft.app.data.RaftSidebarHideEmptySectionsDefault
 import build.raft.app.data.ScreenError
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
@@ -42,12 +42,8 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.RaftAvatarCacheSubject
-import build.raft.app.data.RaftAvatarCommitIdentity
-import build.raft.app.data.RaftAvatarMountedBinding
-import build.raft.app.data.RaftAvatarMountedHandle
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
-import build.raft.app.data.parseRaftAvatarMountedRenderModel
 import build.raft.app.data.parseRaftHome
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
@@ -58,7 +54,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
-import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
@@ -77,8 +72,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
 import build.raft.app.compat.ui.scrollToTop
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.draw.alpha
@@ -121,6 +114,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.addsListItem
+import build.raft.app.components.rememberRaftPullToRefreshStyle
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
@@ -135,10 +130,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.layout
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -192,7 +191,12 @@ private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
 private val ChannelRowMutedIconSize = 12.dp
 private val ChannelRowMutedIconGap = 4.dp
-private val DirectMessageStatusDotSize = RaftStatusIndicatorTokens.InlineSize
+/** Web sidebar `AvatarBadge` is StatusDot `sm` (8px). */
+private val DirectMessageAvatarStatusSize = 8.dp
+/** Web `SIDEBAR_ROW_TRAILING_CLASS` `gap-1.5`. */
+private val DirectMessageTrailingGap = 6.dp
+/** Web `SIDEBAR_ROW_TRAILING_CLASS` `max-w-[58%]`. */
+private const val DirectMessageTrailingMaxWidthFraction = 0.58f
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
@@ -556,6 +560,15 @@ data class RaftHomeShellLabels(
     val sortAz: String = "A-Z",
     // task #512: custom sidebar sections (web channel-sections port).
     val moveToSection: String = "Move to section",
+    /** Move-to-section target for the pinned section (web `layout.sidebar.pinned`). */
+    val pinnedTarget: String = "Pinned",
+    val sortMenuTitle: String = "Sort",
+    val displaySection: String = "Display",
+    val hideEmptySections: String = "Hide empty sections",
+    val createChannel: String = "Create channel",
+    val sectionEmpty: String = "No conversations",
+    val pinnedSectionEmpty: String = "Long-press a channel or DM to pin it",
+    val jointChannelsEmpty: String = "No joint channels yet",
     val removeFromSection: String = "Remove from section",
     val newSectionMenu: String = "New section…",
     val renameSection: String = "Rename / change icon…",
@@ -597,6 +610,14 @@ data class RaftHomeShellLabels(
             sortRecent = stringResource(MR.strings.home_sort_recent),
             sortAz = stringResource(MR.strings.home_sort_az),
             moveToSection = stringResource(MR.strings.home_section_move_to),
+            pinnedTarget = stringResource(MR.strings.home_section_move_to_pinned),
+            sortMenuTitle = stringResource(MR.strings.home_section_menu_sort_title),
+            displaySection = stringResource(MR.strings.home_section_menu_display_title),
+            hideEmptySections = stringResource(MR.strings.home_section_hide_empty),
+            createChannel = stringResource(MR.strings.home_section_create_channel),
+            sectionEmpty = stringResource(MR.strings.home_section_empty),
+            pinnedSectionEmpty = stringResource(MR.strings.home_section_pinned_empty),
+            jointChannelsEmpty = stringResource(MR.strings.home_section_joint_empty),
             removeFromSection = stringResource(MR.strings.home_section_remove_from),
             newSectionMenu = stringResource(MR.strings.home_section_new_menu),
             renameSection = stringResource(MR.strings.home_section_rename),
@@ -1459,6 +1480,7 @@ internal data class RaftStructuralHomeShellData(
     val savedSelected: Boolean = false,
     val channelOrder: List<String> = emptyList(),
     val channelSortMode: String = "manual",
+    val jointChannelSortMode: String = "manual",
     val dmOrder: List<String> = emptyList(),
     val dmSortMode: String = "manual",
     val pinnedChannelIds: List<String> = emptyList(),
@@ -1471,6 +1493,8 @@ internal data class RaftStructuralHomeShellData(
     val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
     val sectionOrder: List<String> = emptyList(),
     val sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
+    /** Web "Display > Hide Empty Sections" (a local, not server-synced, preference). */
+    val hideEmptySections: Boolean = RaftSidebarHideEmptySectionsDefault,
     val canArchiveChannels: Boolean = false,
     val showLoadingSkeletons: Boolean = false,
     val selectedTabKey: String = "home",
@@ -1505,12 +1529,14 @@ internal class RaftStructuralHomeShellCallbacks(
     val onInlineErrorAction: () -> Unit = {},
     val onRefresh: () -> Unit = {},
     val onChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    val onJointChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    val onHideEmptySectionsChange: (Boolean) -> Unit = {},
     val onSidebarOrderChange: (target: RaftSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     val onDmSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     val onPinnedSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     // task #512: custom sidebar sections (web channel-sections port).
     val onSidebarSectionSortModeChange: (sectionId: String, RaftSidebarSortMode) -> Unit = { _, _ -> },
-    val onSidebarSectionCreate: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    val onSidebarSectionCreate: (RaftHomeSectionCreateRequest) -> Unit = {},
     val onSidebarSectionRename: (sectionId: String, name: String, emoji: String?) -> Unit = { _, _, _ -> },
     val onSidebarSectionDelete: (sectionId: String) -> Unit = {},
     /** [sectionId] null returns the conversation to its default section. */
@@ -1561,6 +1587,7 @@ internal fun RaftStructuralHomeShell(
     savedSelected: Boolean = false,
     channelOrder: List<String> = emptyList(),
     channelSortMode: String = "manual",
+    jointChannelSortMode: String = "manual",
     dmOrder: List<String> = emptyList(),
     dmSortMode: String = "manual",
     pinnedChannelIds: List<String> = emptyList(),
@@ -1573,6 +1600,7 @@ internal fun RaftStructuralHomeShell(
     customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
     sectionOrder: List<String> = emptyList(),
     sectionPlacements: List<SettingsServerSidebarSectionPlacement> = emptyList(),
+    hideEmptySections: Boolean = RaftSidebarHideEmptySectionsDefault,
     canArchiveChannels: Boolean = false,
     // #372 React parity: while home content is loading (session known,
     // channels / directMessages still empty) render static skeleton rows
@@ -1602,12 +1630,14 @@ internal fun RaftStructuralHomeShell(
     onInlineErrorAction: () -> Unit = {},
     onRefresh: () -> Unit = {},
     onChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    onJointChannelSortModeChange: (RaftSidebarSortMode) -> Unit = {},
+    onHideEmptySectionsChange: (Boolean) -> Unit = {},
     onSidebarOrderChange: (target: RaftSidebarSortTarget, order: List<String>) -> Unit = { _, _ -> },
     onDmSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (RaftSidebarSortMode) -> Unit = {},
     // task #512: custom sidebar sections (web channel-sections port).
     onSidebarSectionSortModeChange: (sectionId: String, RaftSidebarSortMode) -> Unit = { _, _ -> },
-    onSidebarSectionCreate: (name: String, emoji: String?) -> Unit = { _, _ -> },
+    onSidebarSectionCreate: (RaftHomeSectionCreateRequest) -> Unit = {},
     onSidebarSectionRename: (sectionId: String, name: String, emoji: String?) -> Unit = { _, _, _ -> },
     onSidebarSectionDelete: (sectionId: String) -> Unit = {},
     onMoveConversationToSection: (conversationId: String, sectionId: String?) -> Unit = { _, _ -> },
@@ -1663,6 +1693,7 @@ internal fun RaftStructuralHomeShell(
                 savedSelected = savedSelected,
                 channelOrder = channelOrder,
                 channelSortMode = channelSortMode,
+                jointChannelSortMode = jointChannelSortMode,
                 dmOrder = dmOrder,
                 dmSortMode = dmSortMode,
                 pinnedChannelIds = pinnedChannelIds,
@@ -1674,6 +1705,7 @@ internal fun RaftStructuralHomeShell(
                 customSections = customSections,
                 sectionOrder = sectionOrder,
                 sectionPlacements = sectionPlacements,
+                hideEmptySections = hideEmptySections,
                 canArchiveChannels = canArchiveChannels,
                 showLoadingSkeletons = showLoadingSkeletons,
                 selectedTabKey = selectedTabKey,
@@ -1704,6 +1736,8 @@ internal fun RaftStructuralHomeShell(
                 onInlineErrorAction = onInlineErrorAction,
                 onRefresh = onRefresh,
                 onChannelSortModeChange = onChannelSortModeChange,
+                onJointChannelSortModeChange = onJointChannelSortModeChange,
+                onHideEmptySectionsChange = onHideEmptySectionsChange,
                 onSidebarOrderChange = onSidebarOrderChange,
                 onDmSortModeChange = onDmSortModeChange,
                 onPinnedSortModeChange = onPinnedSortModeChange,
@@ -1747,8 +1781,6 @@ private fun RaftStructuralHomeShellContent(
     val directMessages = data.directMessages
     val selectedChannelId = data.selectedChannelId
     val selectedConversationSection = data.selectedConversationSection
-    val inboxUnreadCount = data.inboxUnreadCount
-    val inboxTotalCount = data.inboxTotalCount
     val savedCount = data.savedCount
     val notifications = data.notifications
     val inlineError = data.inlineError
@@ -1767,6 +1799,7 @@ private fun RaftStructuralHomeShellContent(
     val savedSelected = data.savedSelected
     val channelOrder = data.channelOrder
     val channelSortMode = data.channelSortMode
+    val jointChannelSortMode = data.jointChannelSortMode
     val dmOrder = data.dmOrder
     val dmSortMode = data.dmSortMode
     val pinnedChannelIds = data.pinnedChannelIds
@@ -1778,6 +1811,7 @@ private fun RaftStructuralHomeShellContent(
     val customSections = data.customSections
     val sectionOrder = data.sectionOrder
     val sectionPlacements = data.sectionPlacements
+    val hideEmptySections = data.hideEmptySections
     val canArchiveChannels = data.canArchiveChannels
     val showLoadingSkeletons = data.showLoadingSkeletons
     val selectedTabKey = data.selectedTabKey
@@ -1796,7 +1830,6 @@ private fun RaftStructuralHomeShellContent(
     val onCreateServerClick = callbacks.onCreateServerClick
     val onCreateChannelClick = callbacks.onCreateChannelClick
     val onTabSelected = callbacks.onTabSelected
-    val onInboxClick = callbacks.onInboxClick
     val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
     val onSavedClick = callbacks.onSavedClick
     val onSearchClick = callbacks.onSearchClick
@@ -1805,6 +1838,8 @@ private fun RaftStructuralHomeShellContent(
     val onInlineErrorAction = callbacks.onInlineErrorAction
     val onRefresh = callbacks.onRefresh
     val onChannelSortModeChange = callbacks.onChannelSortModeChange
+    val onJointChannelSortModeChange = callbacks.onJointChannelSortModeChange
+    val onHideEmptySectionsChange = callbacks.onHideEmptySectionsChange
     val onSidebarOrderChange = callbacks.onSidebarOrderChange
     val onDmSortModeChange = callbacks.onDmSortModeChange
     val onPinnedSortModeChange = callbacks.onPinnedSortModeChange
@@ -1842,6 +1877,7 @@ private fun RaftStructuralHomeShellContent(
     // original copy. Row key format is `<section>:<conversationId>`.
     var pressedRowKey by remember(currentServerId) { mutableStateOf<String?>(null) }
     var channelSortModeState by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(channelSortMode)) }
+    var jointChannelSortModeState by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(jointChannelSortMode)) }
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(dmSortMode)) }
     var pinnedSortModeState by remember(currentServerId) { mutableStateOf(RaftSidebarSortMode.fromWireValue(pinnedSortMode)) }
     var activeSortMenu by remember(currentServerId) { mutableStateOf<RaftHomeSortSection?>(null) }
@@ -1849,8 +1885,9 @@ private fun RaftStructuralHomeShellContent(
     var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var activePinnedMemberMenuKey by remember(currentServerId) { mutableStateOf<String?>(null) }
     var pinMenuAnchor by remember(currentServerId) { mutableStateOf<RaftPopoverAnchor?>(null) }
-    LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
+    LaunchedEffect(currentServerId, channelSortMode, jointChannelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = RaftSidebarSortMode.fromWireValue(channelSortMode)
+        jointChannelSortModeState = RaftSidebarSortMode.fromWireValue(jointChannelSortMode)
         directMessageSortMode = RaftSidebarSortMode.fromWireValue(dmSortMode)
         pinnedSortModeState = RaftSidebarSortMode.fromWireValue(pinnedSortMode)
         activeSortMenu = null
@@ -1919,6 +1956,38 @@ private fun RaftStructuralHomeShellContent(
     var sectionDialogTarget by remember(currentServerId) { mutableStateOf<RaftHomeSectionDialogTarget?>(null) }
     var sectionDeleteConfirmId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var moveToSectionConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    // Web parity: long-pressing a system section header (web right-click)
+    // opens that section's menu — sort, display, new section.
+    var activeSystemSectionMenu by remember(currentServerId) { mutableStateOf<RaftHomeSortSection?>(null) }
+    var systemSectionMenuAnchor by remember(currentServerId) { mutableStateOf<RaftPopoverAnchor?>(null) }
+    val systemSectionSortMode: (RaftHomeSortSection) -> RaftSidebarSortMode = { section ->
+        when (section) {
+            RaftHomeSortSection.Channels -> channelSortModeState
+            RaftHomeSortSection.JointChannels -> jointChannelSortModeState
+            RaftHomeSortSection.DirectMessages -> directMessageSortMode
+            RaftHomeSortSection.Pinned -> pinnedSortModeState
+        }
+    }
+    val selectSystemSectionSortMode: (RaftHomeSortSection, RaftSidebarSortMode) -> Unit = { section, nextMode ->
+        when (section) {
+            RaftHomeSortSection.Channels -> {
+                channelSortModeState = nextMode
+                onChannelSortModeChange(nextMode)
+            }
+            RaftHomeSortSection.JointChannels -> {
+                jointChannelSortModeState = nextMode
+                onJointChannelSortModeChange(nextMode)
+            }
+            RaftHomeSortSection.DirectMessages -> {
+                directMessageSortMode = nextMode
+                onDmSortModeChange(nextMode)
+            }
+            RaftHomeSortSection.Pinned -> {
+                pinnedSortModeState = nextMode
+                onPinnedSortModeChange(nextMode)
+            }
+        }
+    }
     val allChannelId = remember(channels) { channels.firstOrNull { it.name == "all" }?.id }
     // task #512: conversations claimed by a custom section leave their default
     // system section (web customPlacedChannelIds / customPlacedAgentIds).
@@ -1936,12 +2005,12 @@ private fun RaftStructuralHomeShellContent(
     val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
         baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
     }
-    val displayedJointChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds) {
+    val displayedJointChannels = remember(channels, channelOrder, jointChannelSortModeState, customPlacedConversationIds) {
         channels
             .filter { it.kind == JointChannelKindWireValue }
             .filter { it.id !in customPlacedConversationIds }
             .orderedBySidebarIds(channelOrder)
-            .sortedForSidebar(channelSortModeState) { it.name }
+            .sortedForSidebar(jointChannelSortModeState) { it.name }
     }
     val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
     val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet, customPlacedConversationIds) {
@@ -1989,7 +2058,7 @@ private fun RaftStructuralHomeShellContent(
     }
     val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
     // task #512: custom sections interleave with the system sections in web's
-    // sectionOrder order; empty ones stay hidden (mobile always hides empties).
+    // sectionOrder order; like web, custom sections show even when empty.
     val displayedCustomSections =
         remember(channels, directMessages, customSections, sectionOrder, sectionPlacements, pinnedIdSet) {
             sidebarCustomSectionRows(
@@ -2003,14 +2072,26 @@ private fun RaftStructuralHomeShellContent(
         }
     val hasDisplayedPinned = displayedPinned.isNotEmpty()
     val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
+    // Keep the DMs section while its rows are still loading (skeletons).
+    val hasDisplayedDirectMessages = displayedDirectMessages.isNotEmpty() || showLoadingSkeletons
     val displayedSidebarSections =
-        remember(sectionOrder, customSections, displayedCustomSections, hasDisplayedPinned, hasDisplayedJointChannels) {
+        remember(
+            sectionOrder,
+            customSections,
+            displayedCustomSections,
+            hasDisplayedPinned,
+            hasDisplayedJointChannels,
+            hasDisplayedDirectMessages,
+            hideEmptySections
+        ) {
             homeSidebarSectionOrder(
                 sectionOrder = sectionOrder,
                 customSections = customSections,
                 customSectionRows = displayedCustomSections,
                 hasPinned = hasDisplayedPinned,
-                hasJointChannels = hasDisplayedJointChannels
+                hasJointChannels = hasDisplayedJointChannels,
+                hasDirectMessages = hasDisplayedDirectMessages,
+                hideEmptySections = hideEmptySections
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -2052,6 +2133,7 @@ private fun RaftStructuralHomeShellContent(
     val directMessageSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.DirectMessage)
     val pinnedSectionSelection = sidebarSelection.sectionSelection(RaftHomeConversationSection.Pinned)
     val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
+    val pullToRefreshStyle = rememberRaftPullToRefreshStyle()
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
@@ -2062,6 +2144,7 @@ private fun RaftStructuralHomeShellContent(
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
             pinnedExpanded = pinnedExpanded,
+            hasPullToRefreshItem = pullToRefreshEnabled && pullToRefreshStyle.addsListItem,
             hasInlineError = inlineError != null,
             channelSkeletonCount =
                 if (channelsExpanded && showLoadingSkeletons) HomeLoadingChannelSkeletonRows else 0,
@@ -2183,10 +2266,6 @@ private fun RaftStructuralHomeShellContent(
     val onSearchClickWithDismiss: () -> Unit = {
         dismissNotificationCenterForFocusLoss()
         onSearchClick()
-    }
-    val onInboxClickWithDismiss: () -> Unit = {
-        dismissNotificationCenterForFocusLoss()
-        onInboxClick()
     }
     val onSavedClickWithDismiss: () -> Unit = {
         dismissNotificationCenterForFocusLoss()
@@ -2315,6 +2394,7 @@ private fun RaftStructuralHomeShellContent(
                             },
                             modifier = Modifier.fillMaxSize(),
                             enabled = pullToRefreshEnabled,
+                            style = pullToRefreshStyle,
                         ) {
                             LazyColumn(
                                 state = listState,
@@ -2333,23 +2413,10 @@ private fun RaftStructuralHomeShellContent(
                                         },
                                 verticalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
+                                raftPullToRefreshItem()
                                 item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
                                 item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
-                                item {
-                                    val activityProjection =
-                                        homeActivitySidebarProjection(
-                                            activityUnreadCount = inboxUnreadCount,
-                                            activityTotalCount = inboxTotalCount
-                                        )
-                                    SidebarActivityRow(
-                                        labels.inbox,
-                                        unreadCount = activityProjection.unreadLabel,
-                                        totalCount = activityProjection.totalLabel,
-                                        selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Activity,
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null
-                                    )
-                                }
+                                // artin 2026-10-20: Activity is a bottom tab now; the Home list keeps Search and Saved.
                                 item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
                                 inlineError?.let { error ->
                                     item {
@@ -2383,8 +2450,24 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.Pinned
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:pinned",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             )
+                                        }
+                                        if (pinnedExpanded && displayedPinned.isEmpty()) {
+                                            item(key = "pinned-empty:$currentServerId") {
+                                                HomeSidebarSectionEmptyHint(labels.pinnedSectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                         if (pinnedExpanded) {
                                             items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
@@ -2523,8 +2606,31 @@ private fun RaftStructuralHomeShellContent(
                                                 expanded = jointChannelsExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                                 showCollapsedUnreadDot = jointChannelSectionHasUnread,
+                                                sortContentDescription = "${labels.sortChannels} ${labels.jointChannels}",
+                                                onSortClick = { anchor ->
+                                                    if (sidebarInteractionsEnabled) {
+                                                        activeSortMenu = if (activeSortMenu == RaftHomeSortSection.JointChannels) null else RaftHomeSortSection.JointChannels
+                                                        sortMenuAnchor = anchor
+                                                    }
+                                                },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.JointChannels
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:joint",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             )
+                                        }
+                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty()) {
+                                            item(key = "joint-empty:$currentServerId") {
+                                                HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                         if (jointChannelsExpanded) {
                                             items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
@@ -2585,6 +2691,17 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.Channels
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:channels",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             ) {
                                                 RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
@@ -2655,9 +2772,25 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                onLongPress =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        { anchor ->
+                                                            activeSystemSectionMenu = RaftHomeSortSection.DirectMessages
+                                                            systemSectionMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                longPressAnchorIdentity = "$currentServerId:system:dms",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                                 trailingContent = null
                                             )
+                                        }
+                                        if (directMessagesExpanded && displayedDirectMessages.isEmpty() && !showLoadingSkeletons) {
+                                            item(key = "dms-empty:$currentServerId") {
+                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
                                         }
                                         if (directMessagesExpanded) {
                                             items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
@@ -2756,6 +2889,11 @@ private fun RaftStructuralHomeShellContent(
                                                         }
                                                     }
                                                 )
+                                            }
+                                        }
+                                        if (customSectionExpanded && sectionRows.items.isEmpty()) {
+                                            item(key = "custom-section-empty:$currentServerId:${customSection.id}") {
+                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
                                             }
                                         }
                                         if (customSectionExpanded) {
@@ -2938,29 +3076,39 @@ private fun RaftStructuralHomeShellContent(
                 RaftBaseMenuOverlay(
                     anchor = resolvedSortAnchor,
                     items = raftHomeSortMenuItems(labels),
-                    selectedId = when (section) {
-                        RaftHomeSortSection.Channels, RaftHomeSortSection.JointChannels -> channelSortModeState.wireValue
-                        RaftHomeSortSection.DirectMessages -> directMessageSortMode.wireValue
-                        RaftHomeSortSection.Pinned -> pinnedSortModeState.wireValue
-                    },
+                    selectedId = systemSectionSortMode(section).wireValue,
                     onDismiss = { activeSortMenu = null },
                     onSelect = { selected ->
-                        val nextMode = RaftSidebarSortMode.fromWireValue(selected)
-                        when (section) {
-                            RaftHomeSortSection.Channels, RaftHomeSortSection.JointChannels -> {
-                                channelSortModeState = nextMode
-                                onChannelSortModeChange(nextMode)
-                            }
-                            RaftHomeSortSection.DirectMessages -> {
-                                directMessageSortMode = nextMode
-                                onDmSortModeChange(nextMode)
-                            }
-                            RaftHomeSortSection.Pinned -> {
-                                pinnedSortModeState = nextMode
-                                onPinnedSortModeChange(nextMode)
-                            }
-                        }
+                        selectSystemSectionSortMode(section, RaftSidebarSortMode.fromWireValue(selected))
                         activeSortMenu = null
+                    }
+                )
+            }
+            activeSystemSectionMenu?.let { section ->
+                val resolvedAnchor = systemSectionMenuAnchor ?: return@let
+                RaftBaseMenuOverlay(
+                    anchor = resolvedAnchor,
+                    items =
+                        raftHomeSectionMenuItems(
+                            labels = labels,
+                            sortMode = systemSectionSortMode(section),
+                            hideEmptySections = hideEmptySections,
+                            custom = false,
+                            canCreateChannel = section == RaftHomeSortSection.Channels
+                        ),
+                    selectedId = "",
+                    onDismiss = { activeSystemSectionMenu = null },
+                    onSelect = { actionId ->
+                        when {
+                            actionId.startsWith("sort:") ->
+                                selectSystemSectionSortMode(section, RaftSidebarSortMode.fromWireValue(actionId.removePrefix("sort:")))
+                            actionId == "toggle-hide-empty" -> onHideEmptySectionsChange(!hideEmptySections)
+                            actionId == "create" ->
+                                sectionDialogTarget =
+                                    RaftHomeSectionDialogTarget.Create(insertBeforeSectionId = section.sidebarSectionOrderId())
+                            actionId == "create-channel" -> onCreateChannelClick()
+                        }
+                        activeSystemSectionMenu = null
                     }
                 )
             }
@@ -2994,8 +3142,7 @@ private fun RaftStructuralHomeShellContent(
                     pinTargetIsPinned = pinTargetIsPinned,
                     sortableFromMenu = sortableFromMenu && sortOverlaySection == null,
                     activeIsDirectMessage = activeIsDirectMessage,
-                    activeCanArchive = activeCanArchive,
-                    hasCustomSections = customSections.isNotEmpty()
+                    activeCanArchive = activeCanArchive
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
@@ -3060,8 +3207,13 @@ private fun RaftStructuralHomeShellContent(
                 if (resolvedSectionAnchor != null) {
                     RaftBaseMenuOverlay(
                         anchor = resolvedSectionAnchor,
-                        items = raftHomeSectionMenuItems(labels),
-                        selectedId = "sort:${activeSectionMenuSection.sortMode}",
+                        items =
+                            raftHomeSectionMenuItems(
+                                labels = labels,
+                                sortMode = RaftSidebarSortMode.fromWireValue(activeSectionMenuSection.sortMode),
+                                hideEmptySections = hideEmptySections
+                            ),
+                        selectedId = "",
                         onDismiss = { activeSectionMenuId = null },
                         onSelect = { actionId ->
                             val sectionId = activeSectionMenuSection.id
@@ -3071,10 +3223,11 @@ private fun RaftStructuralHomeShellContent(
                                         sectionId,
                                         RaftSidebarSortMode.fromWireValue(actionId.removePrefix("sort:"))
                                     )
+                                actionId == "toggle-hide-empty" -> onHideEmptySectionsChange(!hideEmptySections)
                                 actionId == "rename" ->
                                     sectionDialogTarget = RaftHomeSectionDialogTarget.Edit(sectionId)
                                 actionId == "create" ->
-                                    sectionDialogTarget = RaftHomeSectionDialogTarget.Create
+                                    sectionDialogTarget = RaftHomeSectionDialogTarget.Create(insertBeforeSectionId = sectionId)
                                 actionId == "delete" -> sectionDeleteConfirmId = sectionId
                             }
                             activeSectionMenuId = null
@@ -3083,10 +3236,11 @@ private fun RaftStructuralHomeShellContent(
                 }
             }
             val moveToSectionTarget = moveToSectionConversationId
-            if (moveToSectionTarget != null && customSections.isNotEmpty()) {
+            if (moveToSectionTarget != null) {
                 val resolvedMoveAnchor = pinMenuAnchor
                 if (resolvedMoveAnchor != null) {
                     val moveTargetDm = directMessages.firstOrNull { it.id == moveToSectionTarget }
+                    val moveTargetIsPinned = moveToSectionTarget in pinnedIdSet
                     val moveTargetCurrentSectionId =
                         sectionPlacements
                             .firstOrNull { placement ->
@@ -3101,13 +3255,29 @@ private fun RaftStructuralHomeShellContent(
                             ?.sectionId
                     RaftBaseMenuOverlay(
                         anchor = resolvedMoveAnchor,
-                        items = raftHomeMoveToSectionMenuItems(customSections, moveTargetCurrentSectionId, labels),
-                        selectedId = "section:${moveTargetCurrentSectionId.orEmpty()}",
+                        items =
+                            raftHomeMoveToSectionMenuItems(
+                                customSections = customSections,
+                                currentSectionId = moveTargetCurrentSectionId,
+                                labels = labels,
+                                pinned = moveTargetIsPinned
+                            ),
+                        selectedId = "",
                         onDismiss = { moveToSectionConversationId = null },
                         onSelect = { actionId ->
-                            if (actionId.startsWith("section:")) {
-                                val targetSectionId = actionId.removePrefix("section:").takeIf { it.isNotBlank() }
-                                onMoveConversationToSection(moveToSectionTarget, targetSectionId)
+                            when {
+                                // Web moveItemToPinned: pin it (pinning also drops
+                                // any custom-section placement in the store).
+                                actionId == "pinned" -> if (!moveTargetIsPinned) onPinToggle(moveToSectionTarget)
+                                actionId == "create" ->
+                                    sectionDialogTarget =
+                                        RaftHomeSectionDialogTarget.Create(moveConversationId = moveToSectionTarget)
+                                actionId.startsWith("section:") -> {
+                                    val targetSectionId = actionId.removePrefix("section:").takeIf { it.isNotBlank() }
+                                    if (targetSectionId == null || targetSectionId != moveTargetCurrentSectionId) {
+                                        onMoveConversationToSection(moveToSectionTarget, targetSectionId)
+                                    }
+                                }
                             }
                             moveToSectionConversationId = null
                         }
@@ -3131,8 +3301,15 @@ private fun RaftStructuralHomeShellContent(
                         onSubmit = { name, emoji ->
                             if (editingSection != null) {
                                 onSidebarSectionRename(editingSection.id, name, emoji)
-                            } else {
-                                onSidebarSectionCreate(name, emoji)
+                            } else if (target is RaftHomeSectionDialogTarget.Create) {
+                                onSidebarSectionCreate(
+                                    RaftHomeSectionCreateRequest(
+                                        name = name,
+                                        emoji = emoji,
+                                        moveConversationId = target.moveConversationId,
+                                        insertBeforeSectionId = target.insertBeforeSectionId
+                                    )
+                                )
                             }
                             sectionDialogTarget = null
                         }
@@ -3363,11 +3540,14 @@ internal fun homeLazyItemCount(
     jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
     pinnedExpanded: Boolean = false,
+    /** The custom pull-to-refresh header item (see RaftPullToRefreshStyle.addsListItem). */
+    hasPullToRefreshItem: Boolean = false,
     hasInlineError: Boolean = false,
     channelSkeletonCount: Int = 0,
     directMessageSkeletonCount: Int = 0
 ): Int {
     val fixedItems =
+        (if (hasPullToRefreshItem) 1 else 0) +
         1 + // top spacer
             1 + // search
             1 + // activity
@@ -3408,29 +3588,42 @@ internal sealed interface RaftHomeSidebarSection {
  * `normalizeSidebarSectionOrder` output: so system and custom sections
  * interleave in the user's order, and ids missing from it fall back to system
  * sections in canonical order, then custom sections in declaration order.
- * Visibility keeps mobile's rules: pinned and joint hide when empty, custom
- * sections appear only if [customSectionRows] has them (non-empty), DMs always show.
+ * Visibility follows web's "Hide Empty Sections" display preference
+ * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / Joint Channels /
+ * DMs drop out; Channels always shows (it carries the empty-state hint) and so
+ * does every custom section in [customSectionRows], empty or not.
  */
 internal fun homeSidebarSectionOrder(
     sectionOrder: List<String>,
     customSections: List<SettingsServerSidebarCustomSection>,
     customSectionRows: List<RaftHomeCustomSectionRows>,
     hasPinned: Boolean,
-    hasJointChannels: Boolean
+    hasJointChannels: Boolean,
+    hasDirectMessages: Boolean = true,
+    hideEmptySections: Boolean = true
 ): List<RaftHomeSidebarSection> {
     val rowsBySectionId = customSectionRows.associateBy { it.section.id }
     return normalizeSidebarSectionOrder(sectionOrder, customSections).mapNotNull { id ->
         when (id) {
-            "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned }
-            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels }
+            "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned || !hideEmptySections }
+            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels || !hideEmptySections }
             "system:channels" -> RaftHomeSidebarSection.Channels
-            "system:dms" -> RaftHomeSidebarSection.DirectMessages
+            "system:dms" -> RaftHomeSidebarSection.DirectMessages.takeIf { hasDirectMessages || !hideEmptySections }
             else -> rowsBySectionId[id]?.let { RaftHomeSidebarSection.Custom(it) }
         }
     }
 }
 
 private enum class RaftHomeSortSection { Channels, JointChannels, DirectMessages, Pinned }
+
+/** The section's id in web's `sectionOrder` (`system:*`). */
+private fun RaftHomeSortSection.sidebarSectionOrderId(): String =
+    when (this) {
+        RaftHomeSortSection.Pinned -> "system:pinned"
+        RaftHomeSortSection.JointChannels -> "system:joint"
+        RaftHomeSortSection.Channels -> "system:channels"
+        RaftHomeSortSection.DirectMessages -> "system:dms"
+    }
 
 internal fun raftHomeConversationMenuItems(
     conversation: RaftHomeConversationItem,
@@ -3439,15 +3632,34 @@ internal fun raftHomeConversationMenuItems(
     sortableFromMenu: Boolean,
     activeIsDirectMessage: Boolean,
     activeCanArchive: Boolean,
-    hasCustomSections: Boolean = false
+    canMoveToSection: Boolean = true
 ): List<RaftBaseMenuItem> =
     buildList {
+        // Web parity (Sidebar.tsx row context menu): "Move to Section" leads,
+        // then read / pin / mute, then close (DMs) or archive (channels).
+        if (canMoveToSection) {
+            add(
+                RaftBaseMenuItem(
+                    id = "move-to-section",
+                    label = labels.moveToSection,
+                    icon = RaftLucideIconName.FolderInput
+                )
+            )
+        }
         val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
         add(
             RaftBaseMenuItem(
                 id = if (hasUnread) "mark-read" else "mark-unread",
                 label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
-                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail
+                icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail,
+                dividerBefore = canMoveToSection
+            )
+        )
+        add(
+            RaftBaseMenuItem(
+                id = "toggle-pin",
+                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
+                icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
             )
         )
         if (conversation.activityMuteSupported) {
@@ -3459,24 +3671,7 @@ internal fun raftHomeConversationMenuItems(
                 )
             )
         }
-        add(
-            RaftBaseMenuItem(
-                id = "toggle-pin",
-                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
-                icon = if (pinTargetIsPinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin
-            )
-        )
-        // task #512: web parity (MoveToSectionMenuItem) — only when at least one
-        // custom section exists to move into.
-        if (hasCustomSections) {
-            add(
-                RaftBaseMenuItem(
-                    id = "move-to-section",
-                    label = labels.moveToSection,
-                    icon = RaftLucideIconName.Folder
-                )
-            )
-        }
+        // Mobile-only: the manual reorder overlay stands in for web drag-and-drop.
         if (sortableFromMenu) {
             add(
                 RaftBaseMenuItem(
@@ -3487,7 +3682,7 @@ internal fun raftHomeConversationMenuItems(
             )
         }
         if (activeIsDirectMessage) {
-            add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X))
+            add(RaftBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = RaftLucideIconName.X, dividerBefore = true))
         } else if (activeCanArchive) {
             add(
                 RaftBaseMenuItem(
@@ -3512,56 +3707,133 @@ internal fun raftHomePinnedMemberMenuItems(
     )
 
 /**
- * task #512: custom-section header menu — sort radios first (the overlay's
- * selectedId marks the current mode), then rename / new / delete. Mirrors web's
- * section context menu (Sidebar.tsx) minus the desktop-only display toggles.
+ * Section header menu (long-press on a section header, the mobile stand-in
+ * for web's right-click). Mirrors web Sidebar.tsx's section context menu:
+ * [create channel (Channels only)] / Sort: Manual, Recent, A-Z (current one
+ * checked) / Display: Hide Empty Sections (checked when on) / [rename] /
+ * New Section… / [delete]. Rename and delete only exist on custom sections.
+ * Web also offers "Create Joint Channel" on the Joint Channels menu; mobile
+ * has no create-joint-channel flow yet, so it is omitted.
  */
-internal fun raftHomeSectionMenuItems(labels: RaftHomeShellLabels = RaftHomeShellLabels()): List<RaftBaseMenuItem> =
-    RaftSidebarSortMode.entries.map { mode ->
-        RaftBaseMenuItem(
-            id = "sort:${mode.wireValue}",
-            label =
-                when (mode) {
-                    RaftSidebarSortMode.Manual -> labels.sortManual
-                    RaftSidebarSortMode.Recent -> labels.sortRecent
-                    RaftSidebarSortMode.Az -> labels.sortAz
-                }
+internal fun raftHomeSectionMenuItems(
+    labels: RaftHomeShellLabels = RaftHomeShellLabels(),
+    sortMode: RaftSidebarSortMode = RaftSidebarSortMode.Manual,
+    hideEmptySections: Boolean = false,
+    custom: Boolean = true,
+    canCreateChannel: Boolean = false
+): List<RaftBaseMenuItem> =
+    buildList {
+        if (canCreateChannel) {
+            add(RaftBaseMenuItem(id = "create-channel", label = labels.createChannel, icon = RaftLucideIconName.Plus))
+        }
+        RaftSidebarSortMode.entries.forEachIndexed { index, mode ->
+            add(
+                RaftBaseMenuItem(
+                    id = "sort:${mode.wireValue}",
+                    label =
+                        when (mode) {
+                            RaftSidebarSortMode.Manual -> labels.sortManual
+                            RaftSidebarSortMode.Recent -> labels.sortRecent
+                            RaftSidebarSortMode.Az -> labels.sortAz
+                        },
+                    checked = mode == sortMode,
+                    dividerBefore = index == 0 && canCreateChannel,
+                    groupLabel = if (index == 0) labels.sortMenuTitle else null
+                )
+            )
+        }
+        add(
+            RaftBaseMenuItem(
+                id = "toggle-hide-empty",
+                label = labels.hideEmptySections,
+                checked = hideEmptySections,
+                dividerBefore = true,
+                groupLabel = labels.displaySection
+            )
         )
-    } +
-        listOf(
-            RaftBaseMenuItem(id = "rename", label = labels.renameSection, icon = RaftLucideIconName.Pencil, dividerBefore = true),
-            RaftBaseMenuItem(id = "create", label = labels.newSectionMenu, icon = RaftLucideIconName.Plus),
-            RaftBaseMenuItem(id = "delete", label = labels.deleteSection, icon = RaftLucideIconName.Trash2, dividerBefore = true)
+        if (custom) {
+            add(RaftBaseMenuItem(id = "rename", label = labels.renameSection, icon = RaftLucideIconName.Pencil, dividerBefore = true))
+        }
+        add(
+            RaftBaseMenuItem(
+                id = "create",
+                label = labels.newSectionMenu,
+                icon = RaftLucideIconName.FolderPlus,
+                dividerBefore = !custom
+            )
         )
+        if (custom) {
+            add(RaftBaseMenuItem(id = "delete", label = labels.deleteSection, icon = RaftLucideIconName.Trash2, dividerBefore = true))
+        }
+    }
 
 /**
- * task #512: "move to section" submenu rows — one per custom section plus a
- * remove entry (only when the conversation is currently placed). Item ids carry
- * the target: `section:<id>`; the bare `section:` id means the default section.
+ * "Move to section" submenu. Mirrors web Sidebar.tsx: Pinned (checked and
+ * disabled when the conversation is already pinned), one row per custom
+ * section (the current one checked), then New Section… and — only when the
+ * conversation sits in a custom section — Remove from Section. Item ids carry
+ * the target: `pinned`, `section:<id>`, `create`, and the bare `section:` for
+ * "back to the default section".
  */
 internal fun raftHomeMoveToSectionMenuItems(
     customSections: List<SettingsServerSidebarCustomSection>,
     currentSectionId: String?,
-    labels: RaftHomeShellLabels = RaftHomeShellLabels()
+    labels: RaftHomeShellLabels = RaftHomeShellLabels(),
+    pinned: Boolean = false
 ): List<RaftBaseMenuItem> =
     buildList {
-        if (currentSectionId != null) {
-            add(RaftBaseMenuItem(id = "section:", label = labels.removeFromSection, icon = RaftLucideIconName.X))
-        }
+        add(
+            RaftBaseMenuItem(
+                id = "pinned",
+                label = labels.pinnedTarget,
+                icon = RaftLucideIconName.Pin,
+                checked = pinned,
+                enabled = !pinned
+            )
+        )
         customSections.forEach { section ->
             add(
                 RaftBaseMenuItem(
                     id = "section:${section.id}",
                     label = section.sidebarSectionHeaderLabel(),
-                    icon = RaftLucideIconName.Folder
+                    icon = RaftLucideIconName.FolderInput,
+                    checked = section.id == currentSectionId
                 )
             )
         }
+        add(RaftBaseMenuItem(id = "create", label = labels.newSectionMenu, icon = RaftLucideIconName.FolderPlus, dividerBefore = true))
+        if (currentSectionId != null) {
+            add(RaftBaseMenuItem(id = "section:", label = labels.removeFromSection, icon = RaftLucideIconName.X))
+        }
     }
+
+/** A "New section…" submission: the section, plus where it came from. */
+data class RaftHomeSectionCreateRequest(
+    val name: String,
+    val emoji: String?,
+    /** The row whose Move to Section > New Section… opened the dialog; it moves into the new section. */
+    val moveConversationId: String? = null,
+    /** sectionOrder id of the section whose header menu opened the dialog; the new section goes before it. */
+    val insertBeforeSectionId: String? = null
+)
+
+/** Web `SidebarSectionDescription` hint under an empty, expanded section. */
+@Composable
+private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = RaftType.Caption,
+        color = RaftColor.TextMutedGray,
+        modifier = modifier.fillMaxWidth().padding(start = RaftAppSpacing.Lg, top = RaftAppSpacing.Xs, bottom = RaftAppSpacing.Xs)
+    )
+}
 
 /** task #512: create/rename target for the custom-section dialog. */
 private sealed interface RaftHomeSectionDialogTarget {
-    data object Create : RaftHomeSectionDialogTarget
+    data class Create(
+        val moveConversationId: String? = null,
+        val insertBeforeSectionId: String? = null
+    ) : RaftHomeSectionDialogTarget
 
     data class Edit(val sectionId: String) : RaftHomeSectionDialogTarget
 }
@@ -4315,8 +4587,9 @@ internal data class RaftHomeCustomSectionRows(
  * sectionOrder order. Mirrors web Sidebar.tsx `customSectionItems`: placements
  * resolve channels and DM channels by id (kind "channel") or agent-peer DMs by
  * member id (kind "agent"); pinned conversations stay in the pinned section
- * (the two stay mutually exclusive); empty sections keep mobile's always-hidden
- * behavior; each section's items follow its own sort mode.
+ * (the two stay mutually exclusive); every custom section is listed, empty
+ * ones too (web renders them with a "No conversations" hint); each section's
+ * items follow its own sort mode.
  */
 internal fun sidebarCustomSectionRows(
     channels: List<RaftHomeConversationItem>,
@@ -4326,7 +4599,7 @@ internal fun sidebarCustomSectionRows(
     sectionPlacements: List<SettingsServerSidebarSectionPlacement>,
     pinnedConversationIds: Set<String>
 ): List<RaftHomeCustomSectionRows> {
-    if (customSections.isEmpty() || sectionPlacements.isEmpty()) return emptyList()
+    if (customSections.isEmpty()) return emptyList()
     val sectionById = customSections.associateBy { it.id }
     val conversationById = buildMap {
         channels.forEach { put(it.id, it) }
@@ -4355,7 +4628,6 @@ internal fun sidebarCustomSectionRows(
         .mapNotNull { sectionId ->
             val section = sectionById[sectionId] ?: return@mapNotNull null
             val items = itemsBySection[sectionId].orEmpty()
-            if (items.isEmpty()) return@mapNotNull null
             RaftHomeCustomSectionRows(
                 section = section,
                 items = items.sortedForSidebar(RaftSidebarSortMode.fromWireValue(section.sortMode)) { it.name }
@@ -5905,7 +6177,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
             Modifier
                 .size(32.dp)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
-                .raftThemedCorners(RaftAppRadius.Sticker)
+                .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 // No ink fill behind an uploaded image: a transparent server avatar must show the
                 // surface it sits on (the yellow frame), not a black square. The ink tile belongs to
                 // the initial-letter fallback only (ServerAvatarFallbackLabel draws it).
@@ -6046,26 +6318,6 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun SidebarActivityRow(
-    label: String,
-    unreadCount: String?,
-    totalCount: String?,
-    selected: Boolean = false,
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
-) {
-    SidebarActionRow(
-        icon = RaftLucideIconName.Activity,
-        label = label,
-        selected = selected,
-        modifier = modifier,
-        badge = unreadCount,
-        trailingText = totalCount,
-        onClick = onClick
-    )
-}
-
 /**
  * Visual fixture: every sidebar row type, selected and default, in the sidebar's
  * 2dp-gap list. Rows never reserve space for the selection shadow (it draws into
@@ -6175,8 +6427,8 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
                     .padding(horizontal = SidebarRowHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-            Text(label, style = RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = if (selected) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb) }
+            Text(label, style = if (selected) RaftType.ListItemBold else RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),
@@ -6873,6 +7125,9 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
+    // The agent's status is read only inside the avatar-dot and trailing-meta leaves below, so
+    // an agent:activity push recomposes those two leaves, not the whole row.
+    val agentMemberId = memberId?.takeIf { isAgent && it.isNotBlank() }
     val titleColor = homeConversationTitleColor(muted = muted)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(muted)
     val effectiveInteractionState = when {
@@ -6987,14 +7242,14 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
-                RaftAppAvatar(
-                    avatarWireValue = avatarWireValue,
-                    label = avatarLabel,
-                    cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
-                    cacheServerId = cacheServerId
-                )
-            }
+            DirectMessageAvatar(
+                agentMemberId = agentMemberId,
+                agentStatusResolver = agentStatusResolver,
+                avatarWireValue = avatarWireValue,
+                avatarLabel = avatarLabel,
+                cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
+                cacheServerId = cacheServerId
+            )
             androidx.compose.foundation.layout.Row(
                 modifier =
                     Modifier
@@ -7004,7 +7259,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             ) {
                 Text(
                     name,
-                    style = if (unread) RaftType.ListItemBold else RaftType.ListItem,
+                    // raft-ui SidebarItem `data-active:font-bold`.
+                    style = if (unread || selected) RaftType.ListItemBold else RaftType.ListItem,
                     color = if (selected) RaftColor.StickerInk else titleColor,
                     modifier =
                         if (descriptionText != null) {
@@ -7035,30 +7291,38 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     )
                 }
             }
-            if (isAgent || hasDraft || badge != null) {
-                Spacer(Modifier.width(RaftAppSpacing.Sm))
-            }
-            if (isAgent) {
-                memberId?.takeIf { it.isNotBlank() }?.let {
-                    // A missing resolver value means presence is still Unknown/not ready.
-                    // Do not manufacture Offline: that falsely renders a gray dot while the
-                    // authoritative member/presence projection is loading or recovering.
-                    projectHomeAgentStatusIndicatorState(
-                        showPresence = true,
-                        memberId = it,
-                        canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, it)
-                    )?.let { state -> DirectMessageStatusDot(state) }
-                }
-            }
-            if (hasDraft) {
-                if (isAgent) Spacer(Modifier.width(RaftAppSpacing.Xs))
-                RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(14.dp), color = RaftColor.TextMutedGrayArgb)
-            }
-            if (badge != null) {
-                if (isAgent || hasDraft) Spacer(Modifier.width(RaftAppSpacing.Xs))
-                when (badgeTone) {
-                    HomeSidebarBadgeTone.Loud -> CountPill(badge, RaftColor.AccentPink)
-                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge)
+            // Web `SidebarPeerRowBody` trailing column (`SIDEBAR_ROW_TRAILING_CLASS`): the unread
+            // count alone, otherwise the draft mark and then the agent's meta; the whole column is
+            // capped at 58% of the row so a long activity sentence never pushes the name out.
+            val trailingSlots = raftHomeDmTrailingSlots(badge = badge, hasDraft = hasDraft, isAgent = agentMemberId != null)
+            if (trailingSlots.isNotEmpty()) {
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.raftHomeDmTrailingColumnCap(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    trailingSlots.forEachIndexed { index, slot ->
+                        val leadingGap = if (index == 0) RaftAppSpacing.Sm else DirectMessageTrailingGap
+                        when (slot) {
+                            RaftHomeDmTrailingSlot.UnreadBadge -> {
+                                Spacer(Modifier.width(leadingGap))
+                                when (badgeTone) {
+                                    HomeSidebarBadgeTone.Loud -> CountPill(badge.orEmpty(), RaftColor.AccentPink)
+                                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge.orEmpty())
+                                }
+                            }
+                            RaftHomeDmTrailingSlot.Draft -> {
+                                Spacer(Modifier.width(leadingGap))
+                                RaftLucideIcon(RaftLucideIconName.Pencil, Modifier.size(14.dp), color = RaftColor.TextMutedGrayArgb)
+                            }
+                            RaftHomeDmTrailingSlot.AgentMeta ->
+                                DirectMessageAgentMeta(
+                                    agentMemberId = agentMemberId,
+                                    agentStatusResolver = agentStatusResolver,
+                                    selected = selected,
+                                    modifier = Modifier.weight(1f, fill = false).padding(start = leadingGap)
+                                )
+                        }
+                    }
                 }
             }
         }
@@ -7066,12 +7330,102 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     }
 }
 
+/** Web `SIDEBAR_ROW_TRAILING_CLASS` `max-w-[58%]`, applied to the whole trailing column. */
+private fun Modifier.raftHomeDmTrailingColumnCap(): Modifier =
+    layout { measurable, constraints ->
+        val cap =
+            if (constraints.hasBoundedWidth) {
+                (constraints.maxWidth * DirectMessageTrailingMaxWidthFraction).toInt()
+            } else {
+                constraints.maxWidth
+            }
+        val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = cap))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
 @Composable
-private fun DirectMessageStatusDot(state: RaftAgentStatusIndicatorState) {
-    RaftStatusIndicator(
-        color = state.color,
-        size = DirectMessageStatusDotSize,
-        pulsing = state.pulsing
+private fun rememberDirectMessageAgentStatus(
+    agentStatusResolver: RaftAgentStatusResolver,
+    agentMemberId: String?
+): RaftAgentStatusIndicatorState? =
+    // A missing resolver value means presence is still Unknown/not ready. Do not manufacture
+    // Offline: that falsely renders a gray dot while the authoritative member/presence
+    // projection is loading or recovering.
+    projectHomeAgentStatusIndicatorState(
+        showPresence = agentMemberId != null,
+        memberId = agentMemberId,
+        canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agentMemberId)
+    )
+
+/**
+ * Web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`: the agent's status pixel (`sm`, 8px)
+ * on the avatar's corner, so it stays visible beside an unread count. Static, never pulsing
+ * (web `activityPresence`: "an ambient state never loops"). A leaf: it alone reads the status.
+ */
+@Composable
+private fun DirectMessageAvatar(
+    agentMemberId: String?,
+    agentStatusResolver: RaftAgentStatusResolver,
+    avatarWireValue: String?,
+    avatarLabel: String,
+    cacheSubject: RaftAvatarCacheSubject.Member?,
+    cacheServerId: String?
+) {
+    val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    RaftAvatarWithStatus(
+        statusColor = status?.color,
+        avatarSize = ChannelAvatarSize,
+        statusSize = DirectMessageAvatarStatusSize,
+        statusPulsing = false
+    ) {
+        RaftAppAvatar(
+            avatarWireValue = avatarWireValue,
+            label = avatarLabel,
+            cacheSubject = cacheSubject,
+            cacheServerId = cacheServerId
+        )
+    }
+}
+
+/**
+ * Web `SidebarAgentMeta`: while the agent works, what it is doing (`rf-srow__meta--live`,
+ * Grotesk 13/18 regular, foreground-muted); otherwise its runtime name (`SidebarItemMeta`,
+ * Space Mono 12/16, foreground-hint). Sticker ink on the selected row. One line with an
+ * ellipsis. Visual only (web `aria-hidden`): the row's accessible name stays the agent's name
+ * and a sentence that changes every few seconds is not announced. A leaf: it alone reads the
+ * status, so an agent:activity push recomposes only this text.
+ */
+@Composable
+private fun DirectMessageAgentMeta(
+    agentMemberId: String?,
+    agentStatusResolver: RaftAgentStatusResolver,
+    selected: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val meta = raftHomeDmAgentMeta(status) ?: return
+    val (text, style, color) =
+        when (meta) {
+            is RaftHomeDmAgentMeta.Live ->
+                Triple(
+                    meta.activity.localizedText(),
+                    RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    RaftColor.TextMuted
+                )
+            is RaftHomeDmAgentMeta.Runtime ->
+                Triple(
+                    meta.label,
+                    RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+                    RaftColor.ForegroundHint
+                )
+        }
+    Text(
+        text,
+        style = style,
+        color = if (selected) RaftColor.StickerInk else color,
+        modifier = modifier.clearAndSetSemantics {},
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
     )
 }
 
@@ -7153,9 +7507,9 @@ internal fun RaftAppAvatar(
         }
     }
     // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
-    // never circles; brutal keeps square corners.
-    val frameModifier =
-        if (raftActive()) modifier.clip(RoundedCornerShape(RaftAppRadius.Sticker)) else modifier
+    // never circles. The border follows the same shape as the clip (Hands dd79da45 follow-up).
+    val frameShape = RoundedCornerShape(RaftAppRadius.Sticker)
+    val frameModifier = modifier.clip(frameShape)
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, frameModifier, avatarSize, borderWidth)
@@ -7163,8 +7517,8 @@ internal fun RaftAppAvatar(
         httpAvatarSource != null -> Box(
             modifier = frameModifier
                 .size(width = avatarSize, height = avatarSize)
-                .background(RaftColor.AccentLavender)
-                .border(borderWidth, RaftColor.BorderBlack),
+                .background(RaftColor.AccentLavender, frameShape)
+                .border(borderWidth, RaftColor.BorderBlack, frameShape),
             contentAlignment = Alignment.Center
         ) {
             // task #343: an uploaded avatar must not flash the generic icon while its cached
@@ -7183,447 +7537,19 @@ internal fun RaftAppAvatar(
             )
         }
         else -> traceMarkdownSection(RaftAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
-            DefaultUserAvatar(frameModifier, avatarSize, borderWidth)
+            DefaultUserAvatar(frameModifier, avatarSize, borderWidth, frameShape)
         }
     }
 }
-
-@Composable
-internal fun RaftAvatarHttpImage(
-    source: String,
-    modifier: Modifier = Modifier,
-    diagnostics: RaftAvatarRowDiagnostics? = null,
-    cacheSubject: RaftAvatarCacheSubject? = null,
-    cacheServerId: String? = null,
-    fallback: @Composable () -> Unit = {},
-    serverDiagnosticsId: String? = null,
-    // "visible" or "prewarm" in server avatar logs, so a stuck flight can be traced to its owner.
-    diagnosticsRole: String = "visible",
-    // Shown until the image has actually loaded, so a slow or withheld load shows a placeholder
-    // (the server tile passes its initial) instead of the bare tile background.
-    placeholder: @Composable () -> Unit = {}
-) {
-    val apiBaseUrl =
-        RaftSharedStoreRegistry.currentOrNull()
-            ?.apiEnvironmentStore
-            ?.current()
-            ?.apiBaseUrl
-            ?.trimEnd('/')
-    val fallbackSource =
-        remember(source, apiBaseUrl) {
-            source.appAvatarApiFallbackUrl(apiBaseUrl)?.takeUnless { it == source }
-        }
-    val loadKey =
-        remember(source, fallbackSource, apiBaseUrl) {
-            RaftAvatarHttpLoadKey(
-                primarySource = source,
-                primaryEndpoint =
-                    if (apiBaseUrl != null && source.startsWith("$apiBaseUrl/")) {
-                        RaftAvatarHttpEndpoint.Api
-                    } else {
-                        RaftAvatarHttpEndpoint.Cdn
-                    },
-                apiFallbackSource = fallbackSource
-            )
-        }
-    val loadStateFlow = remember(loadKey) { raftAvatarHttpLoadCoordinator.stateFlow(loadKey) }
-    val loadState by loadStateFlow.collectAsState()
-    if (raftAvatarHttpShowsFallback(loadState)) fallback()
-    var lease by remember(loadKey) { mutableStateOf<RaftAvatarHttpLoadLease?>(null) }
-    val activeSource = loadKey.sourceFor(loadState.endpoint) ?: return
-    val avatarMountedBinding = RaftSharedStoreRegistry.currentOrNull()?.avatarMountedBinding
-    val initialManagedModel =
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            if (avatarMountedBinding == null || cacheSubject == null) {
-                null
-            } else {
-                avatarMountedBinding.peekInitialManagedModel(
-                    subject = cacheSubject,
-                    remoteUrl = activeSource,
-                    serverId = cacheServerId
-                )
-            }
-        }
-    var mountedHandle by
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            mutableStateOf<RaftAvatarMountedHandle?>(null)
-        }
-
-    // Durable bytes are an owner-scoped render source, not a process-session HTTP result. Inspect
-    // them before the HTTP painter gate so a restarted process can render an already committed
-    // avatar without first exposing the default icon. Cache misses and unsupported providers still
-    // return no managed model here and remain subject to the coordinator below.
-    LaunchedEffect(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-        mountedHandle =
-            if (avatarMountedBinding == null || cacheSubject == null) {
-                null
-            } else {
-                avatarMountedBinding.mount(
-                    subject = cacheSubject,
-                    remoteUrl = activeSource,
-                    serverId = cacheServerId
-                )
-            }
-    }
-    DisposableEffect(avatarMountedBinding, mountedHandle) {
-        val ownedHandle = mountedHandle
-        onDispose {
-            if (ownedHandle != null) avatarMountedBinding?.dispose(ownedHandle)
-        }
-    }
-    val ownsCurrentRequest =
-        loadState.cache == RaftAvatarHttpCacheState.InFlight &&
-            lease?.generation == loadState.generation &&
-            lease?.ownerToken == loadState.ownerToken
-    val refreshEffectKey =
-        raftAvatarHttpRefreshEffectKey(
-            activeSource = activeSource,
-            loadState = loadState,
-            ownsCurrentRequest = ownsCurrentRequest
-        )
-    LaunchedEffect(
-        avatarMountedBinding,
-        mountedHandle,
-        refreshEffectKey
-    ) {
-        val binding = avatarMountedBinding ?: return@LaunchedEffect
-        val handle = mountedHandle ?: return@LaunchedEffect
-        if (!refreshEffectKey.refreshAdmitted) return@LaunchedEffect
-        binding.refreshWhenHttpLoadAdmitted(
-            handle = handle,
-            loadState = loadState,
-            ownsCurrentRequest = ownsCurrentRequest
-        )
-    }
-
-    DisposableEffect(loadKey, lease?.ownerToken) {
-        val ownedLease = lease
-        raftAvatarHttpLoadCoordinator.retain(loadKey)
-        onDispose {
-            ownedLease?.let { raftAvatarHttpLoadCoordinator.releaseOwner(loadKey, it) }
-            raftAvatarHttpLoadCoordinator.release(loadKey)
-        }
-    }
-
-    // ownerToken is part of the key so that an owner departing (ownerToken -> null while the
-    // flight stays InFlight) re-fires this effect and lets a surviving/new row adopt the orphan.
-    LaunchedEffect(loadKey, loadState.cache, loadState.ownerToken, loadState.retryAtMillis, loadState.generation) {
-        val retryDelayMillis = raftAvatarHttpLoadCoordinator.retryDelayMillis(loadState)
-        if (retryDelayMillis > 0L) delay(retryDelayMillis)
-        when (raftAvatarHttpAcquireAttempt(loadState, ownsCurrentRequest)) {
-            RaftAvatarHttpAcquireAttempt.Now ->
-                lease = raftAvatarHttpLoadCoordinator.tryAcquire(loadKey)
-            RaftAvatarHttpAcquireAttempt.AfterStuckOwnerTimeout -> {
-                // Another row owns the flight. If it goes silent, tryAcquire adopts it after the
-                // stuck-owner timeout; keep checking until then. Any progress that changes the
-                // keys (ready, failure, new owner) cancels this loop.
-                while (true) {
-                    delay(raftAvatarHttpLoadCoordinator.stuckOwnerRecheckDelayMillis)
-                    val adopted = raftAvatarHttpLoadCoordinator.tryAcquire(loadKey) ?: continue
-                    if (serverDiagnosticsId != null) {
-                        raftLogInfo(
-                            "SlockServerAvatar",
-                            "server_avatar_stuck_owner_adopted serverHash=${serverDiagnosticsId.raftAvatarDiagnosticsHash()} " +
-                                "role=${diagnosticsRole} generation=${adopted.generation}"
-                        )
-                    }
-                    lease = adopted
-                    break
-                }
-            }
-            RaftAvatarHttpAcquireAttempt.None -> Unit
-        }
-    }
-
-    val candidateImageModel =
-        if (avatarMountedBinding == null || cacheSubject == null) {
-            activeSource
-        } else {
-            // Cold cache: the durable bytes haven't landed yet, so imageModel is still null. Fall
-            // back to an already-committed managed model from this session, or the ordinary HTTP source
-            // so the painter isn't starved while the mounted download is still in flight; once bytes
-            // commit, imageModel takes over rendering.
-            val handle = mountedHandle
-            handle?.imageModel?.collectAsState()?.value
-                ?: initialManagedModel
-                ?: activeSource
-        }
-    LaunchedEffect(diagnostics, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
-        val row = diagnostics ?: return@LaunchedEffect
-        row.logger(
-            "thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} " +
-                "source=${loadKey.diagnosticsSource} ${activeSource.raftAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
-                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
-                "model=${if (parseRaftAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
-                "painter=${loadState.painter.diagnosticsName()} " +
-                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
-        )
-    }
-    LaunchedEffect(serverDiagnosticsId, loadKey, loadState, lease?.ownerToken, candidateImageModel) {
-        val serverId = serverDiagnosticsId ?: return@LaunchedEffect
-        raftLogInfo(
-            "SlockServerAvatar",
-            "server_avatar_painter serverHash=${serverId.raftAvatarDiagnosticsHash()} " +
-                "role=$diagnosticsRole " +
-                "source=${loadKey.diagnosticsSource} ${activeSource.raftAvatarDiagnosticsUrlShape(apiBaseUrl)} " +
-                "activeEndpoint=${loadState.endpoint.diagnosticsName()} " +
-                "model=${if (parseRaftAvatarMountedRenderModel(candidateImageModel) != null) "managed" else "url"} " +
-                "painter=${loadState.painter.diagnosticsName()} " +
-                "cache=${loadState.diagnosticsCacheState(lease?.ownerToken)}"
-        )
-    }
-    val admittedImageModel =
-        raftAvatarHttpAdmittedImageModel(
-            candidateImageModel = candidateImageModel,
-            loadState = loadState,
-            ownsCurrentRequest = ownsCurrentRequest
-        )
-    // Sticky render source: once a model has reached painter Success, keep it while the pending
-    // candidate is only a different encoding of the same bytes (URL -> managed at the pinned
-    // commit, or managed at the same commit). Switching the painter model mid-display rebuilds the
-    // painter and drops the frame back to the placeholder for a frame or two — the visible
-    // "flash" of task #402. The managed first-frame value (cold start renders durable bytes
-    // without a fetch) is unaffected: stickiness only arms after a Success is already on screen.
-    var lastRenderedFrame by
-        remember(activeSource, cacheSubject, cacheServerId, avatarMountedBinding) {
-            mutableStateOf<RaftAvatarRenderedFrame?>(null)
-        }
-    val stickyImageModel =
-        raftAvatarStickyImageModel(
-            candidateImageModel = admittedImageModel,
-            lastRenderedFrame = lastRenderedFrame
-        )
-    if (stickyImageModel != admittedImageModel) {
-        LaunchedEffect(stickyImageModel, admittedImageModel) {
-            raftLogDebug(
-                "SlockAvatar",
-                "avatar_model_sticky source=${activeSource.raftAvatarDiagnosticsHash()} " +
-                    "rendered=${if (parseRaftAvatarMountedRenderModel(stickyImageModel.orEmpty()) != null) "managed" else "url"} " +
-                    "candidate=${if (parseRaftAvatarMountedRenderModel(admittedImageModel.orEmpty()) != null) "managed" else "url"}"
-            )
-        }
-    }
-    if (stickyImageModel == null) {
-        if (!raftAvatarHttpShowsFallback(loadState)) placeholder()
-        return
-    }
-    // The endpoint whose URL this painter renders; every report carries it so a late result for a
-    // URL the flight has moved off is ignored.
-    val renderedEndpoint = loadState.endpoint
-    val painter = rememberAsyncImagePainter(model = stickyImageModel)
-    val imageState by painter.state.collectAsState()
-    // Record the rendered frame inside an effect — writing state mid-composition can skip
-    // dependents and re-runs anyway. A fresh Success becomes the new baseline and clears the
-    // URL pin; for a URL frame the pin is the managed commit admitted at this instant (usually
-    // none yet — the first later managed candidate arms it below).
-    LaunchedEffect(imageState, stickyImageModel, admittedImageModel) {
-        if (imageState is AsyncImagePainter.State.Success) {
-            lastRenderedFrame =
-                RaftAvatarRenderedFrame(
-                    model = stickyImageModel,
-                    urlBaselineCommit =
-                        parseRaftAvatarMountedRenderModel(admittedImageModel.orEmpty())
-                            ?.commitIdentity
-                )
-        }
-    }
-    // Arm the URL pin lazily: the mount's imageModel can emit after the URL frame is already on
-    // screen, in which case the first managed candidate seen belongs to this frame and becomes the
-    // bound. Any commit that supersedes it ends the stickiness.
-    LaunchedEffect(admittedImageModel, lastRenderedFrame) {
-        val frame = lastRenderedFrame ?: return@LaunchedEffect
-        if (parseRaftAvatarMountedRenderModel(frame.model) != null) return@LaunchedEffect
-        if (frame.urlBaselineCommit != null) return@LaunchedEffect
-        val candidateCommit =
-            parseRaftAvatarMountedRenderModel(admittedImageModel.orEmpty())?.commitIdentity
-                ?: return@LaunchedEffect
-        lastRenderedFrame = frame.copy(urlBaselineCommit = candidateCommit)
-    }
-    if (imageState !is AsyncImagePainter.State.Success && !raftAvatarHttpShowsFallback(loadState)) {
-        placeholder()
-    }
-    LaunchedEffect(imageState, stickyImageModel, loadState.generation, lease?.ownerToken) {
-        val phase = imageState.toRaftAvatarHttpPainterPhase()
-        if (ownsCurrentRequest) {
-            lease?.let { currentLease ->
-                raftAvatarHttpLoadCoordinator.reportPainterPhase(loadKey, currentLease, phase, renderedEndpoint)
-            }
-        } else if (loadState.cache == RaftAvatarHttpCacheState.InFlight) {
-            raftAvatarHttpLoadCoordinator.reportObserverPhase(
-                loadKey,
-                loadState.generation,
-                renderedEndpoint,
-                phase
-            )
-        } else if (phase == RaftAvatarHttpPainterPhase.Error) {
-            raftAvatarHttpLoadCoordinator.reportReadyConsumerError(loadKey, loadState.generation, renderedEndpoint)
-        }
-    }
-    Image(
-        painter = painter,
-        contentDescription = null,
-        modifier = modifier,
-        contentScale = ContentScale.FillBounds
-    )
-}
-
-/**
- * task #343: the generic avatar icon is a failure affordance, not a loading placeholder. It is
- * shown only once the HTTP load has settled on failure (cooldown), or a ready generation failed to
- * render. Idle / in-flight loads keep the neutral background so a cold start goes straight from
- * blank to the real avatar instead of flashing the default icon first.
- */
-internal fun raftAvatarHttpShowsFallback(loadState: RaftAvatarHttpLoadSnapshot): Boolean =
-    loadState.cache == RaftAvatarHttpCacheState.Cooldown ||
-        (loadState.cache == RaftAvatarHttpCacheState.Ready &&
-            loadState.painter == RaftAvatarHttpPainterPhase.Error)
-
-/**
- * The model the avatar painter last reached Success with, plus the bound for URL-frame stickiness.
- *
- * `urlBaselineCommit` is meaningful only while [model] is a plain URL: it pins the URL -> managed
- * stickiness to a single managed commit. It is recorded when the URL frame succeeds (the admitted
- * candidate at that instant) or, if no managed model had been emitted yet, armed by the first
- * managed candidate observed afterwards. A later managed model carrying a different commitIdentity
- * is a real avatar change and is admitted, so a stable (non content-addressed) URL cannot pin the
- * old frame forever. Own-CDN avatar URLs are content-addressed (`/avatars/<ns>/<hash>.webp`, see
- * AppAvatarCdnPath), so the common change path already resets this frame via `activeSource`.
- */
-internal data class RaftAvatarRenderedFrame(
-    val model: String,
-    val urlBaselineCommit: RaftAvatarCommitIdentity? = null
-)
-
-/**
- * task #402: pick the render model once a frame has succeeded. `candidateImageModel` is the
- * currently admitted model; `lastRenderedFrame` is the model the painter last reached Success
- * with. Returns the model to feed `rememberAsyncImagePainter`.
- *
- * Rules:
- * - No candidate or no rendered success yet → the candidate decides (cold start, first frame).
- * - Candidate is not a managed descriptor (a URL, including a reverted/cleared mount) → the
- *   candidate decides; stickiness only suppresses managed-model handoffs, never a real source change.
- * - Rendered model is a URL and candidate is managed → keep the URL while the candidate is the
- *   commit this URL frame belongs to (baseline unset = the first managed candidate seen, which is
- *   then armed as the baseline). The managed bytes for that commit are fetched from the same
- *   activeSource, so re-rendering would re-decode the identical image through a placeholder gap.
- *   A superseding commitIdentity re-renders — the stickiness window is bounded to one commit.
- * - Both managed → keep the rendered model only while slot and commitIdentity match (same bytes,
- *   newer modelRevision). A different commitIdentity is a real avatar change and must re-render.
- */
-internal fun raftAvatarStickyImageModel(
-    candidateImageModel: String?,
-    lastRenderedFrame: RaftAvatarRenderedFrame?
-): String? {
-    val candidate = candidateImageModel ?: return null
-    val frame = lastRenderedFrame ?: return candidate
-    val rendered = frame.model
-    if (rendered == candidate) return rendered
-    val candidateManaged = parseRaftAvatarMountedRenderModel(candidate) ?: return candidate
-    val renderedManaged = parseRaftAvatarMountedRenderModel(rendered)
-    if (renderedManaged == null) {
-        val baseline = frame.urlBaselineCommit
-        return if (baseline == null || candidateManaged.commitIdentity == baseline) {
-            rendered
-        } else {
-            candidate
-        }
-    }
-    return if (
-        renderedManaged.slot == candidateManaged.slot &&
-        renderedManaged.commitIdentity == candidateManaged.commitIdentity
-    ) {
-        rendered
-    } else {
-        candidate
-    }
-}
-
-/**
- * A committed mounted descriptor is already fenced by environment/account/server/subject/content
- * identity, so it may render before the process-local HTTP painter coordinator is warm. Ordinary
- * URLs (including the unsupported-provider fallback) keep the existing single-flight gate.
- */
-internal fun raftAvatarHttpAdmittedImageModel(
-    candidateImageModel: String,
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): String? {
-    if (parseRaftAvatarMountedRenderModel(candidateImageModel) != null) return candidateImageModel
-    return candidateImageModel.takeIf { raftAvatarHttpRenderIsAdmitted(loadState, ownsCurrentRequest) }
-}
-
-/**
- * Which rows may render the shared URL. Every row renders an in-flight or ready generation and
- * reports its own result (see RaftAvatarHttpLoadCoordinator.reportObserverPhase); only Idle and
- * Cooldown withhold it. Rendering used to be owner-only, which tied every row to the owner being
- * drawn: a composed-but-undrawn owner left all other rows blank (HarmonyOS 1.13.0 black server
- * avatars). The durable refresh below keeps the owner-only gate so it still downloads once.
- */
-internal fun raftAvatarHttpRenderIsAdmitted(
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): Boolean =
-    ownsCurrentRequest ||
-        loadState.cache == RaftAvatarHttpCacheState.Ready ||
-        loadState.cache == RaftAvatarHttpCacheState.InFlight
-
-/**
- * Durable mounted bytes may bypass this gate for rendering only. Any refresh or ordinary URL load
- * still requires the current coordinator lease, or reuse of an already-ready HTTP generation.
- */
-internal fun raftAvatarHttpLoadIsAdmitted(
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): Boolean = ownsCurrentRequest || loadState.cache == RaftAvatarHttpCacheState.Ready
-
-/**
- * Stable render-axis identity for the mounted refresh effect. A successful managed first frame
- * changes cache/ownership, but not the admitted generation; keeping those transient fields out of
- * the key lets the original refresh finish instead of cancelling and restarting its transport.
- */
-internal data class RaftAvatarHttpRefreshEffectKey(
-    val activeSource: String,
-    val generation: Long,
-    val refreshAdmitted: Boolean
-)
-
-internal fun raftAvatarHttpRefreshEffectKey(
-    activeSource: String,
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): RaftAvatarHttpRefreshEffectKey =
-    RaftAvatarHttpRefreshEffectKey(
-        activeSource = activeSource,
-        generation = loadState.generation,
-        refreshAdmitted = raftAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)
-    )
-
-internal suspend fun RaftAvatarMountedBinding.refreshWhenHttpLoadAdmitted(
-    handle: RaftAvatarMountedHandle,
-    loadState: RaftAvatarHttpLoadSnapshot,
-    ownsCurrentRequest: Boolean
-): Boolean {
-    if (!raftAvatarHttpLoadIsAdmitted(loadState, ownsCurrentRequest)) return false
-    refresh(handle)
-    return true
-}
-
-private fun AsyncImagePainter.State.toRaftAvatarHttpPainterPhase(): RaftAvatarHttpPainterPhase =
-    when (this) {
-        is AsyncImagePainter.State.Empty -> RaftAvatarHttpPainterPhase.Empty
-        is AsyncImagePainter.State.Loading -> RaftAvatarHttpPainterPhase.Loading
-        is AsyncImagePainter.State.Success -> RaftAvatarHttpPainterPhase.Success
-        is AsyncImagePainter.State.Error -> RaftAvatarHttpPainterPhase.Error
-    }
 
 @Composable
 private fun DefaultUserAvatar(
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = RaftAppStroke.Thin
+    borderWidth: Dp = RaftAppStroke.Thin,
+    shape: Shape = RectangleShape
 ) {
-    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender).border(borderWidth, RaftColor.BorderBlack), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.size(avatarSize).background(RaftColor.AccentLavender, shape).border(borderWidth, RaftColor.BorderBlack, shape), contentAlignment = Alignment.Center) {
         DefaultUserAvatarIcon(avatarSize)
     }
 }

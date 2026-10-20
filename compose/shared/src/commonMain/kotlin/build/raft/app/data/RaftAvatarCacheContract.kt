@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.MemberKind
 import build.raft.app.raftCanonicalIdentityBytes
 import build.raft.app.raftSha256Hex
+import kotlinx.atomicfu.atomic
 
 internal data class RaftAvatarCacheOwner(
     val environmentId: String,
@@ -155,6 +156,10 @@ internal fun raftAvatarContentIdentity(source: String): RaftAvatarContentIdentit
                     }
                 }
         } ?: run {
+            // The host-free immutable key is only granted to Raft's own avatar hosts: any other
+            // host serving a look-alike `/avatars/<ns>/<hash>.webp` path would otherwise poison the
+            // shared, never-expiring entry of the real avatar. Such URLs keep the URL identity.
+            if (!RaftAvatarTrustedHosts.isTrusted(raftAvatarUrlHostOrNull(normalized))) return@run null
             val path = normalized.substringAfter("://").substringAfter('/', "").let { "/$it" }
             RaftAvatarPath.matchEntire(path.substringBefore('?').substringBefore('#'))?.let { match ->
                 val namespace = match.groupValues[1].lowercase()
@@ -386,4 +391,48 @@ internal object RaftAvatarCachePolicy {
 
     private fun saturatingAdd(left: Long, right: Long): Long =
         if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
+}
+
+/**
+ * Hosts allowed to serve content-addressed Raft avatars (`/avatars/<ns>/<hash>.webp`), whose cache
+ * identity drops the host. Built in: the production CDN / API / web hosts (current and legacy
+ * Slock). Configured: the active environment's API and web hosts plus the `cdn.` host of the API
+ * host's parent domain ([configure], called by the shared store provider on environment changes).
+ */
+internal object RaftAvatarTrustedHosts {
+    private val BuiltIn =
+        setOf(
+            "cdn.raft.build",
+            "api.raft.build",
+            "app.raft.build",
+            "cdn.slock.ai",
+            "api.slock.ai",
+            "app.slock.ai",
+        )
+    private val configured = atomic<Set<String>>(emptySet())
+
+    fun configure(apiBaseUrl: String?, webUrl: String?) {
+        val hosts = mutableSetOf<String>()
+        val apiHost = apiBaseUrl?.let(::raftAvatarUrlHostOrNull)
+        apiHost?.let { host ->
+            hosts += host
+            host.substringAfter('.', "").takeIf { it.contains('.') }?.let { parent -> hosts += "cdn.$parent" }
+        }
+        webUrl?.let(::raftAvatarUrlHostOrNull)?.let { hosts += it }
+        configured.value = hosts
+    }
+
+    fun isTrusted(host: String?): Boolean = host != null && (host in BuiltIn || host in configured.value)
+}
+
+/** Lower-case host of an http(s) URL; null for anything with user info or an unparsable authority. */
+internal fun raftAvatarUrlHostOrNull(url: String): String? {
+    val trimmed = url.trim()
+    val lower = trimmed.lowercase()
+    if (!lower.startsWith("http://") && !lower.startsWith("https://")) return null
+    val authority =
+        trimmed.substringAfter("://").substringBefore('/').substringBefore('?').substringBefore('#')
+    if (authority.isEmpty() || '@' in authority || '\\' in authority) return null
+    val host = authority.substringBefore(':').lowercase().trimEnd('.')
+    return host.takeIf { it.isNotEmpty() && it.all { c -> c.isLetterOrDigit() || c == '.' || c == '-' } }
 }

@@ -67,6 +67,9 @@ struct ContentView: View {
         return data
     }
 
+    /// Fallback renderer only: every app-shell page created through RaftPageControllerFactory
+    /// gets the system UITabBarController (RaftIosTabBarController) on all iOS versions, and
+    /// shared prefers that host bar over this param.
     private static func appTabBarRenderer() -> String {
         if #available(iOS 26.0, *) {
             return "iosLiquidGlass"

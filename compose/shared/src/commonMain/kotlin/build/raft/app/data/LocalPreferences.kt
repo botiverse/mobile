@@ -353,7 +353,7 @@ data class ChatLayoutPreferenceSnapshot(
         MyMessageAlignmentPreference.entries,
     val desktopModeOnLargeScreen: Boolean = DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN,
     val compactConsecutiveMessages: Boolean = true,
-    val longMessageCollapseEnabled: Boolean = false,
+    val longMessageCollapseEnabled: Boolean = RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED,
     val singleTapOpensThreadEnabled: Boolean = false,
     val threadUnreadJumpEnabled: Boolean = false,
     val newMessageMenuEnabled: Boolean = false,
@@ -472,13 +472,15 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readLongMessageCollapseEnabledSync(): Boolean =
-        store.getBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, false)
+        store.getBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED)
 
     override suspend fun readLongMessageCollapseEnabled(): Boolean =
         readLongMessageCollapseEnabledSync()
 
     override suspend fun saveLongMessageCollapseEnabled(enabled: Boolean) {
+        if (readLongMessageCollapseEnabledSync() != enabled) store.advanceRaftLongMessageCollapseGlobalRevision()
         store.putBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, enabled)
+        RaftLongMessageCollapsePreferenceRevision.bump()
     }
 
     override fun readSingleTapOpensThreadEnabledSync(): Boolean =

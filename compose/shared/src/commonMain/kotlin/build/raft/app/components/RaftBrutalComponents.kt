@@ -1,7 +1,5 @@
 package build.raft.app.components
 
-import build.raft.app.isAmbient
-import build.raft.app.raftDisplayUppercase
 import build.raft.app.Button as RaftAnchorButton
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
@@ -20,13 +18,9 @@ import build.raft.app.RaftType
 import build.raft.app.TextField
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.raftCaptureLiveRootAnchor
-import build.raft.app.raftSquareCorners
-import build.raft.app.raftThemedCorners
 import build.raft.app.LocalRaftTheme
-import build.raft.app.RaftThemeFamily
 import build.raft.app.withRaftFontWeight
 import build.raft.app.raftArgbHex
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,22 +47,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.alpha
@@ -86,7 +76,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.ui.KeyboardParams
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class RaftModalShellModel(
     val title: String,
@@ -196,14 +185,12 @@ internal fun RaftAnchoredMetaChip(
     val geometryAnchor =
         remember(resolvedAnchorOwnerIdentity) { RaftLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
     // raft: chips are 6dp-radius tags (`rounded-chip`); a colour block keeps its ink edge.
-    val raftChip = raftActive()
-    val chipShape = if (raftChip) RoundedCornerShape(RaftAppRadius.Chip) else RectangleShape
+    val chipShape = RoundedCornerShape(RaftAppRadius.Chip)
     val chipModifier =
         modifier
             .heightIn(min = minHeight)
             .border(borderWidth, RaftColor.BorderBlack, chipShape)
             .background(color, chipShape)
-            .then(if (raftChip) Modifier else Modifier.raftSquareCorners())
             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
             .let { base ->
                 if (
@@ -277,50 +264,13 @@ internal fun RaftBrutalSectionLabel(
     size: RaftFormFieldSize = RaftFormFieldSize.Default,
     modifier: Modifier = Modifier
 ) {
-    if (raftActive()) {
-        RaftLookFieldLabel(
-            label = label,
-            required = required,
-            optional = optional,
-            compact = size == RaftFormFieldSize.Compact,
-            modifier = modifier
-        )
-        return
-    }
-    val compact = size == RaftFormFieldSize.Compact
-    val labelFontSize = if (compact) 11.sp else 14.sp
-    val labelLineHeight = if (compact) 14.sp else 18.sp
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label.raftDisplayUppercase(),
-            style = RaftType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight, letterSpacing = 1.1.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1
-        )
-        if (required) {
-            Text(
-                text = "*",
-                style = RaftType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
-                color = RaftColor.AccentPink,
-                maxLines = 1
-            )
-        }
-        if (optional) {
-            Text(
-                text = stringResource(MR.strings.common_optional_suffix),
-                style =
-                    RaftType.Caption
-                        .copy(fontSize = if (compact) 11.sp else 12.sp, lineHeight = 14.sp)
-                        .withRaftFontWeight(if (compact) FontWeight.Bold else FontWeight.Normal),
-                color = if (compact) RaftColor.TextMutedGray else RaftColor.TextBlack.copy(alpha = 0.40f),
-                maxLines = 1
-            )
-        }
-    }
+    RaftLookFieldLabel(
+        label = label,
+        required = required,
+        optional = optional,
+        compact = size == RaftFormFieldSize.Compact,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -329,61 +279,23 @@ internal fun RaftBrutalModalHeader(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (raftActive()) {
-        // raft DialogHeader: px-5 pt-5, headline 17/22 bold title, subhead 15/20 muted
-        // description, ghost icon-md close (32dp, 18dp X) pulled into the corner.
-        Row(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 14.dp, top = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Column(
-                modifier = Modifier.weight(1f).padding(top = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = model.title,
-                    style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (model.subtitle.isNotBlank()) {
-                    Text(
-                        text = model.subtitle,
-                        style = RaftType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                        color = RaftColor.TextMuted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            RaftBrutalIconButton(
-                iconName = model.dismissIcon,
-                onClick = onDismiss,
-                backgroundColor = Color.Transparent,
-                size = 32.dp,
-                iconSize = 18.dp
-            )
-        }
-        return
-    }
+    // raft DialogHeader: px-5 pt-5, headline 17/22 bold title, subhead 15/20 muted
+    // description, ghost icon-md close (32dp, 18dp X) pulled into the corner.
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(start = 20.dp, end = 14.dp, top = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(
+            modifier = Modifier.weight(1f).padding(top = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(
                 text = model.title,
-                style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 20.sp),
+                style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp).withRaftFontWeight(FontWeight.Bold),
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -391,9 +303,9 @@ internal fun RaftBrutalModalHeader(
             if (model.subtitle.isNotBlank()) {
                 Text(
                     text = model.subtitle,
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 1,
+                    style = RaftType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                    color = RaftColor.TextMuted,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -401,8 +313,9 @@ internal fun RaftBrutalModalHeader(
         RaftBrutalIconButton(
             iconName = model.dismissIcon,
             onClick = onDismiss,
-            size = 34.dp,
-            shadowOffset = 0.dp
+            backgroundColor = Color.Transparent,
+            size = 32.dp,
+            iconSize = 18.dp
         )
     }
 }
@@ -428,41 +341,17 @@ internal fun RaftBrutalModalLayer(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (raftActive()) {
-                // raft Dialog content: dialog radius 16, popover layer, seam ring, float shadow.
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .widthIn(max = model.maxWidth)
-                            .raftFloatingContentClickTarget()
-                            .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
-                ) {
-                    RaftBrutalModalHeader(model = model, onDismiss = onDismiss)
-                    content()
-                }
-                return@Box
-            }
-            Box(
+            // raft Dialog content: dialog radius 16, popover layer, seam ring, float shadow.
+            Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .widthIn(max = model.maxWidth)
-                        .padding(end = 4.dp, bottom = 4.dp)
-                        .background(RaftColor.ShadowBlack)
                         .raftFloatingContentClickTarget()
+                        .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
             ) {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(end = 4.dp, bottom = 4.dp)
-                            .background(RaftColor.SurfaceWhite)
-                            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                ) {
-                    RaftBrutalModalHeader(model = model, onDismiss = onDismiss)
-                    content()
-                }
+                RaftBrutalModalHeader(model = model, onDismiss = onDismiss)
+                content()
             }
         }
     }
@@ -476,67 +365,7 @@ internal fun RaftBrutalActionSheetRow(
     // raft: the row sits in a menu popup, so it takes the menu item's `px-2.5 py-1.5`.
     menuItemPadding: Boolean = false
 ) {
-    // The bare material3 Button paints the theme's default filled container
-    // (purple in this build) over the sheet's surface and disables text via the
-    // default content color. Give the row explicit register-aware colors so the
-    // parent's selected/unselected surface shows through and ink stays readable.
-    val theme = LocalRaftTheme.current
-    if (theme.isAmbient) {
-        RaftLookActionSheetRow(model = model, onClick = onClick, modifier = modifier, menuItemPadding = menuItemPadding)
-        return
-    }
-    Button(
-        onClick = onClick,
-        shape = RectangleShape,
-        colors =
-            ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent,
-                contentColor = theme.ink,
-                disabledContainerColor = Color.Transparent,
-                disabledContentColor = theme.inkMuted
-            ),
-        elevation = null,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .raftSquareCorners()
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(34.dp)
-                        .background(if (model.destructive) RaftColor.AccentRed else RaftColor.BrandYellow)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(model.icon, modifier = Modifier.size(17.dp))
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = model.title,
-                    style = RaftType.ButtonBold,
-                    color = theme.ink,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (model.subtitle.isNotBlank()) {
-                    Text(
-                        text = model.subtitle,
-                        style = RaftType.Caption,
-                        color = theme.inkMuted,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
+    RaftLookActionSheetRow(model = model, onClick = onClick, modifier = modifier, menuItemPadding = menuItemPadding)
 }
 
 /**
@@ -761,16 +590,12 @@ private fun TextStyle.raftAppLineHeightDp(): Dp =
     }
 
 /**
- * Shared frame for the two [RaftBrutalInputField] overloads (String + TextFieldValue). Owns the
- * single register-conditional wrapper so both overloads stay in lockstep and the elegant branch
- * lives in exactly one place (same single-source approach as the elegant button/card in this file).
+ * Shared frame for the two [RaftBrutalInputField] overloads (String + TextFieldValue), so both
+ * overloads stay in lockstep.
  *
- * Brutal register (unchanged, byte-identical shipping look): the outer Box reserves a bottom/right
- * shadow gutter, a hard offset `ShadowBlack` box sits behind, and the foreground is square
- * (`raftSquareCorners`) with a 2px black border on the white/cream surface. Raft register
- * (raft-ui 0.6.0 Input/Textarea): 8dp control radius + 1.5dp `--line-field` edge on the card
+ * raft-ui 0.6.0 Input/Textarea: 8dp control radius + 1.5dp `--line-field` edge on the card
  * layer, no offset shadow and no reserved gutter (the borderRadius-prop path does not round at
- * runtime, so the rounded shape is applied straight to `background`/`border`). The brutal error
+ * runtime, so the rounded shape is applied straight to `background`/`border`). The legacy error
  * pair (AccentRed edge + pink wash) maps to the `--danger-strong` edge on the card fill; any
  * other explicit [borderColor] passes through.
  */
@@ -779,9 +604,6 @@ private fun RaftBrutalInputFieldFrame(
     modifier: Modifier,
     enabled: Boolean,
     focusPolicy: RaftBrutalInputFocusPolicy,
-    focused: Boolean,
-    forceFocused: Boolean,
-    showShadow: Boolean,
     fieldMinHeight: Dp,
     horizontalPadding: Dp,
     verticalPadding: Dp,
@@ -792,88 +614,47 @@ private fun RaftBrutalInputFieldFrame(
     contentAlignment: Alignment,
     content: @Composable () -> Unit
 ) {
-    val theme = LocalRaftTheme.current
-    val surfaceColor = if (focusPolicy.acceptsFocus) enabledBackgroundColor else disabledBackgroundColor
     val tapModifier =
         if (focusPolicy.containerTapRequestsFocus) {
             Modifier.clickable { focusRequester.requestFocus() }
         } else {
             Modifier
         }
-    if (theme.isAmbient) {
-        // raft-ui Input / Textarea: control radius 8, 1.5dp `--line-strong` (`--line-field`)
-        // edge on the card layer, no shadow. Invalid swaps the edge to `--danger-strong`
-        // (the fill stays the card); disabled is the opaque `--fill-muted` / `--line-hairline` pair.
-        // Read-only fields keep the resting look, like web `<Input readOnly>`.
-        val shape = RoundedCornerShape(RaftAppRadius.Control)
-        val raftBorderColor =
-            when {
-                !enabled -> RaftColor.BorderHairline
-                borderColor == RaftColor.BorderBlack -> RaftColor.LineField
-                borderColor == RaftColor.AccentRed -> RaftColor.DangerStrong
-                else -> borderColor
-            }
-        val raftSurfaceColor =
-            when {
-                !enabled ->
-                    if (disabledBackgroundColor == RaftColor.SurfaceCream) RaftColor.FillMuted else disabledBackgroundColor
-                enabledBackgroundColor == RaftColor.SurfaceWhite || enabledBackgroundColor == RaftFieldErrorTint -> RaftColor.Card
-                else -> enabledBackgroundColor
-            }
-        Box(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .height(fieldMinHeight)
-                    .background(raftSurfaceColor, shape)
-                    .border(RaftAppStroke.Control, raftBorderColor, shape)
-                    .then(tapModifier)
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = contentAlignment,
-            content = { content() }
-        )
-        return
-    }
-    val shadowOffset =
-        if (showShadow) {
-            if ((focused || forceFocused) && focusPolicy.acceptsFocus) RaftShadow.Brutal else RaftShadow.BrutalSmall
-        } else {
-            0.dp
+    // raft-ui Input / Textarea: control radius 8, 1.5dp `--line-strong` (`--line-field`)
+    // edge on the card layer, no shadow. Invalid swaps the edge to `--danger-strong`
+    // (the fill stays the card); disabled is the opaque `--fill-muted` / `--line-hairline` pair.
+    // Read-only fields keep the resting look, like web `<Input readOnly>`.
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    val raftBorderColor =
+        when {
+            !enabled -> RaftColor.BorderHairline
+            borderColor == RaftColor.BorderBlack -> RaftColor.LineField
+            borderColor == RaftColor.AccentRed -> RaftColor.DangerStrong
+            else -> borderColor
         }
-    val reservedShadowOffset = if (showShadow) RaftShadow.Brutal else 0.dp
+    val raftSurfaceColor =
+        when {
+            !enabled ->
+                if (disabledBackgroundColor == RaftColor.SurfaceCream) RaftColor.FillMuted else disabledBackgroundColor
+            enabledBackgroundColor == RaftColor.SurfaceWhite || enabledBackgroundColor == RaftFieldErrorTint -> RaftColor.Card
+            else -> enabledBackgroundColor
+        }
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(fieldMinHeight + reservedShadowOffset)
-    ) {
-        if (showShadow) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(fieldMinHeight)
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .raftSquareCorners()
-                        .background(RaftColor.ShadowBlack)
-            )
-        }
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(fieldMinHeight)
-                    .raftSquareCorners()
-                    .background(surfaceColor)
-                    .border(RaftAppStroke.Default, borderColor)
-                    .then(tapModifier)
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = contentAlignment,
-            content = { content() }
-        )
-    }
+                .height(fieldMinHeight)
+                .background(raftSurfaceColor, shape)
+                .border(RaftAppStroke.Control, raftBorderColor, shape)
+                .then(tapModifier)
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+        contentAlignment = contentAlignment,
+        content = { content() }
+    )
 }
 
+/** [showShadow] and [forceFocused] are ignored: raft fields cast no shadow. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalInputField(
     value: String,
@@ -905,18 +686,15 @@ internal fun RaftBrutalInputField(
     onClear: (() -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    var focused by remember { mutableStateOf(false) }
     val focusPolicy = raftBrutalInputFocusPolicy(maxLines, enabled, readOnly, containerTapRequestsFocus)
     val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val theme = LocalRaftTheme.current
-    val raft = theme.isAmbient
     // raft-ui fields: 44dp tall, 12dp side padding, `text-field` 16/24 type, placeholder
     // ink. Only the legacy brutal defaults are remapped; explicit caller metrics stay.
     val resolvedTextStyle =
         when {
-            !raft -> textStyle
             textStyle == RaftBrutalInputDefaultTextStyle ->
                 textStyle.copy(
                     fontSize = 16.sp,
@@ -926,20 +704,17 @@ internal fun RaftBrutalInputField(
             else -> textStyle.copy(color = if (enabled) theme.ink else RaftColor.ForegroundDisabled)
         }
     val resolvedHorizontalPadding =
-        if (raft && horizontalPadding == RaftBrutalInputLegacyHorizontalPadding) {
+        if (horizontalPadding == RaftBrutalInputLegacyHorizontalPadding) {
             RaftMetrics.FieldPaddingHorizontal
         } else {
             horizontalPadding
         }
     val resolvedPlaceholderColor =
-        if (raft && placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor
+        if (placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor
     RaftBrutalInputFieldFrame(
         modifier = modifier,
         enabled = enabled,
         focusPolicy = focusPolicy,
-        focused = focused,
-        forceFocused = forceFocused,
-        showShadow = showShadow,
         fieldMinHeight =
             raftBrutalInputFieldFrameMinHeight(
                 fieldMinHeight = raftFieldHeight(fieldMinHeight),
@@ -975,14 +750,8 @@ internal fun RaftBrutalInputField(
                 placeholder = placeholder,
                 placeholderColor = resolvedPlaceholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                onFocus = {
-                    focused = true
-                    onFocusChanged(true)
-                },
-                onBlur = {
-                    focused = false
-                    onFocusChanged(false)
-                },
+                onFocus = { onFocusChanged(true) },
+                onBlur = { onFocusChanged(false) },
                 maxLines = maxLines,
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
@@ -1003,7 +772,7 @@ internal fun RaftBrutalInputField(
                 RaftBrutalIconButton(
                     iconName = RaftLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange("") },
-                    backgroundColor = if (raft) Color.Transparent else RaftColor.SurfaceWhite,
+                    backgroundColor = Color.Transparent,
                     size = 18.dp,
                     shadowOffset = 2.dp
                 )
@@ -1013,6 +782,8 @@ internal fun RaftBrutalInputField(
     }
 }
 
+/** [showShadow] and [forceFocused] are ignored: raft fields cast no shadow. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalInputField(
     value: TextFieldValue,
@@ -1044,18 +815,15 @@ internal fun RaftBrutalInputField(
     onClear: (() -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    var focused by remember { mutableStateOf(false) }
     val focusPolicy = raftBrutalInputFocusPolicy(maxLines, enabled, readOnly, containerTapRequestsFocus)
     val isMultiline = focusPolicy.fillEditorHeight
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val theme = LocalRaftTheme.current
-    val raft = theme.isAmbient
     // raft-ui fields: 44dp tall, 12dp side padding, `text-field` 16/24 type, placeholder
     // ink. Only the legacy brutal defaults are remapped; explicit caller metrics stay.
     val resolvedTextStyle =
         when {
-            !raft -> textStyle
             textStyle == RaftBrutalInputDefaultTextStyle ->
                 textStyle.copy(
                     fontSize = 16.sp,
@@ -1065,20 +833,17 @@ internal fun RaftBrutalInputField(
             else -> textStyle.copy(color = if (enabled) theme.ink else RaftColor.ForegroundDisabled)
         }
     val resolvedHorizontalPadding =
-        if (raft && horizontalPadding == RaftBrutalInputLegacyHorizontalPadding) {
+        if (horizontalPadding == RaftBrutalInputLegacyHorizontalPadding) {
             RaftMetrics.FieldPaddingHorizontal
         } else {
             horizontalPadding
         }
     val resolvedPlaceholderColor =
-        if (raft && placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor
+        if (placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor
     RaftBrutalInputFieldFrame(
         modifier = modifier,
         enabled = enabled,
         focusPolicy = focusPolicy,
-        focused = focused,
-        forceFocused = forceFocused,
-        showShadow = showShadow,
         fieldMinHeight =
             raftBrutalInputFieldFrameMinHeight(
                 fieldMinHeight = raftFieldHeight(fieldMinHeight),
@@ -1114,14 +879,8 @@ internal fun RaftBrutalInputField(
                 placeholder = placeholder,
                 placeholderColor = resolvedPlaceholderColor,
                 autoFocus = autoFocus && focusPolicy.acceptsFocus,
-                onFocus = {
-                    focused = true
-                    onFocusChanged(true)
-                },
-                onBlur = {
-                    focused = false
-                    onFocusChanged(false)
-                },
+                onFocus = { onFocusChanged(true) },
+                onBlur = { onFocusChanged(false) },
                 maxLines = maxLines,
                 keyboardOptions = keyboardOptions,
                 keyboardActions = keyboardActions,
@@ -1142,7 +901,7 @@ internal fun RaftBrutalInputField(
                 RaftBrutalIconButton(
                     iconName = RaftLucideIconName.X,
                     onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
-                    backgroundColor = if (raft) Color.Transparent else RaftColor.SurfaceWhite,
+                    backgroundColor = Color.Transparent,
                     size = 18.dp,
                     shadowOffset = 2.dp
                 )
@@ -1243,13 +1002,12 @@ internal fun RaftBrutalReadOnlyValueField(
     textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
     textColor: Color = RaftColor.TextMutedGray
 ) {
-    val raft = raftActive()
-    val shape = if (raft) RoundedCornerShape(RaftAppRadius.Control) else RectangleShape
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
     // raft: a non-editable value is the disabled field pair (`--fill-muted` fill,
     // 1.5dp `--line-hairline` edge, muted ink) at the 44dp field height.
-    val resolvedBackground = if (raft && backgroundColor == RaftReadOnlyFieldLegacyBackground) RaftColor.FillMuted else backgroundColor
-    val resolvedBorder = if (raft && borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)) RaftColor.BorderHairline else borderColor
-    val resolvedTextColor = if (raft && textColor == RaftColor.TextMutedGray) RaftColor.TextMuted else textColor
+    val resolvedBackground = if (backgroundColor == RaftReadOnlyFieldLegacyBackground) RaftColor.FillMuted else backgroundColor
+    val resolvedBorder = if (borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)) RaftColor.BorderHairline else borderColor
+    val resolvedTextColor = if (textColor == RaftColor.TextMutedGray) RaftColor.TextMuted else textColor
     Box(
         modifier =
             modifier
@@ -1284,94 +1042,25 @@ internal fun RaftBrutalSearchField(
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
-    var focused by remember { mutableStateOf(false) }
-    if (raftActive()) {
-        RaftSearchFieldFrame(
-            modifier = modifier,
-            enabled = enabled,
-            leadingIcon = leadingIcon,
-            showClear = showClearWhenNotEmpty && value.isNotEmpty(),
-            onClear = onClear
-        ) {
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = RaftColor.ForegroundHint,
-                autoFocus = false,
-                onFocus = {
-                    focused = true
-                    onFocus()
-                },
-                onBlur = {
-                    focused = false
-                    onBlur()
-                },
-                maxLines = 1,
-                textStyle = raftSearchTextStyle(textStyle, enabled),
-                modifier = Modifier.weight(1f)
-            )
-        }
-        return
-    }
-    val shadowOffset = if (focused && enabled) RaftShadow.Brutal else RaftShadow.BrutalSmall
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(42.dp + shadowOffset)
+    RaftSearchFieldFrame(
+        modifier = modifier,
+        enabled = enabled,
+        leadingIcon = leadingIcon,
+        showClear = showClearWhenNotEmpty && value.isNotEmpty(),
+        onClear = onClear
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .raftSquareCorners()
-                    .background(RaftColor.ShadowBlack)
+        TextField(
+            value = value,
+            onValueChange = { if (enabled) onValueChange(it) },
+            placeholder = placeholder,
+            placeholderColor = RaftColor.ForegroundHint,
+            autoFocus = false,
+            onFocus = { onFocus() },
+            onBlur = { onBlur() },
+            maxLines = 1,
+            textStyle = raftSearchTextStyle(textStyle, enabled),
+            modifier = Modifier.weight(1f)
         )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .raftSquareCorners()
-                    .background(if (enabled) RaftColor.SurfaceWhite else RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftLucideIcon(leadingIcon, color = "#FF000000", modifier = Modifier.size(14.dp))
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = RaftColor.TextMutedGray,
-                autoFocus = false,
-                onFocus = {
-                    focused = true
-                    onFocus()
-                },
-                onBlur = {
-                    focused = false
-                    onBlur()
-                },
-                maxLines = 1,
-                textStyle = textStyle,
-                modifier = Modifier.weight(1f)
-            )
-            if (showClearWhenNotEmpty && value.isNotEmpty()) {
-                RaftLucideIcon(
-                    RaftLucideIconName.X,
-                    color = "#FF000000",
-                    modifier =
-                        Modifier
-                            .size(16.dp)
-                            .clickable(enabled = enabled, onClick = onClear)
-                )
-            }
-        }
     }
 }
 
@@ -1389,94 +1078,25 @@ internal fun RaftBrutalSearchField(
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
-    var focused by remember { mutableStateOf(false) }
-    if (raftActive()) {
-        RaftSearchFieldFrame(
-            modifier = modifier,
-            enabled = enabled,
-            leadingIcon = leadingIcon,
-            showClear = showClearWhenNotEmpty && value.text.isNotEmpty(),
-            onClear = onClear
-        ) {
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = RaftColor.ForegroundHint,
-                autoFocus = false,
-                onFocus = {
-                    focused = true
-                    onFocus()
-                },
-                onBlur = {
-                    focused = false
-                    onBlur()
-                },
-                maxLines = 1,
-                textStyle = raftSearchTextStyle(textStyle, enabled),
-                modifier = Modifier.weight(1f)
-            )
-        }
-        return
-    }
-    val shadowOffset = if (focused && enabled) RaftShadow.Brutal else RaftShadow.BrutalSmall
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(42.dp + shadowOffset)
+    RaftSearchFieldFrame(
+        modifier = modifier,
+        enabled = enabled,
+        leadingIcon = leadingIcon,
+        showClear = showClearWhenNotEmpty && value.text.isNotEmpty(),
+        onClear = onClear
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .raftSquareCorners()
-                    .background(RaftColor.ShadowBlack)
+        TextField(
+            value = value,
+            onValueChange = { if (enabled) onValueChange(it) },
+            placeholder = placeholder,
+            placeholderColor = RaftColor.ForegroundHint,
+            autoFocus = false,
+            onFocus = { onFocus() },
+            onBlur = { onBlur() },
+            maxLines = 1,
+            textStyle = raftSearchTextStyle(textStyle, enabled),
+            modifier = Modifier.weight(1f)
         )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .raftSquareCorners()
-                    .background(if (enabled) RaftColor.SurfaceWhite else RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftLucideIcon(leadingIcon, color = "#FF000000", modifier = Modifier.size(14.dp))
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = RaftColor.TextMutedGray,
-                autoFocus = false,
-                onFocus = {
-                    focused = true
-                    onFocus()
-                },
-                onBlur = {
-                    focused = false
-                    onBlur()
-                },
-                maxLines = 1,
-                textStyle = textStyle,
-                modifier = Modifier.weight(1f)
-            )
-            if (showClearWhenNotEmpty && value.text.isNotEmpty()) {
-                RaftLucideIcon(
-                    RaftLucideIconName.X,
-                    color = "#FF000000",
-                    modifier =
-                        Modifier
-                            .size(16.dp)
-                            .clickable(enabled = enabled, onClick = onClear)
-                )
-            }
-        }
     }
 }
 
@@ -1535,47 +1155,11 @@ private fun RaftSearchFieldFrame(
     }
 }
 
-@Composable
-private fun RaftBrutalActionButtonInnerContent(
-    label: String,
-    leadingIcon: RaftLucideIconName?,
-    leadingIconSpinning: Boolean,
-    leadingIconSize: Dp,
-    contentSpacing: Dp,
-    textStyle: TextStyle,
-    enabled: Boolean,
-    disabledContentColor: Color,
-    disabledIconColor: String,
-    trailingContent: (@Composable () -> Unit)? = null
-) {
-    // Enabled ink follows the register (brutalTheme.ink == TextBlack, unchanged).
-    // The leading icon keeps its ARGB-string ink for now — elegant ink (#0A0A0A) vs
-    // brutal (#000000) is sub-perceptual, and Color→ARGB-string plumbing is a
-    // separate follow-up from this switch proof.
-    val inkColor = if (enabled) LocalRaftTheme.current.ink else disabledContentColor
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(if (leadingIcon != null || trailingContent != null) contentSpacing else 0.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (leadingIcon != null) {
-            RaftLucideIcon(
-                leadingIcon,
-                modifier = Modifier.size(leadingIconSize),
-                color = if (enabled) RaftColor.TextBlackArgb else disabledIconColor,
-                spinning = leadingIconSpinning
-            )
-        }
-        Text(
-            text = label,
-            style = textStyle,
-            color = inkColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        trailingContent?.invoke()
-    }
-}
-
+/**
+ * The disabled* colours, [leadingIconSize], [contentSpacing] and [shadowOffset] are ignored:
+ * they only shaped the retired brutal register.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalActionButton(
     label: String,
@@ -1602,85 +1186,26 @@ internal fun RaftBrutalActionButton(
     leadingIconSpinning: Boolean = leadingIcon == RaftLucideIconName.Loader || leadingIcon == RaftLucideIconName.LoaderCircle,
     leadingIconSize: Dp = 12.dp,
     contentSpacing: Dp = 6.dp,
-    // Null defers to the register's structural offset (brutal 4dp == RaftShadow.Brutal,
-    // so the default path is unchanged). Callers passing an explicit offset keep it.
     shadowOffset: Dp? = null,
     textStyle: TextStyle = RaftBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
-    // The register is read from LocalRaftTheme. The raft themes render raft-ui 0.6.0's
-    // Button ([RaftActionButton]: control radius, 1.5dp edge, sticker/outline/ghost
-    // variants from [backgroundColor], press overlay, no shadow); the disabled*/shadow*
-    // parameters only shape the legacy brutal register below (hard offset-box shadow).
-    val theme = LocalRaftTheme.current
-    val borderColor = if (enabled) theme.line else disabledBorderColor
-    val surfaceBackground = if (enabled) backgroundColor else disabledBackgroundColor
-    if (theme.isAmbient) {
-        RaftActionButton(
-            label = label,
-            onClick = onClick,
-            onClick2 = onClick2,
-            modifier = modifier,
-            enabled = enabled,
-            backgroundColor = backgroundColor,
-            minWidth = minWidth,
-            minHeight = minHeight,
-            leadingIcon = leadingIcon,
-            leadingIconSpinning = leadingIconSpinning,
-            textStyle = textStyle,
-            trailingContent = trailingContent
-        )
-        return
-    }
-    // Brutal register (unchanged, byte-identical): a hard structural offset-box shadow
-    // behind a square surface.
-    val resolvedShadowOffset = shadowOffset ?: theme.shadow.offset
-    val shadowColor = if (enabled) theme.shadow.color else disabledShadowColor
-    Box(
-        modifier =
-            modifier
-                .padding(end = resolvedShadowOffset, bottom = resolvedShadowOffset),
-        propagateMinConstraints = true
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .offset(x = resolvedShadowOffset, y = resolvedShadowOffset)
-                    .background(shadowColor, RectangleShape)
-                    .raftThemedCorners(theme.cornerRadius)
-        )
-        RaftAnchorButton(
-            onClick = onClick,
-            onClick2 = onClick2,
-            enabled = enabled,
-            pressFeedback = enabled,
-            modifier =
-                Modifier
-                    .widthIn(min = minWidth)
-                    .heightIn(min = minHeight)
-                    .background(surfaceBackground, RectangleShape)
-                    .border(theme.lineWidth, borderColor, RectangleShape)
-                    .raftThemedCorners(theme.cornerRadius)
-                    // react buttons use 12px/6px padding: with 6dp vertical padding a
-                    // 12sp/14sp-line label yields the same 28px box react renders for
-                    // minHeight-28 buttons (8dp made them 30px tall) — task #370.
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-        ) {
-            RaftBrutalActionButtonInnerContent(
-                label = label,
-                leadingIcon = leadingIcon,
-                leadingIconSpinning = leadingIconSpinning,
-                leadingIconSize = leadingIconSize,
-                contentSpacing = contentSpacing,
-                textStyle = textStyle,
-                enabled = enabled,
-                disabledContentColor = disabledContentColor,
-                disabledIconColor = disabledIconColor,
-                trailingContent = trailingContent
-            )
-        }
-    }
+    // Renders raft-ui 0.6.0's Button ([RaftActionButton]: control radius, 1.5dp edge,
+    // sticker/outline/ghost variants from [backgroundColor], press overlay, no shadow).
+    RaftActionButton(
+        label = label,
+        onClick = onClick,
+        onClick2 = onClick2,
+        modifier = modifier,
+        enabled = enabled,
+        backgroundColor = backgroundColor,
+        minWidth = minWidth,
+        minHeight = minHeight,
+        leadingIcon = leadingIcon,
+        leadingIconSpinning = leadingIconSpinning,
+        textStyle = textStyle,
+        trailingContent = trailingContent
+    )
 }
 
 internal val RaftBrutalActionButtonDefaultTextStyle =
@@ -1813,99 +1338,25 @@ internal fun SegmentedControl(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    if (raftActive()) {
-        // raft-ui SegmentedControl: a `--fill-muted` tray (radius 11, 3dp inset, 2dp gap);
-        // the checked item is the yellow sticker with an ink edge.
-        Row(
-            modifier =
-                modifier
-                    .background(RaftColor.FillMuted, RoundedCornerShape(11.dp))
-                    .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            options.forEach { option ->
-                RaftSegmentedItem(
-                    label = option.label,
-                    iconName = option.iconName,
-                    count = option.count,
-                    selected = option.value == selectedValue,
-                    enabled = enabled,
-                    onClick = { onValueSelected(option.value) }
-                )
-            }
-        }
-        return
-    }
+    // raft-ui SegmentedControl: a `--fill-muted` tray (radius 11, 3dp inset, 2dp gap);
+    // the checked item is the yellow sticker with an ink edge.
     Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(SegmentedControlItemGap),
+        modifier =
+            modifier
+                .background(RaftColor.FillMuted, RoundedCornerShape(11.dp))
+                .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         options.forEach { option ->
-            val selected = option.value == selectedValue
-            SegmentedControlItem(
-                option = option,
-                selected = selected,
+            RaftSegmentedItem(
+                label = option.label,
+                iconName = option.iconName,
+                count = option.count,
+                selected = option.value == selectedValue,
                 enabled = enabled,
                 onClick = { onValueSelected(option.value) }
             )
-        }
-    }
-}
-
-@Composable
-private fun SegmentedControlItem(
-    option: SegmentedControlOption,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier.height(SegmentedControlItemHeight),
-        propagateMinConstraints = true
-    ) {
-        // No offset shadow on the selected chip: react renders the active chip flat
-        // (yellow fill + border only, no shadow-brutal) — task #370.
-        Row(
-            modifier =
-                Modifier
-                    .height(SegmentedControlItemHeight)
-                    .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .clickable(enabled = enabled) { onClick() }
-                    .padding(horizontal = SegmentedControlItemHorizontalPadding),
-            horizontalArrangement = Arrangement.spacedBy(SegmentedControlItemContentGap),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            option.iconName?.let { iconName ->
-                RaftLucideIcon(
-                    name = iconName,
-                    modifier = Modifier.size(13.dp),
-                    color = if (enabled) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb
-                )
-            }
-            Text(
-                text = option.label,
-                style = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            option.count?.takeIf { it > 0 }?.let { count ->
-                // react (rui segmented-control, brutal theme): count is
-                // font-mono text-xs leading-4 font-bold at text-foreground/65,
-                // checked -> /70 — bold 12/16 at high alpha, not a muted 10sp.
-                Text(
-                    text = count.toString(),
-                    style =
-                        RaftType.Caption
-                            .copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp)
-                            .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack.copy(alpha = if (selected) 0.70f else 0.65f),
-                    maxLines = 1
-                )
-            }
         }
     }
 }
@@ -1980,13 +1431,11 @@ internal fun RaftSegmentedItem(
     }
 }
 
-// Chip box is 32px tall with a 12px gap between chips in react
-// (components.ui.segmented-control.states: chips y 48..144, gap 12px @3x) — task #370.
-private val SegmentedControlItemHeight = 32.dp
-private val SegmentedControlItemHorizontalPadding = 9.dp
-private val SegmentedControlItemGap = 4.dp
-private val SegmentedControlItemContentGap = 5.dp
-
+/**
+ * [uppercase], [inactiveBackgroundColor], [borderColor], [disabledBorderColor] and the
+ * activeShadow* parameters are ignored: they only shaped the retired brutal register.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftToolbarChip(
     label: String,
@@ -2006,97 +1455,18 @@ internal fun RaftToolbarChip(
     reserveActiveShadowSpace: Boolean = false,
     activeShadowColor: Color = RaftColor.ShadowBlack
 ) {
-    if (raftActive()) {
-        RaftPickerChip(
-            label = label,
-            onClick = onClick,
-            modifier = modifier,
-            iconName = iconName,
-            trailingIconName = trailingIconName,
-            active = active,
-            enabled = enabled,
-            count = count,
-            activeBackgroundColor =
-                if (activeBackgroundColor == RaftColor.AccentCyan) RaftColor.InfoSoft else activeBackgroundColor
-        )
-        return
-    }
-    val shouldDrawShadow = enabled && active && activeShadowOffset > 0.dp
-    val reservedShadowOffset =
-        if (shouldDrawShadow || reserveActiveShadowSpace) {
-            activeShadowOffset
-        } else {
-            0.dp
-        }
-    val resolvedBorderColor =
-        when {
-            !enabled -> disabledBorderColor
-            active -> RaftColor.BorderBlack
-            else -> borderColor
-        }
-    Box(
-        modifier =
-            modifier
-                .padding(end = reservedShadowOffset, bottom = reservedShadowOffset)
-    ) {
-        if (shouldDrawShadow) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = activeShadowOffset, y = activeShadowOffset)
-                        .background(activeShadowColor, RectangleShape)
-                        .raftSquareCorners()
-            )
-        }
-        Box(
-            modifier =
-                Modifier
-                    .heightIn(min = 30.dp)
-                    .background(if (active) activeBackgroundColor else inactiveBackgroundColor, RectangleShape)
-                    .border(RaftAppStroke.Default, resolvedBorderColor, RectangleShape)
-                    .raftSquareCorners()
-                    .clickable(enabled = enabled, onClick = onClick)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                iconName?.let {
-                    RaftLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
-                }
-                Text(
-                    text = if (uppercase) label.raftDisplayUppercase() else label,
-                    style = RaftType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                count?.let {
-                    Box(
-                        modifier =
-                            Modifier
-                                .background(RaftColor.SurfaceWhite, RectangleShape)
-                                .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RectangleShape)
-                                .raftSquareCorners()
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = it.toString(),
-                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1
-                        )
-                    }
-                }
-                trailingIconName?.let {
-                    RaftLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
-                }
-            }
-        }
-    }
+    RaftPickerChip(
+        label = label,
+        onClick = onClick,
+        modifier = modifier,
+        iconName = iconName,
+        trailingIconName = trailingIconName,
+        active = active,
+        enabled = enabled,
+        count = count,
+        activeBackgroundColor =
+            if (activeBackgroundColor == RaftColor.AccentCyan) RaftColor.InfoSoft else activeBackgroundColor
+    )
 }
 
 /**
@@ -2236,6 +1606,13 @@ internal fun RaftAnchoredToolbarChip(
     }
 }
 
+/**
+ * Legacy-named icon button; renders the raft-ui icon button ([RaftLookIconButton]). The
+ * border / shadow / disabled-colour parameters of the retired brutal look are accepted
+ * and ignored so call sites keep compiling; prefer
+ * `build.raft.designsystem.components.RaftIconButton` in new code.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalIconButton(
     iconName: RaftLucideIconName,
@@ -2260,79 +1637,30 @@ internal fun RaftBrutalIconButton(
     iconSize: Dp = (size.value * 0.5f).dp,
     iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
 ) {
-    if (raftActive()) {
-        RaftLookIconButton(
-            iconName = iconName,
-            onClick = onClick,
-            onLongClick = onLongClick,
-            longClickLabel = longClickLabel,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            clickIdentity = clickIdentity,
-            enabled = enabled,
-            backgroundColor = backgroundColor,
-            iconColor = iconColor,
-            size = size,
-            iconSize = iconSize,
-            iconSpinning = iconSpinning
-        )
-        return
-    }
-    val resolvedBackground = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
-    val resolvedBorder = if (enabled) borderColor else disabledBorderColor.copy(alpha = disabledAlpha)
-    val resolvedShadow = if (enabled) shadowColor else disabledShadowColor.copy(alpha = disabledAlpha)
-    val resolvedIconColor = if (enabled) iconColor else disabledIconColor
-    Box(
-        modifier =
-            modifier
-                .size(size + shadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(resolvedShadow)
-        )
-        RaftAnchorButton(
-            onClick = onClick,
-            onLongClick = onLongClick,
-            longClickLabel = longClickLabel,
-            enabled = enabled,
-            pressFeedback = enabled,
-            pressOffset = shadowOffset,
-            clickIdentity = clickIdentity,
-            modifier = Modifier
-                .size(size)
-                .then(
-                    if (contentDescription.isNullOrBlank()) {
-                        Modifier
-                    } else {
-                        Modifier.semantics {
-                            this.contentDescription = contentDescription
-                        }
-                    }
-                )
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(size)
-                        .background(resolvedBackground)
-                        .border(RaftAppStroke.Default, resolvedBorder),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize), spinning = iconSpinning)
-            }
-        }
-    }
+    RaftLookIconButton(
+        iconName = iconName,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel,
+        contentDescription = contentDescription,
+        modifier = modifier,
+        clickIdentity = clickIdentity,
+        enabled = enabled,
+        backgroundColor = backgroundColor,
+        iconColor = iconColor,
+        size = size,
+        iconSize = iconSize,
+        iconSpinning = iconSpinning
+    )
 }
 
 /**
- * raft-ui 0.6.0 icon button (`size="icon-md"` 32dp / `icon-lg` 44dp): the same variant
- * chrome as [RaftActionButton] on a square control-radius box, no shadow and no
- * reserved shadow gutter, press = overlay wash. The default black icon ink follows the
- * variant's ink so it reads in dark mode; an explicit [iconColor] is kept.
+ * raft-ui icon button (`size="icon-md"` 32dp / `icon-lg` 44dp) on a square control-radius
+ * box, no shadow and no reserved shadow gutter, press = overlay wash. A paper fill (the
+ * old brutal default) is the raft-ui ghost icon button: no frame, only the pressed wash,
+ * as on web headers and toolbars. A sticker fill (yellow / pink / red / orange) keeps the
+ * sticker chrome. The default black icon ink follows the variant's ink so it reads in
+ * dark mode; an explicit [iconColor] is kept.
  */
 @Composable
 private fun RaftLookIconButton(
@@ -2350,7 +1678,9 @@ private fun RaftLookIconButton(
     iconSize: Dp,
     iconSpinning: Boolean
 ) {
-    val chrome = raftButtonChrome(backgroundColor)
+    val chrome = raftButtonChrome(backgroundColor).let { base ->
+        if (base.kind == RaftButtonKind.Outline) raftButtonChrome(Color.Transparent) else base
+    }
     var pressed by remember { mutableStateOf(false) }
     val fill =
         when {
@@ -2402,43 +1732,23 @@ private fun RaftLookIconButton(
 // The brutal primitives' hard-coded black icon ink; raft swaps it for the themed ink.
 internal const val RaftLegacyIconInkArgb = "#FF000000"
 
+/** [shadowOffset] is ignored: the raft card casts no shadow. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalPanelShell(
     modifier: Modifier = Modifier,
     shadowOffset: Dp = RaftShadow.Brutal,
     content: @Composable BoxScope.() -> Unit
 ) {
-    if (raftActive()) {
-        // raft Card: container radius, card layer, hairline edge, no shadow.
-        Box(
-            modifier = modifier.fillMaxWidth().raftCardSurface(),
-            content = content
-        )
-        return
-    }
+    // raft Card: container radius, card layer, hairline edge, no shadow.
     Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(RaftColor.ShadowBlack)
-        )
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
-            content = content
-        )
-    }
+        modifier = modifier.fillMaxWidth().raftCardSurface(),
+        content = content
+    )
 }
 
+/** [shadowOffset] is ignored: the raft card casts no shadow. */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalListShell(
     height: Dp,
@@ -2447,56 +1757,20 @@ internal fun RaftBrutalListShell(
     listModifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit
 ) {
-    if (raftActive()) {
-        // raft Card surface around the list: container radius, hairline, no shadow.
-        Box(
-            modifier =
-                modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .raftCardSurface()
-                    .clipToBounds()
-        ) {
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(height)
-                        .then(listModifier),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-                content = content
-            )
-        }
-        return
-    }
-    // Brutal-shadow pattern: outer Box reserves shadowOffset extra space on
-    // right + bottom via padding; shadow Box inside is matchParentSize() +
-    // offset(shadowOffset) so the dark slab peeks out uniformly. Foreground
-    // LazyColumn fills the non-shadow area with bordered SurfaceWhite.
-    // Mirrors the proven RaftBrutalCard pattern (RaftBrutalCard.kt) and
-    // fixes the earlier broken `padding(end, bottom).background(ShadowBlack)`
-    // pattern that did not actually reserve outer space for the shadow to
-    // peek out.
+    // raft Card surface around the list: container radius, hairline, no shadow.
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(height + shadowOffset)
-                .padding(end = shadowOffset, bottom = shadowOffset)
+                .height(height)
+                .raftCardSurface()
+                .clipToBounds()
     ) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .offset(x = shadowOffset, y = shadowOffset)
-                .background(RaftColor.ShadowBlack)
-        )
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(height)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                     .then(listModifier),
             verticalArrangement = Arrangement.spacedBy(0.dp),
             content = content
@@ -2509,29 +1783,20 @@ internal fun RaftBrutalListSectionHeader(
     label: String,
     modifier: Modifier = Modifier
 ) {
-    val raft = raftActive()
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(if (raft) Color.Transparent else RaftColor.SurfaceWhite.copy(alpha = 0.5f))
+                .background(Color.Transparent)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (raft) {
-            // raft section title (`rf-section`): 13/18 bold hint ink, sentence case.
-            Text(
-                text = label,
-                style = RaftType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.ForegroundHint
-            )
-        } else {
-            Text(
-                text = label,
-                style = RaftType.SectionLabel.copy(color = RaftColor.TextBlack),
-                color = RaftColor.TextBlack
-            )
-        }
+        // raft section title (`rf-section`): 13/18 bold hint ink, sentence case.
+        Text(
+            text = label,
+            style = RaftType.SectionLabel.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp)
+                .withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.ForegroundHint
+        )
     }
 }

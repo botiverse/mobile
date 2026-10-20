@@ -24,7 +24,7 @@ internal class ChannelMembersParityVisualPage : BasePager() {
         super.willInit()
         val variant = pageData.params.optString("variant", "roster")
         setContent {
-            RaftThemeProvider(brutalTheme) {
+            RaftThemeProvider(raftLightTheme) {
                 // Match ThreadMembersPageScreen's production outer surface.
                 Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
                     ChannelMembersParityContent(variant)

@@ -197,22 +197,33 @@ class SettingsStandaloneWebViewHostTest {
     }
 
     @Test
+    fun legacyComputersSurfaceStillResolvesSoOldRoutesRenderTheNativePage() {
+        val pageData =
+            settingsWebViewPageData(
+                surface = SettingsWebViewSurface.Computers,
+                storeScope = RaftShellStoreScope.create(shellInstanceId = "shell-legacy-computers"),
+            ).put(SETTINGS_COMPUTER_ID, "machine-42")
+
+        assertEquals(SettingsWebViewSurface.Computers, settingsWebViewSurfaceFromPageData(pageData))
+        assertEquals("machine-42", pageData.optString(SETTINGS_COMPUTER_ID))
+    }
+
+    @Test
     fun headerLayerIsAboveTheNativeWebViewBodySibling() {
         assertTrue(SETTINGS_WEB_VIEW_HEADER_Z_INDEX > SETTINGS_WEB_VIEW_BODY_Z_INDEX)
     }
 
     @Test
-    fun computersHeaderUsesFallbackUntilTheWebDocumentPublishesATitle() {
+    fun headerUsesFallbackUntilTheWebDocumentPublishesATitle() {
         val state =
             SettingsWebViewHeaderTitleState()
                 .accept(candidate = "Raft", navigationIsLoading = true)
 
-        assertTrue(settingsComputersWebViewSpec.headerFollowsDocumentTitle)
         assertEquals("Computers", state.displayTitle("Computers"))
     }
 
     @Test
-    fun computersHeaderTracksAgentDocumentTitle() {
+    fun headerTracksTheCommittedDocumentTitle() {
         val loadingState =
             SettingsWebViewHeaderTitleState()
                 .accept(candidate = "  Jony  ", navigationIsLoading = true)

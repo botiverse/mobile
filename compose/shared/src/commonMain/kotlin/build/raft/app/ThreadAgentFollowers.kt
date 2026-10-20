@@ -151,8 +151,6 @@ private fun FollowerNoticeView(
     notice: ThreadFollowersNotice, canUndo: Boolean, enabled: Boolean,
     onUndo: () -> Unit, modifier: Modifier = Modifier,
 ) {
-    val theme = LocalRaftTheme.current
-    val brutal = !theme.isAmbient
     val isError = notice.kind == ThreadFollowersNoticeKind.RemoveFailed || notice.kind == ThreadFollowersNoticeKind.RestoreFailed
     val label = stringResource(when (notice.kind) {
         ThreadFollowersNoticeKind.Removed -> MR.strings.thread_followers_removed
@@ -160,32 +158,29 @@ private fun FollowerNoticeView(
         ThreadFollowersNoticeKind.RemoveFailed -> MR.strings.thread_followers_remove_failed
         ThreadFollowersNoticeKind.RestoreFailed -> MR.strings.thread_followers_restore_failed
     }, notice.agentLabel)
-    val shape = RoundedCornerShape(if (brutal) 0.dp else 12.dp)
-    val surface = if (brutal) {
-        if (isError) RaftColor.AccentOrange else RaftColor.AccentLime
-    } else Color(0xED2C2C2E)
-    val ink = if (brutal) RaftColor.TextBlack else RaftColor.SurfaceWhite
+    val shape = RoundedCornerShape(12.dp)
+    val surface = Color(0xED2C2C2E)
+    val ink = RaftColor.SurfaceWhite
     Box(modifier.padding(16.dp).widthIn(max = 384.dp)) {
-        if (brutal) Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(RaftColor.ShadowBlack))
         Column(
             Modifier.fillMaxWidth().background(surface, shape)
-                .border(if (brutal) 2.dp else 1.dp, if (brutal) theme.line else Color.White.copy(alpha = 0.2f), shape)
+                .border(1.dp, Color.White.copy(alpha = 0.2f), shape)
                 .raftNativeDispatchCapture().clickable { }.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(if (brutal) 6.dp else 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RaftLucideIcon(if (isError) RaftLucideIconName.Info else RaftLucideIconName.CircleCheck,
-                    Modifier.size(16.dp), color = if (brutal) RaftColor.TextBlackArgb else RaftColor.SurfaceWhiteArgb)
+                    Modifier.size(16.dp), color = RaftColor.SurfaceWhiteArgb)
                 Text(label, style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp,
-                    fontWeight = if (brutal) FontWeight.Bold else FontWeight.Medium), color = ink,
+                    fontWeight = FontWeight.Medium), color = ink,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
             if (canUndo) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    val buttonShape = RoundedCornerShape(if (brutal) 0.dp else 100.dp)
+                    val buttonShape = RoundedCornerShape(100.dp)
                     Box(Modifier.heightIn(min = 28.dp)
-                        .background(if (brutal) RaftColor.TextBlack else Color.White.copy(alpha = 0.06f), buttonShape)
-                        .border(if (brutal) 2.dp else 1.dp, if (brutal) theme.line else Color.White.copy(alpha = 0.14f), buttonShape)
+                        .background(Color.White.copy(alpha = 0.06f), buttonShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.14f), buttonShape)
                         .clickable(enabled = enabled, onClick = onUndo).padding(horizontal = 8.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
                         Text(stringResource(MR.strings.common_undo), style = RaftType.Caption, color = RaftColor.SurfaceWhite)
                     }
@@ -264,17 +259,14 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopov
         dismissActivationDelayMillis = 0L,
     ) {
         Box(Modifier.onSizeChanged { measuredSize = Size(it.width.toFloat(), it.height.toFloat()) }) {
-        val shape = RoundedCornerShape(theme.cornerRadius)
-        if (!theme.isAmbient) {
-            Box(Modifier.matchParentSize().offset(4.dp, 4.dp).background(theme.shadow.color))
-        }
+        val shape = RoundedCornerShape(RaftAppRadius.Control)
         Column(Modifier.width(width)
-            .then(if (theme.isAmbient) Modifier.shadow(4.dp, shape, clip = false,
-                ambientColor = theme.shadow.color, spotColor = theme.shadow.color) else Modifier)
+            .shadow(4.dp, shape, clip = false,
+                ambientColor = Color.Transparent, spotColor = Color.Transparent)
             .background(theme.surface, shape)
-            .border(theme.lineWidth, theme.line, RoundedCornerShape(theme.cornerRadius)).clickable { }) {
+            .border(theme.lineWidth, theme.line, RoundedCornerShape(RaftAppRadius.Control)).clickable { }) {
             Box(Modifier.fillMaxWidth()
-                .background(if (!theme.isAmbient) RaftColor.SurfaceCream else theme.surface)
+                .background(theme.surface)
                 .padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(stringResource(MR.strings.thread_followers_title),
                     style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)

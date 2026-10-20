@@ -230,7 +230,10 @@ interface ConversationRepository {
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
-    suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
+    suspend fun markThreadDone(
+        threadChannelId: ChannelId,
+        frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy
+    ): DataResult<ThreadActionResult>
     suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> =
         DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true))
@@ -536,7 +539,10 @@ interface InboxRepository {
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<InboxSnapshot> = loadInitial(serverId, filter, limit)
 
-    suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult>
+    suspend fun markDone(
+        channelId: ChannelId,
+        frontier: InboxDoneFrontier = InboxDoneFrontier.Legacy
+    ): DataResult<InboxDoneResult>
 }
 
 interface SavedRepository {
@@ -740,6 +746,7 @@ data class SettingsServerSidebarOrderUpdateRequest(
     val agentOrder: List<String>? = null,
     val dmOrder: List<String>? = null,
     val channelSortMode: String? = null,
+    val jointChannelSortMode: String? = null,
     val dmSortMode: String? = null,
     val pinnedSortMode: String? = null,
     val pinned: List<SettingsServerSidebarPinnedItem>? = null,

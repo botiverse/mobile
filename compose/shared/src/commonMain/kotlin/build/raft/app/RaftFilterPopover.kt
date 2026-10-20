@@ -3,13 +3,10 @@ package build.raft.app
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftLookSeparator
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,28 +16,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private const val RaftFilterPopoverWidthValue = 220f
-private const val RaftFilterPopoverEstimatedHeightValue = 360f
 private const val RaftFilterPopoverVerticalOffsetValue = 8f
 
 /**
@@ -72,6 +68,7 @@ internal data class RaftFilterOption(
  *   the user picks an option — useful for "Creator" style filters where exactly one
  *   value is meaningful at a time.
  */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftFilterPopover(
     anchor: RaftPopoverAnchor?,
@@ -99,223 +96,53 @@ internal fun RaftFilterPopover(
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
-    if (raftActive()) {
-        RaftLookFilterPopover(
-            anchor = anchor,
-            title = title,
-            filtered = filtered,
-            selectedIds = selectedIds,
-            onToggle = onToggle,
-            onClear = onClear,
-            onDismiss = onDismiss,
-            widthDp = widthDp,
-            horizontalOffsetDp = horizontalOffsetDp,
-            verticalOffsetDp = verticalOffsetDp,
-            multiSelect = multiSelect,
-            showClearWhenSelected = showClearWhenSelected,
-            headerSlot = headerSlot,
-            searchField =
-                if (searchable) {
-                    {
-                        RaftBrutalInputField(
-                            value = searchText,
-                            onValueChange = onSearchChange,
-                            placeholder = searchPlaceholder,
-                            autoFocus = false,
-                            maxLines = 1,
-                            textStyle = RaftFilterPopoverInputStyle(),
-                            fieldMinHeight = RaftFilterSearchHeight,
-                            horizontalPadding = RaftFilterSearchPaddingHorizontal,
-                            verticalPadding = 0.dp,
-                            showShadow = false,
-                            // The search row is chromeless: only the hairline below it.
-                            borderColor = Color.Transparent,
-                            enabledBackgroundColor = Color.Transparent,
-                            placeholderColor = RaftColor.ForegroundHint,
-                            // Same as the brutal field above: the whole 40dp row focuses the
-                            // editor (iOS's native hit region is smaller than the row).
-                            containerTapRequestsFocus = true,
-                            showClearWhenNotEmpty = true,
-                            onClear = { onSearchChange("") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                } else {
-                    null
-                }
-        )
-        return
-    }
-    val density = LocalDensity.current
-    val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
-    val popoverWidth = widthDp.dp
-    val popoverSize =
-        with(density) {
-            Size(
-                width = (popoverWidth + shadowOffset).toPx(),
-                height = (RaftFilterPopoverEstimatedHeightValue.dp + shadowOffset).toPx()
-            )
-        }
-    val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
-    val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
-    val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
-    RaftModalAnchoredPopover(
+    RaftLookFilterPopover(
         anchor = anchor,
-        contentSize = popoverSize,
+        title = title,
+        filtered = filtered,
+        selectedIds = selectedIds,
+        onToggle = onToggle,
+        onClear = onClear,
         onDismiss = onDismiss,
-        viewportGap = viewportGapPx,
-        horizontalOffset = horizontalOffsetPx,
-        verticalOffset = verticalOffsetPx,
-        // Filter chip anchors are their left edge; clamp to the viewport
-        // instead of flipping the popover entirely to the chip's left.
-        horizontalAutoFlip = false,
-        verticalPlacement = RaftFloatingVerticalPlacement.Auto
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(end = shadowOffset, bottom = shadowOffset)
-        ) {
-            if (shadowOffset > 0.dp) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(surfaceShadowColor)
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .width(popoverWidth)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, surfaceBorderColor)
-                    // A filter popover owns a LazyColumn. The native capture used
-                    // by raftFloatingContentClickTarget intercepts its drag stream
-                    // before Kuikly delivers it to that list. The empty clickable
-                    // still prevents taps on card whitespace from dismissing the
-                    // overlay while leaving the nested list scrollable.
-                    .clickable(onClick = {})
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.1f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title.raftDisplayUppercase(),
-                        style = RaftType.Caption.copy(
-                            fontSize = 10.sp,
-                            lineHeight = 12.sp,
-                            letterSpacing = 0.9.sp
-                        ).withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.TextMutedGray
+        widthDp = widthDp,
+        horizontalOffsetDp = horizontalOffsetDp,
+        verticalOffsetDp = verticalOffsetDp,
+        multiSelect = multiSelect,
+        showClearWhenSelected = showClearWhenSelected,
+        headerSlot = headerSlot,
+        searchField =
+            if (searchable) {
+                {
+                    RaftBrutalInputField(
+                        value = searchText,
+                        onValueChange = onSearchChange,
+                        placeholder = searchPlaceholder,
+                        autoFocus = false,
+                        maxLines = 1,
+                        textStyle = RaftFilterPopoverInputStyle(),
+                        fieldMinHeight = RaftFilterSearchHeight,
+                        horizontalPadding = RaftFilterSearchPaddingHorizontal,
+                        verticalPadding = 0.dp,
+                        showShadow = false,
+                        // The search row is chromeless: only the hairline below it.
+                        borderColor = Color.Transparent,
+                        enabledBackgroundColor = Color.Transparent,
+                        placeholderColor = RaftColor.ForegroundHint,
+                        // The whole 40dp row focuses the editor (iOS's native hit
+                        // region is smaller than the row).
+                        containerTapRequestsFocus = true,
+                        showClearWhenNotEmpty = true,
+                        onClear = { onSearchChange("") },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Box(modifier = Modifier.weight(1f))
-                    if (showClearWhenSelected && selectedIds.isNotEmpty()) {
-                        Text(
-                            text = stringResource(MR.strings.common_clear),
-                            style = RaftType.Caption.copy(
-                                fontSize = 10.sp,
-                                lineHeight = 12.sp,
-                                letterSpacing = 0.9.sp
-                            ).withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.TextMutedGray,
-                            modifier = Modifier.clickable(onClick = onClear)
-                        )
-                    }
                 }
-                headerSlot?.invoke()
-                if (searchable) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.1f))
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    ) {
-                        RaftBrutalInputField(
-                            value = searchText,
-                            onValueChange = onSearchChange,
-                            placeholder = searchPlaceholder,
-                            autoFocus = false,
-                            maxLines = 1,
-                            // iOS keeps the native editor's precise hit region smaller
-                            // than the brutal field chrome. Let the full visible field
-                            // request focus so taps on its padding still open the editor.
-                            containerTapRequestsFocus = true,
-                            showClearWhenNotEmpty = true,
-                            onClear = { onSearchChange("") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                        )
-                    }
-                }
-                if (filtered.isEmpty()) {
-                    Text(
-                        text = stringResource(MR.strings.common_no_matches),
-                        style = RaftType.Caption,
-                        color = RaftColor.TextMutedGray,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 256.dp)) {
-                        LazyColumn {
-                            items(filtered.size, key = { i -> filtered[i].id }) { index ->
-                                val option = filtered[index]
-                                val selected = option.id in selectedIds
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp)
-                                            .background(if (selected) selectedRowColor else RaftColor.SurfaceWhite)
-                                            .clickable {
-                                                onToggle(option.id)
-                                                if (!multiSelect) onDismiss()
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        option.icon?.let {
-                                            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                                                RaftLucideIcon(it, modifier = Modifier.size(12.dp), color = "#80000000")
-                                            }
-                                        }
-                                        Text(
-                                            text = option.label,
-                                            style = RaftType.Caption.copy(
-                                                fontSize = 12.sp,
-                                                lineHeight = 16.sp
-                                            ).withRaftFontWeight(FontWeight.Bold),
-                                            color = RaftColor.TextBlack,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        if (selected) {
-                                            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
-                                        }
-                                    }
-                                    if (index < filtered.lastIndex) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = RaftAppStroke.Thin)
-                                                .background(RaftColor.BorderBlack.copy(alpha = 0.1f))
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            } else {
+                null
             }
-        }
-    }
+    )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftFilterPopover(
     anchor: RaftPopoverAnchor?,
@@ -343,221 +170,50 @@ internal fun RaftFilterPopover(
     val filtered =
         if (searchText.text.isBlank()) options
         else options.filter { it.label.contains(searchText.text, ignoreCase = true) }
-    if (raftActive()) {
-        RaftLookFilterPopover(
-            anchor = anchor,
-            title = title,
-            filtered = filtered,
-            selectedIds = selectedIds,
-            onToggle = onToggle,
-            onClear = onClear,
-            onDismiss = onDismiss,
-            widthDp = widthDp,
-            horizontalOffsetDp = horizontalOffsetDp,
-            verticalOffsetDp = verticalOffsetDp,
-            multiSelect = multiSelect,
-            showClearWhenSelected = showClearWhenSelected,
-            headerSlot = headerSlot,
-            searchField =
-                if (searchable) {
-                    {
-                        RaftBrutalInputField(
-                            value = searchText,
-                            onValueChange = onSearchChange,
-                            placeholder = searchPlaceholder,
-                            autoFocus = false,
-                            maxLines = 1,
-                            textStyle = RaftFilterPopoverInputStyle(),
-                            fieldMinHeight = RaftFilterSearchHeight,
-                            horizontalPadding = RaftFilterSearchPaddingHorizontal,
-                            verticalPadding = 0.dp,
-                            showShadow = false,
-                            // The search row is chromeless: only the hairline below it.
-                            borderColor = Color.Transparent,
-                            enabledBackgroundColor = Color.Transparent,
-                            placeholderColor = RaftColor.ForegroundHint,
-                            // Same as the brutal field above: the whole 40dp row focuses the
-                            // editor (iOS's native hit region is smaller than the row).
-                            containerTapRequestsFocus = true,
-                            showClearWhenNotEmpty = true,
-                            onClear = { onSearchChange(TextFieldValue("")) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                } else {
-                    null
-                }
-        )
-        return
-    }
-    val density = LocalDensity.current
-    val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
-    val popoverWidth = widthDp.dp
-    val popoverSize =
-        with(density) {
-            Size(
-                width = (popoverWidth + shadowOffset).toPx(),
-                height = (RaftFilterPopoverEstimatedHeightValue.dp + shadowOffset).toPx()
-            )
-        }
-    val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
-    val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
-    val viewportGapPx = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() }
-    RaftModalAnchoredPopover(
+    RaftLookFilterPopover(
         anchor = anchor,
-        contentSize = popoverSize,
+        title = title,
+        filtered = filtered,
+        selectedIds = selectedIds,
+        onToggle = onToggle,
+        onClear = onClear,
         onDismiss = onDismiss,
-        viewportGap = viewportGapPx,
-        horizontalOffset = horizontalOffsetPx,
-        verticalOffset = verticalOffsetPx,
-        // Filter chip anchors are their left edge; clamp to the viewport
-        // instead of flipping the popover entirely to the chip's left.
-        horizontalAutoFlip = false,
-        verticalPlacement = RaftFloatingVerticalPlacement.Auto
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(end = shadowOffset, bottom = shadowOffset)
-        ) {
-            if (shadowOffset > 0.dp) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(surfaceShadowColor)
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .width(popoverWidth)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, surfaceBorderColor)
-                    // A filter popover owns a LazyColumn. The native capture used
-                    // by raftFloatingContentClickTarget intercepts its drag stream
-                    // before Kuikly delivers it to that list. The empty clickable
-                    // still prevents taps on card whitespace from dismissing the
-                    // overlay while leaving the nested list scrollable.
-                    .clickable(onClick = {})
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.1f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = title.raftDisplayUppercase(),
-                        style = RaftType.Caption.copy(
-                            fontSize = 10.sp,
-                            lineHeight = 12.sp,
-                            letterSpacing = 0.9.sp
-                        ).withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.TextMutedGray
+        widthDp = widthDp,
+        horizontalOffsetDp = horizontalOffsetDp,
+        verticalOffsetDp = verticalOffsetDp,
+        multiSelect = multiSelect,
+        showClearWhenSelected = showClearWhenSelected,
+        headerSlot = headerSlot,
+        searchField =
+            if (searchable) {
+                {
+                    RaftBrutalInputField(
+                        value = searchText,
+                        onValueChange = onSearchChange,
+                        placeholder = searchPlaceholder,
+                        autoFocus = false,
+                        maxLines = 1,
+                        textStyle = RaftFilterPopoverInputStyle(),
+                        fieldMinHeight = RaftFilterSearchHeight,
+                        horizontalPadding = RaftFilterSearchPaddingHorizontal,
+                        verticalPadding = 0.dp,
+                        showShadow = false,
+                        // The search row is chromeless: only the hairline below it.
+                        borderColor = Color.Transparent,
+                        enabledBackgroundColor = Color.Transparent,
+                        placeholderColor = RaftColor.ForegroundHint,
+                        // The whole 40dp row focuses the editor (iOS's native hit
+                        // region is smaller than the row).
+                        containerTapRequestsFocus = true,
+                        showClearWhenNotEmpty = true,
+                        onClear = { onSearchChange(TextFieldValue("")) },
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    Box(modifier = Modifier.weight(1f))
-                    if (showClearWhenSelected && selectedIds.isNotEmpty()) {
-                        Text(
-                            text = stringResource(MR.strings.common_clear),
-                            style = RaftType.Caption.copy(
-                                fontSize = 10.sp,
-                                lineHeight = 12.sp,
-                                letterSpacing = 0.9.sp
-                            ).withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.TextMutedGray,
-                            modifier = Modifier.clickable(onClick = onClear)
-                        )
-                    }
                 }
-                headerSlot?.invoke()
-                if (searchable) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.1f))
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    ) {
-                        RaftBrutalInputField(
-                            value = searchText,
-                            onValueChange = onSearchChange,
-                            placeholder = searchPlaceholder,
-                            autoFocus = false,
-                            maxLines = 1,
-                            // iOS keeps the native editor's precise hit region smaller
-                            // than the brutal field chrome. Let the full visible field
-                            // request focus so taps on its padding still open the editor.
-                            containerTapRequestsFocus = true,
-                            showClearWhenNotEmpty = true,
-                            onClear = { onSearchChange(TextFieldValue("")) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                        )
-                    }
-                }
-                if (filtered.isEmpty()) {
-                    Text(
-                        text = stringResource(MR.strings.common_no_matches),
-                        style = RaftType.Caption,
-                        color = RaftColor.TextMutedGray,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxWidth().heightIn(max = 256.dp)) {
-                        LazyColumn {
-                            items(filtered.size, key = { i -> filtered[i].id }) { index ->
-                                val option = filtered[index]
-                                val selected = option.id in selectedIds
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(36.dp)
-                                            .background(if (selected) selectedRowColor else RaftColor.SurfaceWhite)
-                                            .clickable {
-                                                onToggle(option.id)
-                                                if (!multiSelect) onDismiss()
-                                            }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        option.icon?.let {
-                                            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                                                RaftLucideIcon(it, modifier = Modifier.size(12.dp), color = "#80000000")
-                                            }
-                                        }
-                                        Text(
-                                            text = option.label,
-                                            style = RaftType.Caption.copy(
-                                                fontSize = 12.sp,
-                                                lineHeight = 16.sp
-                                            ).withRaftFontWeight(FontWeight.Bold),
-                                            color = RaftColor.TextBlack,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        if (selected) {
-                                            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
-                                        }
-                                    }
-                                    if (index < filtered.lastIndex) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = RaftAppStroke.Thin)
-                                                .background(RaftColor.BorderBlack.copy(alpha = 0.1f))
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            } else {
+                null
             }
-        }
-    }
+    )
 }
 
 // raft-ui Combobox / Select popup (web search filters): overlay surface (container radius,
@@ -644,15 +300,22 @@ private fun RaftLookFilterPopover(
                     modifier = Modifier.weight(1f)
                 )
                 if (showClearWhenSelected && selectedIds.isNotEmpty()) {
+                    // raft-ui ComboboxClear: an `h-7 px-2` ghost in `text-footnote` semibold
+                    // `foreground-muted`.
                     Box(
-                        modifier = Modifier.clickable(onClick = onClear).padding(horizontal = 10.dp, vertical = 4.dp)
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(RaftAppRadius.Control))
+                            .clickable(onClick = onClear)
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = stringResource(MR.strings.common_clear),
-                            style = RaftType.Caption
-                                .copy(fontSize = 12.sp, lineHeight = 16.sp, textDecoration = TextDecoration.Underline)
+                            style = RaftType.Body
+                                .copy(fontSize = 13.sp, lineHeight = 18.sp)
                                 .withRaftFontWeight(FontWeight.SemiBold),
-                            color = RaftColor.TextBlack,
+                            color = RaftColor.TextMuted,
                             maxLines = 1
                         )
                     }

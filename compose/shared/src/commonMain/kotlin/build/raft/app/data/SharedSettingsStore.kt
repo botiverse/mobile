@@ -353,8 +353,14 @@ private data class ServerNotificationModeMutation(
 
 sealed interface SharedSettingsIntent {
     data object Start : SharedSettingsIntent
-    /** Loads content for the Pager that already owns this store; it never performs navigation. */
-    data class LoadPageContent(val page: SharedSettingsDestination) : SharedSettingsIntent
+    /**
+     * Loads content for the Pager that already owns this store; it never performs navigation.
+     * [itemId] names the item of an item page (the machine of [SharedSettingsDestination.ComputerDetail]).
+     */
+    data class LoadPageContent(
+        val page: SharedSettingsDestination,
+        val itemId: String? = null
+    ) : SharedSettingsIntent
     data class OpenComputer(val machineId: String) : SharedSettingsIntent
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
@@ -461,6 +467,7 @@ sealed interface SharedSettingsIntent {
     data class SetRealtimeCurlSocketIoEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetHttp3Enabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadReverseLayoutEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetNativePullToRefreshEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
@@ -601,6 +608,7 @@ class SharedSettingsDataSource(
     private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
+    private val nativePullToRefreshPreferenceStore: RaftNativePullToRefreshPreferenceStore? = null,
     private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
@@ -762,7 +770,7 @@ class SharedSettingsDataSource(
                 is DataResult.Error -> DataResult.Error(sharedComputer.error)
                 is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
                 null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            }.withComputerManageGate(session.canManageCurrentServer())
+            }.withComputerManageGate(session)
         if (result is DataResult.Content && serverId != null) {
             refreshServerMembersForSettingsStatus(serverId, force = forceComputers)
         }
@@ -1297,6 +1305,30 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setNativePullToRefreshEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val store =
+            nativePullToRefreshPreferenceStore
+                ?: return DataResult.Error(ScreenError("settings_native_pull_to_refresh_unavailable", retryable = false))
+        store.saveNativePullToRefreshEnabled(enabled)
+        diagnosticsLogger?.invoke("native_pull_to_refresh enabled=$enabled")
+        return loadMobilePreferences()
+    }
+
+    /** Off (default) = Raft's custom pull-to-refresh; on = the platform's own style. Applies live. */
+    private fun SettingsMobileSnapshot.withNativePullToRefreshPreference(): SettingsMobileSnapshot {
+        val store = nativePullToRefreshPreferenceStore ?: return this
+        val enabled = store.readNativePullToRefreshEnabledSync()
+        return copy(
+            nativePullToRefresh =
+                SettingsMobileToggleSnapshot(
+                    enabled = enabled,
+                    available = true,
+                    statusLabel = if (enabled) "Enabled" else "Off",
+                    detail = "Use the system pull-to-refresh style of this platform. When off, keep Raft's pull-to-refresh."
+                )
+        )
+    }
+
     /** The switch shows the user's choice when there is one, otherwise the default it follows. Applies to the next thread open. */
     private suspend fun SettingsMobileSnapshot.withThreadReverseLayoutPreference(): SettingsMobileSnapshot {
         val store = threadReverseLayoutPreferenceStore ?: return this
@@ -1750,6 +1782,7 @@ class SharedSettingsDataSource(
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
         ).withRealtimeCurlSocketIoPreference().withHttp3Preference().withThreadReverseLayoutPreference()
+            .withNativePullToRefreshPreference()
     }
 
     private fun SettingsMobileSnapshot.withSystemNotificationPermission(
@@ -1862,7 +1895,8 @@ class SharedSettingsViewModel(
             SharedSettingsStore(
                 dataSource = dataSource,
                 scope = viewModelScope,
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                standaloneNavigation = true
             )
         }
     private val contractDelegate =
@@ -1964,11 +1998,18 @@ class SharedSettingsStore(
     private val diagnosticsLogger: (String) -> Unit = {},
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val diagnosticsRefreshDelay: suspend (Long) -> Unit = { delay(it) },
+    /**
+     * Each standalone settings page owns one destination; navigating is the host's job. A store in
+     * this mode never switches its own route to another page, it only emits the navigation effect.
+     */
+    private val standaloneNavigation: Boolean = false,
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private val pendingMachineRealtimeIds = LinkedHashSet<String>()
+    private var machineRealtimeDrainActive = false
     private var diagnosticsRefreshJob: Job? = null
     private var diagnosticsRefreshToken: Long = 0L
     private var authOwnerObservationJob: Job? = null
@@ -2015,7 +2056,11 @@ class SharedSettingsStore(
                 if (intent.page != SharedSettingsDestination.Notifications) {
                     retireServerNotificationModeMutation()
                 }
-                _state.value = _state.value.copy(route = SharedSettingsRoute(intent.page), routeErrorCode = null)
+                _state.value =
+                    _state.value.copy(
+                        route = SharedSettingsRoute(intent.page, intent.itemId?.trim()?.takeIf { it.isNotBlank() }),
+                        routeErrorCode = null
+                    )
                 loadCurrentRoute()
             }
             is SharedSettingsIntent.OpenComputer -> {
@@ -2038,7 +2083,8 @@ class SharedSettingsStore(
                     )
                 loadHome()
             }
-            SharedSettingsIntent.Refresh -> loadCurrentRoute()
+            // An explicit refresh bypasses the computers cache (the in-memory computers slice).
+            SharedSettingsIntent.Refresh -> loadCurrentRoute(forceComputers = true)
             SharedSettingsIntent.RefreshComputers -> refreshComputers()
             is SharedSettingsIntent.ScanComputerWorkspaces -> {
                 runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
@@ -2622,6 +2668,14 @@ class SharedSettingsStore(
                 dataSource.setThreadReverseLayoutEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_THREAD_REVERSE_LAYOUT)
             }
+            is SharedSettingsIntent.SetNativePullToRefreshEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_NATIVE_PULL_TO_REFRESH, inProgress = true)
+                    )
+                dataSource.setNativePullToRefreshEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_NATIVE_PULL_TO_REFRESH)
+            }
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled -> {
                 _state.value =
                     _state.value.copy(
@@ -2696,15 +2750,15 @@ class SharedSettingsStore(
         dataSource.loadHome().applyToState(SharedSettingsDestination.Home) { copy(home = it) }
     }
 
-    private suspend fun loadCurrentRoute() {
+    private suspend fun loadCurrentRoute(forceComputers: Boolean = false) {
         when (val destination = _state.value.route.destination) {
             SharedSettingsDestination.Home -> loadHome()
             SharedSettingsDestination.Account ->
                 dataSource.loadAccount().applyToState(destination) { copy(account = it) }
             SharedSettingsDestination.Computers ->
-                dataSource.loadComputers().applyToState(destination) { copy(computers = it) }
+                dataSource.loadComputers(forceComputers = forceComputers).applyToState(destination) { copy(computers = it) }
             SharedSettingsDestination.ComputerDetail ->
-                loadComputerDetail(_state.value.route.itemId.orEmpty())
+                loadComputerDetail(_state.value.route.itemId.orEmpty(), forceComputers = forceComputers)
             SharedSettingsDestination.Server ->
                 dataSource.loadServer().applyToState(destination) { copy(server = it) }
             SharedSettingsDestination.Administration ->
@@ -2742,7 +2796,7 @@ class SharedSettingsStore(
             .applyToState(SharedSettingsDestination.Computers) { copy(computers = it) }
     }
 
-    private suspend fun loadComputerDetail(machineId: String) {
+    private suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false) {
         if (machineId.isBlank()) {
             _state.value =
                 _state.value.copy(
@@ -2751,7 +2805,7 @@ class SharedSettingsStore(
                 )
             return
         }
-        dataSource.loadComputerDetail(machineId).applyToState(SharedSettingsDestination.ComputerDetail) {
+        dataSource.loadComputerDetail(machineId, forceComputers = forceComputers).applyToState(SharedSettingsDestination.ComputerDetail) {
             copy(computerDetail = it)
         }
     }
@@ -2830,17 +2884,42 @@ class SharedSettingsStore(
         when (_state.value.route.destination) {
             SharedSettingsDestination.ComputerDetail -> {
                 val openId = _state.value.route.itemId.orEmpty()
-                if (openId.isNotBlank() && openId == machineId) {
-                    dataSource
-                        .loadComputerDetail(machineId, forceComputers = true)
-                        .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+                if (openId.isBlank() || openId != machineId) return
+            }
+            SharedSettingsDestination.Computers -> Unit
+            else -> return
+        }
+        // Single-flight: a burst of machine:status / machine:updated frames coalesces into one
+        // in-flight reload plus at most one follow-up that covers every machine seen meanwhile.
+        pendingMachineRealtimeIds += machineId
+        if (machineRealtimeDrainActive) {
+            diagnosticsLogger("settings_machines_realtime_coalesce machineId=$machineId")
+            return
+        }
+        machineRealtimeDrainActive = true
+        try {
+            while (pendingMachineRealtimeIds.isNotEmpty()) {
+                val machineIds = pendingMachineRealtimeIds.toList()
+                pendingMachineRealtimeIds.clear()
+                when (_state.value.route.destination) {
+                    SharedSettingsDestination.ComputerDetail -> {
+                        val openId = _state.value.route.itemId.orEmpty()
+                        if (openId.isNotBlank() && openId in machineIds) {
+                            dataSource
+                                .loadComputerDetail(openId, forceComputers = true)
+                                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+                        }
+                    }
+                    SharedSettingsDestination.Computers -> {
+                        dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+                        machineIds.forEach(::maybeAdvanceAddComputerDialogFromMachines)
+                    }
+                    else -> Unit
                 }
             }
-            SharedSettingsDestination.Computers -> {
-                dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                maybeAdvanceAddComputerDialogFromMachines(machineId)
-            }
-            else -> Unit
+        } finally {
+            machineRealtimeDrainActive = false
+            pendingMachineRealtimeIds.clear()
         }
     }
 
@@ -2877,6 +2956,15 @@ class SharedSettingsStore(
             dataSource.renameComputer(SettingsComputerRenameRequest(machineId = machineId, name = finalName))
         }
         dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+        if (standaloneNavigation) {
+            // The list page stays the list; the host opens the new machine's own detail page.
+            _state.value =
+                _state.value.copy(
+                    addComputerDialog = null,
+                    effect = SharedSettingsEffect.OpenComputer(machineId)
+                )
+            return
+        }
         _state.value =
             _state.value.copy(
                 addComputerDialog = null,
@@ -3759,6 +3847,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled,
             is SharedSettingsIntent.SetHttp3Enabled,
             is SharedSettingsIntent.SetThreadReverseLayoutEnabled,
+            is SharedSettingsIntent.SetNativePullToRefreshEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.SaveApiEnvironment,
@@ -3818,14 +3907,52 @@ private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
     }
 
 private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
-    canManageServer: Boolean
+    session: StoredAuthSession?
 ): DataResult<SettingsComputerDetailSnapshot> =
     when (this) {
-        is DataResult.Content -> DataResult.Content(data.copy(canManageMachines = canManageServer))
+        is DataResult.Content -> {
+            val permissions =
+                settingsComputerPermissions(
+                    serverRole = session.settingsCurrentServer()?.role,
+                    currentUserId = session?.user?.id,
+                    computer = data.computer
+                )
+            DataResult.Content(
+                data.copy(
+                    canManageMachines = permissions.canEdit || permissions.canRemove,
+                    canEditMachine = permissions.canEdit,
+                    canRemoveMachine = permissions.canRemove
+                )
+            )
+        }
         is DataResult.Empty -> this
         is DataResult.Error -> this
         is DataResult.NoPermission -> this
     }
+
+internal data class SettingsComputerPermissions(val canEdit: Boolean, val canRemove: Boolean)
+
+/**
+ * Mirrors the server gate `canManageMachineResource` (slock packages/server/src/routes/servers.ts):
+ * the machine creator (`machines.userId`) or a role holding `editMachines` (PATCH) /
+ * `removeMachines` (DELETE). Per packages/shared/src/serverPermissions.ts only owner and admin hold
+ * those capabilities. Like the web detail panel, attaching the backing Computer also counts.
+ */
+internal fun settingsComputerPermissions(
+    serverRole: String?,
+    currentUserId: String?,
+    computer: SettingsComputerSnapshot
+): SettingsComputerPermissions {
+    val role = serverRole?.trim()
+    val roleGrantsMachineCapabilities = role == "owner" || role == "admin"
+    val userId = currentUserId?.trim()?.takeIf { it.isNotBlank() }
+    val isCreator = userId != null && computer.creatorUserId?.trim() == userId
+    val ownsMachine = isCreator || computer.attachedByCurrentUser
+    return SettingsComputerPermissions(
+        canEdit = roleGrantsMachineCapabilities || ownsMachine,
+        canRemove = roleGrantsMachineCapabilities || ownsMachine
+    )
+}
 
 private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(): AddComputerDialogState {
     val snapshot = (this as? ScreenLoadState.Content)?.data
@@ -3848,11 +3975,15 @@ private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(
     )
 }
 
+/**
+ * The server the settings route is scoped to. Never another server: without a current server id
+ * (or with an id the session no longer lists) there is no server, so no role and no add/manage
+ * authority is borrowed from whichever server happens to be first.
+ */
 private fun StoredAuthSession?.settingsCurrentServer(): StoredAuthServer? {
     val session = this ?: return null
-    val selectedId = session.currentServerId
-    return selectedId?.let { id -> session.servers.firstOrNull { it.id == id } }
-        ?: session.servers.firstOrNull()
+    val selectedId = session.currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return session.servers.firstOrNull { it.id == selectedId }
 }
 
 private fun StoredAuthSession?.canManageCurrentServer(): Boolean =
@@ -3862,7 +3993,6 @@ private fun StoredAuthSession?.currentServerSlugForSettings(): String? {
     val session = this ?: return null
     return session.selectedServerSlug?.takeIf { it.isNotBlank() }
         ?: session.settingsCurrentServer()?.slug?.takeIf { it.isNotBlank() }
-        ?: session.servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
 }
 
 private fun ScreenLoadState<*>.routeErrorCode(): String? =
@@ -3963,6 +4093,7 @@ internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val MOBILE_ACTION_REALTIME_CURL_SOCKETIO = "realtimeCurlSocketIo"
 internal const val MOBILE_ACTION_HTTP3 = "http3"
 internal const val MOBILE_ACTION_THREAD_REVERSE_LAYOUT = "threadReverseLayout"
+internal const val MOBILE_ACTION_NATIVE_PULL_TO_REFRESH = "nativePullToRefresh"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
@@ -4160,7 +4291,7 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileLongMessageCollapseSnap
         enabled = longMessageCollapseEnabled,
         available = true,
         statusLabel = if (longMessageCollapseEnabled) "Enabled" else "Off",
-        detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
+        detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSnapshot(): SettingsMobileToggleSnapshot =

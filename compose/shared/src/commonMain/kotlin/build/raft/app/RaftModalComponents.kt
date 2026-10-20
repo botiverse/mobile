@@ -9,7 +9,6 @@ import build.raft.app.components.RaftBrutalModalHeader
 import build.raft.app.components.RaftBrutalModalLayer
 import build.raft.app.components.RaftActionSheetRowModel
 import build.raft.app.components.RaftModalShellModel
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,7 +37,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -61,7 +59,6 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlinx.coroutines.Job
 
-private val RaftUnifiedDialogShadowOffset = 4.dp
 // The brutal dialog defaults (p-6, 18sp title); raft swaps them for p-5 and the 17/22 headline.
 private val RaftUnifiedDialogLegacyPadding = 24.dp
 private const val RaftUnifiedDialogLegacyTitleSize = 18
@@ -362,6 +359,7 @@ internal fun RaftModalLayer(
     )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftUnifiedDialog(
     title: String,
@@ -395,7 +393,7 @@ internal fun RaftUnifiedDialog(
     content: @Composable ColumnScope.() -> Unit
 ) {
     // raft-ui dialog titles keep the source case (never ALL CAPS).
-    val displayTitle = if (uppercaseTitle && !raftActive()) title.raftDisplayUppercase() else title
+    val displayTitle = title
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
     // content in a separate native window, where the page host's top-inset local is not retained.
@@ -541,12 +539,10 @@ private fun RaftUnifiedDialogSurface(
         )
     // raft-ui 0.6.0 Dialog: 16dp dialog radius, `--layer-popover`, 1dp seam ring and the
     // overlay float shadow (which takes no layout space); 20dp (`p-5`) insets, a 17/22 bold
-    // source-case title and a ghost 32dp close. The brutal register keeps its offset slab.
-    val raft = raftActive()
-    val shadowReserve = if (raft) 0.dp else RaftUnifiedDialogShadowOffset
-    val resolvedContentPadding = if (raft && contentPadding == RaftUnifiedDialogLegacyPadding) 20.dp else contentPadding
-    val resolvedHeaderPadding = if (raft && headerPadding == RaftUnifiedDialogLegacyPadding) 20.dp else headerPadding
-    val raftDefaultTitle = raft && titleFontSize == RaftUnifiedDialogLegacyTitleSize
+    // source-case title and a ghost 32dp close.
+    val resolvedContentPadding = if (contentPadding == RaftUnifiedDialogLegacyPadding) 20.dp else contentPadding
+    val resolvedHeaderPadding = if (headerPadding == RaftUnifiedDialogLegacyPadding) 20.dp else headerPadding
+    val raftDefaultTitle = titleFontSize == RaftUnifiedDialogLegacyTitleSize
     Box(
         modifier =
             Modifier
@@ -567,32 +563,14 @@ private fun RaftUnifiedDialogSurface(
                         end = outerClearance.end,
                         bottom = outerClearance.bottom
                     )
-                    .padding(end = shadowReserve, bottom = shadowReserve)
                     .widthIn(min = minWidth, max = maxWidth)
                     .raftDialogContentPointerBarrier()
         ) {
-            if (!raft) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = RaftUnifiedDialogShadowOffset, y = RaftUnifiedDialogShadowOffset)
-                            .background(RaftColor.ShadowBlack)
-                )
-            }
             Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .then(
-                            if (raft) {
-                                Modifier.raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
-                            } else {
-                                Modifier
-                                    .background(RaftColor.SurfaceWhite)
-                                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                            }
-                        )
+                        .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
                         .padding(resolvedContentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {
@@ -617,11 +595,11 @@ private fun RaftUnifiedDialogSurface(
                             Text(
                                 text = overlineText,
                                 style = RaftType.Caption.copy(
-                                    fontSize = if (raft) 12.sp else 11.sp,
-                                    lineHeight = if (raft) 16.sp else 14.sp,
-                                    letterSpacing = if (raft) 0.sp else 0.6.sp
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                    letterSpacing = 0.sp
                                 ),
-                                color = if (raft) RaftColor.ForegroundHint else RaftColor.TextMutedGray,
+                                color = RaftColor.ForegroundHint,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth()
@@ -651,9 +629,9 @@ private fun RaftUnifiedDialogSurface(
                         enabled = dismissEnabled,
                         iconName = RaftLucideIconName.X,
                         onClick = onDismiss,
-                        backgroundColor = if (raft) Color.Transparent else RaftColor.SurfaceWhite,
-                        size = if (raft) 32.dp else 34.dp,
-                        iconSize = if (raft) 18.dp else 17.dp,
+                        backgroundColor = Color.Transparent,
+                        size = 32.dp,
+                        iconSize = 18.dp,
                         shadowOffset = 3.dp
                     )
                 }
@@ -745,63 +723,17 @@ internal fun RaftModalFullWidthActionButton(
     enabled: Boolean = true,
     iconSpinning: Boolean = icon == RaftLucideIconName.Loader || icon == RaftLucideIconName.LoaderCircle
 ) {
-    if (raftActive()) {
-        // raft: a full-width `lg` Button (44dp) with the variant mapped from [color].
-        RaftBrutalActionButton(
-            label = label,
-            onClick = onClick,
-            modifier = modifier.fillMaxWidth(),
-            enabled = enabled,
-            backgroundColor = color,
-            minHeight = 44.dp,
-            leadingIcon = icon,
-            leadingIconSpinning = iconSpinning
-        )
-        return
-    }
-    val shadowOffset = 3.dp
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(40.dp + shadowOffset)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(RaftColor.ShadowBlack)
-        )
-        Button(
-            enabled = enabled,
-            onClick = onClick,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .background(if (enabled) color else RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .padding(horizontal = 14.dp, vertical = 9.dp)
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000", spinning = iconSpinning)
-                Text(
-                    text = label,
-                    // React .btn-brutal is font-bold; regular weight here made
-                    // the danger buttons visibly lighter than web (task #348).
-                    style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
+    // raft: a full-width `lg` Button (44dp) with the variant mapped from [color].
+    RaftBrutalActionButton(
+        label = label,
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled,
+        backgroundColor = color,
+        minHeight = 44.dp,
+        leadingIcon = icon,
+        leadingIconSpinning = iconSpinning
+    )
 }
 
 @Composable

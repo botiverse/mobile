@@ -5603,6 +5603,93 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun createSidebarSectionFromRowMenuInsertsBeforeAndMovesTheRowIn() = runBlocking {
+        // Web parity (Sidebar.tsx createCustomSection): "Move to Section > New
+        // Section…" creates the section before the menu's section and moves the
+        // row into it (unpinning it) in one OCC PATCH.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial =
+            SettingsServerSidebarOrderSnapshot(
+                pinned = listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1")),
+                pinnedChannelIds = listOf("channel-1"),
+                pinnedOrder = listOf("channel-1"),
+                sectionOrder = SIDEBAR_SYSTEM_SECTION_IDS,
+                sectionsVersion = 5
+            )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(
+                    initial.copy(
+                        pinned = request.pinned ?: initial.pinned,
+                        customSections = request.customSections.orEmpty(),
+                        sectionOrder = request.sectionOrder.orEmpty(),
+                        sectionPlacements = request.sectionPlacements.orEmpty(),
+                        sectionsVersion = 6
+                    )
+                )
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.CreateSidebarSection(
+                name = "Mobile",
+                emoji = null,
+                moveConversationId = "channel-1",
+                insertBeforeSectionId = "system:channels"
+            )
+        )
+
+        val request = updateCalls.single()
+        assertEquals(5L, request.sectionsVersion)
+        val created = request.customSections.orEmpty().single()
+        assertEquals(
+            listOf("system:pinned", "system:joint", created.id, "system:channels", "system:dms"),
+            request.sectionOrder
+        )
+        assertEquals(
+            listOf(SettingsServerSidebarSectionPlacement(kind = "channel", id = "channel-1", sectionId = created.id, position = 0)),
+            request.sectionPlacements
+        )
+        assertEquals(emptyList(), request.pinned)
+        scope.cancel()
+    }
+
+    @Test
+    fun setJointChannelSortModePatchesOnlyTheJointSortMode() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(channelSortMode = "recent", jointChannelSortMode = "manual")
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial),
+            scope = scope,
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(jointChannelSortMode = request.jointChannelSortMode ?: "manual"))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetJointChannelSortMode(RaftSidebarSortMode.Az))
+
+        val request = updateCalls.single()
+        assertEquals("az", request.jointChannelSortMode)
+        assertNull(request.channelSortMode)
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals("az", after?.jointChannelSortMode)
+        assertEquals("recent", after?.channelSortMode)
+        scope.cancel()
+    }
+
+    @Test
     fun moveConversationToDefaultSectionRemovesPlacement() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val section = SettingsServerSidebarCustomSection(id = "sec-1", name = "Project", sortMode = "manual")

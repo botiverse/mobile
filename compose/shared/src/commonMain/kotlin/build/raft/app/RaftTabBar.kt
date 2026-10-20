@@ -5,6 +5,8 @@ import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.RaftUnreadCount
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -60,7 +63,9 @@ internal data class RaftBottomTabItemPayload(
     val label: String = "",
     val iconName: RaftLucideIconName = RaftLucideIconName.Circle,
     val selected: Boolean = false,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** Unread count drawn as the pink raft-ui count on the tab icon; 0 draws nothing. */
+    val badgeCount: Int = 0
 )
 
 internal enum class RaftTabBarPresentation {
@@ -73,20 +78,42 @@ internal enum class RaftTabBarPresentation {
 internal enum class RaftAppTabBarRenderer {
     SharedCompose,
     IosLiquidGlass,
-    AndroidFloating
+    AndroidFloating,
+    // The page host draws a system tab bar (iOS UITabBarController) from the state published
+    // through RaftNativeTabBarBridge; Compose draws no bar. Selected whenever the host
+    // registered a bridge for the page, independent of the renderer page-data param.
+    NativeHost
 }
 
 private val RaftSharedBottomTabBarHeight = 58.dp
 // Fixed band that hosts the native floating dock (iOS Liquid Glass, Android
 // floating). Scrollable content reserves this band plus the bottom safe area.
 private val RaftFloatingDockBottomTabBarHostHeight = 92.dp
+// UIKit's compact UITabBar height, used for the native host band until the host reports the
+// laid-out bar.
+private val RaftNativeHostTabBarFallbackHeight = 49.dp
 
 @Composable
 internal fun raftAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
+    val nativeTabBar = raftNativeTabBarBridge()
+    if (nativeTabBar != null) {
+        val bandPoints by nativeTabBar.bottomInsetPoints.collectAsState()
+        return raftNativeHostTabBarContentInset(bandPoints.toFloat().dp, bottomSafeArea)
+    }
     return raftAppBottomTabBarContentInset(
         renderer = raftAppTabBarRenderer(),
         bottomSafeArea = bottomSafeArea
     )
+}
+
+/**
+ * Content inset under a host-drawn tab bar. [nativeBand] already spans the home-indicator
+ * area, so the safe area is not added again; content keeps the shared Lg breathing room above
+ * the bar. Before the host reports a band, a compact UIKit bar plus the safe area is assumed.
+ */
+internal fun raftNativeHostTabBarContentInset(nativeBand: Dp, bottomSafeArea: Dp): Dp {
+    val band = if (nativeBand > 0.dp) nativeBand else RaftNativeHostTabBarFallbackHeight + bottomSafeArea
+    return band + RaftAppSpacing.Lg
 }
 
 internal fun raftAppBottomTabBarContentInset(
@@ -94,6 +121,7 @@ internal fun raftAppBottomTabBarContentInset(
     bottomSafeArea: Dp
 ): Dp {
     return when (renderer) {
+        RaftAppTabBarRenderer.NativeHost -> raftNativeHostTabBarContentInset(0.dp, bottomSafeArea)
         // Native floating docks remain overlays so backgrounds can paint
         // edge-to-edge, but scrollable trailing content must reserve the full
         // host band. Otherwise the final row settles under the native bar and
@@ -108,6 +136,9 @@ internal fun raftAppBottomTabBarContentInset(
 @Composable
 internal fun raftAppBottomTabBarOverlaysContent(): Boolean {
     return when (raftAppTabBarRenderer()) {
+        // The native host bar floats above the page: content runs edge to edge under it
+        // (Liquid Glass on iOS 26+) and reserves the band through the content inset.
+        RaftAppTabBarRenderer.NativeHost,
         RaftAppTabBarRenderer.IosLiquidGlass,
         RaftAppTabBarRenderer.AndroidFloating -> true
         RaftAppTabBarRenderer.SharedCompose -> false
@@ -257,6 +288,10 @@ internal fun RaftBottomTabBar(
                             strokeWidth = 2f,
                             modifier = Modifier.size(22.dp)
                         )
+                        RaftTabIconBadge(
+                            count = item.badgeCount,
+                            modifier = Modifier.align(Alignment.TopStart).offset(x = 33.dp, y = (-4).dp)
+                        )
                     }
                     Text(
                         text = item.label,
@@ -290,7 +325,15 @@ internal fun RaftAppBottomTabBarHost(
     bottomSafeArea: Dp = 0.dp
 ) {
     val hostModifier = modifier.zIndex(RaftAppBottomTabBarHostZIndex)
+    val nativeTabBar = raftNativeTabBarBridge()
+    if (nativeTabBar != null) {
+        // The host draws the system tab bar; Compose only publishes the tabs. Leaving
+        // composition (the shell hides its bar) hides the native bar too.
+        RaftNativeTabBarPublisher(bridge = nativeTabBar, items = items, onSelect = onSelect)
+        return
+    }
     when (raftAppTabBarRenderer()) {
+        RaftAppTabBarRenderer.NativeHost -> return
         RaftAppTabBarRenderer.IosLiquidGlass -> {
             // The iOS host paints edge-to-edge. Seat the native dock band at the
             // host bottom so UITabBar receives the real bottom safe area instead
@@ -372,15 +415,21 @@ private fun RaftSharedAndroidFloatingBottomTabBarHost(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    RaftLucideIcon(
-                        name = item.iconName,
-                        color = when {
-                            !item.enabled -> "#42000000"
-                            selected -> "#FF000000"
-                            else -> "#73000000"
-                        },
-                        modifier = Modifier.size(17.dp)
-                    )
+                    Box {
+                        RaftLucideIcon(
+                            name = item.iconName,
+                            color = when {
+                                !item.enabled -> "#42000000"
+                                selected -> "#FF000000"
+                                else -> "#73000000"
+                            },
+                            modifier = Modifier.size(17.dp)
+                        )
+                        RaftTabIconBadge(
+                            count = item.badgeCount,
+                            modifier = Modifier.align(Alignment.TopStart).offset(x = 11.dp, y = (-8).dp)
+                        )
+                    }
                     Text(
                         text = item.label.raftDisplayUppercase(),
                         style = RaftType.Caption.copy(
@@ -433,6 +482,7 @@ private fun RaftNativeFloatingBottomTabBarHost(
 
 @Composable
 private fun raftAppTabBarRenderer(): RaftAppTabBarRenderer {
+    if (raftNativeTabBarBridge() != null) return RaftAppTabBarRenderer.NativeHost
     val params = (LocalActivity.current.getPager() as Pager).pageData.params
     val explicitRenderer =
         params.optString("slockNativeTabBarRenderer")
@@ -649,8 +699,22 @@ private fun RaftNavigationRailTabItem(
                     modifier = Modifier.size(RaftNavigationRailIconSize)
                 )
             }
+            RaftTabIconBadge(
+                count = item.badgeCount,
+                modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp)
+            )
         }
     }
+}
+
+/**
+ * The unread count on a tab icon (Activity tab): raft-ui's pink count sticker, the same one the
+ * Home sidebar rows wear. Nothing for 0; `99+` above 99.
+ */
+@Composable
+private fun RaftTabIconBadge(count: Int, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    RaftUnreadCount(count = count, modifier = modifier.zIndex(1f))
 }
 
 @Composable

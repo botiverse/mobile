@@ -2838,7 +2838,7 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
     }
 }
 
-private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
+internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
     SettingsComputerSnapshot(
         id = id,
         name = name,
@@ -2854,7 +2854,11 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         createdAt = createdAt,
         lastHeartbeat = lastHeartbeat,
         apiKeyPrefix = apiKeyPrefix,
-        statusVersion = statusVersion
+        statusVersion = statusVersion,
+        creatorUserId = creatorUserId,
+        attachedByCurrentUser = attachedByCurrentUser,
+        agentCount = agentCount,
+        upgradeAvailable = isComputer && computerUpgradeAvailable == true
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =
@@ -3105,6 +3109,7 @@ private fun SettingsServerSidebarOrderUpdateRequest.hasAtLeastOneField(): Boolea
         agentOrder != null ||
         dmOrder != null ||
         channelSortMode != null ||
+        jointChannelSortMode != null ||
         dmSortMode != null ||
         pinnedSortMode != null ||
         pinned != null ||
@@ -3297,6 +3302,7 @@ data class SettingsServerSidebarOrderUpdateRequestBody(
     val agentOrder: List<String>? = null,
     val dmOrder: List<String>? = null,
     val channelSortMode: String? = null,
+    val jointChannelSortMode: String? = null,
     val dmSortMode: String? = null,
     val pinnedSortMode: String? = null,
     val pinned: List<SettingsServerSidebarPinnedItem>? = null,
@@ -3324,6 +3330,7 @@ fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSideb
             agentOrder = request.agentOrder,
             dmOrder = request.dmOrder,
             channelSortMode = request.channelSortMode,
+            jointChannelSortMode = request.jointChannelSortMode,
             dmSortMode = request.dmSortMode,
             pinnedSortMode = request.pinnedSortMode,
             pinned = request.pinned,

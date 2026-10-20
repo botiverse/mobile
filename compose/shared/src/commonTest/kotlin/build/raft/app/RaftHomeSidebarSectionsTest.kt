@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.data.SettingsServerSidebarSectionPlacement
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -96,26 +97,33 @@ class RaftHomeSidebarSectionsTest {
     }
 
     @Test
-    fun sidebarSectionsHideEmptyPinnedJointAndCustomSectionsButKeepChannelsAndDms() {
+    fun hideEmptySectionsDropsEmptyPinnedJointAndDmsButKeepsChannelsAndCustomSections() {
+        // Web sidebarEmptySectionVisibility.ts: the preference hides empty
+        // Pinned / Joint / DMs; Channels and custom sections always render.
         val a = section("sec-a", "A")
         val empty = section("sec-empty", "Empty")
-        assertEquals(
-            listOf("sec-a", "system:channels", "system:dms"),
+        val rows = listOf(rowsFor(a).single(), RaftHomeCustomSectionRows(section = empty, items = emptyList()))
+        fun keys(hide: Boolean) =
             sectionKeys(
                 homeSidebarSectionOrder(
                     sectionOrder = listOf("sec-empty", "system:pinned", "sec-a", "system:joint", "system:channels", "system:dms"),
                     customSections = listOf(a, empty),
-                    // sidebarCustomSectionRows omits empty sections.
-                    customSectionRows = rowsFor(a),
+                    customSectionRows = rows,
                     hasPinned = false,
-                    hasJointChannels = false
+                    hasJointChannels = false,
+                    hasDirectMessages = false,
+                    hideEmptySections = hide
                 )
             )
+        assertEquals(listOf("sec-empty", "sec-a", "system:channels"), keys(hide = true))
+        assertEquals(
+            listOf("sec-empty", "system:pinned", "sec-a", "system:joint", "system:channels", "system:dms"),
+            keys(hide = false)
         )
     }
 
     @Test
-    fun customSectionRowsFollowSectionOrderAndHideEmptySections() {
+    fun customSectionRowsFollowSectionOrderAndKeepEmptySections() {
         val sections = listOf(section("sec-b", "B"), section("sec-a", "A"), section("sec-empty", "Empty"))
         val rows =
             sidebarCustomSectionRows(
@@ -131,9 +139,23 @@ class RaftHomeSidebarSectionsTest {
                     ),
                 pinnedConversationIds = emptySet()
             )
-        assertEquals(listOf("sec-a", "sec-b"), rows.map { it.section.id })
+        // Web renders an empty custom section with a "No conversations" hint.
+        assertEquals(listOf("sec-a", "sec-b", "sec-empty"), rows.map { it.section.id })
         assertEquals(listOf("c-2"), rows[0].items.map { it.id })
         assertEquals(listOf("c-1"), rows[1].items.map { it.id })
+        assertEquals(emptyList(), rows[2].items)
+        // A brand-new section with no placements at all still shows.
+        assertEquals(
+            listOf("sec-new"),
+            sidebarCustomSectionRows(
+                channels = emptyList(),
+                directMessages = emptyList(),
+                customSections = listOf(section("sec-new", "New")),
+                sectionOrder = emptyList(),
+                sectionPlacements = emptyList(),
+                pinnedConversationIds = emptySet()
+            ).map { it.section.id }
+        )
     }
 
     @Test
@@ -219,49 +241,89 @@ class RaftHomeSidebarSectionsTest {
     }
 
     @Test
-    fun sectionMenuItemsListSortRadiosThenActions() {
-        val items = raftHomeSectionMenuItems()
+    fun customSectionMenuMirrorsWebSectionContextMenu() {
+        val items = raftHomeSectionMenuItems(sortMode = RaftSidebarSortMode.Recent, hideEmptySections = true)
         assertEquals(
-            listOf("sort:manual", "sort:recent", "sort:az", "rename", "create", "delete"),
+            listOf("sort:manual", "sort:recent", "sort:az", "toggle-hide-empty", "rename", "create", "delete"),
             items.map { it.id }
         )
+        assertEquals(listOf("sort:recent", "toggle-hide-empty"), items.filter { it.checked }.map { it.id })
+        assertEquals("Sort", items.first().groupLabel)
+        assertEquals("Display", items.single { it.id == "toggle-hide-empty" }.groupLabel)
     }
 
     @Test
-    fun moveToSectionMenuItemsOfferRemovalOnlyWhenPlaced() {
+    fun systemSectionMenuOffersSortDisplayAndNewSectionButNoRenameOrDelete() {
+        val channels =
+            raftHomeSectionMenuItems(
+                sortMode = RaftSidebarSortMode.Manual,
+                hideEmptySections = false,
+                custom = false,
+                canCreateChannel = true
+            )
+        assertEquals(
+            listOf("create-channel", "sort:manual", "sort:recent", "sort:az", "toggle-hide-empty", "create"),
+            channels.map { it.id }
+        )
+        assertEquals(listOf("sort:manual"), channels.filter { it.checked }.map { it.id })
+        val labels = RaftHomeShellLabels(sortMenuTitle = "排序", displaySection = "显示", hideEmptySections = "隐藏空的分区", newSectionMenu = "新建分区…")
+        val joint = raftHomeSectionMenuItems(labels = labels, sortMode = RaftSidebarSortMode.Az, custom = false)
+        assertEquals(listOf("排序", "显示"), joint.mapNotNull { it.groupLabel })
+        assertEquals("新建分区…", joint.last().label)
+        assertTrue(joint.none { it.id == "create-channel" })
+    }
+
+    @Test
+    fun moveToSectionMenuMirrorsWebSubmenu() {
         val sections = listOf(section("sec-1", "One"), section("sec-2", "Two"))
-        assertEquals(
-            listOf("section:sec-1", "section:sec-2"),
-            raftHomeMoveToSectionMenuItems(sections, currentSectionId = null).map { it.id }
-        )
-        assertEquals(
-            listOf("section:", "section:sec-1", "section:sec-2"),
-            raftHomeMoveToSectionMenuItems(sections, currentSectionId = "sec-2").map { it.id }
-        )
+        // web2.png: a channel in no section — Pinned, the sections, New Section….
+        val plain = raftHomeMoveToSectionMenuItems(sections, currentSectionId = null)
+        assertEquals(listOf("pinned", "section:sec-1", "section:sec-2", "create"), plain.map { it.id })
+        assertTrue(plain.none { it.checked })
+        assertTrue(plain.all { it.enabled })
+        // web3.png: a pinned DM — Pinned is checked and disabled.
+        val pinned = raftHomeMoveToSectionMenuItems(emptyList(), currentSectionId = null, pinned = true)
+        assertEquals(listOf("pinned", "create"), pinned.map { it.id })
+        assertTrue(pinned.first().checked)
+        assertFalse(pinned.first().enabled)
+        // Placed rows check their section and can be removed from it.
+        val placed = raftHomeMoveToSectionMenuItems(sections, currentSectionId = "sec-2")
+        assertEquals(listOf("pinned", "section:sec-1", "section:sec-2", "create", "section:"), placed.map { it.id })
+        assertEquals(listOf("section:sec-2"), placed.filter { it.checked }.map { it.id })
     }
 
     @Test
-    fun conversationMenuAddsMoveToSectionOnlyWhenCustomSectionsExist() {
-        val conversation = channel("c-1", "one")
-        val withoutSections =
+    fun conversationMenuLeadsWithMoveToSectionEvenWithoutCustomSections() {
+        val channelMenu =
             raftHomeConversationMenuItems(
-                conversation = conversation,
+                conversation = RaftHomeConversationItem(id = "c-1", name = "one", activityMuteSupported = true),
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = false,
+                activeCanArchive = false
+            )
+        assertEquals(listOf("move-to-section", "mark-unread", "toggle-pin", "mute-channel"), channelMenu.map { it.id })
+        val dmMenu =
+            raftHomeConversationMenuItems(
+                conversation = RaftHomeConversationItem(id = "dm-1", name = "Cindy"),
+                pinTargetIsPinned = true,
+                sortableFromMenu = false,
+                activeIsDirectMessage = true,
+                activeCanArchive = false
+            )
+        // web3.png: Move to Section / Mark as Unread / Unpin / Close Chat.
+        assertEquals(listOf("move-to-section", "mark-unread", "toggle-pin", "close-dm"), dmMenu.map { it.id })
+        assertEquals("Unpin", dmMenu.single { it.id == "toggle-pin" }.label)
+        assertTrue(dmMenu.single { it.id == "close-dm" }.dividerBefore)
+        assertTrue(
+            raftHomeConversationMenuItems(
+                conversation = RaftHomeConversationItem(id = "c-1", name = "one"),
                 pinTargetIsPinned = false,
                 sortableFromMenu = false,
                 activeIsDirectMessage = false,
                 activeCanArchive = false,
-                hasCustomSections = false
-            )
-        assertTrue(withoutSections.none { it.id == "move-to-section" })
-        val withSections =
-            raftHomeConversationMenuItems(
-                conversation = conversation,
-                pinTargetIsPinned = false,
-                sortableFromMenu = false,
-                activeIsDirectMessage = false,
-                activeCanArchive = false,
-                hasCustomSections = true
-            )
-        assertTrue(withSections.any { it.id == "move-to-section" })
+                canMoveToSection = false
+            ).none { it.id == "move-to-section" }
+        )
     }
 }

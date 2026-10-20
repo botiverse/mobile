@@ -21,6 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL raftConversationForwardGestureEnabled;
 @property (nonatomic, assign, readonly) BOOL raftIsAppShellPage;
 @property (nonatomic, assign, readonly) BOOL raftIsLoginPage;
+/**
+ * Container background until the page paints its own canvas colour (set before the view loads;
+ * the factory passes the last canvas colour a CMP page reported). Nil: systemBackgroundColor.
+ */
+@property (nonatomic, strong, nullable) UIColor *raftInitialBackgroundColor;
 
 /**
  * @param pageName the page name (the former Kuikly `@Page` name)
@@ -39,6 +44,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)raftAttachContentController:(UIViewController *)content
                            sendEvent:(void (^)(NSString *event, NSDictionary *data))sendEvent
     NS_SWIFT_NAME(attachContent(_:sendEvent:));
+
+/**
+ * Page -> host: whether the page's Compose content at a point (in the content controller's view)
+ * would consume a back-direction drag (Kotlin `RaftIosPage.contentConsumesBackSwipe`). Set by
+ * `RaftPageControllerFactory`; nil means nothing consumes.
+ */
+@property (nonatomic, copy, nullable) BOOL (^raftBackSwipeContentProbe)(CGPoint pointInContent);
+
+/** Full-page back swipe probe: [locationInView] is in this controller's view. */
+- (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView;
 
 /** Host -> page event (a pager event on the CMP page). No-op before content is attached. */
 - (void)raftSendEvent:(NSString *)event data:(NSDictionary *)data;

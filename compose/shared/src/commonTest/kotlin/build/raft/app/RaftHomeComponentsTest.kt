@@ -1677,6 +1677,42 @@ class RaftHomeComponentsTest {
     }
 
     @Test
+    fun lazyItemCountsIncludeTheCustomPullToRefreshItem() {
+        val home =
+            homeLazyItemCount(
+                channelsCount = 3,
+                jointCount = 0,
+                directMessagesCount = 2,
+                channelsExpanded = false,
+                jointChannelsExpanded = false,
+                directMessagesExpanded = false
+            )
+        assertEquals(
+            home + 1,
+            homeLazyItemCount(
+                channelsCount = 3,
+                jointCount = 0,
+                directMessagesCount = 2,
+                channelsExpanded = false,
+                jointChannelsExpanded = false,
+                directMessagesExpanded = false,
+                hasPullToRefreshItem = true
+            )
+        )
+        val members = membersLazyItemCount(agents = emptyList(), humansCount = 2, agentsExpanded = false, humansExpanded = false)
+        assertEquals(
+            members + 1,
+            membersLazyItemCount(
+                agents = emptyList(),
+                humansCount = 2,
+                agentsExpanded = false,
+                humansExpanded = false,
+                hasPullToRefreshItem = true
+            )
+        )
+    }
+
+    @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
             14,

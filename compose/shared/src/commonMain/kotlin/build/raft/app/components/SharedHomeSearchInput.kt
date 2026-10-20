@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.RaftColor
+import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import androidx.compose.runtime.Composable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -31,7 +33,41 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val SharedHomeSearchInputShadowOffset = 2.dp
+
+/**
+ * raft-ui Input / InputGroup metrics for the Home search field ([raftField]): 44dp tall,
+ * 12dp side padding, `text-field` 16/24, `foreground-hint` placeholder; the read-only
+ * stand-in draws the same control (card fill, 1.5dp `line-field` edge, control radius).
+ */
+private val RaftSearchFieldHeight = RaftMetrics.FieldHeight
+
+private fun raftSearchFieldTextStyle() = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
+
+@Composable
+private fun RaftSearchFieldPreview(
+    text: String,
+    placeholder: String,
+    modifier: Modifier
+) {
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    Box(
+        modifier =
+            modifier
+                .height(RaftSearchFieldHeight)
+                .background(RaftColor.Card, shape)
+                .border(RaftAppStroke.Control, RaftColor.LineField, shape)
+                .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = text.ifBlank { placeholder },
+            style = raftSearchFieldTextStyle(),
+            color = if (text.isBlank()) RaftColor.ForegroundHint else RaftColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
 
 /**
  * Owns the complete editing state synchronously for one mounted search field.
@@ -87,18 +123,24 @@ internal fun SharedHomeSearchInput(
     placeholder: String,
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
+    raftField: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val raft = raftField && raftActive()
+    if (!interactive && raft) {
+        RaftSearchFieldPreview(query, placeholder, modifier)
+        return
+    }
     if (interactive) {
         RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
+            textStyle = if (raft) raftSearchFieldTextStyle() else RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            fieldMinHeight = if (raft) RaftSearchFieldHeight else 38.dp,
+            horizontalPadding = if (raft) RaftMetrics.FieldPaddingHorizontal else 11.dp,
+            verticalPadding = if (raft) 0.dp else 5.dp,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(
@@ -116,21 +158,13 @@ internal fun SharedHomeSearchInput(
             modifier =
                 modifier
                     .height(38.dp)
-                    .padding(end = SharedHomeSearchInputShadowOffset, bottom = SharedHomeSearchInputShadowOffset)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(RaftColor.ShadowBlack)
-            )
+            // raft field look (static placeholder): control radius, card fill, field ink.
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
@@ -161,18 +195,24 @@ internal fun SharedHomeSearchInput(
     placeholder: String,
     autoFocus: Boolean = false,
     focusRequester: FocusRequester? = null,
+    raftField: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val raft = raftField && raftActive()
+    if (!interactive && raft) {
+        RaftSearchFieldPreview(query.text, placeholder, modifier)
+        return
+    }
     if (interactive) {
         RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            fieldMinHeight = 38.dp,
-            horizontalPadding = 11.dp,
-            verticalPadding = 5.dp,
+            textStyle = if (raft) raftSearchFieldTextStyle() else RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            fieldMinHeight = if (raft) RaftSearchFieldHeight else 38.dp,
+            horizontalPadding = if (raft) RaftMetrics.FieldPaddingHorizontal else 11.dp,
+            verticalPadding = if (raft) 0.dp else 5.dp,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(
@@ -190,21 +230,13 @@ internal fun SharedHomeSearchInput(
             modifier =
                 modifier
                     .height(38.dp)
-                    .padding(end = SharedHomeSearchInputShadowOffset, bottom = SharedHomeSearchInputShadowOffset)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(RaftColor.ShadowBlack)
-            )
+            // raft field look (static placeholder): control radius, card fill, field ink.
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),

@@ -1,6 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
+import build.raft.app.data.truncateAgentToolLabel
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
@@ -26,7 +28,13 @@ internal data class RaftAgentStatusIndicatorState(
     /** External agents only: `lastSeenAt` carried through for presence resolution (task #410). */
     val lastSeenAt: String? = null,
     /** True when the dot renders the external-agent token rather than managed liveness. */
-    val external: Boolean
+    val external: Boolean,
+    /** agent:activity `detailKind` behind [label] ("starting", "compacting_context", ...). */
+    val detailKind: String? = null,
+    /** Normalized tool name when [label] is a client-built tool label. */
+    val activityToolName: String? = null,
+    /** The agent's runtime id (web `agent.runtime`); null when unknown. */
+    val runtime: String? = null
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -108,6 +116,10 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         statusLabel = statusLabel,
         external = external,
         lastSeenAt = lastSeenAt
+    ).copy(
+        detailKind = detailKind,
+        activityToolName = activityToolName,
+        runtime = runtime
     )
 
 /**
@@ -315,10 +327,74 @@ internal fun externalAgentDetailIndicator(
     return ExternalAgentDetailIndicator(base.copy(color = color), caption)
 }
 
+/**
+ * What an agent's activity detail says, typed so the UI can localize the parts
+ * the client or the server's `detailKind` define (web `getActivityTextDescriptor`):
+ * `starting`/`runtime_starting` -> "Starting…", `compacting_context` ->
+ * "Compacting context…", client-built tool labels -> the localized tool label.
+ * Anything else is the server's own detail, shown verbatim.
+ */
+internal sealed interface RaftAgentActivityDetailText {
+    data object Starting : RaftAgentActivityDetailText
+
+    data object CompactingContext : RaftAgentActivityDetailText
+
+    data class Tool(val toolName: String) : RaftAgentActivityDetailText
+
+    data class Raw(val text: String) : RaftAgentActivityDetailText
+}
+
+/** Null for non-working agents and for a working agent with no detail. */
+internal fun RaftAgentStatusIndicatorState.workingActivityDetailText(): RaftAgentActivityDetailText? {
+    if (external || status != AgentStatus.Working) return null
+    when (detailKind?.trim()) {
+        "starting", "runtime_starting" -> return RaftAgentActivityDetailText.Starting
+        "compacting_context" -> return RaftAgentActivityDetailText.CompactingContext
+    }
+    activityToolName?.trim()?.takeIf { it.isNotBlank() }?.let { return RaftAgentActivityDetailText.Tool(it) }
+    val detail = label.trim()
+    if (detail.isGenericWorkingLabel()) return null
+    return RaftAgentActivityDetailText.Raw(detail)
+}
+
+/**
+ * The indicator falls back to the bare status name ("Working") when no detail
+ * arrived; that is web's "no detail" case, not a detail to print verbatim.
+ */
+private fun String.isGenericWorkingLabel(): Boolean {
+    if (isBlank() || this == NeutralAgentStatusLabel) return true
+    val bare = trimEnd('.', '…').trim()
+    return bare.equals(AgentStatus.Working.label, ignoreCase = true)
+}
+
+@Composable
+internal fun RaftAgentActivityDetailText.localizedText(): String =
+    when (this) {
+        RaftAgentActivityDetailText.Starting -> stringResource(MR.strings.agent_activity_starting)
+        RaftAgentActivityDetailText.CompactingContext -> stringResource(MR.strings.agent_activity_compacting_context)
+        is RaftAgentActivityDetailText.Tool ->
+            when (toolName) {
+                "read_file" -> stringResource(MR.strings.agent_activity_tool_read_file)
+                "write_file" -> stringResource(MR.strings.agent_activity_tool_write_file)
+                "upload_file" -> stringResource(MR.strings.agent_activity_tool_upload_file)
+                "view_file" -> stringResource(MR.strings.agent_activity_tool_view_file)
+                "schedule_reminder" -> stringResource(MR.strings.agent_activity_tool_schedule_reminder)
+                "list_reminders" -> stringResource(MR.strings.agent_activity_tool_list_reminders)
+                "cancel_reminder" -> stringResource(MR.strings.agent_activity_tool_cancel_reminder)
+                "run_command" -> stringResource(MR.strings.agent_activity_tool_run_command)
+                else -> stringResource(MR.strings.agent_activity_tool_using, toolName.truncateAgentToolLabel())
+            }
+        is RaftAgentActivityDetailText.Raw -> text
+    }
+
 /** Translate transport labels, retaining activity details supplied by the store. */
 @Composable
-internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String =
-    when (label.trim().lowercase()) {
+internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String {
+    // Server-kind and client-built details localize the same way the Home DM row does.
+    workingActivityDetailText()
+        ?.takeIf { it !is RaftAgentActivityDetailText.Raw }
+        ?.let { return it.localizedText() }
+    return when (label.trim().lowercase()) {
         "online", "active" -> stringResource(MR.strings.member_row_status_online)
         "offline" -> stringResource(MR.strings.member_row_status_offline)
         "idle", "away" -> stringResource(MR.strings.member_row_status_idle)
@@ -329,3 +405,4 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
         "thinking" -> stringResource(MR.strings.member_row_status_thinking)
         else -> label
     }
+}

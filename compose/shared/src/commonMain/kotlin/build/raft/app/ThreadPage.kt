@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.rememberRaftBackSwipeRegion
+import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
@@ -202,6 +204,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
+import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
@@ -1723,9 +1726,18 @@ internal fun threadComposerBottomPadding(
     keyboardInsetExcludesBottomSafeArea: Boolean = false
 ): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
-    val safeAreaInset =
-        if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) 0.dp else bottomSafeArea
-    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
+    // When the keyboard height already contains the bottom safe area (iOS keyboard frame), the
+    // keyboard and the safe area overlap: the composer sits on whichever is taller. Taking the max
+    // (instead of switching from safe area to keyboard as soon as the keyboard is > 0) keeps the
+    // padding from dipping below its resting value during the first frames of the keyboard
+    // animation, while the keyboard is still shorter than the safe area.
+    val bottomInset =
+        if (keyboardInsetExcludesBottomSafeArea) {
+            keyboardInset + bottomSafeArea
+        } else {
+            maxOf(keyboardInset, bottomSafeArea)
+        }
+    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset
 }
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
@@ -7091,7 +7103,13 @@ private fun SharedThreadRouteContentContent(
     val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
-    val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
+    // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
+    val longMessageCollapseConversationSetting =
+        rememberRaftLongMessageCollapseConversationSetting(
+            serverId = currentSession?.currentServerId,
+            conversationId = payload.longMessageCollapseConversationId()
+        )
+    val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
     val threadUnreadJumpEnabled = chatLayoutPreferenceStore.readThreadUnreadJumpEnabledSync()
     val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
@@ -7658,6 +7676,14 @@ private fun SharedThreadRouteContentContent(
                 )
         }
     }
+    val markdownTaskStatuses =
+        remember(taskProjectionSlice.tasks, serverTaskProjectionSlice.tasks, timelineSlice.messages, timelineSlice.originMessage) {
+            threadMarkdownTaskStatusesByNumber(
+                channelTasks = taskProjectionSlice.tasks,
+                serverTasks = serverTaskProjectionSlice.tasks,
+                messages = listOfNotNull(timelineSlice.originMessage) + timelineSlice.messages
+            )
+        }
     val linkedTasksProjection =
         remember(taskProjectionSlice, serverTaskProjectionSlice, taskProjectionReferences) {
             threadLinkedTasksProjection(
@@ -10729,6 +10755,7 @@ private fun SharedThreadRouteContentContent(
                         requestFallback = ::requestInlineImageFallback
                     ),
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+                LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
                 LocalRaftMarkdownRenderConfig provides
                     RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
@@ -10891,6 +10918,7 @@ private fun SharedThreadRouteContentContent(
             composerSendKeyEnabled = composerSendKeyEnabled,
             newDesignSettingsEnabled = chatLayoutPreferenceStore::readNewDesignSettingsEnabledSync,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
+            longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
             threadUnreadJumpEnabled = threadUnreadJumpEnabled,
             newMessageMenuEnabled = newMessageMenuEnabled,
@@ -13400,6 +13428,10 @@ private fun ThreadImagePreviewOverlay(
             )
             Column(modifier = Modifier.fillMaxSize()) {
                 val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
+                // Past the first image a back-direction drag pages the preview, not the host's back swipe.
+                val galleryBackSwipe = rememberRaftBackSwipeRegion {
+                    hasMultiple && currentPreviewState.currentIndex > 0
+                }
                 Box(
                     modifier = Modifier.fillMaxWidth()
                         .weight(1f)
@@ -13416,6 +13448,7 @@ private fun ThreadImagePreviewOverlay(
                             .raftThemedCorners(RaftAppRadius.Container)
                             .background(RaftImagePreviewLetterboxColor, RoundedCornerShape(RaftAppRadius.Container))
                             .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
+                            .then(galleryBackSwipe)
                             .then(
                                 if (hasMultiple) {
                                     Modifier.pointerInput(state.currentIndex, state.images.size) {
@@ -13482,8 +13515,12 @@ private fun ThreadImagePreviewOverlay(
                     }
                 }
                 if (hasMultiple) {
+                    val backSwipeRowState = rememberLazyListState()
+                    val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth()
+                        state = backSwipeRowState,
+                        userScrollEnabled = backSwipeRow.userScrollEnabled,
+                        modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth()
                             .height(74.dp + bottomSafeArea)
                             .background(RaftColor.SurfaceWhite)
                             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
@@ -14137,6 +14174,7 @@ private data class ThreadPageContentData(
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val composerSendKeyEnabled: Boolean,
     val longMessageCollapseEnabled: Boolean,
+    val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
     val singleTapOpensThreadEnabled: Boolean,
     val threadUnreadJumpEnabled: Boolean,
     val newMessageMenuEnabled: Boolean,
@@ -14264,6 +14302,7 @@ fun ThreadPageContent(
     composerSendKeyEnabled: Boolean = false,
     newDesignSettingsEnabled: () -> Boolean = { false },
     longMessageCollapseEnabled: Boolean = false,
+    longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
     singleTapOpensThreadEnabled: Boolean = false,
     threadUnreadJumpEnabled: Boolean = false,
     newMessageMenuEnabled: Boolean = false,
@@ -14350,6 +14389,7 @@ fun ThreadPageContent(
                 attachmentOpenStates = attachmentOpenStates,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
+                longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
@@ -14480,6 +14520,7 @@ private fun ThreadPageContentContent(
     val composerSendKeyEnabled = data.composerSendKeyEnabled
     val newDesignSettingsEnabled = callbacks.newDesignSettingsEnabled
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
+    val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
     val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
     val newMessageMenuEnabled = data.newMessageMenuEnabled
@@ -15601,14 +15642,15 @@ private fun ThreadPageContentContent(
                             .padding(
                                 start = RaftAppSpacing.Sm,
                                 top = 12.dp,
-                                end = RaftAppSpacing.Sm,
-                                bottom =
-                                    threadComposerBottomPadding(
-                                        keyboardInsetDp = composerKeyboardInsetDp,
-                                        bottomSafeArea = composerBottomSafeArea,
-                                        keyboardInsetExcludesBottomSafeArea =
-                                            composerKeyboardInsetExcludesBottomSafeArea
-                                    )
+                                end = RaftAppSpacing.Sm
+                            )
+                            // Bottom padding follows WindowInsets.ime in the layout phase of the
+                            // same frame; composerKeyboardInsetDp (two frames late) only feeds the
+                            // page's decision state (see RaftThreadImeLayout.kt).
+                            .raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea =
+                                    composerKeyboardInsetExcludesBottomSafeArea
                             )
                     ) {
                         CompositionLocalProvider(
@@ -15904,6 +15946,7 @@ private fun ThreadPageContentContent(
                     ThreadDirectMessageSettingsModal(
                         activityMuteState = activityMuteState,
                         conversationPinState = conversationPinState,
+                        longMessageCollapseSetting = longMessageCollapseConversationSetting,
                         onDismiss = { activeModal = null },
                         onToggleActivityMute = onToggleActivityMute,
                         onTogglePin = onToggleConversationPin
@@ -17644,17 +17687,12 @@ private const val ThreadMarkdownPriorityPreparseMessageCount = 4
 private const val ThreadMarkdownFocusedPreparseRadius = 25
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
-    contentExtrasVisible: Boolean,
-    expandedLongMessageIds: Set<String> = emptySet(),
-    longMessageCollapseEnabled: Boolean = true
+    contentExtrasVisible: Boolean
 ): ThreadMarkdownPreparsePlan {
     if (!contentExtrasVisible || (messages.isEmpty() && originMessage == null)) {
         return emptyThreadMarkdownPreparsePlan()
     }
-    val orderedCandidates = threadMarkdownOrderedPreparseCandidates(
-        expandedLongMessageIds = expandedLongMessageIds,
-        longMessageCollapseEnabled = longMessageCollapseEnabled
-    )
+    val orderedCandidates = threadMarkdownOrderedPreparseCandidates()
     val priorityCandidates = orderedCandidates.threadMarkdownPriorityPreparseCandidates()
     if (priorityCandidates.none { candidate ->
             candidate.body.preparedRaftMarkdownFullRendererContentOrNull() != null
@@ -17677,15 +17715,12 @@ private fun emptyThreadMarkdownPreparsePlan(): ThreadMarkdownPreparsePlan =
         priorityCandidates = emptyList()
     )
 
-private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
-    expandedLongMessageIds: Set<String>,
-    longMessageCollapseEnabled: Boolean
-): List<ThreadMarkdownPreparseCandidate> {
+private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(): List<ThreadMarkdownPreparseCandidate> {
     val messageCandidates =
         messages.map { message ->
             ThreadMarkdownPreparseCandidate(
                 id = message.threadMessageRenderIdentity(),
-                body = message.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                body = message.body,
                 messageId = message.id
             )
         }
@@ -17693,7 +17728,7 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
         originMessage?.let { origin ->
             ThreadMarkdownPreparseCandidate(
                 id = "origin:${origin.threadMessageRenderIdentity()}",
-                body = origin.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                body = origin.body,
                 messageId = origin.id
             )
         }
@@ -17720,16 +17755,6 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
         }
     return ordered.distinctBy { candidate -> candidate.id }
 }
-
-private fun RaftThreadMessageItem.threadMarkdownPreparseBody(
-    expandedLongMessageIds: Set<String>,
-    longMessageCollapseEnabled: Boolean
-): String =
-    if (!longMessageCollapseEnabled || id in expandedLongMessageIds) {
-        body
-    } else {
-        threadLongMessageRenderPlan(body).collapsedBody
-    }
 
 private fun List<ThreadMarkdownPreparseCandidate>.threadMarkdownPriorityPreparseCandidates(): List<ThreadMarkdownPreparseCandidate> {
     val originCandidate = firstOrNull { candidate -> candidate.id.startsWith("origin:") }
@@ -17803,9 +17828,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
     lastVisibleItemIndex: Int,
     overscanItems: Int,
     prewarmBeforeItems: Int = 0,
-    contentExtrasVisible: Boolean,
-    expandedLongMessageIds: Set<String> = emptySet(),
-    longMessageCollapseEnabled: Boolean = true
+    contentExtrasVisible: Boolean
 ): ThreadMarkdownVisiblePreparsePlan {
     if (!contentExtrasVisible ||
         firstVisibleItemIndex < 0 ||
@@ -17831,7 +17854,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                 add(
                     ThreadMarkdownPreparseCandidate(
                         id = "origin:${originMessage.threadMessageRenderIdentity()}",
-                        body = originMessage.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                        body = originMessage.body,
                         messageId = originMessage.id
                     )
                 )
@@ -17845,7 +17868,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                     add(
                         ThreadMarkdownPreparseCandidate(
                             id = message.threadMessageRenderIdentity(),
-                            body = message.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                            body = message.body,
                             messageId = message.id
                         )
                     )
@@ -18789,8 +18812,12 @@ private fun ThreadMessagesListContent(
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
 
-    var expandedLongMessageIds by remember(threadInstanceKey) {
-        mutableStateOf<Set<String>>(emptySet())
+    // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
+    // whole thread open, so a row keeps its state when it scrolls away and back.
+    val longMessageCollapseController = remember(threadInstanceKey) { RaftLongMessageCollapseController() }
+    LaunchedEffect(longMessageCollapseController, renderPayload.focusedMessageId, renderPayload.focusedMessageRequestNonce) {
+        // A jump to a message shows it in full (its target may sit in the clipped part).
+        longMessageCollapseController.autoExpand(renderPayload.focusedMessageId)
     }
     val longMessageItemHeights = remember(threadInstanceKey) { mutableMapOf<String, Int>() }
     val recordMessageItemHeight: (String, Int) -> Unit = { messageId, height ->
@@ -18802,39 +18829,52 @@ private fun ThreadMessagesListContent(
             )
         }
     }
+    // Direct user action (docs/programmatic-scroll-ownership-contract.md): the toggled message's
+    // top stays put and the change grows/shrinks downward. The raw position is requested in the
+    // same frame as the height change (no visible jump, also for the bottom-up list), and the
+    // viewport controller is re-anchored on the message so later HeightChange replays agree.
+    // Fences: an active scroll owns the viewport; a collapse while following the latest row
+    // leaves bottom ownership alone.
     val toggleLongMessage: (String, Int) -> Unit = { messageId, listItemIndex ->
-        val collapsing = messageId in expandedLongMessageIds
-        val firstVisibleItemIndex = listState.firstVisibleItemIndex
-        val firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-        expandedLongMessageIds =
-            threadExpandedLongMessageIdsAfterToggle(expandedLongMessageIds, messageId)
-        if (
-            collapsing &&
-            firstVisibleItemIndex == listItemIndex &&
-            firstVisibleItemScrollOffset > 0
-        ) {
-            coroutineScope.launch {
-                listState.awaitThreadMessagesLayoutFrame()
-                listState.awaitThreadMessagesLayoutFrame()
-                val anchorOffset =
-                    threadLongMessageCollapseAnchorOffset(
-                        firstVisibleItemIndex = firstVisibleItemIndex,
-                        toggledItemIndex = listItemIndex,
-                        firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
-                        collapsedItemHeight = longMessageItemHeights[messageId] ?: 0
-                    ) ?: return@launch
-                if (!listState.isScrollInProgress && listState.canScrollToThreadItem(listItemIndex)) {
-                    dispatchViewportEvent(
-                        LazyViewportEvent.Anchor(
-                            target = LazyViewportAnchorTarget.Message(messageId),
-                            offset = -anchorOffset,
-                            layoutGeneration = viewportLayoutGeneration,
-                            fallback = LazyViewportAnchorFallback.Free
-                        )
-                    )
-                }
+        val expanding = !longMessageCollapseController.isExpanded(messageId)
+        val heightDelta = longMessageCollapseController.toggleHeightDelta(messageId, expanding)
+        val forwardItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
+        val rawCount = listState.raw.layoutInfo.totalItemsCount
+        val rawIndex = if (reverseLayout) reversedThreadListIndex(listItemIndex, rawCount) else listItemIndex
+        val rawItem = listState.raw.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rawIndex }
+        longMessageCollapseController.setExpanded(messageId, expanding)
+        val ownsViewport =
+            forwardItem != null &&
+                rawItem != null &&
+                !listState.isScrollInProgress &&
+                (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
+        if (ownsViewport && forwardItem != null && rawItem != null) {
+            val plan =
+                raftLongMessageToggleScrollPlan(
+                    reverseLayout = reverseLayout,
+                    expanding = expanding,
+                    forwardIndex = listItemIndex,
+                    totalItemsCount = rawCount,
+                    itemTopBefore = forwardItem.offset,
+                    rawItemOffsetBefore = rawItem.offset,
+                    heightDelta = heightDelta
+                )
+            plan.rawScrollRequest?.let { request ->
+                listState.raw.requestScrollToItem(request.rawIndex, request.scrollOffset)
             }
+            dispatchViewportEvent(
+                LazyViewportEvent.Anchor(
+                    target = LazyViewportAnchorTarget.Message(messageId),
+                    offset = plan.desiredTop,
+                    layoutGeneration = viewportLayoutGeneration,
+                    fallback = LazyViewportAnchorFallback.Free
+                )
+            )
         }
+        diagnosticsLogger(
+            "thread_long_message_toggle messageId=${messageId.take(8)} expanded=$expanding " +
+                "delta=$heightDelta anchored=$ownsViewport reverse=$reverseLayout"
+        )
     }
 
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
@@ -18964,6 +19004,32 @@ private fun ThreadMessagesListContent(
             null
         }
     val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
+    val activeInlineSearchMessage =
+        activeInlineSearchMessageId?.let { messageId ->
+            renderPayload.originMessage?.takeIf { it.id == messageId }
+                ?: renderPayload.messages.firstOrNull { it.id == messageId }
+        }
+    // The body as shown: the translation when one is displayed (keys the effect), plus the original.
+    val activeInlineSearchShownTranslation =
+        if (translationStore != null && activeInlineSearchMessage != null) {
+            resolveThreadMessageTranslationUi(activeInlineSearchMessage, translationState)?.displayBody
+        } else {
+            null
+        }
+    LaunchedEffect(
+        longMessageCollapseController,
+        activeInlineSearchMessage?.id,
+        activeInlineSearchMessage?.body,
+        activeInlineSearchShownTranslation,
+        inlineSearchQuery
+    ) {
+        val message = activeInlineSearchMessage ?: return@LaunchedEffect
+        val shownTranslation = activeInlineSearchShownTranslation
+        // Search matches are per message; a hit in the body may sit in the clipped part.
+        if (listOfNotNull(message.body, shownTranslation).any { body -> raftLongMessageSearchHitInBody(body, inlineSearchQuery) }) {
+            longMessageCollapseController.autoExpand(message.id)
+        }
+    }
     val latestMessageLayoutKey = remember(
         renderPayload.originStatus,
         renderPayload.canLoadMoreBefore,
@@ -19000,14 +19066,10 @@ private fun ThreadMessagesListContent(
         remember(
             markdownTimelineSignature,
             focusedMessageTargetSignature,
-            contentExtrasVisible,
-            expandedLongMessageIds,
-            longMessageCollapseEnabled
+            contentExtrasVisible
         ) {
             renderPayload.threadInitialMarkdownPreparsePlan(
-                contentExtrasVisible = contentExtrasVisible,
-                expandedLongMessageIds = expandedLongMessageIds,
-                longMessageCollapseEnabled = longMessageCollapseEnabled
+                contentExtrasVisible = contentExtrasVisible
             )
         }
     LaunchedEffect(
@@ -19054,8 +19116,7 @@ private fun ThreadMessagesListContent(
         markdownTimelineSignature,
         contentExtrasVisible,
         lazyItemCount,
-        threadLazyWindowConsumerCounts,
-        expandedLongMessageIds
+        threadLazyWindowConsumerCounts
     ) {
         if (!contentExtrasVisible || markdownTimelineSignature.isEmpty()) {
             return@LaunchedEffect
@@ -19072,9 +19133,7 @@ private fun ThreadMessagesListContent(
                     lastVisibleItemIndex = lastVisibleItemIndex,
                     overscanItems = threadLazyWindowConsumerCounts.markdownPreparseOverscanItems,
                     prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
-                    contentExtrasVisible = contentExtrasVisible,
-                    expandedLongMessageIds = expandedLongMessageIds,
-                    longMessageCollapseEnabled = longMessageCollapseEnabled
+                    contentExtrasVisible = contentExtrasVisible
                 )
             }
         }
@@ -20945,6 +21004,48 @@ private fun ThreadMessagesListContent(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    .raftLongMessageCollapseViewport(
+                        controller = longMessageCollapseController,
+                        verticalContentPaddingPx =
+                            with(LocalDensity.current) {
+                                (if (offlineLastKnownChrome.insetActive) ThreadOfflineLastKnownTipHeight else 0.dp).roundToPx()
+                            }
+                    )
+                    // The forward layout keeps the newest message on the composer in the same
+                    // measure pass as an IME/composer resize or a realtime tail append, instead
+                    // of a correction one frame later (see RaftThreadImeLayout.kt).
+                    .raftThreadTailLayoutAnchor(
+                        listState = listState,
+                        inputs =
+                            ThreadTailLayoutAnchorInputs(
+                                reverseLayout = reverseLayout,
+                                followingLatest =
+                                    viewportControllerState.intent == LazyViewportIntent.FollowingLatest,
+                                itemCount = lazyItemCount,
+                                firstMessageId = renderPayload.messages.firstOrNull()?.id,
+                                lastMessageId = renderPayload.messages.lastOrNull()?.id,
+                                newerPageCycleActive = newerPageCycleActive,
+                                newerHistoryAvailable = renderPayload.canLoadMoreAfter,
+                                imeProgrammaticViewportPolicy = imeProgrammaticViewportPolicy
+                            ),
+                        onTransition = { transition ->
+                            when (transition) {
+                                is ThreadTailLayoutAnchorTransition.Started -> {
+                                    val state = transition.state
+                                    diagnosticsLogger(
+                                        "thread_tail_layout_anchor action=pin_tail_start " +
+                                            "viewport=${state.previousViewportPx}->${state.nextViewportPx} " +
+                                            "items=${state.previousItemCount}->${state.nextItemCount}"
+                                    )
+                                }
+                                is ThreadTailLayoutAnchorTransition.Ended ->
+                                    diagnosticsLogger(
+                                        "thread_tail_layout_anchor action=pin_tail_end " +
+                                            "passes=${transition.pinnedPasses}"
+                                    )
+                            }
+                        }
+                    )
                     .keyboardDismissModeInteractiveIOS()
                     .dismissInputFocusOnScrollableChrome()
                     .touchListenerWithConfiguration { type, position, touchSlop ->
@@ -21101,8 +21202,10 @@ private fun ThreadMessagesListContent(
                         shareSelectionActive = shareSelectionActive,
                         selectedShareMessageIds = selectedShareMessageIds,
                         onToggleShareSelection = onToggleShareSelection,
-                        longMessageCollapseEnabled = longMessageCollapseEnabled && !shareSelectionCaptureActive,
-                        longMessageExpanded = renderPayload.originMessage?.id in expandedLongMessageIds,
+                        longMessageCollapse =
+                            longMessageCollapseController.takeIf {
+                                longMessageCollapseEnabled && !shareSelectionCaptureActive
+                            },
                         onToggleLongMessage = { messageId ->
                             toggleLongMessage(messageId, ThreadOriginListItemIndex)
                         }
@@ -21426,8 +21529,10 @@ private fun ThreadMessagesListContent(
                                     translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
                                 },
                                 onOpenForwardBundle = onOpenForwardBundle,
-                                longMessageCollapseEnabled = longMessageCollapseEnabled && !shareSelectionCaptureActive,
-                                longMessageExpanded = message.id in expandedLongMessageIds,
+                                longMessageCollapse =
+                                    longMessageCollapseController.takeIf {
+                                        longMessageCollapseEnabled && !shareSelectionCaptureActive
+                                    },
                                 onToggleLongMessage = {
                                     toggleLongMessage(
                                         message.id,
@@ -23748,7 +23853,7 @@ private const val ThreadUnreadJumpButtonZIndex = 5f
  * artin 2026-09-02: nothing in this family needs the 42.dp action-button target.
  */
 internal val ThreadFloatingPillButtonMinHeight = 28.dp
-private const val ThreadBackToBottomTolerancePx = 24
+internal const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
@@ -23930,32 +24035,6 @@ private fun ThreadDateDivider(label: String) {
     }
 }
 
-@Composable
-private fun ThreadLongMessageToggle(
-    expanded: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        Text(
-            text = stringResource(if (expanded) MR.strings.thread_show_less else MR.strings.thread_show_more),
-            style =
-                RaftType.Caption
-                    .copy(fontSize = 11.sp, lineHeight = 15.sp, color = RaftColor.TextBlack)
-                    .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextBlack
-        )
-        RaftLucideIcon(
-            if (expanded) RaftLucideIconName.ChevronUp else RaftLucideIconName.ChevronDown,
-            modifier = Modifier.size(12.dp),
-            color = "#FF000000"
-        )
-    }
-}
-
 internal fun threadDateDividerTextStyle(): TextStyle =
     RaftType.Caption.copy(
         fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
@@ -24100,8 +24179,7 @@ private data class ThreadMessageCardData(
     val shareSelectionActive: Boolean,
     val selectedForShare: Boolean,
     val translation: ThreadMessageTranslationUi?,
-    val longMessageCollapseEnabled: Boolean,
-    val longMessageExpanded: Boolean,
+    val longMessageCollapse: RaftLongMessageCollapseController?,
     val longPressGestureInstanceKey: Any,
     val outerPadding: androidx.compose.ui.unit.Dp,
 )
@@ -24205,8 +24283,7 @@ fun ThreadMessageCard(
     onToggleTranslationOriginal: () -> Unit = {},
     onRetryTranslation: () -> Unit = {},
     onOpenForwardBundle: (String) -> Unit = {},
-    longMessageCollapseEnabled: Boolean = false,
-    longMessageExpanded: Boolean = false,
+    longMessageCollapse: RaftLongMessageCollapseController? = null,
     onToggleLongMessage: () -> Unit = {},
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
@@ -24252,8 +24329,7 @@ fun ThreadMessageCard(
                 shareSelectionActive = shareSelectionActive,
                 selectedForShare = selectedForShare,
                 translation = translation,
-                longMessageCollapseEnabled = longMessageCollapseEnabled,
-                longMessageExpanded = longMessageExpanded,
+                longMessageCollapse = longMessageCollapse,
                 longPressGestureInstanceKey = longPressGestureInstanceKey,
                 outerPadding = outerPadding,
             ),
@@ -24362,8 +24438,7 @@ private fun ThreadMessageCardContent(
     val onToggleTranslationOriginal = callbacks.onToggleTranslationOriginal
     val onRetryTranslation = callbacks.onRetryTranslation
     val onOpenForwardBundle = callbacks.onOpenForwardBundle
-    val longMessageCollapseEnabled = data.longMessageCollapseEnabled
-    val longMessageExpanded = data.longMessageExpanded
+    val longMessageCollapse = data.longMessageCollapse
     val onToggleLongMessage = callbacks.onToggleLongMessage
     val onLongPressInputReady = callbacks.onLongPressInputReady
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
@@ -24501,19 +24576,9 @@ private fun ThreadMessageCardContent(
     val compactTimestampGutter = compactConsecutiveMessages
     val messageHasAttachments = message.attachments.isNotEmpty()
     val hasThreadAttachments = richContentEnabled && messageHasAttachments
+    // The body always renders in full; a long one is clipped visually by RaftLongMessageCollapsibleBody.
     val renderedBody = translation?.displayBody ?: message.body
-    val longMessagePlan =
-        remember(renderedBody) {
-            threadLongMessageRenderPlan(renderedBody)
-        }
-    val showLongMessageToggle =
-        threadLongMessageCollapseActive(longMessageCollapseEnabled, longMessagePlan)
-    val bodyForRender =
-        if (showLongMessageToggle && !longMessageExpanded) {
-            longMessagePlan.collapsedBody
-        } else {
-            renderedBody
-        }
+    val bodyForRender = renderedBody
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
@@ -24818,63 +24883,66 @@ private fun ThreadMessageCardContent(
                                 val messageBodyBlock: @Composable () -> Unit = {
                                     if (translation?.pendingPlaceholder == true) {
                                         ThreadMessageTranslationPendingPlaceholder()
-                                    } else if (showLongMessageToggle && !longMessageExpanded) {
-                                        Text(
-                                            text = longMessagePlan.collapsedDisplayText,
-                                            style = messageBodyTextStyle,
-                                            color = RaftColor.TextBlack,
-                                            maxLines = ThreadLongMessagePreviewLineLimit,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier
-                                        )
-                                    } else if (richContentEnabled) {
-                                        val markdownRenderSignature =
-                                            remember(message.id, bodyForRender) {
-                                                if (bodyForRender == message.body) {
-                                                    message.threadMarkdownRenderSignature()
-                                                } else {
-                                                    message.copy(body = bodyForRender).threadMarkdownRenderSignature()
-                                                }
-                                            }
-                                        LaunchedEffect(markdownRenderSignature) {
-                                            diagnosticsLogger(
-                                                "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                                    "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                                    "sourceBodyLen=${renderedBody.length} " +
-                                                    "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
-                                                    "bodyHash=${bodyForRender.hashCode().toString(16)} " +
-                                                    "context=$markdownTagContextSignature"
-                                            )
-                                        }
-                                        key(markdownRenderSignature) {
-                                            RaftMarkdownBody(
-                                                body = bodyForRender,
-                                                fillWidth = !alignOwnMessageRight,
-                                                textStyle = messageBodyTextStyle,
-                                                highlightedMentions = highlightedMentions,
-                                                isTagValid = isMarkdownTagValid,
-                                                resolveTagLabel = resolveMarkdownTagLabel,
-                                                inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                                activeTagKey = activeMarkdownTagKey,
-                                                onOpenTagAction = { tag, actionId ->
-                                                    tapMovementGate.rejectChildAction("markdown_tag")
-                                                    onOpenMarkdownTag(tag, actionId)
-                                                },
-                                                onOpenUrl = { url ->
-                                                    tapMovementGate.rejectChildAction("markdown_url")
-                                                    onOpenMarkdownUrl(url)
-                                                },
-                                                performanceKey = messagePerformanceKey,
-                                                performanceLogger = diagnosticsLogger
-                                            )
-                                        }
                                     } else {
-                                        Text(
-                                            text = bodyForRender,
-                                            style = messageBodyTextStyle,
-                                            color = RaftColor.TextBlack,
-                                            modifier = Modifier
-                                        )
+                                        RaftLongMessageCollapsibleBody(
+                                            controller = longMessageCollapse,
+                                            messageId = message.id,
+                                            contentKey = "${message.id}:${bodyForRender.length}:${bodyForRender.hashCode()}",
+                                            alignEnd = alignOwnMessageRight,
+                                            onToggle = {
+                                                tapMovementGate.rejectChildAction("long_message_toggle")
+                                                onToggleLongMessage()
+                                            }
+                                        ) {
+                                            if (richContentEnabled) {
+                                                val markdownRenderSignature =
+                                                    remember(message.id, bodyForRender) {
+                                                        if (bodyForRender == message.body) {
+                                                            message.threadMarkdownRenderSignature()
+                                                        } else {
+                                                            message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                        }
+                                                    }
+                                                LaunchedEffect(markdownRenderSignature) {
+                                                    diagnosticsLogger(
+                                                        "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                            "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                            "sourceBodyLen=${renderedBody.length} " +
+                                                            "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                            "context=$markdownTagContextSignature"
+                                                    )
+                                                }
+                                                key(markdownRenderSignature) {
+                                                    RaftMarkdownBody(
+                                                        body = bodyForRender,
+                                                        fillWidth = !alignOwnMessageRight,
+                                                        textStyle = messageBodyTextStyle,
+                                                        highlightedMentions = highlightedMentions,
+                                                        isTagValid = isMarkdownTagValid,
+                                                        resolveTagLabel = resolveMarkdownTagLabel,
+                                                        inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                        activeTagKey = activeMarkdownTagKey,
+                                                        onOpenTagAction = { tag, actionId ->
+                                                            tapMovementGate.rejectChildAction("markdown_tag")
+                                                            onOpenMarkdownTag(tag, actionId)
+                                                        },
+                                                        onOpenUrl = { url ->
+                                                            tapMovementGate.rejectChildAction("markdown_url")
+                                                            onOpenMarkdownUrl(url)
+                                                        },
+                                                        performanceKey = messagePerformanceKey,
+                                                        performanceLogger = diagnosticsLogger
+                                                    )
+                                                }
+                                            } else {
+                                                Text(
+                                                    text = bodyForRender,
+                                                    style = messageBodyTextStyle,
+                                                    color = RaftColor.TextBlack,
+                                                    modifier = Modifier
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 if (alignOwnMessageRight) {
@@ -24895,12 +24963,6 @@ private fun ThreadMessageCardContent(
                                     ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
                                         messageBodyBlock()
                                     }
-                                }
-                                if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
-                                    ThreadLongMessageToggle(
-                                        expanded = longMessageExpanded,
-                                        onClick = onToggleLongMessage
-                                    )
                                 }
                                 quotedPermalinkState.value?.let { state ->
                                     ThreadQuotedPermalinkCard(
@@ -28945,8 +29007,7 @@ private fun ThreadOriginCard(
     shareSelectionActive: Boolean = false,
     selectedShareMessageIds: Set<String> = emptySet(),
     onToggleShareSelection: (String) -> Unit = {},
-    longMessageCollapseEnabled: Boolean = false,
-    longMessageExpanded: Boolean = false,
+    longMessageCollapse: RaftLongMessageCollapseController? = null,
     onToggleLongMessage: (String) -> Unit = {}
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
@@ -29048,8 +29109,7 @@ private fun ThreadOriginCard(
                             onMentionAuthor = onMentionAuthor,
                             richContentEnabled = contentExtrasVisible,
                             focused = focusedMessageId == origin.id,
-                            longMessageCollapseEnabled = longMessageCollapseEnabled,
-                            longMessageExpanded = longMessageExpanded,
+                            longMessageCollapse = longMessageCollapse,
                             onToggleLongMessage = { onToggleLongMessage(origin.id) }
                         )
                     }
@@ -29849,8 +29909,12 @@ private fun ThreadMessageAttachments(
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
         if (imageAttachments.isNotEmpty()) {
+            val backSwipeRowState = rememberLazyListState()
+            val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
             LazyRow(
-                modifier = Modifier.fillMaxWidth(),
+                state = backSwipeRowState,
+                userScrollEnabled = backSwipeRow.userScrollEnabled,
+                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
                 horizontalArrangement =
                     Arrangement.spacedBy(
                         RaftAppSpacing.Sm,
@@ -31655,7 +31719,9 @@ internal fun <T> RaftForwardTargetPicker(
                         style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = RaftColor.TextMutedGray
                     )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val backSwipeRowState = rememberLazyListState()
+                    val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
+                    LazyRow(state = backSwipeRowState, userScrollEnabled = backSwipeRow.userScrollEnabled, modifier = backSwipeRow.modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(state.selectedItems.size, key = { state.selectedItems[it].rowKey }) { index ->
                             val selected = state.selectedItems[index]
                             RaftModalActionButton(
@@ -32831,6 +32897,7 @@ private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? 
 private fun ThreadDirectMessageSettingsModal(
     activityMuteState: ThreadActivityMuteUiState?,
     conversationPinState: ThreadConversationPinUiState?,
+    longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting? = null,
     onDismiss: () -> Unit,
     onToggleActivityMute: (() -> Unit)?,
     onTogglePin: (() -> Unit)?
@@ -32855,6 +32922,16 @@ private fun ThreadDirectMessageSettingsModal(
                 enabled = conversationPinState?.available == true && onTogglePin != null,
                 onClick = { onTogglePin?.invoke() }
             )
+            longMessageCollapseSetting?.takeIf { it.available }?.let { setting ->
+                Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+                ThreadDirectMessagePreferenceRow(
+                    title = stringResource(MR.strings.conversation_long_message_collapse),
+                    detail = setting.preference.localizedDetail(),
+                    checked = setting.effective,
+                    enabled = true,
+                    onClick = { setting.onSetEnabled(!setting.effective) }
+                )
+            }
         }
     }
 }

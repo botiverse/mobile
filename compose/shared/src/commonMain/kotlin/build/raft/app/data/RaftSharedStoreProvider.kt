@@ -54,6 +54,7 @@ import build.raft.app.network.installRaftNetworkTransportController
 import build.raft.app.network.RaftNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
+import build.raft.app.network.sync.RaftThreadReplyWindowCache
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
@@ -361,6 +362,8 @@ internal class RaftSharedStoreProvider private constructor(
     private val sqlDatabase: RaftSqlDatabase,
     private val authKeyValueStore: RaftKeyValueStore,
     private val sharedPreferenceStore: RaftKeyValueStore,
+    /** Durable member avatar references shared by every members store (Hands dd79da45). */
+    private val memberAvatarRefStore: RaftMemberAvatarRefStore,
     private val apiEnvironmentKeyValueStore: RaftKeyValueStore,
     val authStore: KeyValueAuthSessionStore,
     val authSessionEvents: RaftAuthSessionEvents,
@@ -651,6 +654,11 @@ internal class RaftSharedStoreProvider private constructor(
                     // Cached previews are message content: they leave with the session. Losing a
                     // successor's hints to a late terminal event only costs one cold-start hint.
                     homeRowHintPersistStorage.clearAll()
+                    // Avatar references are account-visible directory data: same lifetime.
+                    memberAvatarRefStore.clearAll()
+                    // Reply previews are message content: same lifetime (page keys are also
+                    // principal-scoped, so a successor never reads them in the meantime).
+                    threadDurableLastKnownReader.replyWindowCache?.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -1078,7 +1086,8 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceOwner = { serverId -> presenceOwnerResolver(serverId.value) },
                     presenceOwnerFlow = { serverId -> presenceOwnerFlowResolver(serverId.value) },
                     presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
-                    processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) }
+                    processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
+                    avatarRefStore = memberAvatarRefStore
                 )
             }
         }
@@ -1520,6 +1529,14 @@ internal class RaftSharedStoreProvider private constructor(
                     request.owner.toProcessActivityUnreadOwner(),
                     reason = "read_result:${request.revision}"
                 )
+                // The Activity local read hold starts at server confirmation.
+                homeActivityStores.entries().forEach { (shellScope, store) ->
+                    runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
+                        store.dispatch(
+                            SharedActivityIntent.ApplyReadReceiptResult(request, result.isReadReceiptSuccess())
+                        )
+                    }
+                }
                 sharedInfoLogger("SlockReadReceipt", "process_read_receipt")(
                     "result owner=${request.owner.serverId}:${request.owner.accountId} " +
                         "channelId=${request.channelId.value} revision=${request.revision} " +
@@ -1794,6 +1811,11 @@ internal class RaftSharedStoreProvider private constructor(
                 SharedApiEnvironmentStore(
                     apiEnvironmentKeyValueStore
                 )
+            // Content-addressed avatar keys are host-free only for the active environment's hosts.
+            apiEnvironmentStore.current().let { RaftAvatarTrustedHosts.configure(it.apiBaseUrl, it.webUrl) }
+            CoroutineScope(SupervisorJob()).launch {
+                apiEnvironmentStore.state.collect { RaftAvatarTrustedHosts.configure(it.apiBaseUrl, it.webUrl) }
+            }
             val tasksDataStore =
                 SharedTasksDataStore(
                     ownerIdentityProvider = {
@@ -2184,6 +2206,15 @@ internal class RaftSharedStoreProvider private constructor(
                     // Lines already start with `canonical_v2_canary` (task #168: no doubled prefix).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Canary"),
                 )
+            // Reply-preview windows are viewer-scoped thread state, not V2 facts: they live beside
+            // the V2 partition (page key = server + principal + parent scope) and are not gated by
+            // the messages flag, so a network-only first frame can use them as well.
+            val threadReplyWindowCache =
+                RaftThreadReplyWindowCache(
+                    storage = SqlDelightRaftThreadReplyWindowStorage(database, ::defaultNowMillis),
+                    scope = CoroutineScope(SupervisorJob()),
+                    diagnosticsLogger = sharedInfoLogger("ThreadReplyWindowCache"),
+                )
             // Read side of the same partition the canary writes: same store instance, same per-server
             // flag, no baseline-coordinator side effects (task #1123).
             val threadDurableLastKnownReader =
@@ -2196,6 +2227,7 @@ internal class RaftSharedStoreProvider private constructor(
                         )
                     },
                     logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
+                    replyWindowCache = threadReplyWindowCache,
                 )
             // Parallel on purpose: sends, realtime ingest/decode and authority work are not store-state
             // writes. Only the stores built on RaftStoreThreading.newScope() (home, activity, translation,
@@ -2339,6 +2371,7 @@ internal class RaftSharedStoreProvider private constructor(
                     webBaseUrl = apiEnvironmentStore.current().webUrl
                 )
             }
+            val memberAvatarRefStore = RaftMemberAvatarRefStore(sharedPreferenceStore)
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository = processServerMembersRepository,
@@ -2359,7 +2392,8 @@ internal class RaftSharedStoreProvider private constructor(
                                 ProcessServerMembersOwner(environmentId, accountId, normalizedServerId)
                             }
                         }
-                    }
+                    },
+                    avatarRefStore = memberAvatarRefStore
                 )
             lateinit var provider: RaftSharedStoreProvider
             val foregroundReconciler =
@@ -2430,6 +2464,7 @@ internal class RaftSharedStoreProvider private constructor(
                 sqlDatabase = database,
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
+                memberAvatarRefStore = memberAvatarRefStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
                 authSessionEvents = authSessionEvents,
@@ -3484,7 +3519,7 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             // agent:seen is seq-less; lastSeenAt is the key so a new
             // observation is never deduped away.
             serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
-                ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}:${lastSeenAt.orEmpty()}"
+                ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}:${detailKind.orEmpty()}:${activityToolName.orEmpty()}:${lastSeenAt.orEmpty()}"
         // task #136: refresh hints are idempotent TRIGGERS, not facts, and the
         // event carries no seq — a stable key made the accepted-key ledger
         // swallow every later identical hint (artin's device logs:

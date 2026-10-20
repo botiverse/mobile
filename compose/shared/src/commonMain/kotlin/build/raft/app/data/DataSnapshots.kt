@@ -55,8 +55,64 @@ data class InboxItem(
      */
     val isFollowing: Boolean? = null,
     val mentionActionId: String? = null,
-    val pendingMentionActions: List<PendingMentionAction> = emptyList()
+    val pendingMentionActions: List<PendingMentionAction> = emptyList(),
+    /**
+     * Authority activity frontier for this row's own scope: wire
+     * `readState.latestActivity.seq` (canonical decimal string) when
+     * `readState.kind == "present"`, else null. Not the display
+     * `latestActivitySeq`, which keeps a zero-reply parent fallback in another
+     * seq domain. Used as the local Done/read overlay marker.
+     */
+    val readStateLatestActivitySeq: String? = null,
+    /**
+     * Wire `latestActivitySeq`: the display content frontier (decimal string).
+     * Realtime reply patches advance a row only on a strictly newer seq, like
+     * web `receiveThreadReply`. Null on servers that predate it.
+     */
+    val latestActivitySeq: String? = null,
+    /**
+     * Wire `doneFrontierSeq`, the storage-space frontier a Done must name
+     * (`throughActivitySeq`). Only meaningful with [doneFrontierSeqPresent]:
+     * a server that predates the field omits it entirely (legacy Done), while
+     * a present-but-null/invalid value fails closed (refresh, no write).
+     */
+    val doneFrontierSeq: String? = null,
+    /** Whether the wire row carried the `doneFrontierSeq` key at all. */
+    val doneFrontierSeqPresent: Boolean = false,
+    /** Wire `firstMentionMessageId` (unread-mention anchor), null when absent. */
+    val firstMentionMessageId: MessageId? = null,
+    /** Wire `unfollowedAt` for inline unfollowed thread rows (`isFollowing:false`). */
+    val unfollowedAt: String? = null
 )
+
+/**
+ * The frontier a Done request names, chosen exactly like web
+ * `inboxStore.markDone` (botiverse/slock 1bb70cbeb, inboxStore.ts:1417-1470).
+ */
+internal sealed interface ActivityDoneRequestFrontier {
+    /** The row predates `doneFrontierSeq`: omit the seq (server-side latest). */
+    data object Legacy : ActivityDoneRequestFrontier
+
+    /** `{throughActivitySeq, frontierSpace: "storage"}`. */
+    data class Storage(val throughActivitySeq: String) : ActivityDoneRequestFrontier
+
+    /** Present but unusable: an upgraded-server anomaly; refresh and do not write. */
+    data object Invalid : ActivityDoneRequestFrontier
+}
+
+internal fun InboxItem.activityDoneRequestFrontier(): ActivityDoneRequestFrontier {
+    if (!doneFrontierSeqPresent) return ActivityDoneRequestFrontier.Legacy
+    val seq = doneFrontierSeq?.takeIf { isCanonicalActivitySeq(it) && it != "0" }
+        ?: return ActivityDoneRequestFrontier.Invalid
+    return ActivityDoneRequestFrontier.Storage(seq)
+}
+
+internal fun ActivityDoneRequestFrontier.toInboxDoneFrontier(): InboxDoneFrontier? =
+    when (this) {
+        ActivityDoneRequestFrontier.Legacy -> InboxDoneFrontier.Legacy
+        is ActivityDoneRequestFrontier.Storage -> InboxDoneFrontier.Storage(throughActivitySeq)
+        ActivityDoneRequestFrontier.Invalid -> null
+    }
 
 /** True only for an explicitly server-projected, unfollowed thread row. */
 internal val InboxItem.isUnfollowedActivityThread: Boolean
@@ -88,16 +144,9 @@ internal fun InboxItem.withActivityFollowStateProjection(): InboxItem =
  * repository/fixture consumer applies the same membership contract.
  */
 internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnapshot {
-    val rawUnread = items.sumOf(InboxItem::unreadCount)
+    // The unread aggregate is the server's (it already zeroes unfollowed rows);
+    // only row membership/attention is guarded here.
     val normalizedItems = items.map { item -> item.withActivityFollowStateProjection() }
-    val normalizedUnread = normalizedItems.sumOf(InboxItem::unreadCount)
-    val suppressedUnfollowedUnread = (rawUnread - normalizedUnread).coerceAtLeast(0)
-    val projectedTotalUnread =
-        if (totalUnreadCount >= rawUnread) {
-            (totalUnreadCount - suppressedUnfollowedUnread).coerceAtLeast(0)
-        } else {
-            maxOf(totalUnreadCount, normalizedUnread)
-        }
     val visibleItems =
         if (filter == InboxFilter.All) {
             normalizedItems
@@ -105,11 +154,10 @@ internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnap
             normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
         }
     val removedCount = normalizedItems.size - visibleItems.size
-    if (removedCount == 0 && normalizedItems == items && projectedTotalUnread == totalUnreadCount) return this
+    if (removedCount == 0 && normalizedItems == items) return this
     return copy(
         items = visibleItems,
-        totalCount = (totalCount - removedCount).coerceAtLeast(0),
-        totalUnreadCount = projectedTotalUnread
+        totalCount = (totalCount - removedCount).coerceAtLeast(0)
     )
 }
 
@@ -960,6 +1008,8 @@ data class AgentActivityEntry(
     val toolInput: String? = null,
     val statusActivity: String? = null,
     val statusDetail: String? = null,
+    /** Server `detailKind` of a status entry ("starting", "compacting_context", ...). */
+    val statusDetailKind: String? = null,
     val isSubagent: Boolean = false,
     val subagentType: String? = null,
     val expandable: Boolean = false,
@@ -989,7 +1039,12 @@ data class InboxSnapshot(
     val totalCount: Int = items.size,
     val totalUnreadCount: Int = items.sumOf { it.unreadCount },
     val hasMore: Boolean = false,
-    val nextOffset: Int? = null
+    val nextOffset: Int? = null,
+    /**
+     * Server `activeUnreadCount` (unread excluding mention-only channels; web
+     * drives its rail dot from it). Null when the server omits it.
+     */
+    val activeUnreadCount: Int? = null
 )
 
 internal fun InboxSnapshot.activityVisibleSummaryCounts(
@@ -1010,6 +1065,20 @@ internal fun InboxSnapshot.activityVisibleSummaryCounts(
 data class InboxDoneResult(
     val channelId: ChannelId
 )
+
+/**
+ * Request frontier for `POST /channels/inbox/done` and `POST
+ * /channels/threads/done` (botiverse/slock 1bb70cbeb, routes/channels.ts:1497,
+ * 2014). The server's compatibility matrix: an omitted seq takes the legacy
+ * "latest at request time" snapshot; a seq requires `frontierSpace:"storage"`.
+ */
+sealed interface InboxDoneFrontier {
+    /** Omit `throughActivitySeq` and `frontierSpace` (server predates `doneFrontierSeq`). */
+    data object Legacy : InboxDoneFrontier
+
+    /** Send `{throughActivitySeq, frontierSpace:"storage"}`. */
+    data class Storage(val throughActivitySeq: String) : InboxDoneFrontier
+}
 
 data class ChannelSnapshot(
     val server: ServerSummary,
@@ -1306,7 +1375,18 @@ data class SettingsComputerSnapshot(
     val createdAt: String? = null,
     val lastHeartbeat: String? = null,
     val apiKeyPrefix: String? = null,
-    val statusVersion: Long = 0L
+    val statusVersion: Long = 0L,
+    /** `machines.userId` — the machine creator, who may edit/remove it without a capability. */
+    val creatorUserId: String? = null,
+    /** The current user attached the Computer backing this machine (web counts this as manage authority). */
+    val attachedByCurrentUser: Boolean = false,
+    /** Active agents assigned to this machine (server `agentCount`). */
+    val agentCount: Int = 0,
+    /**
+     * The server's policy-aware `computerUpgradeAvailable` decision, only ever true for a managed
+     * Computer (web `shouldShowComputerUpgradeIndicator`); raw daemons never claim an update.
+     */
+    val upgradeAvailable: Boolean = false
 )
 
 data class SettingsComputerDetailSnapshot(
@@ -1318,14 +1398,14 @@ data class SettingsComputerDetailSnapshot(
     val workspacesError: SettingsSectionErrorSnapshot? = null,
     val agentsError: SettingsSectionErrorSnapshot? = null,
     /**
-     * #78: server-side `manageMachines` capability. Defaults to false to mirror
-     * the existing [SettingsComputersSnapshot.canAddComputer] hardcode — actual
-     * member-role permission detection is a follow-up. When false, the
-     * ComputerDetail page hides rename / delete / rotate-key actions; the
-     * server still enforces 403 on the API endpoints so unauthorized users
-     * can't bypass a permissive client.
+     * Either [canEditMachine] or [canRemoveMachine]: the page shows its Actions section. The
+     * server still enforces 403 on the API endpoints, so a permissive client cannot bypass it.
      */
-    val canManageMachines: Boolean = false
+    val canManageMachines: Boolean = false,
+    /** Rename / description: creator, attaching user, or the `editMachines` capability (owner/admin). */
+    val canEditMachine: Boolean = false,
+    /** Delete: creator, attaching user, or the `removeMachines` capability (owner/admin). */
+    val canRemoveMachine: Boolean = false
 )
 
 data class SettingsSectionErrorSnapshot(
@@ -1462,6 +1542,9 @@ data class SettingsServerSidebarOrderSnapshot(
     val hiddenDmIds: List<String> = emptyList(),
     val channelPanelTabOrder: List<String> = emptyList(),
     val agentPanelTabOrder: List<String> = emptyList(),
+    // Web keeps the Joint Channels sort mode separate from Channels
+    // (sidebar-order `jointChannelSortMode`).
+    val jointChannelSortMode: String = "manual",
     // task #512: web "channel sections" port. Mirrors the wire fields of
     // GET/PATCH /servers/:id/sidebar-order (web packages/web/src/store/sidebarSections.ts).
     val customSections: List<SettingsServerSidebarCustomSection> = emptyList(),
@@ -1560,10 +1643,10 @@ data class SettingsMobileSnapshot(
         ),
     val longMessageCollapse: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
-            enabled = false,
+            enabled = RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED,
             available = true,
-            statusLabel = "Off",
-            detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
+            statusLabel = if (RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED) "Enabled" else "Off",
+            detail = RAFT_LONG_MESSAGE_COLLAPSE_SETTINGS_DETAIL
         ),
     val singleTapOpensThread: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
@@ -1664,6 +1747,14 @@ data class SettingsMobileSnapshot(
             available = false,
             statusLabel = "Unsupported",
             detail = "The bottom-up message list is not available on this build."
+        ),
+    /** Native pull-to-refresh switch (off = Raft's custom one); see RaftNativePullToRefreshPreferenceStore. */
+    val nativePullToRefresh: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = RAFT_NATIVE_PULL_TO_REFRESH_DEFAULT,
+            available = false,
+            statusLabel = "Off",
+            detail = "Native pull-to-refresh is not available on this build."
         ),
     /** Task #3: effective value (user choice, else the server-sent transport variant); see RaftHttp3Policy. */
     val http3: SettingsMobileToggleSnapshot =

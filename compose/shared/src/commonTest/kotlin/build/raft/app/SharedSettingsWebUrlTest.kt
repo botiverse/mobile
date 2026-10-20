@@ -36,8 +36,8 @@ class SharedSettingsWebUrlTest {
             SharedApiEnvironmentStore.Staging.webUrl,
         )
         assertEquals(
-            "https://raft-app-staging.botiverse.dev/s/workspace/computers?embed=raft-settings-v1&shell=host",
-            settingsComputersWebViewUrl(
+            "https://raft-app-staging.botiverse.dev/s/workspace/settings/administration?embed=raft-settings-v1&shell=host&lang=en",
+            settingsAdministrationWebViewUrl(
                 SharedApiEnvironmentStore.Staging.webUrl,
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@example.test", displayName = "User"),
@@ -47,6 +47,7 @@ class SharedSettingsWebUrlTest {
                     selectedServerSlug = "workspace",
                     servers = listOf(StoredAuthServer(id = "server-1", slug = "workspace", name = "Workspace")),
                 ),
+                "en",
             ),
         )
     }
