@@ -1679,6 +1679,10 @@ private val ThreadHeaderActionLabelMinWidth = 44.dp
 // Back button and the last trailing action both sit 3dp from the screen edge, which puts each
 // 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
 private val ThreadHeaderEdgeInset = 3.dp
+// The inline search bar keeps its own compact controls (former 30dp head action, 16dp glyph)
+// so the 44dp header PanelAction does not inflate the bar under the search field.
+private val ThreadInlineSearchActionSize = 30.dp
+private val ThreadInlineSearchActionIconSize = 16.dp
 private val ThreadHeaderDmAgentActivityMaxWidth = 150.dp
 private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // React AgentDMStatus uses the canonical StatusDot default (`md`, 10px).
@@ -16052,7 +16056,9 @@ internal fun ThreadPageHeader(
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
         contentStartPadding = ThreadHeaderEdgeInset,
-        contentEndPadding = ThreadHeaderEdgeInset,
+        // The 3dp edge inset only mirrors Back when a trailing PanelAction sits at the end;
+        // without one the title keeps the default end padding instead of running to the edge.
+        contentEndPadding = if (showHeaderActions) ThreadHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = ThreadHeaderContentSpacing,
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
@@ -16828,13 +16834,14 @@ internal fun ThreadHeaderActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     minWidth: Dp = ThreadHeaderActionSize,
+    minHeight: Dp = ThreadHeaderActionSize,
     horizontalPadding: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
     // raft-ui `PanelAction`: ghost head action, no edge and no offset shadow.
     RaftPanelAction(
         onClick = onClick,
-        modifier = modifier.heightIn(min = ThreadHeaderActionSize).widthIn(min = minWidth),
+        modifier = modifier.heightIn(min = minHeight).widthIn(min = minWidth),
     ) {
         Box(modifier = Modifier.padding(horizontal = horizontalPadding), contentAlignment = Alignment.Center) {
             content()
@@ -16848,7 +16855,9 @@ private fun ThreadHeaderCompactAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     label: String? = null,
-    contentDescription: String? = null
+    contentDescription: String? = null,
+    actionSize: Dp = ThreadHeaderActionSize,
+    iconSize: Dp = ThreadHeaderActionIconSize
 ) {
     ThreadHeaderActionButton(
         onClick = onClick,
@@ -16858,7 +16867,8 @@ private fun ThreadHeaderCompactAction(
             } else {
                 modifier.semantics { this.contentDescription = contentDescription }
             },
-        minWidth = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth,
+        minWidth = if (label == null) actionSize else ThreadHeaderActionLabelMinWidth,
+        minHeight = actionSize,
         // raft-ui `PanelAction` `px-2` once it carries a label next to its glyph.
         horizontalPadding = if (label == null) 0.dp else RaftAppSpacing.Sm,
     ) {
@@ -16867,7 +16877,7 @@ private fun ThreadHeaderCompactAction(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs, Alignment.CenterHorizontally)
         ) {
             // raft-ui `PanelAction` is `text-foreground`; the muted ink made the head read as disabled.
-            RaftLucideIcon(icon, Modifier.size(ThreadHeaderActionIconSize), color = raftArgbHex(RaftColor.TextBlack))
+            RaftLucideIcon(icon, Modifier.size(iconSize), color = raftArgbHex(RaftColor.TextBlack))
             label?.takeIf { it.isNotBlank() }?.let {
                 // raft-ui `PanelAction`: `text-footnote font-bold` (13/18).
                 Text(it, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -21931,7 +21941,7 @@ private fun ThreadInlineSearchBar(
             Box(
                 modifier =
                     Modifier
-                        .height(ThreadHeaderActionSize)
+                        .height(ThreadInlineSearchActionSize)
                         .widthIn(min = 40.dp)
                         .background(RaftColor.SurfaceWhite)
                         .padding(horizontal = RaftAppSpacing.Xs),
@@ -21945,8 +21955,18 @@ private fun ThreadInlineSearchBar(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            ThreadHeaderIconButton(icon = RaftLucideIconName.ChevronUp, onClick = onPrevious)
-            ThreadHeaderIconButton(icon = RaftLucideIconName.ChevronDown, onClick = onNext)
+            ThreadHeaderCompactAction(
+                icon = RaftLucideIconName.ChevronUp,
+                onClick = onPrevious,
+                actionSize = ThreadInlineSearchActionSize,
+                iconSize = ThreadInlineSearchActionIconSize
+            )
+            ThreadHeaderCompactAction(
+                icon = RaftLucideIconName.ChevronDown,
+                onClick = onNext,
+                actionSize = ThreadInlineSearchActionSize,
+                iconSize = ThreadInlineSearchActionIconSize
+            )
         }
     }
 }

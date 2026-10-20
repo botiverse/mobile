@@ -442,6 +442,46 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun threadDateDividerAndMentionActorResourcesAreGenerated() {
+        val literalResources =
+            listOf(
+                MR.strings.thread_date_divider_today,
+                MR.strings.thread_date_divider_yesterday,
+                MR.strings.thread_date_divider_weekday_sunday,
+                MR.strings.thread_date_divider_weekday_monday,
+                MR.strings.thread_date_divider_weekday_tuesday,
+                MR.strings.thread_date_divider_weekday_wednesday,
+                MR.strings.thread_date_divider_weekday_thursday,
+                MR.strings.thread_date_divider_weekday_friday,
+                MR.strings.thread_date_divider_weekday_saturday,
+                MR.strings.thread_date_divider_month_january,
+                MR.strings.thread_date_divider_month_february,
+                MR.strings.thread_date_divider_month_march,
+                MR.strings.thread_date_divider_month_april,
+                MR.strings.thread_date_divider_month_may,
+                MR.strings.thread_date_divider_month_june,
+                MR.strings.thread_date_divider_month_july,
+                MR.strings.thread_date_divider_month_august,
+                MR.strings.thread_date_divider_month_september,
+                MR.strings.thread_date_divider_month_october,
+                MR.strings.thread_date_divider_month_november,
+                MR.strings.thread_date_divider_month_december,
+                MR.strings.composer_mention_actor_human,
+                MR.strings.composer_mention_actor_agent
+            )
+        literalResources.forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "thread date divider and mention actor resources must produce ResourceStringDesc entries"
+            )
+        }
+        assertTrue(
+            MR.strings.thread_date_divider_date.format(listOf("MONDAY", "JANUARY", 5)) is ResourceFormattedStringDesc,
+            "thread date divider date must be a formatted resource"
+        )
+    }
+
+    @Test
     fun threadFlowStringResourcesAreGenerated() {
         val literalResources =
             listOf(

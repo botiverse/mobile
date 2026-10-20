@@ -161,6 +161,7 @@ private val ComposerMemberSuggestionAvatarNameGap = ComposerSuggestionItemGap
 private val ComposerMemberSuggestionStatusSize = 7.dp
 // web `ComposerSuggestionTitle max-w-[12rem]`, server meta `max-w-[10rem]`, handle `max-w-[7rem]`.
 private val ComposerSuggestionTitleMaxWidth = 192.dp
+private val ComposerSuggestionWhitespaceRegex = Regex("\\s+")
 private val ComposerSuggestionServerMaxWidth = 160.dp
 private val ComposerSuggestionHandleMaxWidth = 112.dp
 private val ComposerSuggestionTitleStyle: TextStyle
@@ -3639,7 +3640,7 @@ private fun ComposerMemberSuggestionRow(
     // Web `MentionCandidateBody` (raft-ui ComposerSuggestion* parts): title, a soft muted
     // actor-type badge, the description and the source server as hint metas, and the
     // `@handle` in a mono aside. Not-in-channel rows are dimmed by the row overlay.
-    val description = member.description?.trim()?.replace(Regex("\\s+"), " ")?.takeIf { it.isNotBlank() }
+    val description = member.description?.trim()?.replace(ComposerSuggestionWhitespaceRegex, " ")?.takeIf { it.isNotBlank() }
     val serverLabel = member.sourceServerLabel?.trim()?.takeIf { it.isNotBlank() }
     val actorTypeLabel =
         when (member.kind) {
@@ -3699,7 +3700,9 @@ private fun ComposerMemberSuggestionRow(
                 // raft-ui suggestion item: text-callout (14/20) medium on foreground.
                 style = ComposerSuggestionTitleStyle,
                 color = RaftColor.TextBlack,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = ComposerSuggestionTitleMaxWidth),
+                // Web `max-w-48`: the title takes its natural width up to 192dp and is never
+                // squeezed into an equal share with the metas; only description/server flex.
+                modifier = Modifier.widthIn(max = ComposerSuggestionTitleMaxWidth),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
