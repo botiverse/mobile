@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-RELEASE="${KUIKLY_RELEASE_VERSION:-2.28.0-raft.16}"
+RELEASE="${KUIKLY_RELEASE_VERSION:-2.28.0-raft.17}"
 VERSION="${RELEASE}-2.0.21-ohos"
 COORDINATE="com.tencent.kuikly-open:core-render-ohos:${VERSION}"
 RENDERER="${REPO_ROOT}/compose/build/kuikly/core-render-ohos-${VERSION}.har"
