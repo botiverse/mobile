@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -38,6 +39,7 @@ import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftTextareaMinHeight
 import build.raft.app.components.RaftBrutalListRow
 import build.raft.app.components.RaftAnchoredToolbarChip
 import build.raft.app.components.RaftBrutalReadOnlyField
@@ -20111,7 +20113,7 @@ private fun SharedCreateChannelDialog(
                     onValueChange = { name = it },
                     placeholder = stringResource(MR.strings.channel_create_placeholder_name),
                     enabled = !submitting,
-                    hint = stringResource(MR.strings.channel_create_hint_name_format),
+                    // Web shows no standing format hint; the rule appears as the error.
                     error = nameError,
                     autoFocus = false,
                     onFocusChanged = { isFocused ->
@@ -20131,6 +20133,9 @@ private fun SharedCreateChannelDialog(
                     placeholder = stringResource(MR.strings.channel_create_placeholder_description),
                     enabled = !submitting,
                     maxLines = 2,
+                    // raft-ui Textarea: three field lines tall (`min-h`) with `py-2.5`.
+                    fieldMinHeight = RaftTextareaMinHeight,
+                    verticalPadding = 10.dp,
                     autoFocus = false,
                     onFocusChanged = { isFocused ->
                         if (isFocused) {
@@ -20315,8 +20320,9 @@ private fun SharedCreateChannelMemberPicker(
                     onFocus = onFocus,
                     onBlur = onBlur
                 )
-                RaftModalListShell(
-                    height = 192.dp,
+                // Web: a multi-select list in a `Card` (`max-h-48 overflow-y-auto p-1.5`):
+                // grouped by kind, a check box per option, sized to its rows up to 192dp.
+                SharedCreateChannelMemberPickerCard(
                     modifier = Modifier.retainInputFocusForInteractions(),
                     listModifier =
                         Modifier
@@ -20384,109 +20390,81 @@ private fun SharedCreateChannelMemberPicker(
     }
 }
 
+/** The picker `Card`: hairline card surface, 6dp inside, as tall as its rows up to 192dp. */
 @Composable
-private fun SharedCreateChannelMemberSectionLabel(label: String) {
+private fun SharedCreateChannelMemberPickerCard(
+    modifier: Modifier = Modifier,
+    listModifier: Modifier = Modifier,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
+) {
     Box(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite.copy(alpha = 0.5f))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .heightIn(max = 192.dp)
+                .raftCardSurface()
+                .clipToBounds()
+                .padding(1.dp + 6.dp)
     ) {
-        Text(
-            text = label,
-            style = RaftType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().then(listModifier),
+            content = content
         )
     }
 }
 
+/** Web `SectionEyebrow` group label (`px-2.5 pt-2 pb-1`). */
+@Composable
+private fun SharedCreateChannelMemberSectionLabel(label: String) {
+    build.raft.designsystem.components.RaftSectionEyebrow(
+        text = label,
+        modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 4.dp)
+    )
+}
+
+/**
+ * Web `PICKER_ROW_CLASS` option: `min-h-9 gap-2.5 px-2.5`, the check box, a 20dp
+ * sidebar-list avatar (people get the placeholder figure), the name in `text-callout`
+ * 500. No subtitle, no status dot and no selected wash: the check box carries the state.
+ */
 @Composable
 private fun SharedCreateChannelMemberRow(
     member: MemberProfile,
     selected: Boolean,
     enabled: Boolean,
-    agentStatusResolver: RaftAgentStatusResolver,
-    fixtureStatusFallbackEnabled: Boolean,
+    @Suppress("UNUSED_PARAMETER") agentStatusResolver: RaftAgentStatusResolver,
+    @Suppress("UNUSED_PARAMETER") fixtureStatusFallbackEnabled: Boolean,
     onClick: () -> Unit
 ) {
-    val avatarWireValue = member.avatarWireValueForAvatarSlot()
-    // Dot-facing resolution: must be the OrNull variant. The label-facing
-    // resolveMembersAgentStatusIndicatorState substitutes a placeholder whose presence is
-    // Offline, so its colour is StatusNeutralGray -- pixel-identical to a real Offline dot
-    // for an agent whose status is merely not known yet. RaftAvatarWithStatus omits the dot
-    // entirely on a null colour, which is the behaviour task #253 chose: show nothing rather
-    // than something wrong. Same defect as task #256 fixed in MembersPage; this call site
-    // survived because that sweep, and the lint written alongside it, only looked at
-    // MembersPage.kt.
-    val statusIndicatorState =
-        if (member.kind == MemberKind.Agent) {
-            resolveMembersAgentStatusIndicatorStateOrNull(
-                canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value),
-                fixtureFallback =
-                    raftAgentStatusIndicatorState(
-                        status = member.agentStatus,
-                        presence = member.presence,
-                        external = member.isExternal
-                    ),
-                fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
-            )
-        } else {
-            null
-        }
-    val subtitle =
-        member.roleDescription
-            ?.takeIf { it.isNotBlank() }
-            ?: "${member.kind.name.lowercase()} · @${member.handle}"
-    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-    val background = if (selected) RaftColor.AccentPink.copy(alpha = 0.2f) else RaftColor.SurfaceWhite
+    val isAgent = member.kind == MemberKind.Agent
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(background)
+                .heightIn(min = 36.dp)
+                .clip(RoundedCornerShape(RaftAppRadius.Control))
                 .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftAvatarWithStatus(
-            statusColor = statusIndicatorState?.color,
-            avatarSize = 28.dp,
-            statusPulsing = statusIndicatorState?.pulsing == true
-        ) {
-            RaftAppAvatar(
-                avatarWireValue = avatarWireValue,
-                label = member.raftAvatarName(),
-                avatarSize = 28.dp,
-                cacheSubject = member.raftAvatarCacheSubject(),
-                cacheServerId = member.serverId?.value,
-                fallbackFill = raftAvatarFallbackFill(member.kind)
-            )
-        }
-        Column(
+        build.raft.designsystem.components.RaftCheckbox(checked = selected, onCheckedChange = null, enabled = enabled)
+        RaftAppAvatar(
+            avatarWireValue = if (isAgent) member.avatarWireValueForAvatarSlot() else null,
+            label = if (isAgent) member.raftAvatarName() else "",
+            avatarSize = 20.dp,
+            cacheSubject = member.raftAvatarCacheSubject(),
+            cacheServerId = member.serverId?.value,
+            fallbackFill = raftAvatarFallbackFill(member.kind)
+        )
+        build.raft.designsystem.text.RaftText(
+            text = member.displayName,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = member.displayName,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (selected) {
-            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = "#FF000000")
-        }
+            style = build.raft.designsystem.theme.RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium),
+            color = build.raft.designsystem.theme.RaftTheme.colors.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

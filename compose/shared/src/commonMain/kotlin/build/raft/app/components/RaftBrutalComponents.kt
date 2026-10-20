@@ -520,6 +520,7 @@ internal fun RaftBrutalTextField(
     containerTapRequestsFocus: Boolean = false,
     password: Boolean = false,
     labelAccessory: (@Composable () -> Unit)? = null,
+    verticalPadding: Dp = 8.dp,
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
@@ -544,6 +545,7 @@ internal fun RaftBrutalTextField(
             textStyle = textStyle,
             fieldMinHeight = fieldMinHeight,
             containerTapRequestsFocus = containerTapRequestsFocus,
+            verticalPadding = verticalPadding,
             borderColor = if (hasError) RaftColor.AccentRed else RaftColor.BorderBlack,
             enabledBackgroundColor = if (hasError) RaftFieldErrorTint else RaftColor.SurfaceWhite,
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
@@ -558,6 +560,9 @@ internal fun RaftBrutalTextField(
     }
 }
 
+/** raft-ui Textarea `min-h-[calc(var(--field-line-height)*3+--spacing(6))]`: 3 x 24 + 24. */
+internal val RaftTextareaMinHeight: Dp = 96.dp
+
 /**
  * Height the input frame must reserve so [maxLines] lines of [lineHeight] fit inside the
  * vertical padding and the 2dp border. A two-line description field (create-channel,
@@ -571,7 +576,7 @@ internal fun raftBrutalInputFieldFrameMinHeight(
     maxLines: Int,
     lineHeight: Dp,
     verticalPadding: Dp,
-    borderWidth: Dp = RaftAppStroke.Default
+    borderWidth: Dp = RaftAppStroke.Thin
 ): Dp {
     if (maxLines <= 1) return fieldMinHeight
     val needed = lineHeight * maxLines + verticalPadding * 2 + borderWidth * 2
@@ -620,8 +625,8 @@ private fun RaftBrutalInputFieldFrame(
         } else {
             Modifier
         }
-    // raft-ui Input / Textarea: control radius 8, 1.5dp `--line-strong` (`--line-field`)
-    // edge on the card layer, no shadow. Invalid swaps the edge to `--danger-strong`
+    // raft-ui Input / Textarea: control radius 8, 1dp `--line-field` edge on the card layer
+    // (raft-ui 0.10 draws field frames at 1px, phone included), no shadow. Invalid swaps the edge to `--danger-strong`
     // (the fill stays the card); disabled is the opaque `--fill-muted` / `--line-hairline` pair.
     // Read-only fields keep the resting look, like web `<Input readOnly>`.
     val shape = RoundedCornerShape(RaftAppRadius.Control)
@@ -645,7 +650,7 @@ private fun RaftBrutalInputFieldFrame(
                 .fillMaxWidth()
                 .height(fieldMinHeight)
                 .background(raftSurfaceColor, shape)
-                .border(RaftAppStroke.Control, raftBorderColor, shape)
+                .border(RaftAppStroke.Thin, raftBorderColor, shape)
                 .then(tapModifier)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         contentAlignment = contentAlignment,
@@ -1135,7 +1140,7 @@ private fun RaftSearchFieldFrame(
                 .fillMaxWidth()
                 .height(RaftMetrics.FieldHeight)
                 .background(if (enabled) RaftColor.Card else RaftColor.FillMuted, shape)
-                .border(RaftAppStroke.Control, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
+                .border(RaftAppStroke.Thin, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
                 .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically

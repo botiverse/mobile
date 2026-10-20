@@ -34,7 +34,9 @@ import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftChipLoadingIndicator
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.RaftFormField
 import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftTextareaMinHeight
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
@@ -301,6 +303,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -326,6 +330,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -5639,8 +5645,7 @@ internal fun ChannelAddMemberPanelVisualScreen() {
             canAddMembers = true,
             addMemberStatus = "idle",
             addMemberErrorCode = null,
-            initialSelectedId = "user_designer",
-            showSelectedCheckmark = false,
+            channelName = "design",
             onDismiss = {},
             onSubmit = {}
         )
@@ -5682,16 +5687,33 @@ private fun channelPanelVisualMembers(): List<RaftThreadMemberItem> =
 // (a matching memberKey would add the JOINED marker, which react does not
 // show for this fixture).
 private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
+    // React add-panel fixture (visual-testing fixtureData.json agents, nothing selected):
+    // the roster endpoint returns no members, so every server agent but Cindy and both
+    // server humans are candidates, agents first in fixture order.
     listOf(
-        RaftThreadMemberItem(
-            id = "agent-product-ux",
-            displayName = "Product UX Designer",
-            handle = "Product-UX-Designer",
-            roleLabel = "",
-            description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
-            avatarUrl = "pixel:paint",
-            avatarLabel = "PU",
-            kind = "agent"
+        channelPanelVisualAgentCandidate(
+            "agent-product-ux", "Product-UX-Designer", "Product UX Designer",
+            "Turns product feedback, screenshots, and release notes into actionable UX specs."
+        ),
+        channelPanelVisualAgentCandidate(
+            "agent-computer-offline", "Computer-Offline-Probe", "Computer Offline Probe",
+            "Bound to a computer the store knows and reports offline: web shows a gray dot and Offline."
+        ),
+        channelPanelVisualAgentCandidate(
+            "agent-computer-missing", "Computer-Missing-Probe", "Computer Missing Probe",
+            "machineId points at a computer the store has never seen: web shows No computer assigned, no dot."
+        ),
+        channelPanelVisualAgentCandidate(
+            "agent-no-computer", "No-Computer-Probe", "No Computer Probe",
+            "No machineId at all: web shows No computer assigned, no dot."
+        ),
+        channelPanelVisualAgentCandidate(
+            "agent-long-machine", "Long-Machine-Name-Probe", "Long Machine Name Probe",
+            "Bound to a computer whose name cannot fit one 390dp line, so wrap vs truncate is observable."
+        ),
+        channelPanelVisualAgentCandidate(
+            "agent-daemon-only", "Daemon-Only-Probe", "Daemon Only Probe",
+            "Bound to a bare daemon (not a managed Computer): web shows Connected · daemon vX, never a computer version."
         ),
         RaftThreadMemberItem(
             id = "user_artin",
@@ -5711,6 +5733,21 @@ private fun channelPanelVisualCandidates(): List<RaftThreadMemberItem> =
             avatarLabel = "DE",
             kind = "human"
         )
+    )
+
+private fun channelPanelVisualAgentCandidate(
+    id: String,
+    handle: String,
+    displayName: String,
+    description: String
+): RaftThreadMemberItem =
+    RaftThreadMemberItem(
+        id = id,
+        displayName = displayName,
+        handle = handle,
+        description = description,
+        avatarUrl = "pixel:robot",
+        kind = "agent"
     )
 
 private fun channelPanelVisualSettingsActions(): List<RaftThreadSettingsAction> =
@@ -32622,6 +32659,7 @@ private fun ThreadAddMemberModal(
     onSubmitBatch: ((List<RaftThreadMemberItem>) -> Unit)? = null,
     canCreateAgents: Boolean = false,
     onCreateAgent: (String, MembersCreateAgentMode) -> Unit = { _, _ -> },
+    channelName: String? = null,
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     // Caller-local TextFieldValue is the sole editor owner for the search box;
@@ -32837,11 +32875,61 @@ private fun ThreadAddMemberModal(
             content()
         }
     } else {
+        // Web ChannelMembers modal add view (`DialogSurface max-w-sm p-5`): back + title +
+        // close, the Search field, the multi-select candidate Card with the pinned Create
+        // Agent entry, then the full-width Add Selected button.
         RaftUnifiedDialog(
             title = stringResource(MR.strings.thread_action_add_member), uppercaseTitle = false, onDismiss = onDismiss,
-            minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
-            titleFontSize = 18, titleLineHeight = 22,
-        ) { content() }
+            maxWidth = 384.dp,
+            titleLeading = {
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.ArrowLeft,
+                    onClick = onDismiss,
+                    backgroundColor = Color.Transparent,
+                    size = 32.dp,
+                    iconSize = 16.dp,
+                    shadowOffset = 0.dp
+                )
+            },
+        ) {
+            ThreadAddMemberModalBody(
+                query = query,
+                onQueryChange = {
+                    if (!blocked) {
+                        query = it
+                        localError = false
+                    }
+                },
+                blocked = blocked,
+                adding = adding,
+                errorText = errorText,
+                agentCandidates = agentCandidates,
+                humanCandidates = humanCandidates,
+                currentKeys = currentKeys,
+                selectedKeys = selectedKeys,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                channelName = channelName,
+                createName = createName,
+                canCreateAgents = canCreateAgents,
+                selectedCount = selectedCandidates.size,
+                onToggle = { member ->
+                    selectedKeys =
+                        if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
+                    localError = false
+                },
+                onCreateAgent = { anchor ->
+                    if (canCreateAgents) {
+                        createAgentMenuAnchor = anchor
+                        createAgentMenuOpen = true
+                    }
+                },
+                onAddSelected = {
+                    val batch = selectedCandidates
+                    if (onSubmitBatch != null) onSubmitBatch(batch) else batch.forEach(onSubmit)
+                }
+            )
+        }
     }
     if (createAgentMenuOpen && createAgentMenuAnchor != null) {
         RaftUiControlledMenu(
@@ -33245,6 +33333,231 @@ private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? 
     }
 
 @Composable
+private fun ThreadAddMemberModalBody(
+    query: TextFieldValue,
+    onQueryChange: (TextFieldValue) -> Unit,
+    blocked: Boolean,
+    adding: Boolean,
+    errorText: String?,
+    agentCandidates: List<RaftThreadMemberItem>,
+    humanCandidates: List<RaftThreadMemberItem>,
+    currentKeys: Set<String>,
+    selectedKeys: Set<String>,
+    agentStatusResolver: RaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver,
+    channelName: String?,
+    createName: String,
+    canCreateAgents: Boolean,
+    selectedCount: Int,
+    onToggle: (RaftThreadMemberItem) -> Unit,
+    onCreateAgent: (RaftPopoverAnchor) -> Unit,
+    onAddSelected: () -> Unit
+) {
+    val colors = build.raft.designsystem.theme.RaftTheme.colors
+    val typography = build.raft.designsystem.theme.RaftTheme.typography
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (!errorText.isNullOrBlank()) {
+            Text(
+                text = errorText,
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                color = RaftColor.AccentRed,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+        }
+        // `FormField label="Search" className="mb-3"` around the search InputGroup.
+        RaftFormField(label = stringResource(MR.strings.thread_add_member_search)) {
+            RaftBrutalSearchField(
+                value = query,
+                placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
+                leadingIcon = RaftLucideIconName.Search,
+                enabled = !blocked,
+                onValueChange = onQueryChange
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        // Candidate `Card` (`max-h-72`): the rows scroll in an inner `p-1` region, the
+        // Create Agent entry is pinned under them.
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 288.dp)
+                    .raftCardSurface()
+                    .clipToBounds()
+                    .padding(1.dp)
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(4.dp)
+            ) {
+                fun section(label: String, members: List<RaftThreadMemberItem>) {
+                    if (members.isEmpty()) return
+                    item(key = "label-$label") {
+                        build.raft.designsystem.components.RaftSectionEyebrow(
+                            text = label,
+                            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 4.dp)
+                        )
+                    }
+                    items(members.size, key = { members[it].memberKey }) { index ->
+                        val member = members[index]
+                        val joined = member.memberKey in currentKeys
+                        val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+                        val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
+                            ?: member.modalAvatarWireValue()
+                        val enabled = !blocked && !adding && !joined
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(RaftAppRadius.Control))
+                                    .clickable(enabled = enabled) { onToggle(member) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            build.raft.designsystem.components.RaftCheckbox(
+                                checked = member.memberKey in selectedKeys || joined,
+                                onCheckedChange = null,
+                                enabled = enabled
+                            )
+                            RaftAvatarWithStatus(
+                                statusColor = status?.color,
+                                avatarSize = 20.dp,
+                                statusPulsing = status?.pulsing == true
+                            ) {
+                                RaftAppAvatar(
+                                    avatarWireValue = avatarWireValue,
+                                    label = if (member.kind.equals("agent", ignoreCase = true)) member.modalAvatarLabel() else "",
+                                    avatarSize = 20.dp,
+                                    cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
+                                    cacheServerId = member.sourceServerId,
+                                    fallbackFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull())
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                build.raft.designsystem.text.RaftText(
+                                    text = member.displayName,
+                                    style = typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                                    color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val description = member.description?.trim().orEmpty()
+                                if (description.isNotEmpty()) {
+                                    build.raft.designsystem.text.RaftText(
+                                        text = description,
+                                        style = typography.caption,
+                                        color = colors.foregroundHint,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                section("agents", agentCandidates)
+                section("humans", humanCandidates)
+            }
+            ThreadAddMemberCreateAgentEntry(
+                title =
+                    if (createName.isBlank()) {
+                        stringResource(MR.strings.thread_members_create_agent_entry)
+                    } else {
+                        stringResource(MR.strings.thread_members_create_named_agent, createName)
+                    },
+                subtitle = stringResource(MR.strings.thread_members_create_agent_auto_join, "#${channelName.orEmpty()}"),
+                enabled = !adding && canCreateAgents,
+                onClick = onCreateAgent
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        build.raft.designsystem.components.RaftButton(
+            text = stringResource(MR.strings.thread_members_add_selected, selectedCount),
+            onClick = onAddSelected,
+            modifier = Modifier.fillMaxWidth(),
+            variant = build.raft.designsystem.components.RaftButtonVariant.Primary,
+            size = build.raft.designsystem.components.RaftButtonSize.Lg,
+            enabled = !blocked && !adding && selectedCount > 0,
+            leadingIcon = {
+                build.raft.designsystem.components.RaftGlyphIcon(build.raft.designsystem.components.RaftGlyph.Plus, size = 14.dp)
+            }
+        )
+    }
+}
+
+/** Web Create-a-new-Agent entry: a seam above, `px-4 py-2.5 gap-2.5`, dashed 24dp plus sticker. */
+@Composable
+private fun ThreadAddMemberCreateAgentEntry(
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    onClick: (RaftPopoverAnchor) -> Unit
+) {
+    val colors = build.raft.designsystem.theme.RaftTheme.colors
+    val typography = build.raft.designsystem.theme.RaftTheme.typography
+    val seam = RaftColor.BorderSeam
+    Button(
+        onClick = {},
+        onClick2 = { anchor -> if (enabled) onClick(anchor) },
+        enabled = enabled,
+        pressFeedback = false,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        drawRect(seam, size = androidx.compose.ui.geometry.Size(size.width, 1.dp.toPx()))
+                    }
+                    .padding(start = 16.dp, end = 16.dp, top = 11.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val ink = if (enabled) colors.foregroundHint else colors.foregroundDisabled
+            Box(
+                modifier =
+                    Modifier
+                        .size(24.dp)
+                        .drawBehind {
+                            val w = 1.5.dp.toPx()
+                            drawRoundRect(
+                                color = ink,
+                                topLeft = androidx.compose.ui.geometry.Offset(w / 2, w / 2),
+                                size = androidx.compose.ui.geometry.Size(size.width - w, size.height - w),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(RaftAppRadius.Sticker.toPx()),
+                                style =
+                                    androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = w,
+                                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()))
+                                    )
+                            )
+                        },
+                contentAlignment = Alignment.Center
+            ) {
+                build.raft.designsystem.components.RaftGlyphIcon(build.raft.designsystem.components.RaftGlyph.Plus, size = 14.dp, color = ink)
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                build.raft.designsystem.text.RaftText(
+                    text = title,
+                    style = typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (enabled) colors.foreground else colors.foregroundDisabled,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                build.raft.designsystem.text.RaftText(
+                    text = subtitle,
+                    style = typography.caption,
+                    color = colors.foregroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ThreadDirectMessageSettingsModal(
     activityMuteState: ThreadActivityMuteUiState?,
     conversationPinState: ThreadConversationPinUiState?,
@@ -33369,128 +33682,54 @@ internal fun ThreadSettingsModal(
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
     val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
-    RaftUnifiedDialog(
-        title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
-        keyboardAvoidanceEnabled = true,
-        onDismiss = onDismiss
-    ) {
-        if (activeDanger == null) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
-                    RaftBrutalTextField(
-                        label = stringResource(MR.strings.thread_settings_name),
-                        value = name,
-                        placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
-                        onValueChange = { name = it },
-                        required = true,
-                        textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
-                    )
-                }
-                item {
-                    RaftBrutalTextField(
-                        label = stringResource(MR.strings.thread_settings_description),
-                        value = description,
-                        placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
-                        onValueChange = { description = it },
-                        optional = true,
-                        fieldMinHeight = 66.dp,
-                        maxLines = 2,
-                        password = false
-                    )
-                }
-                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
-                    item {
-                        Text(
-                            text = stringResource(MR.strings.channel_create_error_name_format),
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.AccentRed
-                        )
-                    }
-                }
-                if (updateStatus == ChannelProfileUpdateStatus.Failed) {
-                    item {
-                        Text(
-                            text =
-                                if (updateErrorCode == "channel_name_invalid") {
-                                    stringResource(MR.strings.channel_create_error_name_format)
-                                } else {
-                                    stringResource(MR.strings.thread_settings_update_failed)
-                                },
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                            color = RaftColor.AccentRed
-                        )
-                    }
-                }
-                item {
-                    RaftDialogFooter {
-                        // React's Edit Channel form buttons carry no leading icons
-                        // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                        RaftModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
-                        RaftModalActionButton(
-                            label =
-                                if (profileSaving) {
-                                    stringResource(MR.strings.thread_settings_saving)
-                                } else {
-                                    stringResource(MR.strings.thread_action_save_changes)
-                                },
-                            color = RaftColor.AccentPink,
-                            icon = RaftLucideIconName.Loader.takeIf { profileSaving },
-                            enabled = profileValid && profileChanged && !profileSaving,
-                            onClick = {
-                                onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
-                            }
-                        )
-                    }
-                }
-                if (
-                    (activityMuteState != null && onToggleActivityMute != null) ||
-                        (conversationPinState != null && onTogglePin != null) ||
-                        dangerActions.isNotEmpty()
-                ) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-                    }
-                    item {
-                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            activityMuteState?.takeIf { onToggleActivityMute != null }?.let { muteState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
-                                        stringResource(
-                                            if (muteState.muted) MR.strings.home_action_unmute else MR.strings.home_action_mute
-                                        ),
-                                    icon = if (muteState.muted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff,
-                                    color = if (muteState.muted) RaftColor.AccentOrange else RaftColor.SurfaceWhite,
-                                    onClick = { onToggleActivityMute?.invoke() }
-                                )
-                            }
-                            conversationPinState?.takeIf { onTogglePin != null }?.let { pinState ->
-                                RaftModalFullWidthActionButton(
-                                    label =
-                                        stringResource(
-                                            if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
-                                        ),
-                                    icon = if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
-                                    color = if (pinState.pinned) RaftColor.AccentPink else RaftColor.SurfaceWhite,
-                                    onClick = { onTogglePin?.invoke() }
-                                )
-                            }
-                            ThreadSettingsChannelActionButtons(
-                                actions =
-                                    dangerActions.map { (_, action) ->
-                                        RaftThreadSettingsAction(id = action.id)
-                                    },
-                                onOpenAction = { actionId ->
-                                    dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
-                                }
-                            )
-                        }
-                    }
-                }
+    val nameErrorText =
+        if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
+            stringResource(MR.strings.channel_create_error_name_format)
+        } else {
+            null
+        }
+    val updateErrorText =
+        if (updateStatus == ChannelProfileUpdateStatus.Failed) {
+            if (updateErrorCode == "channel_name_invalid") {
+                stringResource(MR.strings.channel_create_error_name_format)
+            } else {
+                stringResource(MR.strings.thread_settings_update_failed)
             }
         } else {
+            null
+        }
+    ThreadChannelSettingsSheet(
+        channelName = channelName,
+        name = name,
+        onNameChange = { name = it },
+        nameError = nameErrorText,
+        description = description,
+        onDescriptionChange = { description = it },
+        updateError = updateErrorText,
+        conversationPinState = conversationPinState?.takeIf { onTogglePin != null },
+        onTogglePin = { onTogglePin?.invoke() },
+        activityMuteState = activityMuteState?.takeIf { onToggleActivityMute != null },
+        onToggleActivityMute = { onToggleActivityMute?.invoke() },
+        actions = dangerActions.map { (_, action) -> RaftThreadSettingsAction(id = action.id) },
+        onOpenAction = { actionId ->
+            dangerAction = dangerActions.firstOrNull { (_, action) -> action.id == actionId }?.first
+        },
+        saving = profileSaving,
+        saveEnabled = profileValid && !profileSaving,
+        onSave = {
+            if (profileChanged) {
+                onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
+            } else {
+                onDismiss()
+            }
+        },
+        onDismiss = onDismiss
+    )
+    if (activeDanger != null) {
+        RaftUnifiedDialog(
+            title = activeDanger.localizedTitle(),
+            onDismiss = { dangerAction = null }
+        ) {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -33538,9 +33777,230 @@ internal fun ThreadSettingsModal(
                         onClick = { onOpenAction(activeDanger.id) }
                     )
                 }
+        }
+    }
+}
+
+/**
+ * The channel settings sheet (web EditChannelDialog `presentation="sheet"`: raft-ui Drawer
+ * from the right, the whole width on a phone). A 56dp head with the title, "Channel #name"
+ * and a close action over a seam; the scrolling body holds the name / description form, the
+ * Preferences section and the Channel actions section; Cancel / Save sit in the footer.
+ */
+@Composable
+private fun ThreadChannelSettingsSheet(
+    channelName: String,
+    name: String,
+    onNameChange: (String) -> Unit,
+    nameError: String?,
+    description: TextFieldValue,
+    onDescriptionChange: (TextFieldValue) -> Unit,
+    updateError: String?,
+    conversationPinState: ThreadConversationPinUiState?,
+    onTogglePin: () -> Unit,
+    activityMuteState: ThreadActivityMuteUiState?,
+    onToggleActivityMute: () -> Unit,
+    actions: List<RaftThreadSettingsAction>,
+    onOpenAction: (String) -> Unit,
+    saving: Boolean,
+    saveEnabled: Boolean,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val topInset = raftTopSafeAreaPadding()
+    val bottomInset = raftBottomSafeAreaPadding()
+    Modal(onWillDismiss = { onDismiss() }) {
+        val colors = build.raft.designsystem.theme.RaftTheme.colors
+        val typography = build.raft.designsystem.theme.RaftTheme.typography
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(RaftColor.Popover)
+                    .raftDialogContentPointerBarrier()
+        ) {
+            // Drawer head: 55dp + the seam, title over "Channel #name", borderless close.
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = topInset)
+                        .height(55.dp)
+                        .padding(start = 16.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    build.raft.designsystem.text.RaftText(
+                        text = stringResource(MR.strings.channel_settings_sheet_title),
+                        style = typography.headline,
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        build.raft.designsystem.text.RaftText(
+                            text = stringResource(MR.strings.channel_settings_sheet_eyebrow),
+                            style = typography.caption,
+                            color = colors.foregroundHint,
+                            maxLines = 1
+                        )
+                        build.raft.designsystem.text.RaftText(
+                            text = "#$channelName",
+                            style = typography.monoMeta,
+                            color = colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.X,
+                    onClick = onDismiss,
+                    backgroundColor = Color.Transparent,
+                    size = 40.dp,
+                    iconSize = 24.dp,
+                    shadowOffset = 0.dp
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 16.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RaftBrutalTextField(
+                        label = stringResource(MR.strings.thread_settings_name),
+                        value = name,
+                        placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
+                        onValueChange = onNameChange,
+                        required = true,
+                        error = nameError
+                    )
+                    RaftBrutalTextField(
+                        label = stringResource(MR.strings.thread_settings_description),
+                        value = description,
+                        placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
+                        onValueChange = onDescriptionChange,
+                        optional = true,
+                        maxLines = 3,
+                        fieldMinHeight = RaftTextareaMinHeight,
+                        verticalPadding = 10.dp
+                    )
+                    updateError?.let { error ->
+                        Text(
+                            text = error,
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                            color = RaftColor.AccentRed
+                        )
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                if (conversationPinState != null || activityMuteState != null) {
+                    build.raft.designsystem.components.RaftFormSection(
+                        title = stringResource(MR.strings.channel_settings_preferences)
+                    ) {
+                        Column {
+                            conversationPinState?.let { pin ->
+                                ThreadChannelSettingsSwitchRow(
+                                    title = stringResource(MR.strings.channel_settings_pin_title),
+                                    description = stringResource(MR.strings.channel_settings_pin_description),
+                                    checked = pin.pinned,
+                                    onToggle = onTogglePin
+                                )
+                            }
+                            activityMuteState?.let { mute ->
+                                if (conversationPinState != null) build.raft.designsystem.components.RaftSeparator()
+                                ThreadChannelSettingsSwitchRow(
+                                    title = stringResource(MR.strings.channel_settings_mute_title),
+                                    description = stringResource(MR.strings.channel_settings_mute_description),
+                                    checked = mute.muted,
+                                    onToggle = onToggleActivityMute
+                                )
+                            }
+                        }
+                    }
+                }
+                if (actions.isNotEmpty()) {
+                    build.raft.designsystem.components.RaftFormSection(
+                        title = stringResource(MR.strings.channel_settings_actions_title),
+                        description = stringResource(MR.strings.channel_settings_actions_description)
+                    ) {
+                        ThreadSettingsChannelActionButtons(actions = actions, onOpenAction = onOpenAction)
+                    }
+                }
+            }
+            // Footer (DS wide-sheet footer): ghost Cancel and the one pink Save over a seam.
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp + bottomInset),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                build.raft.designsystem.components.RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
+                    onClick = onDismiss,
+                    variant = build.raft.designsystem.components.RaftButtonVariant.Ghost,
+                    size = build.raft.designsystem.components.RaftButtonSize.Lg
+                )
+                build.raft.designsystem.components.RaftButton(
+                    text =
+                        if (saving) {
+                            stringResource(MR.strings.thread_settings_saving)
+                        } else {
+                            stringResource(MR.strings.channel_settings_save)
+                        },
+                    onClick = onSave,
+                    variant = build.raft.designsystem.components.RaftButtonVariant.Primary,
+                    size = build.raft.designsystem.components.RaftButtonSize.Lg,
+                    enabled = saveEnabled
+                )
             }
         }
     }
+}
+
+/** A settings row with a trailing switch (web ChannelPreferencesSection row, `py-3 gap-3`). */
+@Composable
+private fun ThreadChannelSettingsSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onToggle: () -> Unit
+) {
+    val colors = build.raft.designsystem.theme.RaftTheme.colors
+    val typography = build.raft.designsystem.theme.RaftTheme.typography
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            build.raft.designsystem.text.RaftText(
+                text = title,
+                style = typography.subhead.copy(fontWeight = FontWeight.Medium),
+                color = colors.foreground
+            )
+            build.raft.designsystem.text.RaftText(
+                text = description,
+                modifier = Modifier.padding(top = 2.dp),
+                style = typography.footnote,
+                color = colors.foregroundHint
+            )
+        }
+        build.raft.designsystem.components.RaftSwitch(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            label = title
+        )
+    }
+}
 
 @Composable
 private fun ThreadChannelActionWarning(

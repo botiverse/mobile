@@ -2307,6 +2307,8 @@
     <string name="thread_members_channel_admin">チャンネル管理者</string>
     <string name="thread_members_add_selected">選択したメンバーを追加（%1$d）</string>
     <string name="thread_members_create_agent">新しい Agent を作成</string>
+    <string name="thread_members_create_agent_entry">エージェントを作成</string>
+    <string name="thread_members_create_agent_auto_join">作成後、自動的に %1$s に参加します</string>
     <string name="thread_members_create_no_permission">Agent を作成する権限がありません。</string>
     <string name="thread_members_created_join_failed">Agent は作成されましたが、チャンネルへの参加に失敗しました。再作成せずに参加を再試行できます。</string>
     <string name="thread_members_create_named_agent">%1$s を作成</string>
@@ -2453,4 +2455,14 @@
     <string name="member_activity_overview_empty_show_raw">生ログを表示</string>
     <string name="member_activity_overview_load_more">以前のターンを表示</string>
     <string name="member_activity_overview_load_error">概要を読み込めませんでした。</string>
+    <string name="channel_settings_sheet_title">設定</string>
+    <string name="channel_settings_sheet_eyebrow">チャンネル</string>
+    <string name="channel_settings_pin_title">チャンネルをピン留め</string>
+    <string name="channel_settings_pin_description">このチャンネルをサイドバーの上部にピン留めします。</string>
+    <string name="channel_settings_mute_title">アクティビティをミュート</string>
+    <string name="channel_settings_mute_description">このチャンネルの通常のアクティビティをミュートします。自分にのみ適用されます。</string>
+    <string name="channel_settings_actions_title">チャンネルの操作</string>
+    <string name="channel_settings_actions_description">メンバーシップ、公開範囲、変換、アーカイブ、危険な操作を管理します。</string>
+    <string name="channel_settings_save">保存</string>
+    <string name="channel_settings_close">チャンネル設定を閉じる</string>
 </resources>

@@ -13,6 +13,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.DpOffset
+import build.raft.app.RaftAppThemeState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
@@ -174,6 +187,65 @@ internal fun Modifier.raftLookOverlaySurface(radius: Dp = RaftAppRadius.Containe
         .background(RaftColor.Popover, shape)
         .border(RaftAppStroke.Thin, RaftColor.BorderSeam, shape)
 }
+
+/**
+ * The raft-ui dialog frame's outside (`DialogSurface`: `shadow-float ring-1 ring-line-seam`):
+ * the 1dp seam ring and the float shadow are CSS box-shadows, painted only OUTSIDE the
+ * dialog box, so the ring composites over the backdrop (not over the popover fill) and the
+ * shadow never shows through it. Apply to a layer that matches the dialog box; the box
+ * itself draws only its fill ([raftDialogSurfaceFill]).
+ *
+ * Light `--elevation-float`: `0 1px 0 ink/0.039, 0 12px 32px -12px ink/0.322`; dark:
+ * `0 0 0 1px fg/0.078, 0 16px 40px -12px black/0.8`. A negative spread deflates the
+ * shadow shape (radius - 12), which the inset layer below reproduces. Compose's blur
+ * radius maps to a sigma the same way the web's (Skia) box-shadow blur does.
+ */
+internal fun Modifier.raftDialogFloatFrame(radius: Dp = RaftAppRadius.Dialog): Modifier {
+    val dark = RaftAppThemeState.isDark
+    val ink = RaftAppThemeState.colors.ink
+    val ring = RaftColor.BorderSeam
+    val outerShape = RoundedCornerShape(radius)
+    val spread = 12.dp
+    val floatShape = RoundedCornerShape((radius - spread).coerceAtLeast(0.dp))
+    return this
+        .drawWithContent {
+            val r = radius.toPx()
+            val box = Path().apply { addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(r, r))) }
+            clipPath(box, ClipOp.Difference) {
+                this@drawWithContent.drawContent()
+                val w = 1.dp.toPx()
+                drawRoundRect(
+                    color = ring,
+                    topLeft = Offset(-w, -w),
+                    size = Size(size.width + 2 * w, size.height + 2 * w),
+                    cornerRadius = CornerRadius(r + w, r + w)
+                )
+            }
+        }
+        .then(
+            if (dark) {
+                Modifier
+            } else {
+                Modifier.dropShadow(
+                    outerShape,
+                    Shadow(radius = 0.dp, color = ink, offset = DpOffset(0.dp, 1.dp), alpha = 0.039f)
+                )
+            }
+        )
+        .padding(spread)
+        .dropShadow(
+            floatShape,
+            if (dark) {
+                Shadow(radius = 40.dp, color = Color.Black, offset = DpOffset(0.dp, 16.dp), alpha = 0.8f)
+            } else {
+                Shadow(radius = 32.dp, color = ink, offset = DpOffset(0.dp, 12.dp), alpha = 0.322f)
+            }
+        )
+}
+
+/** The dialog box fill that pairs with [raftDialogFloatFrame]: popover layer, dialog radius. */
+internal fun Modifier.raftDialogSurfaceFill(radius: Dp = RaftAppRadius.Dialog): Modifier =
+    this.background(RaftColor.Popover, RoundedCornerShape(radius))
 
 /** raft content surface (Card `default`): container radius, card layer, 1dp hairline, no shadow. */
 internal fun Modifier.raftCardSurface(

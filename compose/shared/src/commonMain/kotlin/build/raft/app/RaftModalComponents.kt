@@ -9,7 +9,11 @@ import build.raft.app.components.RaftBrutalModalHeader
 import build.raft.app.components.RaftBrutalModalLayer
 import build.raft.app.components.RaftActionSheetRowModel
 import build.raft.app.components.RaftModalShellModel
-import build.raft.app.components.raftLookOverlaySurface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
+import build.raft.app.components.raftDialogFloatFrame
+import build.raft.app.components.raftDialogSurfaceFill
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -390,6 +394,8 @@ internal fun RaftUnifiedDialog(
     contentSpacing: Dp = 16.dp,
     keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = RaftUnifiedDialogGenericHostRoute,
+    // Optional control drawn before the title in the header row (web: a back button).
+    titleLeading: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     // raft-ui dialog titles keep the source case (never ALL CAPS).
@@ -420,6 +426,7 @@ internal fun RaftUnifiedDialog(
                 titleMaxLines = titleMaxLines,
                 contentSpacing = contentSpacing,
                 keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
+                titleLeading = titleLeading,
                 topInset = topInset,
                 hostBottomInset = raftUnifiedDialogHostBottomInset(0.dp, bottomSafeArea),
                 handleBack = false,
@@ -454,6 +461,7 @@ internal fun RaftUnifiedDialog(
                     titleMaxLines = titleMaxLines,
                     contentSpacing = contentSpacing,
                     keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
+                    titleLeading = titleLeading,
                     topInset = topInset,
                     hostBottomInset =
                         raftUnifiedDialogHostBottomInset(
@@ -516,6 +524,7 @@ private fun RaftUnifiedDialogSurface(
     titleMaxLines: Int,
     contentSpacing: Dp,
     keyboardAvoidanceEnabled: Boolean,
+    titleLeading: (@Composable () -> Unit)?,
     topInset: Dp,
     hostBottomInset: Dp,
     handleBack: Boolean,
@@ -566,11 +575,14 @@ private fun RaftUnifiedDialogSurface(
                     .widthIn(min = minWidth, max = maxWidth)
                     .raftDialogContentPointerBarrier()
         ) {
+            // Seam ring + float shadow outside the box, then the popover fill (raft-ui DialogSurface).
+            Box(modifier = Modifier.matchParentSize().raftDialogFloatFrame(RaftAppRadius.Dialog))
             Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
+                        .clip(RoundedCornerShape(RaftAppRadius.Dialog))
+                        .raftDialogSurfaceFill(RaftAppRadius.Dialog)
                         .padding(resolvedContentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {
@@ -590,6 +602,20 @@ private fun RaftUnifiedDialogSurface(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    titleLeading?.let { leading ->
+                        // Web header group `gap-2`: the leading control sits 8dp before the title.
+                        // The row's 12dp gap minus 4dp of reported width.
+                        Box(
+                            modifier =
+                                Modifier.layout { measurable, constraints ->
+                                    val placeable = measurable.measure(constraints)
+                                    val trim = 4.dp.roundToPx()
+                                    layout((placeable.width - trim).coerceAtLeast(0), placeable.height) {
+                                        placeable.place(0, 0)
+                                    }
+                                }
+                        ) { leading() }
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         overline?.takeIf { it.isNotBlank() }?.let { overlineText ->
                             Text(
