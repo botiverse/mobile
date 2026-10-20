@@ -10,6 +10,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftProgressBar
 import build.raft.app.components.RaftProgressBarTone
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
+import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
@@ -304,8 +307,7 @@ private fun MembersRuntimeUsageAccountCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .background(if (stale) RaftColor.SurfaceCream else RaftColor.SurfaceWhite)
+                .raftCardSurface(fill = if (stale) raftSoftWash(RaftColor.SurfaceCream) else RaftColor.Card)
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -420,8 +422,7 @@ private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
         maxLines = 1,
         modifier =
             Modifier
-                .background(color)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .background(raftSoftWash(color), RoundedCornerShape(RaftAppRadius.Chip))
                 .padding(horizontal = 6.dp, vertical = 2.dp)
     )
 }
@@ -435,8 +436,7 @@ private fun MembersRuntimeUsageBanner(text: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.AccentOrange)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .raftCardSurface(fill = raftSoftWash(RaftColor.AccentOrange))
                 .padding(horizontal = 10.dp, vertical = 6.dp)
     )
 }

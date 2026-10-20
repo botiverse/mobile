@@ -4,13 +4,12 @@ import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftAppSpacing
-import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAppRadius
 import build.raft.app.RaftType
 import build.raft.app.raftSquareCorners
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,9 +20,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,10 +47,9 @@ internal fun RaftAttachmentPreviewCard(
         modifier =
             modifier
                 .size(RaftAttachmentPreviewCardWidth, RaftAttachmentPreviewCardHeight)
-                .raftSquareCorners()
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.15f))
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
                 // react-parity: AttachmentChip loading uses bg-palette-yellow/30.
-                .background(if (loading) RaftColor.BrandYellow.copy(alpha = 0.3f) else RaftColor.SurfaceWhite)
+                .raftCardSurface(fill = if (loading) raftSoftWash(RaftColor.BrandYellow) else RaftColor.Card)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 10.dp, vertical = RaftAppSpacing.Sm)
     ) {

@@ -10,6 +10,10 @@ import build.raft.app.components.RaftBrutalModalLayer
 import build.raft.app.components.RaftActionSheetRowModel
 import build.raft.app.components.RaftModalShellModel
 import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.raftSoftWash
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -915,9 +919,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                             Modifier
                                 .heightIn(min = 16.dp)
                                 .widthIn(max = 88.dp)
-                                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1065
-                                .background(RaftColor.AccentCyan.copy(alpha = 0.24f))
-                                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                                .background(raftSoftWash(RaftColor.AccentCyan), RoundedCornerShape(RaftAppRadius.Chip))
                                 .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -942,8 +944,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
             }
         }
         roleBadgeLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            Box(Modifier.background(if (channelPageStyle) Color(0xFFE7E5E4) else RaftColor.SurfaceCream)
-                .then(if (channelPageStyle) Modifier.border(1.dp, RaftColor.BorderBlack) else Modifier)
+            Box(Modifier.background(if (channelPageStyle) Color(0xFFE7E5E4) else raftSoftWash(RaftColor.SurfaceCream), RoundedCornerShape(RaftAppRadius.Chip))
                 .padding(horizontal = 5.dp, vertical = 2.dp)) {
                 Text(text = label, style = RaftType.Caption.copy(fontSize = if (channelPageStyle) 10.sp else 12.sp), color = RaftColor.TextMutedGray,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -989,8 +990,8 @@ private fun RaftModalMemberRemoveButton(
         modifier =
             Modifier
                 .size(24.dp)
-                .background(if (enabled && !muted) Color(0xFFFFE5E5) else RaftColor.SurfaceCream)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Control))
+                .raftControlSurface(if (enabled && !muted) Color(0xFFFFE5E5) else RaftColor.SurfaceCream, RaftColor.BorderBlack)
                 .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

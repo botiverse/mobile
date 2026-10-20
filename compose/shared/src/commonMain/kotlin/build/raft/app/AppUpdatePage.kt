@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -370,7 +371,7 @@ internal fun AppUpdateSummary(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                modifier = Modifier.size(40.dp).background(RaftColor.BrandYellow, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(RaftLucideIconName.Download, modifier = Modifier.size(20.dp))

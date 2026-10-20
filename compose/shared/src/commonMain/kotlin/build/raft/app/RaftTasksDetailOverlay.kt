@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.runtime.Composable
 import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.raftCardSurface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -87,8 +90,8 @@ internal fun RaftTasksDetailOverlay(
                     Modifier
                         .fillMaxWidth()
                         .weight(RaftTasksDetailOverlayPanelFraction)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .clip(RoundedCornerShape(RaftAppRadius.Container))
+                        .raftCardSurface()
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),

@@ -1,6 +1,8 @@
 package build.raft.app
 
+import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftOptionSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalTextField
@@ -216,8 +218,7 @@ private fun AddComputerWaitingStep(
         }
         Row(
             modifier = Modifier.fillMaxWidth()
-                .background(RaftColor.SurfaceCream)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -272,8 +273,7 @@ private fun AddComputerConnectedStep(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth()
-                .background(RaftColor.AccentLime)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = raftSoftWash(RaftColor.AccentLime))
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -394,8 +394,7 @@ private fun AddComputerCommandRow(
     ) {
         Box(
             modifier = Modifier.weight(1f)
-                .background(RaftColor.TextBlack)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = RaftColor.TextBlack, radius = RaftAppRadius.Control)
                 .padding(10.dp)
         ) {
             Text(
@@ -426,8 +425,7 @@ private fun SettingsComputerCommandFallback(state: AddComputerDialogState) {
     val pending = stringResource(MR.strings.settings_computers_api_key_pending)
     Box(
         modifier = Modifier.fillMaxWidth()
-            .background(RaftColor.SurfaceCream)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+            .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
             .padding(12.dp)
     ) {
         Text(

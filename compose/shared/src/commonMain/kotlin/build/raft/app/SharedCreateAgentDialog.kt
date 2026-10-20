@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSelectField
 import build.raft.app.components.RaftBrutalSelectOption
@@ -1344,7 +1346,7 @@ internal fun SharedCreateAgentDialog(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                                    .raftCardSurface()
                                     .padding(RaftAppSpacing.Xs)
                         ) {
                             Text(
@@ -1831,8 +1833,7 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftUiBannerStatus.Warning.background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = RaftUiBannerStatus.Warning.background)
                 .padding(RaftUiBannerSize.Medium.padding)
     ) {
         Text(
@@ -1875,9 +1876,7 @@ private fun MachinePicker(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
-                            .border(RaftAppStroke.Thin, RaftColor.AccentRed.copy(alpha = 0.5f))
-                            .background(RaftColor.SurfaceCream)
+                            .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                             .padding(RaftAppSpacing.Sm),
                     verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
@@ -1899,8 +1898,7 @@ private fun MachinePicker(
             machines.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.3f))
-                    .background(RaftColor.SurfaceCream)
+                    .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                     .padding(RaftAppSpacing.Sm)
             ) {
                 Text(
@@ -2494,7 +2492,7 @@ internal fun AdvancedRuntimeSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                    .raftCardSurface()
                     .padding(RaftAppSpacing.Sm),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {

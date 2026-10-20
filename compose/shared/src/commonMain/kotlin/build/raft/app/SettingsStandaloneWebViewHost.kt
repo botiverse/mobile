@@ -23,6 +23,7 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -713,8 +714,8 @@ internal fun SettingsWebViewErrorContent(
             modifier =
                 Modifier
                     .size(52.dp)
-                    .background(RaftColor.BrandYellow)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    .background(RaftColor.BrandYellow, RoundedCornerShape(RaftAppRadius.Sticker))
+                    .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
             contentAlignment = Alignment.Center,
         ) {
             RaftLucideIcon(RaftLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))

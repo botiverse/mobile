@@ -11,6 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.foundation.background
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -32,6 +35,7 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -134,8 +138,7 @@ internal fun ThreadInlineAudioAttachmentCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .raftCardSurface()
                     .padding(RaftAppSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
@@ -147,8 +150,9 @@ internal fun ThreadInlineAudioAttachmentCard(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .background(RaftColor.SurfaceCream)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                        .clip(RoundedCornerShape(RaftAppRadius.Control))
+                        .background(RaftColor.FillMuted)
+                        .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
                     contentAlignment = Alignment.Center
                 ) {
                     RaftLucideIcon(
@@ -217,8 +221,7 @@ private fun ThreadInlineAudioSurface(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                    .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                     .padding(RaftAppSpacing.Xs),
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
@@ -252,8 +255,7 @@ private fun ThreadInlineAudioSurface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(36.dp)
-                    .background(RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                    .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                     .padding(horizontal = RaftAppSpacing.Sm),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
@@ -305,8 +307,7 @@ private fun ThreadInlineAudioSurface(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(RaftColor.SurfaceCream)
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                        .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                         .padding(RaftAppSpacing.Xs),
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
                     verticalAlignment = Alignment.CenterVertically
@@ -374,8 +375,7 @@ internal fun ThreadInlineAudioControls(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftColor.SurfaceCream)
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+            .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
             .padding(RaftAppSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
@@ -494,8 +494,9 @@ private fun ThreadInlineAudioSeekBar(
                 .padding(horizontal = 6.dp)
                 .fillMaxWidth()
                 .height(8.dp)
+                .clip(RoundedCornerShape(RaftAppRadius.Sm))
                 .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Sm))
         ) {
             Box(
                 modifier = Modifier
@@ -508,8 +509,8 @@ private fun ThreadInlineAudioSeekBar(
             modifier = Modifier
                 .offset { IntOffset((fraction * trackPx).roundToInt(), 0) }
                 .size(12.dp)
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .background(RaftColor.SurfaceWhite, RoundedCornerShape(RaftAppRadius.Sm))
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sm))
         )
     }
 }

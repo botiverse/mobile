@@ -10,6 +10,10 @@ import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.raftOptionSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentPreview
 import build.raft.app.data.AttachmentPreviewContent
@@ -61,6 +65,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -90,6 +95,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -3939,8 +3945,7 @@ internal fun RaftFilePreviewAttachmentCommentsPanel(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface()
                 .padding(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
@@ -4531,8 +4536,9 @@ internal fun RaftFilePreviewComposerImageEditor(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .clip(RoundedCornerShape(RaftAppRadius.Control))
                     .background(Color(0xFF000000))
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
             contentAlignment = Alignment.Center
         ) {
             val committedContent = state.history.content
@@ -4898,8 +4904,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                                     )
                                 }
                             }
-                            .background(Color(0xCCFFFFFF))
-                            .border(1.dp, RaftColor.BorderBlack)
+                            .background(Color(0xCCFFFFFF), RoundedCornerShape(RaftAppRadius.Chip))
                             .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -5009,8 +5014,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                             Modifier
                                 .weight(1f)
                                 .heightIn(min = 36.dp)
-                                .background(RaftColor.SurfaceCream)
-                                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                                .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
                     RaftBrutalIconButton(
@@ -8032,8 +8036,7 @@ private fun RaftFilePreviewImageGallerySurface(
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = 12.dp, end = 12.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .background(raftSoftWash(RaftColor.SurfaceWhite), RoundedCornerShape(RaftAppRadius.Chip))
                         .padding(horizontal = 10.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -8120,8 +8123,9 @@ private fun RaftFilePreviewVideoPanel(
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .heightIn(max = 420.dp)
+                    .clip(RoundedCornerShape(RaftAppRadius.Control))
                     .background(Color(0xFF000000))
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
             contentAlignment = Alignment.Center
         ) {
             if (canPlay) {
@@ -8213,8 +8217,8 @@ private fun RaftFilePreviewVideoControls(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(Color(0xDD000000))
-                .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite)
+                .background(Color(0xDD000000), RoundedCornerShape(RaftAppRadius.Container))
+                .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite, RoundedCornerShape(RaftAppRadius.Container))
                 .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
@@ -8292,8 +8296,9 @@ private fun RaftFilePreviewVideoProgressBar(
                 Modifier
                     .fillMaxWidth()
                     .height(5.dp)
+                    .clip(RoundedCornerShape(RaftAppRadius.Xs))
                     .background(Color(0x66000000))
-                    .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite)
+                    .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite, RoundedCornerShape(RaftAppRadius.Xs))
         ) {
             when (percent) {
                 null -> {
@@ -8338,8 +8343,8 @@ private fun RaftFilePreviewVideoOverlayText(
     Column(
         modifier =
             modifier
-                .background(Color(0xCC000000))
-                .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite)
+                .background(Color(0xCC000000), RoundedCornerShape(RaftAppRadius.Container))
+                .border(RaftAppStroke.Thin, RaftColor.SurfaceWhite, RoundedCornerShape(RaftAppRadius.Container))
                 .padding(RaftAppSpacing.Md),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
@@ -9865,8 +9870,8 @@ private fun RaftFilePreviewProgressBar(progressPercent: Int?) {
             Modifier
                 .fillMaxWidth()
                 .height(8.dp)
-                .background(RaftColor.SurfaceCream)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Sm))
+                .background(raftSoftWash(RaftColor.SurfaceCream))
     ) {
         if (percent > 0) {
             Box(
@@ -9934,8 +9939,7 @@ private fun RaftFilePreviewDownloadStatusBar(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface()
                 .padding(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
@@ -10033,8 +10037,8 @@ internal fun RaftFilePreviewMarkdownPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+            .clip(RoundedCornerShape(RaftAppRadius.Container))
+            .raftCardSurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         RaftFilePreviewPanelHeader(
@@ -10107,8 +10111,8 @@ internal fun RaftFilePreviewTextPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+            .clip(RoundedCornerShape(RaftAppRadius.Container))
+            .raftCardSurface(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         RaftFilePreviewPanelHeader(
@@ -10151,8 +10155,8 @@ internal fun RaftFilePreviewXlsxPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+            .clip(RoundedCornerShape(RaftAppRadius.Container))
+            .raftCardSurface()
     ) {
         RaftFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
@@ -10164,8 +10168,7 @@ internal fun RaftFilePreviewXlsxPanel(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .background(RaftColor.SurfaceCream)
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                        .background(raftSoftWash(RaftColor.SurfaceCream))
             ) {
                 sheets.forEach { sheet ->
                     val selected = sheet.name == selectedSheet?.name
@@ -10173,11 +10176,7 @@ internal fun RaftFilePreviewXlsxPanel(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .background(if (selected) RaftColor.SurfaceWhite else RaftColor.SurfaceCream)
-                                .border(
-                                    width = if (selected) RaftAppStroke.Default else RaftAppStroke.Thin,
-                                    color = RaftColor.BorderBlack
-                                )
+                                .raftOptionSurface(selected = selected, radius = RaftAppRadius.Control)
                                 .clickable { selectedSheetName = sheet.name }
                                 .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Sm)
                     ) {
@@ -10226,7 +10225,7 @@ internal fun RaftFilePreviewXlsxPanel(
                                     Modifier
                                         .weight(1f)
                                         .background(RaftColor.SurfaceWhite)
-                                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                                        .border(RaftAppStroke.Thin, RaftColor.BorderHairline)
                                         .padding(horizontal = RaftAppSpacing.Xs, vertical = RaftAppSpacing.Sm)
                             ) {
                                 Text(
@@ -10249,7 +10248,7 @@ internal fun RaftFilePreviewXlsxPanel(
                                     Modifier
                                         .weight(1f)
                                         .background(RaftColor.SurfaceWhite)
-                                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                                        .border(RaftAppStroke.Thin, RaftColor.BorderHairline)
                                         .padding(horizontal = RaftAppSpacing.Xs, vertical = RaftAppSpacing.Sm)
                             ) {
                                 Text(

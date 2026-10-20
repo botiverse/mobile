@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.ui.draw.clip
 import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftControlSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAnchorPlacement
@@ -1296,8 +1298,7 @@ private fun SharedTasksBoardColumn(
             Modifier
                 .width(320.dp)
                 .fillMaxHeight()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                .raftCardSurface()
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1592,11 +1593,7 @@ private fun SharedTasksStatusLabel(
     Row(
         modifier = Modifier
             .then(modifier)
-            .background(status.color)
-            // React's section-header status pill uses a 1px border; android's 2dp
-            // read as "too black / heavier" vs react's thinner (lighter-looking)
-            // line. Same black color, just match the 1px stroke (task #384).
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+            .background(raftSoftWash(status.color), RoundedCornerShape(RaftAppRadius.Chip))
             .padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1642,9 +1639,7 @@ private fun SharedTasksNotice(
         modifier =
             modifier
                 .fillMaxWidth()
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
-                .background(RaftColor.AccentRed.copy(alpha = 0.12f))
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = raftSoftWash(RaftColor.AccentRed))
                 .padding(RaftAppSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -1868,8 +1863,7 @@ private fun TasksCreateDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 36.dp)
-                        .background(RaftColor.AppBgLightBlue.copy(alpha = 0.6f))
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                        .raftControlSurface(RaftColor.AppBgLightBlue.copy(alpha = 0.6f), RaftColor.BorderBlack)
                         .padding(horizontal = RaftAppSpacing.Sm, vertical = 6.dp)
                 )
             }
