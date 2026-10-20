@@ -1,5 +1,7 @@
 package build.raft.app.base
 
+import androidx.compose.runtime.CompositionLocalProvider
+import build.raft.designsystem.components.LocalRaftDialogRespectsSafeArea
 import build.raft.app.RaftEnvironmentIndicatorHost
 import build.raft.app.raftEnvironmentIndicatorEnabledForPage
 import build.raft.app.raftLogError
@@ -44,11 +46,16 @@ internal abstract class BasePager : ComposeContainer() {
      * which keeps the non-production environment indicator above auth and product surfaces alike.
      */
     override fun setContent(content: @Composable () -> Unit) {
+        // Visual captures lay pages out with no safe area (compared against a browser
+        // viewport); dialogs follow, so they centre in the whole window as on web.
+        val dialogsRespectSafeArea = !pageData.params.optBoolean("slockVisualZeroSafeArea", false)
         super.setContent {
-            RaftEnvironmentIndicatorHost(
-                enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
-                content = content,
-            )
+            CompositionLocalProvider(LocalRaftDialogRespectsSafeArea provides dialogsRespectSafeArea) {
+                RaftEnvironmentIndicatorHost(
+                    enabled = raftEnvironmentIndicatorEnabledForPage(pageData.params),
+                    content = content,
+                )
+            }
         }
     }
 

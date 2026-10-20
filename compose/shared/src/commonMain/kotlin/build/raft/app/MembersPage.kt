@@ -1731,6 +1731,8 @@ private val membersAgentDetailVisualMember = MemberProfile(
     avatarLabel = "P",
     presence = Presence.Active,
     agentStatus = AgentStatus.Working,
+    // fixtureData.json agents.productUx.serverRole
+    serverRole = "member",
     permissionBadges = listOf("computer:MacBook Pro", "runtime:Codex")
 )
 
@@ -1907,6 +1909,7 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         machineId = "computer-mbp",
         machineName = "Jiachengs-MacBook-Pro",
         daemonVersion = "0.65.0",
+        serverRole = "member",
         creatorId = "artin",
         creatorType = "user",
         creator = AgentCreatorSummary(
@@ -6381,10 +6384,15 @@ private fun MembersDetailContent(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
+                        // Flush tabs (web panel bodies) carry their own padding: no gap between
+                        // the (usually empty) state notice item and the body.
+                        val flushTab =
+                            pageTab == MembersAgentDetailTab.Profile || pageTab == MembersAgentDetailTab.Apps ||
+                                pageTab == MembersAgentDetailTab.Reminders || pageTab == MembersAgentDetailTab.Workspace
                         LazyColumn(
                             state = agentTabListStates.getValue(pageTab),
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
+                            verticalArrangement = Arrangement.spacedBy(if (flushTab) 0.dp else RaftAppSpacing.Md),
                         ) {
                             // The Profile tab's sections carry their own web `px-5 py-*` padding and
                             // full-bleed separators (ProfilePanelBody), so it starts flush.
@@ -6629,6 +6637,8 @@ private fun MembersDetailContent(
                 expanded = managementMenuOpen,
                 anchor = dropdownAnchor,
                 items = menuItems,
+                // web AgentProfileOverflowMenu: `side="bottom" align="end" sideOffset={4}`.
+                verticalOffset = 4.dp,
                 onSelect = { id ->
                     managementMenuOpen = false
                     handleMembersManagementMenuSelection(
@@ -8584,7 +8594,7 @@ private fun MembersHumanInfoSection(
     val roleHelpLabel = stringResource(MR.strings.member_title_human_roles)
     val editRoleLabel = stringResource(MR.strings.member_action_edit_role)
     MembersHumanSection(title = stringResource(MR.strings.member_section_info)) {
-        RaftDescriptionList {
+        RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
             Item(
                 term = if (departure != null) {
                     stringResource(MR.strings.member_label_status)
@@ -8601,7 +8611,7 @@ private fun MembersHumanInfoSection(
                                 tooltip = roleHelpLabel,
                                 variant = RaftButtonVariant.Ghost
                             ) {
-                                RaftGlyphIcon(RaftGlyph.Info, size = 14.dp)
+                                RaftGlyphIcon(RaftGlyph.CircleHelp, size = 14.dp)
                             }
                             if (canEditRole && !editingRole) {
                                 RaftIconButton(
@@ -10719,14 +10729,21 @@ private fun MembersAgentRuntimeConfigSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             RaftSectionEyebrow(text = stringResource(MR.strings.member_section_runtime_config))
-            if (canEdit && runtimeEditorReady && !editingRuntimeConfig) {
+            // web: the pencil shows whenever the viewer manages the agent; until the runtime
+            // config can be edited (status / machine runtimes still resolving) a tap says so.
+            if (canEdit && !editingRuntimeConfig) {
+                val runtimeEditUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
                 MembersProfileInfoIconButton(
                     glyph = MembersProfileInfoIcon.Pencil,
                     label = stringResource(MR.strings.member_action_edit_runtime_config),
                     onClick = {
-                        runtimeConfigError = null
-                        runtimeEditorAuthority = agentProfileEditAuthority
-                        editingRuntimeConfig = true
+                        if (runtimeEditorReady) {
+                            runtimeConfigError = null
+                            runtimeEditorAuthority = agentProfileEditAuthority
+                            editingRuntimeConfig = true
+                        } else {
+                            edit.onUnavailableAction(runtimeEditUnavailable)
+                        }
                     }
                 )
             }
@@ -13748,8 +13765,17 @@ private fun MembersAgentActivityRow(
                     }
                 }
                 if (body.isNotBlank()) {
+                    // web ToolStartEntry: the command line is `break-all` (it breaks between any
+                    // two characters); Compose has no such break, so a zero-width space between
+                    // characters gives it the same break opportunities.
+                    val shownBody =
+                        if (activity.type == "tool_start") {
+                            remember(body) { body.toList().joinToString("\u200B") }
+                        } else {
+                            body
+                        }
                     RaftText(
-                        text = body,
+                        text = shownBody,
                         style = detailStyle,
                         color = colors.foregroundHint,
                         maxLines = if (longBody && !expanded) 2 else Int.MAX_VALUE,

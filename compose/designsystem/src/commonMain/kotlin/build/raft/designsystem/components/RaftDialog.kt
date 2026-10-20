@@ -29,6 +29,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -153,6 +156,16 @@ fun RaftDialogSurface(
  * The scrim is the platform dialog's (about 60% black on Android and desktop; raft
  * `layer-backdrop` is 65% in light, 60% in dark).
  */
+/**
+ * Whether [RaftDialog] keeps its surface inside the window's safe area (the default). A host
+ * that lays its pages out edge to edge with no safe area (the visual-test captures, which
+ * compare against a browser viewport) provides false so a dialog centres in the whole window.
+ */
+val LocalRaftDialogRespectsSafeArea = staticCompositionLocalOf { true }
+
+/** The platform dialog's own dim (Android and desktop): about 60% black. */
+private const val RaftPlatformDialogDim = 0.6f
+
 @Composable
 fun RaftDialog(
     onDismissRequest: () -> Unit,
@@ -167,6 +180,11 @@ fun RaftDialog(
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
+    val respectsSafeArea = LocalRaftDialogRespectsSafeArea.current
+    // raft `layer-backdrop` (65% black in light, 60% in dark) over the platform's ~60% dim:
+    // the extra layer makes up the difference, so the page behind reads as dark as on web.
+    val backdrop = RaftTheme.colors.layerBackdrop
+    val extraDim = (1f - (1f - backdrop.alpha) / (1f - RaftPlatformDialogDim)).coerceIn(0f, 1f)
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
     Dialog(
@@ -176,9 +194,10 @@ fun RaftDialog(
         Box(
             Modifier
                 .fillMaxSize()
+                .background(Color.Black.copy(alpha = extraDim))
                 .pointerInput(dismissOnClickOutside) { detectTapGestures { if (dismissOnClickOutside) dismiss() } }
                 // Clear of the system bars, the cutout and the keyboard, then 16dp.
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .then(if (respectsSafeArea) Modifier.windowInsetsPadding(WindowInsets.safeDrawing) else Modifier)
                 .padding(16.dp),
             contentAlignment = Alignment.Center,
         ) {
