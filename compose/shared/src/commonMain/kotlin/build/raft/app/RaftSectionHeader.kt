@@ -49,8 +49,10 @@ private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
 internal val RaftCollapsibleSectionContentGap = 4.dp
 // raft-ui sidebarSectionCount: `font-mono text-mono-meta font-normal` (12/16 Space Mono).
-internal val RaftCollapsibleSectionCountTextStyle =
-    RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 0.sp)
+internal val RaftCollapsibleSectionCountTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 0.sp)
 internal val RaftCollapsibleSectionCountColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
 internal val RaftMainTabHeaderStartPadding = 8.dp
 // Task #179: getter so the header follows the Settings font option.

@@ -5,7 +5,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -50,10 +56,12 @@ internal expect fun raftPlatformTextMotion(): TextMotion?
 internal val RaftUserContentLocaleList: LocaleList = LocaleList("zh-Hans")
 private val RaftJapaneseUiLocaleList: LocaleList = LocaleList("ja")
 
+// Never throws: unit-test Android stubs and old platforms lack the locale APIs.
+private fun raftSystemLanguageTagOrNull(): String? = runCatching { currentSystemLanguageTag() }.getOrNull()
+
 internal fun raftUiTextLocaleList(
     appLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value,
-    // Never throws: unit-test Android stubs and old platforms lack the locale APIs.
-    systemLanguageTag: () -> String? = { runCatching { currentSystemLanguageTag() }.getOrNull() },
+    systemLanguageTag: () -> String? = ::raftSystemLanguageTagOrNull,
 ): LocaleList {
     val japaneseUi =
         when (appLocale) {
@@ -63,6 +71,33 @@ internal fun raftUiTextLocaleList(
             AppLocale.English, AppLocale.SimplifiedChinese -> false
         }
     return if (japaneseUi) RaftJapaneseUiLocaleList else RaftUserContentLocaleList
+}
+
+/**
+ * The current UI-text locale, cached: token getters read it on every style construction, and
+ * resolving the device language (Android `Resources`, iOS `NSLocale.preferredLanguages`) per
+ * read is too expensive. A snapshot [State][androidx.compose.runtime.State], so text composed
+ * from the tokens recomposes when it changes. [refresh] recomputes only when the app language or
+ * the device language actually changed; [RaftProvideTextRendering] calls it on a Settings
+ * language change and whenever a page resumes (the device language can change in between).
+ */
+internal object RaftUiTextLocaleState {
+    private var lastAppLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value
+    private var lastSystemTag: String? = raftSystemLanguageTagOrNull()
+
+    var localeList: LocaleList by mutableStateOf(raftUiTextLocaleList(lastAppLocale) { lastSystemTag })
+        private set
+
+    fun refresh(
+        appLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value,
+        systemTag: String? = raftSystemLanguageTagOrNull(),
+    ) {
+        if (appLocale == lastAppLocale && systemTag == lastSystemTag) return
+        lastAppLocale = appLocale
+        lastSystemTag = systemTag
+        val next = raftUiTextLocaleList(appLocale) { systemTag }
+        if (next != localeList) localeList = next
+    }
 }
 
 /** Marks a style as user content: Han characters render in Simplified Chinese forms. */
@@ -82,12 +117,12 @@ internal fun TextStyle.withRaftTextRendering(): TextStyle {
     return copy(
         lineHeightStyle = if (needsLineBox) RaftCssLineHeightStyle else lineHeightStyle,
         textMotion = if (needsMotion) motion else textMotion,
-        localeList = if (needsLocale) raftUiTextLocaleList() else localeList,
+        localeList = if (needsLocale) RaftUiTextLocaleState.localeList else localeList,
     )
 }
 
 /** The rendering defaults as a style, for [LocalTextStyle] and merges. */
-internal fun raftTextRenderingStyle(uiLocaleList: LocaleList = raftUiTextLocaleList()): TextStyle =
+internal fun raftTextRenderingStyle(uiLocaleList: LocaleList = RaftUiTextLocaleState.localeList): TextStyle =
     TextStyle(
         lineHeightStyle = RaftCssLineHeightStyle,
         textMotion = raftPlatformTextMotion(),
@@ -102,11 +137,20 @@ internal fun raftTextRenderingStyle(uiLocaleList: LocaleList = raftUiTextLocaleL
  */
 @Composable
 internal fun RaftProvideTextRendering(content: @Composable () -> Unit) {
-    // Collected so a language change in Settings re-provides the UI locale.
+    // A language change in Settings refreshes the UI locale; so does every resume, since the
+    // device language may have changed while the app was in the background.
     val appLocale by KmmResourceLocaleRuntime.locale.collectAsState()
-    val uiLocaleList = remember(appLocale) { raftUiTextLocaleList(appLocale) }
+    SideEffect { RaftUiTextLocaleState.refresh(appLocale) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) RaftUiTextLocaleState.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.merge(raftTextRenderingStyle(uiLocaleList)),
+        LocalTextStyle provides LocalTextStyle.current.merge(raftTextRenderingStyle(RaftUiTextLocaleState.localeList)),
         content = content,
     )
 }

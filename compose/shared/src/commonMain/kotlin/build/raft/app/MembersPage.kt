@@ -275,6 +275,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -361,10 +362,14 @@ internal val MembersListRowMinHeight = 34.dp
 internal val MembersListRowSpacing = 4.dp
 internal val MembersListContentGap = 6.dp
 internal const val MembersListNameMaxWidthFraction = 0.7f
-internal val MembersListNameTextStyle =
-    RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
-internal val MembersListDescriptionTextStyle =
-    RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
+internal val MembersListNameTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
+internal val MembersListDescriptionTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
 internal val MembersListSectionHeaderMinHeight = 24.dp
 // React Sidebar's Agents/Humans section `+` is a compact 24px root-list action.
 // This is intentionally separate from the 28dp member-detail message/menu actions below.
@@ -372,8 +377,10 @@ internal val MembersListSectionAddActionSize = 24.dp
 internal val MembersListSectionAddActionIconSize = 14.dp
 internal val MembersListMachineLabelInset = 12.dp
 internal val MembersListMachineLabelIconSize = 9.dp
-internal val MembersListMachineLabelTextStyle =
-    RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
+internal val MembersListMachineLabelTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 // Web AgentActivityLog row: `gap-2` (8) + StatusDot sm (`size-2` = 8) + `gap-2` (8).

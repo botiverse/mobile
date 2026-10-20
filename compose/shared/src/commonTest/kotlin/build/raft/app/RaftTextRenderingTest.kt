@@ -81,4 +81,26 @@ class RaftTextRenderingTest {
         // A weight change keeps the content locale.
         assertEquals(zhHans, raftMessageBodyTextStyle(null).withRaftFontWeight(FontWeight.Bold).localeList)
     }
+
+    @Test
+    fun theUiLocaleIsCachedAndRefreshedOnlyOnALanguageChange() {
+        val zhHans = LocaleList("zh-Hans")
+        val ja = LocaleList("ja")
+        try {
+            RaftUiTextLocaleState.refresh(AppLocale.English, "en-US")
+            assertEquals(zhHans, RaftUiTextLocaleState.localeList)
+            assertEquals(zhHans, RaftType.Body.localeList)
+            RaftUiTextLocaleState.refresh(AppLocale.Japanese, "en-US")
+            assertEquals(ja, RaftUiTextLocaleState.localeList)
+            assertEquals(ja, RaftType.Body.localeList)
+            // User content keeps Simplified forms under a Japanese UI.
+            assertEquals(zhHans, raftMessageBodyTextStyle(null).localeList)
+            RaftUiTextLocaleState.refresh(AppLocale.System, "ja-JP")
+            assertEquals(ja, RaftUiTextLocaleState.localeList)
+            RaftUiTextLocaleState.refresh(AppLocale.System, "zh-CN")
+            assertEquals(zhHans, RaftUiTextLocaleState.localeList)
+        } finally {
+            RaftUiTextLocaleState.refresh(AppLocale.English, "en-US")
+        }
+    }
 }

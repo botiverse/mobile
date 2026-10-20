@@ -1208,8 +1208,10 @@ internal fun RaftBrutalActionButton(
     )
 }
 
-internal val RaftBrutalActionButtonDefaultTextStyle =
-    RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
+internal val RaftBrutalActionButtonDefaultTextStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp)
 
 // The brutal button's default min width; raft buttons have none (they hug the label).
 private val RaftBrutalActionButtonLegacyMinWidth = 82.dp

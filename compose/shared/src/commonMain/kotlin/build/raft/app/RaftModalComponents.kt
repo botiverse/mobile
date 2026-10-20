@@ -913,7 +913,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                     Box(
                         modifier =
                             Modifier
-                                .height(16.dp)
+                                .heightIn(min = 16.dp)
                                 .widthIn(max = 88.dp)
                                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1065
                                 .background(RaftColor.AccentCyan.copy(alpha = 0.24f))

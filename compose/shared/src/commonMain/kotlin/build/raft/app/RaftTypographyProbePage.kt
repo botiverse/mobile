@@ -172,8 +172,10 @@ private data class TypographyProbeRow(
     val style: TextStyle
 )
 
-private val MessageBodyProbeStyle =
-    RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack)
+private val MessageBodyProbeStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack)
 
 private val TypographyProbeHighlightedMentions = setOf("artin")
 

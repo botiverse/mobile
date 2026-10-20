@@ -27984,12 +27984,14 @@ private const val ThreadInlineReplyContentLineHeightSp = 16f
 private const val ThreadInlineReplyRowMinHeightDp = 20f
 private const val ThreadInlineReplyRowVerticalAllowanceDp = 4f
 
-internal val ThreadInlineReplyTimestampStyle =
-    RaftType.Caption.copy(
-        fontFamily = RaftMonoFamily,
-        fontSize = 11.5.sp,
-        lineHeight = 15.sp,
-    )
+internal val ThreadInlineReplyTimestampStyle: TextStyle
+    // Getter: the UI-text locale and rendering defaults can change at runtime.
+    get() =
+        RaftType.Caption.copy(
+            fontFamily = RaftMonoFamily,
+            fontSize = 11.5.sp,
+            lineHeight = 15.sp,
+        )
 
 @Composable
 internal fun ThreadMessageFooterMeta(

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -171,7 +172,8 @@ internal fun RaftBadgeChrome(
     Box(
         modifier =
             modifier
-                .height(20.dp)
+                // min, not fixed: the label grows with the system font size.
+                .heightIn(min = 20.dp)
                 .widthIn(min = 20.dp)
                 .background(fill, shape)
                 .border(RaftAppStroke.Control, RaftColor.StickerInk, shape)
