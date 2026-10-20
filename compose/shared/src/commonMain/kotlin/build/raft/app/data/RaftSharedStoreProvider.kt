@@ -361,6 +361,8 @@ internal class RaftSharedStoreProvider private constructor(
     private val sqlDatabase: RaftSqlDatabase,
     private val authKeyValueStore: RaftKeyValueStore,
     private val sharedPreferenceStore: RaftKeyValueStore,
+    /** Durable member avatar references shared by every members store (Hands dd79da45). */
+    private val memberAvatarRefStore: RaftMemberAvatarRefStore,
     private val apiEnvironmentKeyValueStore: RaftKeyValueStore,
     val authStore: KeyValueAuthSessionStore,
     val authSessionEvents: RaftAuthSessionEvents,
@@ -651,6 +653,8 @@ internal class RaftSharedStoreProvider private constructor(
                     // Cached previews are message content: they leave with the session. Losing a
                     // successor's hints to a late terminal event only costs one cold-start hint.
                     homeRowHintPersistStorage.clearAll()
+                    // Avatar references are account-visible directory data: same lifetime.
+                    memberAvatarRefStore.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -1078,7 +1082,8 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceOwner = { serverId -> presenceOwnerResolver(serverId.value) },
                     presenceOwnerFlow = { serverId -> presenceOwnerFlowResolver(serverId.value) },
                     presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
-                    processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) }
+                    processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
+                    avatarRefStore = memberAvatarRefStore
                 )
             }
         }
@@ -2347,6 +2352,7 @@ internal class RaftSharedStoreProvider private constructor(
                     webBaseUrl = apiEnvironmentStore.current().webUrl
                 )
             }
+            val memberAvatarRefStore = RaftMemberAvatarRefStore(sharedPreferenceStore)
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository = processServerMembersRepository,
@@ -2367,7 +2373,8 @@ internal class RaftSharedStoreProvider private constructor(
                                 ProcessServerMembersOwner(environmentId, accountId, normalizedServerId)
                             }
                         }
-                    }
+                    },
+                    avatarRefStore = memberAvatarRefStore
                 )
             lateinit var provider: RaftSharedStoreProvider
             val foregroundReconciler =
@@ -2438,6 +2445,7 @@ internal class RaftSharedStoreProvider private constructor(
                 sqlDatabase = database,
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
+                memberAvatarRefStore = memberAvatarRefStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
                 authSessionEvents = authSessionEvents,

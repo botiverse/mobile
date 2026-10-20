@@ -37,10 +37,10 @@ internal fun raftMemberAvatarResolver(
         ?: return EmptyRaftMemberAvatarResolver
     return RaftMemberAvatarResolver(
         currentAvatar = { memberId ->
-            serverMembersStore
-                ?.state
-                ?.value
-                ?.currentMemberAvatarWireValue(cleanServerId, memberId)
+            serverMembersStore?.let { store ->
+                store.state.value.currentMemberAvatarWireValue(cleanServerId, memberId)
+                    ?: store.durableMemberAvatarWireValue(cleanServerId, memberId)
+            }
         },
         avatarFlow = { memberId ->
             if (serverMembersStore == null) {
@@ -53,13 +53,19 @@ internal fun raftMemberAvatarResolver(
                 serverMembersStore
                     .memberProfileFlow(cleanServerId, memberId)
                     .map { profile ->
-                        val avatarWireValue = profile?.avatarWireValueForRenderedAvatar()
+                        // Cold start: until the directory (or a profile carrying an avatar) lands,
+                        // render the last authoritative avatar persisted for this member.
+                        val liveAvatarWireValue = profile?.avatarWireValueForRenderedAvatar()
+                        val avatarWireValue =
+                            liveAvatarWireValue
+                                ?: serverMembersStore.durableMemberAvatarWireValue(cleanServerId, memberId)
                         diagnosticsLogger(
                             "result=profile serverHash=${cleanServerId?.value.raftAvatarDiagnosticsHash()} " +
                                 "memberHash=${memberId.raftAvatarDiagnosticsHash()} " +
                                 "profile=${profile != null} " +
                                 "kind=${profile?.kind?.name ?: "none"} " +
-                                "avatarSource=${avatarWireValue.raftAvatarDiagnosticsSource()}"
+                                "avatarSource=${avatarWireValue.raftAvatarDiagnosticsSource()} " +
+                                "durable=${liveAvatarWireValue == null && avatarWireValue != null}"
                         )
                         avatarWireValue
                     }
