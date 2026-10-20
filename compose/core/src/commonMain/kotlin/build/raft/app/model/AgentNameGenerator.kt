@@ -4,58 +4,71 @@ import kotlin.math.floor
 import kotlin.math.min
 import kotlin.random.Random
 
-// Word lists for a suggested agent name ("adjective-noun", e.g. `swift-otter`).
-// Lowercase ASCII only, no spaces: every pair must pass validateAgentName
-// (NAME_REGEX, NAME_MAX_LENGTH, reserved names), which AgentNameGeneratorTest
-// checks for the full cross product. The name becomes the agent's @handle.
+// Classic first names for a suggested agent name (the old adjective-noun pairs
+// such as `misty-lagoon` read as noise). ASCII letters only, capitalized like
+// the onboarding assistant "Cindy" (deliberately not in the list). Every name,
+// bare or paired with an adjective, must pass validateAgentName, which
+// AgentNameGeneratorTest checks. The name becomes the agent's @handle.
 //
 // KEEP IN SYNC with botiverse/slock `packages/shared/src/agentNameGenerator.ts`
-// (AGENT_NAME_ADJECTIVES / AGENT_NAME_NOUNS, same words, same order).
-// [suggestAgentName] follows the same selection as web `suggestAgentName`
-// (slock #10023): pick from the pairs not yet taken, no retry loop.
-val AGENT_NAME_ADJECTIVES: List<String> = listOf(
-    "amber", "bold", "brave", "breezy", "bright", "brisk", "calm", "candid", "cheery", "clever",
-    "cosmic", "crisp", "curious", "daring", "dashing", "deft", "eager", "earnest", "easy", "fancy",
-    "fearless", "fleet", "fluent", "frank", "fresh", "gentle", "giddy", "glad", "golden", "grand",
-    "happy", "hardy", "hearty", "honest", "humble", "jolly", "jovial", "keen", "kind", "lively",
-    "lucid", "lucky", "lunar", "mellow", "merry", "mighty", "misty", "modest", "nimble", "noble",
-    "patient", "peppy", "plucky", "polite", "proud", "quick", "quiet", "radiant", "rapid", "ready",
-    "regal", "rosy", "rustic", "sage", "serene", "sharp", "shiny", "silent", "silver", "sincere",
-    "sleek", "smooth", "snappy", "solar", "sparkly", "spry", "steady", "stellar", "sturdy", "sunny",
-    "swift", "tidy", "tranquil", "trusty", "upbeat", "vivid", "warm", "wise", "witty", "zesty",
+// (AGENT_CLASSIC_NAMES / AGENT_NAME_ADJECTIVES, same words, same order).
+// [suggestAgentName] follows the same selection as web `suggestAgentName`.
+val AGENT_CLASSIC_NAMES: List<String> = listOf(
+    "Ada", "Adam", "Alan", "Albert", "Alice", "Amelia", "Amy", "Andrew", "Anna", "Anne",
+    "Arthur", "Audrey", "Barbara", "Beatrice", "Ben", "Bella", "Benjamin", "Betty", "Bruce", "Caroline",
+    "Carl", "Catherine", "Charles", "Charlotte", "Chloe", "Claire", "Clara", "Daisy", "Daniel", "David",
+    "Diana", "Dorothy", "Edgar", "Edith", "Edward", "Eleanor", "Elena", "Eliza", "Ella", "Emily",
+    "Emma", "Eric", "Ethan", "Eva", "Felix", "Fiona", "Frank", "George", "Grace", "Hannah",
+    "Harry", "Hazel", "Helen", "Henry", "Hugo", "Ian", "Iris", "Isaac", "Isabel", "Ivy",
+    "Jack", "Jacob", "James", "Jane", "Jasper", "Jean", "Jessica", "Joan", "John", "Jonathan",
+    "Joseph", "Judith", "Julia", "Julian", "Kate", "Laura", "Leo", "Leon", "Lily", "Linda",
+    "Lionel", "Louis", "Louise", "Lucas", "Lucy", "Luke", "Lydia", "Margaret", "Maria", "Martha",
+    "Martin", "Mary", "Matthew", "Max", "Maya", "Michael", "Miles", "Molly", "Nancy", "Nathan",
+    "Nina", "Noah", "Nora", "Oliver", "Olivia", "Oscar", "Owen", "Patrick", "Paul", "Peter",
+    "Philip", "Rachel", "Ralph", "Rebecca", "Richard", "Robert", "Rose", "Ruby", "Ruth", "Sam",
+    "Samuel", "Sarah", "Simon", "Sophia", "Sophie", "Stella", "Susan", "Thomas", "Tom", "Victor",
+    "Victoria", "Vincent", "Violet", "Walter", "William", "Zoe",
 )
 
-val AGENT_NAME_NOUNS: List<String> = listOf(
-    "badger", "beaver", "bison", "comet", "condor", "cougar", "coyote", "crane", "cricket", "dolphin",
-    "eagle", "falcon", "ferret", "finch", "firefly", "fox", "gazelle", "gecko", "heron", "ibis",
-    "jaguar", "kestrel", "koala", "lark", "lemur", "leopard", "lynx", "magpie", "marten", "meadow",
-    "meteor", "mink", "moose", "nebula", "newt", "ocelot", "orca", "osprey", "otter", "owl",
-    "panda", "panther", "parrot", "pelican", "penguin", "petrel", "pika", "plover", "puffin", "quail",
-    "quasar", "raven", "robin", "salmon", "seal", "sparrow", "squirrel", "starling", "stork", "swallow",
-    "hawk", "tapir", "tern", "thrush", "tiger", "toucan", "turtle", "walrus", "weasel", "whale",
-    "wombat", "wren", "yak", "zebra", "aurora", "breeze", "canyon", "cedar", "cloud", "delta",
-    "ember", "fjord", "glacier", "harbor", "island", "lagoon", "maple", "orbit", "pebble", "summit",
+// Adjectives that tell agents with the same first name apart: once every name
+// is taken, the suggestion becomes `Swift-Leo`.
+val AGENT_NAME_ADJECTIVES: List<String> = listOf(
+    "Amber", "Bold", "Brave", "Breezy", "Bright", "Brisk", "Calm", "Candid", "Cheery", "Clever",
+    "Cosmic", "Crisp", "Curious", "Daring", "Dashing", "Deft", "Eager", "Earnest", "Easy", "Fancy",
+    "Fearless", "Fleet", "Fluent", "Frank", "Fresh", "Gentle", "Giddy", "Glad", "Golden", "Grand",
+    "Happy", "Hardy", "Hearty", "Honest", "Humble", "Jolly", "Jovial", "Keen", "Kind", "Lively",
+    "Lucid", "Lucky", "Lunar", "Mellow", "Merry", "Mighty", "Misty", "Modest", "Nimble", "Noble",
+    "Patient", "Peppy", "Plucky", "Polite", "Proud", "Quick", "Quiet", "Radiant", "Rapid", "Ready",
+    "Regal", "Rosy", "Rustic", "Sage", "Serene", "Sharp", "Shiny", "Silent", "Silver", "Sincere",
+    "Sleek", "Smooth", "Snappy", "Solar", "Sparkly", "Spry", "Steady", "Stellar", "Sturdy", "Sunny",
+    "Swift", "Tidy", "Tranquil", "Trusty", "Upbeat", "Vivid", "Warm", "Wise", "Witty", "Zesty",
 )
 
 private val ALL_AGENT_NAME_PAIRS: List<String> by lazy {
-    AGENT_NAME_ADJECTIVES.flatMap { adjective -> AGENT_NAME_NOUNS.map { noun -> "$adjective-$noun" } }
+    AGENT_NAME_ADJECTIVES.flatMap { adjective -> AGENT_CLASSIC_NAMES.map { name -> "$adjective-$name" } }
 }
 
 private fun <T> pick(items: List<T>, random: () -> Double): T =
     items[min(items.size - 1, floor(random() * items.size).toInt())]
 
 /**
- * A suggested agent name, `adjective-noun`. `exclude` holds names already
- * taken (compared trimmed and case-insensitively). The result is picked
- * uniformly from every adjective-noun pair (adjective-major order) that is not
- * taken. Only when all pairs are taken does it pick from all of them, and
- * the server's uniqueness check decides.
+ * A suggested agent name. `exclude` holds names already taken by agents or
+ * members (compared trimmed and case-insensitively). Picks a classic first
+ * name not yet taken (`Leo`); once every name is taken, an adjective plus a
+ * name not yet taken (`Swift-Leo`, adjective-major order); only when all of
+ * those are taken too does it add the first free number (`Swift-Leo2`), so
+ * the suggestion never collides with a name in `exclude`.
  */
 fun suggestAgentName(
     exclude: Iterable<String> = emptyList(),
     random: () -> Double = { Random.nextDouble() },
 ): String {
     val taken = exclude.mapTo(HashSet()) { it.trim().lowercase() }
-    val free = if (taken.isEmpty()) ALL_AGENT_NAME_PAIRS else ALL_AGENT_NAME_PAIRS.filter { it !in taken }
-    return pick(free.ifEmpty { ALL_AGENT_NAME_PAIRS }, random)
+    fun isFree(name: String) = name.lowercase() !in taken
+    AGENT_CLASSIC_NAMES.filter(::isFree).ifEmpty { null }?.let { return pick(it, random) }
+    ALL_AGENT_NAME_PAIRS.filter(::isFree).ifEmpty { null }?.let { return pick(it, random) }
+    val base = pick(ALL_AGENT_NAME_PAIRS, random)
+    var suffix = 2
+    while (!isFree("$base$suffix")) suffix += 1
+    return "$base$suffix"
 }
