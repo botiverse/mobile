@@ -9,8 +9,8 @@ import kotlin.test.assertTrue
  * Keeps the Web-owned Settings surfaces from accidentally regaining a native content load.
  *
  * This is a production-wiring check rather than a WebView rendering test: the embedded SPA is
- * the content authority, while native Account/Storage/Release Notes pages still use the shared
- * settings store in their own hosts.
+ * the content authority, while native Account/Storage/Release Notes/Computers pages still use the
+ * shared settings store in their own hosts.
  */
 class SettingsStandaloneWebViewProductionContractTest {
     @Test
@@ -31,7 +31,6 @@ class SettingsStandaloneWebViewProductionContractTest {
         val sourcePaths = listOf(
             "SettingsBillingPage.kt",
             "SettingsMarketplacePage.kt",
-            "SettingsComputersPage.kt",
             "SettingsAdministrationPage.kt",
         )
 
@@ -55,11 +54,34 @@ class SettingsStandaloneWebViewProductionContractTest {
             "compose/shared/src/commonMain/kotlin/build/raft/app/ReleaseNotesPage.kt"
         ).readText()
 
-        listOf(account, storage, releaseNotes).forEach { source ->
+        val computers = repositoryFile(
+            "compose/shared/src/commonMain/kotlin/build/raft/app/RaftSettingsComputersPage.kt"
+        ).readText()
+
+        listOf(account, storage, releaseNotes, computers).forEach { source ->
             assertTrue(source.contains("SharedSettingsViewModel"))
             assertTrue(source.contains("SharedSettingsIntent.LoadPageContent"))
             assertTrue(source.contains("StandaloneSettingsEffectHandler"))
         }
+    }
+
+    @Test
+    fun computersIsNoLongerAWebViewHostedSurface() {
+        val host = repositoryFile(
+            "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneWebViewHost.kt"
+        ).readText()
+        val route = repositoryFile(
+            "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsComputersPage.kt"
+        ).readText()
+
+        // Old settings-webview payloads with the computers surface render the native page.
+        assertTrue(host.contains("SettingsWebViewSurface.Computers -> RaftSettingsComputersRoute()"))
+        assertFalse(host.contains("settingsComputersWebViewSpec"))
+        assertFalse(host.contains("ComputerNativeNavigation"))
+        // Settings, search and member profiles open the native Computers page.
+        assertTrue(route.contains("SETTINGS_COMPUTERS_PAGE"))
+        assertFalse(route.contains("SETTINGS_WEB_VIEW_PAGE"))
+        assertFalse(route.contains("StandaloneSettingsWebViewSpec"))
     }
 
     private fun repositoryFile(relativePath: String): File {
