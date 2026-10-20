@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -369,7 +370,9 @@ private fun ThreadFileRow(
             .fillMaxWidth()
             .clip(shape)
             .background(RaftColor.Card, shape)
-            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, shape)
+            // The hairline flattened onto the card, so its edge rounds like the web's (an 8-bit
+            // alpha blend at draw time lands one level darker).
+            .border(RaftAppStroke.Thin, RaftColor.BorderHairline.compositeOver(RaftColor.Card), shape)
             // CSS `border` + `px-4 py-3`: the 1dp edge takes layout space on the web.
             .padding(horizontal = 16.dp + RaftAppStroke.Thin, vertical = 12.dp + RaftAppStroke.Thin),
         verticalAlignment = Alignment.Top,
@@ -501,7 +504,7 @@ private fun ThreadFileTypeBadge(label: String, modifier: Modifier = Modifier) {
             Text(
                 text = label,
                 style = RaftType.Caption.copy(
-                    fontFamily = RaftMonoFamily,
+                    fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
                     fontWeight = FontWeight.Bold,
                     fontSize = 10.sp,
                     lineHeight = 10.sp,
@@ -648,7 +651,8 @@ private fun RaftThreadFileItem.threadFileTypeIconName(): RaftLucideIconName {
     }
 }
 
-// Web: `flex justify-center p-4` holding an outline `size="sm"` Button (32dp, ink edge).
+// Web: `flex justify-center p-4` holding an outline `size="sm"` Button (32dp, ink edge), after
+// the list's 12dp bottom padding (the list's 8dp item gap already precedes this item).
 @Composable
 private fun ThreadFilesLoadMore(
     loading: Boolean,
@@ -656,7 +660,7 @@ private fun ThreadFilesLoadMore(
     label: String
 ) {
     Box(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         RaftDesignSystemTheme {
