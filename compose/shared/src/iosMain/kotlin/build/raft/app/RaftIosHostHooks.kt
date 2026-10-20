@@ -14,7 +14,7 @@ import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
-import platform.UIKit.UITraitCollection
+import platform.UIKit.UIScreen
 import platform.UIKit.UIUserInterfaceStyle
 import platform.posix.memcpy
 
@@ -83,7 +83,7 @@ object RaftIosHostHooks {
         // Settings > Appearance > Theme: the app-scope stores are installed (RaftIosAppScopeMMKV)
         // before these hooks, so the stored choice applies before the first page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(
-            UITraitCollection.currentTraitCollection.userInterfaceStyle == UIUserInterfaceStyle.UIUserInterfaceStyleDark
+            UIScreen.mainScreen.traitCollection.userInterfaceStyle == UIUserInterfaceStyle.UIUserInterfaceStyleDark
         )
         RaftAppAppearanceRuntime.ensureLoaded()
         if (managedImages != null) {
