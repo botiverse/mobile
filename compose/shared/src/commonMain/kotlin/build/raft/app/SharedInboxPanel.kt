@@ -2523,8 +2523,7 @@ internal fun SharedActivityFooterBadge(
         modifier = modifier,
         tone = visual.tone,
         uppercase = false,
-        leadingIcon = visual.leadingIcon,
-        contentColor = visual.foregroundColor
+        leadingIcon = visual.leadingIcon
     )
 }
 
@@ -2824,8 +2823,7 @@ internal enum class SharedActivityFooterSlot {
 
 internal data class SharedActivityFooterBadgeVisual(
     val tone: RaftBrutalTone,
-    val leadingIcon: RaftLucideIconName? = null,
-    val foregroundColor: Color? = null
+    val leadingIcon: RaftLucideIconName? = null
 )
 
 internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null): SharedActivityFooterBadgeVisual =
@@ -2843,8 +2841,7 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
                 }
             SharedActivityFooterBadgeVisual(
                 tone = tone,
-                leadingIcon = statusMeta.icon,
-                foregroundColor = statusMeta.foregroundColor
+                leadingIcon = statusMeta.icon
             )
         }
         SharedActivityFooterSlot.Replies -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White)

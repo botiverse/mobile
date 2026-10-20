@@ -32,7 +32,6 @@ import androidx.compose.ui.semantics.onLongClick
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftBrutalPanel
 import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.RaftHashGlobeIcon
@@ -5985,10 +5984,11 @@ private fun HardShadowPanel(
     maxWidth: Dp,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    RaftBrutalPanel(
-        modifier = modifier,
-        minWidth = minWidth,
-        maxWidth = maxWidth,
+    // raft-ui PopoverPopup without positioning; the rows bring their own padding.
+    build.raft.designsystem.components.RaftPopoverSurface(
+        modifier = modifier.widthIn(min = minWidth, max = maxWidth),
+        width = null,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
         content = content
     )
 }

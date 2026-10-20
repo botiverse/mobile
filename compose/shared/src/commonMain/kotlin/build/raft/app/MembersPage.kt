@@ -33,7 +33,6 @@ import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.RaftUiControlledMenu
-import build.raft.app.components.RaftFormField
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftUiSelectionPopover
 import build.raft.app.components.RaftUiSelectionOption
@@ -175,6 +174,7 @@ import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
 import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -9712,10 +9712,10 @@ private fun MembersAgentProfileFieldsSection(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
-                RaftFormField(
-                    label = stringResource(MR.strings.member_label_display_name),
-                    error = displayNameError,
-                    showLabel = false
+                RaftField(
+                    label = null,
+                    modifier = Modifier.fillMaxWidth(),
+                    error = displayNameError?.takeIf { it.isNotBlank() }
                 ) {
                     RaftBrutalInputField(
                         value = draftDisplayName,
@@ -9800,10 +9800,10 @@ private fun MembersAgentProfileFieldsSection(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
             ) {
-                RaftFormField(
-                    label = stringResource(MR.strings.member_section_description),
-                    error = roleError,
-                    showLabel = false
+                RaftField(
+                    label = null,
+                    modifier = Modifier.fillMaxWidth(),
+                    error = roleError?.takeIf { it.isNotBlank() }
                 ) {
                     RaftBrutalInputField(
                         value = draftRole,

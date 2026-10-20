@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideTextRendering
+import build.raft.app.components.RaftProvideDesignSystemStrings
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -192,7 +193,10 @@ fun RaftPagerHost(
         RaftProvidePageActive(active) {
             // Raft text rendering defaults (CSS line box, ...) for Text calls not built from a token.
             RaftProvideTextRendering {
-                (pager as? ComposeContainer)?.composedContent?.invoke()
+                // The design-system components' own words (optional, close, clear, loading).
+                RaftProvideDesignSystemStrings {
+                    (pager as? ComposeContainer)?.composedContent?.invoke()
+                }
             }
         }
     }

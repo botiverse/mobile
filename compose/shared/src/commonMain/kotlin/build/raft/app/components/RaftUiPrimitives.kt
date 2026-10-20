@@ -62,215 +62,48 @@ internal enum class RaftBrutalTone(val color: Color) {
 }
 
 /**
- * raft-ui 0.6.0 solid Badge fill for a brutal tone: `default` sticker paper, `primary`
- * yellow, `accent` pink, `information` cyan, `success` lime, `warning` orange, `danger`
- * red, `muted` stone (`--inactive`). Lavender has no raft variant and keeps its hue.
+ * Legacy-named badge; renders the design-system soft [RaftBadge] in the closest raft-ui
+ * variant ([raftBadgeVariant]). [uppercase] is the retired brutal register's caps: raft-ui
+ * badges keep the source case.
  */
-internal val RaftBrutalTone.raftFill: Color
-    get() =
-        when (this) {
-            RaftBrutalTone.White -> RaftColor.StickerPaper
-            RaftBrutalTone.Black -> RaftColor.TextBlack
-            RaftBrutalTone.Yellow -> RaftColor.Brand
-            RaftBrutalTone.Pink -> RaftColor.Attention
-            RaftBrutalTone.Cyan -> RaftColor.Info
-            RaftBrutalTone.Lavender -> RaftColor.AccentLavender
-            RaftBrutalTone.Orange -> RaftColor.Warning
-            RaftBrutalTone.Lime -> RaftColor.Success
-            RaftBrutalTone.Red -> RaftColor.Danger
-            RaftBrutalTone.Stone -> RaftColor.Inactive
-            RaftBrutalTone.Warning -> RaftColor.Warning
-        }
-
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalBadge(
     label: String,
     modifier: Modifier = Modifier,
     tone: RaftBrutalTone = RaftBrutalTone.White,
     uppercase: Boolean = true,
-    leadingIcon: RaftLucideIconName? = null,
-    contentColor: Color? = null
+    leadingIcon: RaftLucideIconName? = null
 ) {
-    // raft-ui labels are soft badges; black (inverse), lavender (no raft variant) and a
-    // caller-set ink keep the raft-look chrome.
-    val variant = tone.raftBadgeVariant
-    if (variant == null || contentColor != null) {
-        RaftBrutalBadgeChrome(
-            label = label,
-            modifier = modifier,
-            tone = tone,
-            uppercase = uppercase,
-            leadingIcon = leadingIcon,
-            contentColor = contentColor
-        )
-        return
-    }
     RaftBadge(
         text = label,
         modifier = modifier,
         appearance = RaftBadgeAppearance.Soft,
-        variant = variant,
+        variant = tone.raftBadgeVariant,
         icon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } }
     )
 }
 
-/** The raft-ui badge variant of a legacy tone; null where raft-ui has none (black, lavender). */
-internal val RaftBrutalTone.raftBadgeVariant: RaftBadgeVariant?
+/**
+ * The raft-ui badge variant of a legacy tone. raft-ui has no inverse and no lavender badge:
+ * black (inverse) is the neutral `default`, lavender (the activity footer's In review task
+ * badge) the cool `information`.
+ */
+internal val RaftBrutalTone.raftBadgeVariant: RaftBadgeVariant
     get() =
         when (this) {
-            RaftBrutalTone.White -> RaftBadgeVariant.Default
+            RaftBrutalTone.White,
+            RaftBrutalTone.Black -> RaftBadgeVariant.Default
             RaftBrutalTone.Yellow -> RaftBadgeVariant.Primary
             RaftBrutalTone.Pink -> RaftBadgeVariant.Accent
-            RaftBrutalTone.Cyan -> RaftBadgeVariant.Information
+            RaftBrutalTone.Cyan,
+            RaftBrutalTone.Lavender -> RaftBadgeVariant.Information
             RaftBrutalTone.Lime -> RaftBadgeVariant.Success
             RaftBrutalTone.Orange,
             RaftBrutalTone.Warning -> RaftBadgeVariant.Warning
             RaftBrutalTone.Red -> RaftBadgeVariant.Danger
             RaftBrutalTone.Stone -> RaftBadgeVariant.Muted
-            RaftBrutalTone.Black,
-            RaftBrutalTone.Lavender -> null
         }
-
-// [uppercase] is the retired brutal register's caps; raft-ui badges keep the source case.
-@Suppress("UNUSED_PARAMETER")
-@Composable
-private fun RaftBrutalBadgeChrome(
-    label: String,
-    modifier: Modifier = Modifier,
-    tone: RaftBrutalTone = RaftBrutalTone.White,
-    uppercase: Boolean = true,
-    leadingIcon: RaftLucideIconName? = null,
-    contentColor: Color? = null
-) {
-    if (tone == RaftBrutalTone.Black) {
-        RaftBadgeChrome(
-            label = label,
-            modifier = modifier,
-            fill = tone.raftFill,
-            ink = contentColor ?: RaftColor.ForegroundInverse,
-            leadingIcon = leadingIcon
-        )
-    } else {
-        RaftSoftBadgeChrome(
-            label = label,
-            modifier = modifier,
-            fill = tone.raftSoftFill,
-            ink = contentColor ?: RaftColor.TextBlack,
-            leadingIcon = leadingIcon
-        )
-    }
-}
-
-/**
- * raft-ui 0.6.0 solid Badge: 20dp tall (min 20dp wide, centred), sticker radius 4dp,
- * 6dp side padding, 1.5dp sticker-ink edge, 12sp bold ink type in the source case
- * (`normal-case tracking-normal`: badges never shout), 13dp icons.
- */
-@Composable
-internal fun RaftBadgeChrome(
-    label: String,
-    modifier: Modifier = Modifier,
-    fill: Color = RaftColor.StickerPaper,
-    ink: Color = RaftColor.StickerInk,
-    leadingIcon: RaftLucideIconName? = null
-) {
-    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
-    Box(
-        modifier =
-            modifier
-                // min, not fixed: the label grows with the system font size.
-                .heightIn(min = 20.dp)
-                .widthIn(min = 20.dp)
-                .background(fill, shape)
-                .border(RaftAppStroke.Control, RaftColor.StickerInk, shape)
-                .padding(horizontal = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            leadingIcon?.let {
-                RaftLucideIcon(it, modifier = Modifier.size(13.dp), color = raftArgbHex(ink))
-            }
-            Text(
-                text = label,
-                style =
-                    RaftType.Caption
-                        .copy(
-                            fontSize = 12.sp,
-                            // Native font metrics (see the brutal chrome): a forced line box
-                            // clips descenders on iOS.
-                            lineHeight = TextUnit.Unspecified,
-                            letterSpacing = 0.sp
-                        )
-                        .withRaftFontWeight(FontWeight.Bold),
-                color = ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-/**
- * raft-ui Badge `appearance="soft"` wash for a tone: the label badge (status, kind, tag).
- * Web labels are soft, not stickers: only a count or a waiting mark is a solid sticker.
- */
-internal val RaftBrutalTone.raftSoftFill: Color
-    get() =
-        when (this) {
-            RaftBrutalTone.White,
-            RaftBrutalTone.Black -> RaftColor.FillMuted
-            RaftBrutalTone.Yellow -> RaftColor.BrandSoft
-            RaftBrutalTone.Pink -> RaftColor.AttentionSoft
-            RaftBrutalTone.Cyan -> RaftColor.InfoSoft
-            // No raft role for lavender: its hue at the soft washes' strength.
-            RaftBrutalTone.Lavender -> RaftColor.AccentLavender.copy(alpha = 0.28f)
-            RaftBrutalTone.Orange,
-            RaftBrutalTone.Warning -> RaftColor.WarningSoft
-            RaftBrutalTone.Lime -> RaftColor.SuccessSoft
-            RaftBrutalTone.Red -> RaftColor.DangerSoft
-            RaftBrutalTone.Stone -> RaftColor.InactiveSoft
-        }
-
-/**
- * raft-ui soft Badge: 22dp tall, chip radius 6dp, 6dp side padding, the tone's `-soft`
- * wash with no edge, 12sp semibold foreground type in the source case, 14dp icons.
- */
-@Composable
-internal fun RaftSoftBadgeChrome(
-    label: String,
-    modifier: Modifier = Modifier,
-    fill: Color = RaftColor.FillMuted,
-    ink: Color = RaftColor.TextBlack,
-    leadingIcon: RaftLucideIconName? = null
-) {
-    val shape = RoundedCornerShape(RaftAppRadius.Chip)
-    Row(
-        modifier =
-            modifier
-                .height(22.dp)
-                .background(fill, shape)
-                .padding(horizontal = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        leadingIcon?.let {
-            RaftLucideIcon(it, modifier = Modifier.size(14.dp), color = raftArgbHex(ink))
-        }
-        Text(
-            text = label,
-            style =
-                RaftType.Caption
-                    .copy(fontSize = 12.sp, lineHeight = TextUnit.Unspecified, letterSpacing = 0.sp)
-                    .withRaftFontWeight(FontWeight.SemiBold),
-            color = ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
 
 @Composable
 internal fun RaftSectionHeader(

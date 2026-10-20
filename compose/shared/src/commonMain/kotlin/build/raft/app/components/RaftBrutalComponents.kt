@@ -75,12 +75,14 @@ import build.raft.app.raftResolvedKeyboardOptions
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -99,16 +101,16 @@ import kotlinx.coroutines.delay
  * | RaftBrutalInputField (20)                    | RaftTextField (single line, default chrome)                |
  * | RaftBrutalSearchField (5)                    | RaftTextField with a leading search addon                  |
  * | RaftBrutalSelectField (16)                   | RaftSelectTrigger + RaftDropdownMenu / RaftMenuItem        |
- * | RaftBrutalSectionLabel (21)                  | RaftFieldLabel                                             |
- * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField                           |
+ * | RaftBrutalSectionLabel (21)                  | removed: RaftFieldLabel at the call sites                  |
+ * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField (multi-line); ValueField removed |
  * | RaftBrutalCard (12)                          | RaftCard                                                   |
  * | RaftBrutalListRow (2)                        | RaftListRowGroup + RaftListRow                             |
  * | RaftBrutalBadge (3)                          | RaftBadge (soft); RaftBrutalBadgeButton (0) removed        |
  * | RaftBrutalDropdownMenuSurface (3) / Row (2)  | RaftMenuSurface + RaftMenuItem                             |
  * | RaftBrutalDropdownMenu (2)                   | app popover positioning around RaftMenuSurface             |
- * | RaftBrutalModalLayer (2) / Header (2)        | dialog header from RaftText headline + ghost RaftIconButton |
+ * | RaftBrutalModalLayer (2) / Header (2)        | RaftDialogHeader; Header removed                           |
  * | RaftBrutalTextarea (2)                       | RaftTextarea (no TextFieldValue / focus-hook overload yet) |
- * | RaftBrutalPanel (1)                          | no generic popover surface yet (raft-look kept)            |
+ * | RaftBrutalPanel (1)                          | removed: RaftPopoverSurface at the call site               |
  * | RaftBrutalPanelShell (1) / ListShell (1)     | removed: RaftListRowGroup at the call sites                |
  * | RaftBrutalListSectionHeader (1)              | removed: RaftSectionEyebrow at the call site               |
  * | RaftBrutalActionSheetRow (1)                 | RaftListRow + RaftIconTile (no danger tone yet)            |
@@ -119,8 +121,7 @@ internal data class RaftModalShellModel(
     val title: String,
     val subtitle: String = "",
     val overlayAlpha: Float = 0.60f,
-    val maxWidth: Dp = 384.dp,
-    val dismissIcon: RaftLucideIconName = RaftLucideIconName.X
+    val maxWidth: Dp = 384.dp
 )
 
 internal data class RaftActionSheetRowModel(
@@ -323,87 +324,8 @@ internal fun RaftAnchoredMetaChip(
     }
 }
 
-/**
- * Legacy-named field label; renders the design-system [RaftFieldLabel] (`sm` for
- * [RaftFormFieldSize.Compact]). An optional label keeps [RaftLookFieldLabel]: the
- * design-system label's "(optional)" suffix is not localised yet.
- */
-@Composable
-internal fun RaftBrutalSectionLabel(
-    label: String,
-    required: Boolean = false,
-    optional: Boolean = false,
-    size: RaftFormFieldSize = RaftFormFieldSize.Default,
-    modifier: Modifier = Modifier
-) {
-    if (optional && !required) {
-        RaftLookFieldLabel(
-            label = label,
-            required = false,
-            optional = true,
-            compact = size == RaftFormFieldSize.Compact,
-            modifier = modifier
-        )
-    } else {
-        RaftFieldLabel(
-            text = label,
-            modifier = modifier,
-            size = size.raftFieldLabelSize,
-            required = required
-        )
-    }
-}
-
 internal val RaftFormFieldSize.raftFieldLabelSize: RaftFieldLabelSize
     get() = if (this == RaftFormFieldSize.Compact) RaftFieldLabelSize.Sm else RaftFieldLabelSize.Md
-
-@Composable
-internal fun RaftBrutalModalHeader(
-    model: RaftModalShellModel,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    // raft-ui DialogHeader (as RaftDialogSurface): px-5 pt-5, `headline` title, `subhead`
-    // muted description, the ghost `icon-md` close pulled into the corner. The body stays
-    // the caller's (lazy lists, own padding), so only the header is the dialog's.
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 14.dp, top = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f).padding(top = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            RaftText(
-                text = model.title,
-                style = RaftTheme.typography.headline,
-                color = RaftTheme.colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (model.subtitle.isNotBlank()) {
-                RaftText(
-                    text = model.subtitle,
-                    style = RaftTheme.typography.subhead,
-                    color = RaftTheme.colors.foregroundMuted,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        RaftIconButton(
-            onClick = onDismiss,
-            tooltip = stringResource(MR.strings.common_close),
-            variant = RaftButtonVariant.Ghost
-        ) {
-            RaftSlotIcon(model.dismissIcon)
-        }
-    }
-}
 
 @Composable
 internal fun RaftBrutalModalLayer(
@@ -435,7 +357,12 @@ internal fun RaftBrutalModalLayer(
                         .raftFloatingContentClickTarget()
                         .raftLookOverlaySurface(radius = RaftAppRadius.Dialog)
             ) {
-                RaftBrutalModalHeader(model = model, onDismiss = onDismiss)
+                // raft-ui DialogHeader: the body stays the caller's (lazy lists, own padding).
+                RaftDialogHeader(
+                    title = model.title,
+                    description = model.subtitle.takeIf { it.isNotBlank() },
+                    onClose = onDismiss
+                )
                 content()
             }
         }
@@ -455,7 +382,8 @@ internal fun RaftBrutalActionSheetRow(
 
 /**
  * raft action-sheet row: a menu-item row (control radius, pressed wash, no ink box) with
- * a soft icon tile. Destructive rows switch to the danger soft tile and danger-strong ink.
+ * a soft icon tile. A destructive row is drawn like any other (raft-ui: no red menu or list
+ * rows; the confirm dialog carries the deletion).
  */
 @Composable
 private fun RaftLookActionSheetRow(
@@ -466,7 +394,7 @@ private fun RaftLookActionSheetRow(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(RaftAppRadius.Control)
-    val titleColor = if (model.destructive) RaftColor.DangerStrong else RaftColor.TextBlack
+    val titleColor = RaftColor.TextBlack
     RaftAnchorButton(
         onClick = onClick,
         pressOffset = 0.dp,
@@ -489,13 +417,13 @@ private fun RaftLookActionSheetRow(
                 modifier =
                     Modifier
                         .size(32.dp)
-                        .background(if (model.destructive) RaftColor.DangerSoft else RaftColor.FillMuted, shape),
+                        .background(RaftColor.FillMuted, shape),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(
                     model.icon,
                     modifier = Modifier.size(18.dp),
-                    color = raftArgbHex(if (model.destructive) RaftColor.DangerStrong else RaftColor.TextMuted)
+                    color = raftArgbHex(RaftColor.TextMuted)
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -647,9 +575,8 @@ internal fun RaftBrutalTextField(
 
 /**
  * The label / control / help column of a legacy form field: the design-system [RaftField]
- * (label, required mark, help or error line, field state for the control). A label
- * accessory or an optional label keeps [RaftFormField]: [RaftField] has no accessory slot
- * and its "(optional)" suffix is not localised yet.
+ * (label with its required mark or localised optional marker, the [labelAccessory] at the end
+ * of the label row, help or error line, field state for the control).
  */
 @Composable
 internal fun RaftBrutalFieldFrame(
@@ -664,28 +591,16 @@ internal fun RaftBrutalFieldFrame(
     labelAccessory: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    if (labelAccessory != null || (optional && !required)) {
-        RaftFormField(
-            label = label,
-            modifier = modifier,
-            required = required,
-            optional = optional,
-            hint = hint,
-            error = error,
-            size = labelSize,
-            labelAccessory = labelAccessory,
-            content = content
-        )
-        return
-    }
     RaftField(
         label = label.takeIf { it.isNotBlank() },
         modifier = modifier.fillMaxWidth(),
         description = hint?.takeIf { it.isNotBlank() },
         error = error?.takeIf { it.isNotBlank() },
         enabled = enabled,
+        optional = optional && !required,
         required = required,
         labelSize = labelSize.raftFieldLabelSize,
+        labelTrailing = labelAccessory,
         content = content
     )
 }
@@ -851,9 +766,9 @@ internal fun RaftBrutalInputField(
             enabled = enabled,
             readOnly = readOnly,
             invalid = borderColor == RaftColor.AccentRed,
-            trailing =
+            trailingAction =
                 if (showClearWhenNotEmpty && value.isNotEmpty() && focusPolicy.acceptsFocus) {
-                    { RaftFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange("") }) }
+                    { RaftTextFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange("") }) }
                 } else {
                     null
                 },
@@ -1018,9 +933,9 @@ internal fun RaftBrutalInputField(
             enabled = enabled,
             readOnly = readOnly,
             invalid = borderColor == RaftColor.AccentRed,
-            trailing =
+            trailingAction =
                 if (showClearWhenNotEmpty && value.text.isNotEmpty() && focusPolicy.acceptsFocus) {
-                    { RaftFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) }) }
+                    { RaftTextFieldClearAction(onClear = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) }) }
                 } else {
                     null
                 },
@@ -1185,19 +1100,6 @@ internal fun rememberRaftDesignSystemEditor(
     return RaftDesignSystemEditor(modifier, resolvedKeyboardOptions)
 }
 
-/** The clear (×) addon at the end of a design-system field: the addon ink, tappable. */
-@Composable
-private fun RaftFieldClearAction(onClear: () -> Unit) {
-    val clearLabel = stringResource(MR.strings.common_clear)
-    RaftSlotIcon(
-        RaftLucideIconName.X,
-        modifier =
-            Modifier
-                .clickable(onClick = onClear)
-                .semantics { contentDescription = clearLabel }
-    )
-}
-
 /** The brutal field type (14/18); raft swaps a field still on it for `text-field` 16/24. */
 internal val RaftBrutalInputDefaultTextStyle: TextStyle
     get() = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
@@ -1247,6 +1149,12 @@ internal fun raftBrutalInputFocusPolicy(
     )
 }
 
+/**
+ * Legacy-named read-only field: the design-system [RaftField] (`sm` label) round a
+ * [RaftReadOnlyField] that wraps up to [maxLines] lines. The type / colour / padding
+ * parameters of the retired box are ignored.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalReadOnlyField(
     label: String,
@@ -1259,82 +1167,15 @@ internal fun RaftBrutalReadOnlyField(
     textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
     textColor: Color = RaftColor.TextMutedGray
 ) {
-    if (maxLines <= 1) {
-        // raft-ui: the disabled-field value under a `sm` label (CopyableCode / read-only Input).
-        RaftField(label = label.takeIf { it.isNotBlank() }, modifier = modifier.fillMaxWidth(), labelSize = RaftFieldLabelSize.Sm) {
-            RaftReadOnlyField(text = value)
-        }
-        return
-    }
-    // RaftReadOnlyField is one line; a wrapping value keeps the legacy box.
-    RaftFormField(label = label, modifier = modifier, size = RaftFormFieldSize.Compact) {
-        RaftBrutalReadOnlyValueField(
-            value = value,
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = maxLines,
-            fieldMinHeight = fieldMinHeight,
-            horizontalPadding = horizontalPadding,
-            verticalPadding = verticalPadding,
-            textStyle = textStyle,
-            textColor = textColor
-        )
-    }
-}
-
-// Brutal read-only fill (Tailwind gray-50).
-internal val RaftReadOnlyFieldLegacyBackground = Color(0xFFF9FAFB) // raft-color: default-value sentinel, painted as FillMuted
-
-@Composable
-internal fun RaftBrutalReadOnlyValueField(
-    value: String,
-    modifier: Modifier = Modifier,
-    maxLines: Int = 1,
-    fieldMinHeight: Dp = 42.dp,
-    horizontalPadding: Dp = 12.dp,
-    verticalPadding: Dp = 8.dp,
-    backgroundColor: Color = RaftReadOnlyFieldLegacyBackground,
-    borderColor: Color = RaftColor.BorderBlack.copy(alpha = 0.30f),
-    textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
-    textColor: Color = RaftColor.TextMutedGray
-) {
-    if (
-        maxLines <= 1 &&
-        (fieldMinHeight == RaftMetrics.LegacyFieldHeight || fieldMinHeight == RaftMetrics.FieldHeight) &&
-        backgroundColor == RaftReadOnlyFieldLegacyBackground &&
-        borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)
-    ) {
-        RaftReadOnlyField(text = value, modifier = modifier)
-        return
-    }
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
-    // raft: a non-editable value is the disabled field pair (`--fill-muted` fill,
-    // 1.5dp `--line-hairline` edge, muted ink) at the 44dp field height.
-    val resolvedBackground = if (backgroundColor == RaftReadOnlyFieldLegacyBackground) RaftColor.FillMuted else backgroundColor
-    val resolvedBorder = if (borderColor == RaftColor.BorderBlack.copy(alpha = 0.30f)) RaftColor.BorderHairline else borderColor
-    val resolvedTextColor = if (textColor == RaftColor.TextMutedGray) RaftColor.TextMuted else textColor
-    Box(
-        modifier =
-            modifier
-                .heightIn(min = raftFieldHeight(fieldMinHeight))
-                .background(resolvedBackground, shape)
-                .border(RaftAppStroke.Default, resolvedBorder, shape)
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = value,
-            style = textStyle.copy(color = resolvedTextColor),
-            color = resolvedTextColor,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth()
-        )
+    // raft-ui: the disabled-field value under a `sm` label (CopyableCode / read-only Input).
+    RaftField(label = label.takeIf { it.isNotBlank() }, modifier = modifier.fillMaxWidth(), labelSize = RaftFieldLabelSize.Sm) {
+        RaftReadOnlyField(text = value, maxLines = maxLines)
     }
 }
 
 /**
  * Legacy-named search field; renders the design-system [RaftTextField] input group with a
- * leading search addon and the clear addon, with the app editor behaviour
+ * leading search addon and the clear button addon ([RaftTextFieldClearAction]), with the app editor behaviour
  * ([rememberRaftDesignSystemEditor]). [textStyle] is ignored: fields use the `field` type.
  */
 @Suppress("UNUSED_PARAMETER")
@@ -1360,7 +1201,7 @@ internal fun RaftBrutalSearchField(
         placeholder = placeholder.ifEmpty { null },
         enabled = enabled,
         leading = { RaftSlotIcon(leadingIcon) },
-        trailing = if (showClearWhenNotEmpty && value.isNotEmpty()) ({ RaftFieldClearAction(onClear) }) else null,
+        trailingAction = if (showClearWhenNotEmpty && value.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
         keyboardOptions = editor.keyboardOptions
     )
 }
@@ -1388,7 +1229,7 @@ internal fun RaftBrutalSearchField(
         placeholder = placeholder.ifEmpty { null },
         enabled = enabled,
         leading = { RaftSlotIcon(leadingIcon) },
-        trailing = if (showClearWhenNotEmpty && value.text.isNotEmpty()) ({ RaftFieldClearAction(onClear) }) else null,
+        trailingAction = if (showClearWhenNotEmpty && value.text.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
         keyboardOptions = editor.keyboardOptions
     )
 }
@@ -1756,12 +1597,13 @@ internal fun RaftAnchoredToolbarChip(
 }
 
 /**
- * Legacy-named icon button; renders the design-system [RaftIconButton] (`icon-md` 32dp up to
- * a 38dp [size], `icon-lg` 44dp above), its variant from [backgroundColor]
- * ([raftIconButtonVariantFor]: the paper default is the ghost icon button). The design
- * system has no long-press action, no unlabelled icon button (its tooltip is required) and
- * no icon button under 24dp, so those callers keep the raft-look box ([RaftLookIconButton]).
- * The border / shadow / disabled-colour parameters of the retired brutal look are ignored.
+ * Legacy-named icon button; renders the design-system [RaftIconButton] (size from
+ * [raftIconButtonSizeFor]: `xs` 24dp, `sm` 28dp, `icon-md` 32dp, `icon-lg` 44dp), its variant
+ * from [backgroundColor] ([raftIconButtonVariantFor]: the paper default is the ghost icon
+ * button), named and tooltipped by [contentDescription] (required from 24dp up: the design
+ * system's icon button needs a name). The design system has no icon button under 24dp, so
+ * those callers keep the raft-look box ([RaftLookIconButton]). The border / shadow /
+ * disabled-colour parameters of the retired brutal look are ignored.
  * Prefer `build.raft.designsystem.components.RaftIconButton` in new code.
  */
 @Suppress("UNUSED_PARAMETER")
@@ -1789,7 +1631,7 @@ internal fun RaftBrutalIconButton(
     iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
 ) {
     val tooltip = contentDescription?.takeIf { it.isNotBlank() }
-    if (onLongClick != null || tooltip == null || size < 24.dp) {
+    if (size < 24.dp) {
         RaftLookIconButton(
             iconName = iconName,
             onClick = onClick,
@@ -1813,7 +1655,9 @@ internal fun RaftBrutalIconButton(
         modifier = modifier,
         variant = raftIconButtonVariantFor(backgroundColor),
         size = raftIconButtonSizeFor(size),
-        enabled = enabled
+        enabled = enabled,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel
     ) {
         // An explicit ink stays (media controls on a scrim); the legacy black follows the variant.
         val explicitInk = iconColor.takeIf { enabled && it != RaftLegacyIconInkArgb }

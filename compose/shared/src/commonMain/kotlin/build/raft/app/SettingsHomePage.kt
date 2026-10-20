@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
+import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -52,9 +53,7 @@ import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
 import build.raft.app.components.RaftAnchoredToolbarChip
 import build.raft.app.components.RaftBrutalReadOnlyField
-import build.raft.app.components.RaftBrutalReadOnlyValueField
 import build.raft.app.components.RaftBrutalSearchField
-import build.raft.app.components.RaftBrutalSectionLabel
 import build.raft.app.components.RaftBrutalSelectField
 import build.raft.app.components.RaftBrutalSelectOption
 import build.raft.app.components.RaftBrutalTextField
@@ -13263,8 +13262,8 @@ private fun SettingsServerPublicAccessCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    RaftBrutalReadOnlyValueField(
-                        value = publicUrl,
+                    RaftReadOnlyField(
+                        text = publicUrl,
                         modifier = Modifier.weight(1f)
                     )
                     RaftBrutalActionButton(
@@ -20343,7 +20342,7 @@ private fun SharedCreateChannelMemberPicker(
     onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
+        RaftFieldLabel(text = stringResource(MR.strings.channel_create_label_members), optional = true)
         when {
             loading ->
                 Text(

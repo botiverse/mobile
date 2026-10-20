@@ -4953,7 +4953,7 @@ private fun ComposerIconButton(
     icon: RaftLucideIconName,
     enabled: Boolean,
     modifier: Modifier = Modifier,
-    contentDescription: String? = null,
+    contentDescription: String,
     // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon.
     backgroundColor: Color = Color.Transparent,
     disabledBackgroundColor: Color = RaftColor.EmptyStateGray,

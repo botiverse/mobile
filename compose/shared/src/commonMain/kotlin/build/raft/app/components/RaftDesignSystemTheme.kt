@@ -6,8 +6,12 @@ import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import com.tencent.tmm.kmmresource.compose.stringResource
+import build.raft.app.resources.MR
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftFonts
+import build.raft.designsystem.theme.RaftStrings
 import build.raft.designsystem.theme.RaftTheme
 
 /**
@@ -21,6 +25,9 @@ import build.raft.designsystem.theme.RaftTheme
  * The designsystem theme provides its own `brand-soft` text selection colours; the app's
  * [LocalTextSelectionColors] are put back for the subtree so a text field in here selects
  * the same way as every other field in the app.
+ *
+ * The components' own words ([LocalRaftStrings]: the optional-field marker, the close, clear
+ * and loading names) come from the app's `MR.strings`, so they follow the UI language.
  *
  * Everything that reads `RaftTheme.typography` (the search result parts included) must sit
  * inside this wrapper: outside any designsystem theme that read throws.
@@ -36,7 +43,32 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) {
                 mono = raftMultiWeightFontFamily("mono")
             )
         }
+    val strings = raftAppDesignSystemStrings()
     RaftTheme(appearance = appearance, fonts = fonts) {
-        CompositionLocalProvider(LocalTextSelectionColors provides appSelectionColors, content = content)
+        CompositionLocalProvider(
+            LocalTextSelectionColors provides appSelectionColors,
+            LocalRaftStrings provides strings,
+            content = content,
+        )
     }
+}
+
+/**
+ * The design-system components' own words ([LocalRaftStrings]) in the UI language, from the
+ * app's `MR.strings`. Provided round every page ([RaftProvideDesignSystemStrings] in the pager
+ * host) and again inside [RaftDesignSystemTheme], whose [RaftTheme] sits below that.
+ */
+@Composable
+internal fun raftAppDesignSystemStrings(): RaftStrings =
+    RaftStrings(
+        optional = stringResource(MR.strings.common_optional_suffix),
+        close = stringResource(MR.strings.common_close),
+        clear = stringResource(MR.strings.common_clear),
+        loading = stringResource(MR.strings.common_loading),
+    )
+
+/** Provides [raftAppDesignSystemStrings] as [LocalRaftStrings] to [content]. */
+@Composable
+internal fun RaftProvideDesignSystemStrings(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRaftStrings provides raftAppDesignSystemStrings(), content = content)
 }

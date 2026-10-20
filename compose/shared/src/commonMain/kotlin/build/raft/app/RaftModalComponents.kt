@@ -9,7 +9,7 @@ import build.raft.app.components.RaftBrutalActionSheetRow
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftSectionEyebrow
-import build.raft.app.components.RaftBrutalModalHeader
+import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.app.components.RaftBrutalModalLayer
 import build.raft.app.components.RaftActionSheetRowModel
 import build.raft.app.components.RaftModalShellModel
@@ -656,18 +656,11 @@ private fun RaftModalHeader(
     subtitle: String,
     onDismiss: () -> Unit
 ) {
-    RaftBrutalModalHeader(
-        model = RaftModalShellModel(title = title, subtitle = subtitle),
-        onDismiss = onDismiss
+    RaftDialogHeader(
+        title = title,
+        description = subtitle.takeIf { it.isNotBlank() },
+        onClose = onDismiss
     )
-}
-
-@Composable
-internal fun RaftModalIconButton(
-    icon: RaftLucideIconName,
-    onClick: () -> Unit
-) {
-    RaftBrutalIconButton(iconName = icon, onClick = onClick, size = 34.dp)
 }
 
 @Composable
@@ -740,6 +733,7 @@ internal fun RaftModalFullWidthActionButton(
 @Composable
 internal fun RaftModalSquareActionButton(
     icon: RaftLucideIconName,
+    contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = RaftColor.SurfaceWhite,
@@ -751,6 +745,7 @@ internal fun RaftModalSquareActionButton(
     RaftBrutalIconButton(
         iconName = icon,
         onClick = onClick,
+        contentDescription = contentDescription,
         modifier = modifier,
         enabled = enabled,
         backgroundColor = color,
@@ -800,6 +795,8 @@ internal fun RaftModalCompactMemberRow(
     trailingText: String = "",
     trailingIcon: RaftLucideIconName? = null,
     onTrailingClick: (() -> Unit)? = null,
+    // Names the trailing action button (its tooltip); defaults to "Remove".
+    trailingContentDescription: String? = null,
     // Greys out the trailing affordance (e.g. a cross-server follower's
     // remove-X) while keeping it tappable — the click still fires so the
     // caller can surface a hint. Distinct from `enabled`, which gates clicks.
@@ -847,6 +844,7 @@ internal fun RaftModalCompactMemberRow(
             trailingText = trailingText,
             trailingIcon = trailingIcon,
             onTrailingClick = onTrailingClick,
+            trailingContentDescription = trailingContentDescription,
             trailingMuted = trailingMuted,
             roleBadgeLabel = roleBadgeLabel,
             channelPageStyle = channelPageStyle,
@@ -878,6 +876,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
     trailingText: String,
     trailingIcon: RaftLucideIconName?,
     onTrailingClick: (() -> Unit)?,
+    trailingContentDescription: String? = null,
     trailingMuted: Boolean = false,
     roleBadgeLabel: String? = null,
     channelPageStyle: Boolean = false,
@@ -965,6 +964,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 } else {
                     RaftModalSquareActionButton(
                         icon = trailingIcon,
+                        contentDescription = trailingContentDescription ?: stringResource(MR.strings.common_remove),
                         onClick = onTrailingClick,
                         color = if (selected) RaftColor.SurfaceWhite else Color(0xFFFFF2F2), // raft-color: chrome classifier input, painted as the Card outline button
                         enabled = enabled,

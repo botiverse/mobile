@@ -9,7 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftBrutalInputField
-import build.raft.app.components.RaftBrutalSectionLabel
 import build.raft.app.components.RaftBrutalSelectField
 import build.raft.app.components.RaftBrutalSelectOption
 import build.raft.app.components.RaftBrutalTextField

@@ -72,6 +72,11 @@
     <string name="common_no">No</string>
     <string name="common_loading">Loading…</string>
     <string name="common_copied">Copied</string>
+    <string name="common_copy">Copy</string>
+    <string name="common_play">Play</string>
+    <string name="common_pause">Pause</string>
+    <string name="common_show_password">Show password</string>
+    <string name="common_hide_password">Hide password</string>
     <string name="home_error_conversation_not_ready">Conversation isn\'t ready yet — try again</string>
     <string name="home_error_notification_server_unavailable">Notification server unavailable</string>
     <string name="home_error_notification_sign_in">Sign in to open this notification</string>

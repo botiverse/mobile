@@ -8,7 +8,6 @@ import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import build.raft.app.TextField
 import build.raft.app.withRaftFontWeight
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,12 +35,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
-
-internal enum class RaftFormFieldLabelStyle {
-    Uppercase,
-    Plain
-}
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import build.raft.app.raftAppEditorBehavior
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextarea
 
 internal enum class RaftFormFieldSize {
     Default,
@@ -58,118 +58,13 @@ internal val RaftSlugInputPrefixBackground =
 internal val RaftSlugInputDisabledPrefixBackground: Color
     get() = if (RaftAppThemeState.isDark) RaftColor.BrandSoft else Color(0xFFFFF7DD) // raft-color: light legacy flattened yellow tile
 
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftFormField(
-    label: String,
-    modifier: Modifier = Modifier,
-    required: Boolean = false,
-    optional: Boolean = false,
-    hint: String? = null,
-    error: String? = null,
-    showLabel: Boolean = true,
-    labelStyle: RaftFormFieldLabelStyle = RaftFormFieldLabelStyle.Uppercase,
-    size: RaftFormFieldSize = RaftFormFieldSize.Default,
-    labelAccessory: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit
-) {
-    // raft-ui Field: label -> control -> help on a 6dp rhythm; sentence-case label
-    // (13/18 semibold muted, 12/16 compact), help 12/16 hint ink, error 12/16 semibold
-    // `--danger-strong`. [labelStyle] is ignored: raft never sets labels in ALL CAPS.
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (showLabel) {
-            RaftLookFieldLabel(
-                label = label,
-                required = required,
-                optional = optional,
-                compact = size == RaftFormFieldSize.Compact,
-                accessory = labelAccessory
-            )
-        }
-        content()
-        RaftFieldMessage(error = error, hint = hint)
-    }
-}
-
 /**
- * raft-ui `FieldLabel`: 13/18 (`md`) or 12/16 (`sm`) semibold `--foreground-muted`,
- * sentence case; required `*` and the optional suffix follow in hint ink.
+ * Legacy-named textarea: the design-system [RaftField] (help or error under it, field state for
+ * the box) round a [RaftTextarea], at least [fieldHeight] tall and growing to [maxLines] lines
+ * before it scrolls; [showCounter] with a [limit] adds the `TextareaCounter`. The editor keeps
+ * the app editor behaviour ([raftAppEditorBehavior]: keyboard-height events, tap-outside focus
+ * dismiss).
  */
-@Composable
-internal fun RaftLookFieldLabel(
-    label: String,
-    required: Boolean,
-    optional: Boolean,
-    compact: Boolean,
-    modifier: Modifier = Modifier,
-    disabled: Boolean = false,
-    accessory: (@Composable () -> Unit)? = null
-) {
-    val fontSize = if (compact) 12.sp else 13.sp
-    val lineHeight = if (compact) 16.sp else 18.sp
-    val labelInk = if (disabled) RaftColor.ForegroundDisabled else RaftColor.TextMuted
-    val subInk = if (disabled) RaftColor.ForegroundDisabled else RaftColor.ForegroundHint
-    Row(
-        modifier = if (accessory != null) modifier.fillMaxWidth() else modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style =
-                RaftType.Body
-                    .copy(fontSize = fontSize, lineHeight = lineHeight, letterSpacing = 0.sp)
-                    .withRaftFontWeight(FontWeight.SemiBold),
-            color = labelInk,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (required) {
-            Text(
-                text = "*",
-                style = RaftType.Body.copy(fontSize = fontSize, lineHeight = lineHeight).withRaftFontWeight(FontWeight.SemiBold),
-                color = subInk,
-                maxLines = 1
-            )
-        }
-        if (optional) {
-            Text(
-                text = stringResource(MR.strings.common_optional_suffix),
-                style = RaftType.Body.copy(fontSize = fontSize, lineHeight = lineHeight),
-                color = subInk,
-                maxLines = 1
-            )
-        }
-        if (accessory != null) {
-            Spacer(modifier = Modifier.weight(1f))
-            accessory()
-        }
-    }
-}
-
-/** raft-ui `FieldError` (12/16 semibold `--danger-strong`) or `FieldDescription` (12/16 hint). */
-@Composable
-internal fun RaftFieldMessage(
-    error: String?,
-    hint: String?,
-    modifier: Modifier = Modifier,
-    maxLines: Int = 2
-) {
-    val errorText = error?.takeIf { it.isNotBlank() }
-    val message = errorText ?: hint?.takeIf { it.isNotBlank() } ?: return
-    Text(
-        text = message,
-        modifier = modifier,
-        style =
-            RaftType.Caption
-                .copy(fontSize = 12.sp, lineHeight = 16.sp)
-                .withRaftFontWeight(if (errorText != null) FontWeight.SemiBold else FontWeight.Normal),
-        color = if (errorText != null) RaftColor.DangerStrong else RaftColor.ForegroundHint,
-        maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis
-    )
-}
-
 @Composable
 internal fun RaftBrutalTextarea(
     value: String,
@@ -184,32 +79,23 @@ internal fun RaftBrutalTextarea(
     fieldHeight: Dp = 76.dp,
     maxLines: Int = 3
 ) {
-    val hasError = !error.isNullOrBlank()
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBrutalInputField(
+    RaftTextareaField(modifier = modifier, hint = hint, error = error, enabled = enabled) {
+        RaftTextarea(
             value = value,
             onValueChange = onValueChange,
-            placeholder = placeholder,
-            enabled = enabled,
-            autoFocus = false,
-            maxLines = maxLines,
-            fieldMinHeight = fieldHeight,
-            borderColor = if (hasError) RaftColor.AccentRed else RaftColor.BorderBlack,
-            enabledBackgroundColor = if (hasError) RaftFieldErrorTint else RaftColor.SurfaceWhite,
-            // react .input-brutal textareas inherit the 16px body font with
-            // Tailwind's 1.5 line-height (16/24); 14/18 wrapped one word earlier
-            // per line and read visibly smaller than the web baseline.
-            textStyle = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
-        )
-        RaftTextareaFooter(
-            error = error,
-            hint = hint,
-            count = if (showCounter && limit != null) value.length else null,
-            limit = limit
+            placeholder = placeholder.takeIf { it.isNotEmpty() },
+            limit = limit.takeIf { showCounter },
+            minHeight = fieldHeight,
+            maxHeight = raftTextareaMaxHeight(fieldHeight, maxLines),
+            inputModifier = rememberRaftTextareaEditorModifier()
         )
     }
 }
 
+/**
+ * [RaftBrutalTextarea] on a caller-owned [TextFieldValue], so selection and composition survive
+ * controlled recomposition; the counter counts the text.
+ */
 @Composable
 internal fun RaftBrutalTextarea(
     value: TextFieldValue,
@@ -224,62 +110,55 @@ internal fun RaftBrutalTextarea(
     fieldHeight: Dp = 76.dp,
     maxLines: Int = 3
 ) {
-    val hasError = !error.isNullOrBlank()
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBrutalInputField(
+    RaftTextareaField(modifier = modifier, hint = hint, error = error, enabled = enabled) {
+        RaftTextarea(
             value = value,
             onValueChange = onValueChange,
-            placeholder = placeholder,
-            enabled = enabled,
-            autoFocus = false,
-            maxLines = maxLines,
-            fieldMinHeight = fieldHeight,
-            borderColor = if (hasError) RaftColor.AccentRed else RaftColor.BorderBlack,
-            enabledBackgroundColor = if (hasError) RaftFieldErrorTint else RaftColor.SurfaceWhite,
-            // react .input-brutal textareas inherit the 16px body font with
-            // Tailwind's 1.5 line-height (16/24); 14/18 wrapped one word earlier
-            // per line and read visibly smaller than the web baseline.
-            textStyle = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
-        )
-        RaftTextareaFooter(
-            error = error,
-            hint = hint,
-            count = if (showCounter && limit != null) value.text.length else null,
-            limit = limit
+            placeholder = placeholder.takeIf { it.isNotEmpty() },
+            limit = limit.takeIf { showCounter },
+            minHeight = fieldHeight,
+            maxHeight = raftTextareaMaxHeight(fieldHeight, maxLines),
+            inputModifier = rememberRaftTextareaEditorModifier()
         )
     }
 }
 
-/**
- * raft-ui textarea footer: help / error on the left (see [RaftFieldMessage]) and the
- * `TextareaCounter` on the right (mono 12/16 hint ink, `--danger-strong` once over).
- */
 @Composable
-private fun RaftTextareaFooter(
-    error: String?,
+private fun RaftTextareaField(
+    modifier: Modifier,
     hint: String?,
-    count: Int?,
-    limit: Int?
+    error: String?,
+    enabled: Boolean,
+    textarea: @Composable () -> Unit
 ) {
-    val hasMessage = !error.isNullOrBlank() || !hint.isNullOrBlank()
-    if (!hasMessage && count == null) return
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            RaftFieldMessage(error = error, hint = hint, maxLines = 1)
-        }
-        if (count != null && limit != null) {
-            Text(
-                text = "$count/$limit",
-                style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                color = if (count > limit) RaftColor.DangerStrong else RaftColor.ForegroundHint,
-                maxLines = 1
-            )
-        }
-    }
+    RaftField(
+        label = null,
+        modifier = modifier.fillMaxWidth(),
+        description = hint?.takeIf { it.isNotBlank() },
+        error = error?.takeIf { it.isNotBlank() },
+        enabled = enabled,
+        content = textarea
+    )
+}
+
+/** [maxLines] lines of the field type (24dp line) inside the textarea's 10dp vertical padding. */
+private fun raftTextareaMaxHeight(fieldHeight: Dp, maxLines: Int): Dp =
+    if (maxLines == Int.MAX_VALUE) Dp.Infinity else maxOf(fieldHeight, RaftTextareaLineHeight * maxLines + 20.dp)
+
+private val RaftTextareaLineHeight = 24.dp
+
+@Composable
+private fun rememberRaftTextareaEditorModifier(): Modifier {
+    val focusRequester = remember { FocusRequester() }
+    return Modifier.raftAppEditorBehavior(
+        singleLine = false,
+        resolvedKeyboardOptions = KeyboardOptions.Default,
+        keyboardActions = KeyboardActions.Default,
+        keyboardHeightChange = {},
+        focusRequester = focusRequester,
+        onFocus = {},
+        onBlur = {}
+    )
 }
 
 @Composable
