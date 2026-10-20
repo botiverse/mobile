@@ -1,6 +1,8 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -94,7 +96,15 @@ internal object RaftSidebarItemMetrics {
  * part, and `selected` in semantics. Press (and a mouse hover) lays the press overlay over
  * the fill; keyboard focus draws the focus ring outside the box. [onClick] = null is a
  * display-only row (`interactive={false}`): no press, no focus, not a button.
+ *
+ * Touch (raft-design ContextMenu): [onLongClick] is the press and hold that opens the row's
+ * menu, the same menu as its ⋯ button and a right-click, named [onLongClickLabel] for
+ * screen readers ("Channel Options"); a long press does not also click. While that menu is
+ * open pass [menuOpen] = true: the row keeps the press overlay (raft-ui
+ * `not-data-active:data-popup-open:bg-fill-pressed`, so not on the selected row). Both need
+ * [onClick].
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RaftSidebarItem(
     title: String,
@@ -106,12 +116,15 @@ fun RaftSidebarItem(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
-    val pressed = interactive && (raftIsPressed(source) || raftIsHovered(source))
+    val pressed = interactive && (raftIsPressed(source) || raftIsHovered(source) || (menuOpen && !selected))
     val focused = interactive && raftIsFocused(source)
     val titleInk =
         when (tone) {
@@ -137,15 +150,24 @@ fun RaftSidebarItem(
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
                 .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
                 .then(
-                    if (onClick != null) {
-                        Modifier.clickable(
-                            interactionSource = source,
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onClick,
-                        )
-                    } else {
-                        Modifier
+                    when {
+                        onClick == null -> Modifier
+                        onLongClick != null ->
+                            Modifier.combinedClickable(
+                                interactionSource = source,
+                                indication = null,
+                                role = Role.Button,
+                                onLongClickLabel = onLongClickLabel,
+                                onLongClick = onLongClick,
+                                onClick = onClick,
+                            )
+                        else ->
+                            Modifier.clickable(
+                                interactionSource = source,
+                                indication = null,
+                                role = Role.Button,
+                                onClick = onClick,
+                            )
                     },
                 )
                 .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
@@ -212,7 +234,8 @@ fun RaftSidebarItemIcon(glyph: RaftGlyph, modifier: Modifier = Modifier) {
  * `foreground-hint` (`SidebarItemChannelIcon`), then the name and its marks
  * ([RaftSidebarItemMarks]). Something unread or a mention turns a [RaftRowTone.Default]
  * row [RaftRowTone.Unread] (a 700 name); a muted or away tone stays. [trailing] goes
- * before the marks (a draft pencil, a status pixel).
+ * before the marks (a draft pencil, a status pixel). [onLongClick], [onLongClickLabel] and
+ * [menuOpen] are [RaftSidebarItem]'s: press and hold opens the channel's menu.
  */
 @Composable
 fun RaftSidebarChannelItem(
@@ -228,6 +251,9 @@ fun RaftSidebarChannelItem(
     subtitle: String? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
 ) {
     val waiting = unreadCount > 0 || threadCount > 0 || mentioned
     val resolvedTone = if (tone == RaftRowTone.Default && waiting) RaftRowTone.Unread else tone
@@ -250,6 +276,9 @@ fun RaftSidebarChannelItem(
         leading = { RaftSidebarItemIcon(if (isPrivate) RaftGlyph.Lock else RaftGlyph.Hash) },
         trailing = if (trailing != null || waiting) aside else null,
         interactionSource = interactionSource,
+        onLongClick = onLongClick,
+        onLongClickLabel = onLongClickLabel,
+        menuOpen = menuOpen,
     )
 }
 
@@ -332,7 +361,15 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
  * - [actions]: the group's controls (`SidebarSectionControls`), always shown on a phone:
  *   [RaftSidebarSectionAction]s, 4dp apart. They overhang the 18dp line instead of
  *   growing the header (`-my-1.5`).
+ * - Press: the disclosure lights up its hit area with `fill-pressed` (States: a text
+ *   button lights up its hit area when pressed).
+ * - Touch: [onLongClick] is the press and hold that opens the group's menu (the web's
+ *   right-click menu on the header), named [onLongClickLabel]; it does not also toggle.
+ *   While that menu is open pass [menuOpen] = true: the disclosure stays pressed and the
+ *   attention pixel hides (raft-ui `group-data-popup-open/section-header:hidden`). Both
+ *   need [onExpandedChange].
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RaftSidebarSectionHeader(
     title: String,
@@ -344,11 +381,17 @@ fun RaftSidebarSectionHeader(
     icon: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+    menuOpen: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val focused = onExpandedChange != null && raftIsFocused(source)
+    val interactive = onExpandedChange != null
+    val focused = interactive && raftIsFocused(source)
+    val pressed = interactive && (raftIsPressed(source) || menuOpen)
+    val showAttention = attention && !expanded && !menuOpen
     val hint = colors.foregroundHint
     val lineHeight = 18.dp
     Row(
@@ -359,14 +402,29 @@ fun RaftSidebarSectionHeader(
         Box(
             Modifier
                 .weight(1f)
+                .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Control)
                 .then(
                     if (onExpandedChange != null) {
+                        val toggle = { onExpandedChange(!expanded) }
                         Modifier
-                            .clickable(
-                                interactionSource = source,
-                                indication = null,
-                                role = Role.Button,
-                                onClick = { onExpandedChange(!expanded) },
+                            .then(
+                                if (onLongClick != null) {
+                                    Modifier.combinedClickable(
+                                        interactionSource = source,
+                                        indication = null,
+                                        role = Role.Button,
+                                        onLongClickLabel = onLongClickLabel,
+                                        onLongClick = onLongClick,
+                                        onClick = toggle,
+                                    )
+                                } else {
+                                    Modifier.clickable(
+                                        interactionSource = source,
+                                        indication = null,
+                                        role = Role.Button,
+                                        onClick = toggle,
+                                    )
+                                },
                             )
                             .semantics {
                                 if (expanded) {
@@ -414,13 +472,14 @@ fun RaftSidebarSectionHeader(
                 }
             }
         }
+        // The trailing box stays while a menu hides the pixel (`min-w-4.5`), so nothing moves.
         if ((attention && !expanded) || actions != null) {
             Row(
                 Modifier.padding(top = 16.dp, bottom = 6.dp).widthIn(min = 18.dp).overhang(lineHeight),
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (attention && !expanded) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
+                if (showAttention) RaftStatusDot(variant = RaftStatusVariant.Accent, size = RaftStatusSize.Md)
                 actions?.invoke(this)
             }
         }

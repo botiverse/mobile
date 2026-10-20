@@ -127,6 +127,67 @@ class RaftDisplaySemanticsTest {
             onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
         }
 
+    /** Press and hold opens the row's menu (raft-design ContextMenu) and does not also open the row. */
+    @Test
+    fun aLongPressOnASidebarRowOpensItsMenuWithoutClicking() =
+        runComposeUiTest {
+            var clicks = 0
+            var longClicks = 0
+            setContent(
+                themed {
+                    RaftSidebarChannelItem(
+                        "general",
+                        onClick = { clicks++ },
+                        onLongClick = { longClicks++ },
+                        onLongClickLabel = "Channel Options",
+                    )
+                },
+            )
+            onNodeWithText("general").performTouchInput { longClick() }
+            assertEquals(1, longClicks)
+            assertEquals(0, clicks)
+            onNodeWithText("general").performClick()
+            assertEquals(1, clicks)
+            assertEquals(1, longClicks)
+            val action = onNodeWithText("general").fetchSemanticsNode().config.getOrNull(SemanticsActions.OnLongClick)
+            assertNotNull(action)
+            assertEquals("Channel Options", action.label)
+        }
+
+    @Test
+    fun aSidebarRowWithoutALongClickHasNoLongClickAction() =
+        runComposeUiTest {
+            setContent(themed { RaftSidebarChannelItem("general", onClick = {}) })
+            onNodeWithText("general").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnLongClick))
+        }
+
+    @Test
+    fun aLongPressOnASidebarSectionHeaderOpensItsMenuWithoutToggling() =
+        runComposeUiTest {
+            var expanded by mutableStateOf(true)
+            var longClicks = 0
+            setContent(
+                themed {
+                    RaftSidebarSectionHeader(
+                        "Channels",
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it },
+                        onLongClick = { longClicks++ },
+                        onLongClickLabel = "Channels Options",
+                    )
+                },
+            )
+            onNodeWithText("Channels").performTouchInput { longClick() }
+            assertEquals(1, longClicks)
+            assertTrue(expanded)
+            val action = onNodeWithText("Channels").fetchSemanticsNode().config.getOrNull(SemanticsActions.OnLongClick)
+            assertNotNull(action)
+            assertEquals("Channels Options", action.label)
+            onNodeWithText("Channels").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
+            onNodeWithText("Channels").performClick()
+            assertFalse(expanded)
+        }
+
     @Test
     fun horizontalFactsReadTermAndValueTogether() =
         runComposeUiTest {

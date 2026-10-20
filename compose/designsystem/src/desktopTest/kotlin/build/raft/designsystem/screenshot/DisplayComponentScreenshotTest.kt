@@ -639,7 +639,9 @@ class DisplayComponentScreenshotTest {
      * raft-ui Sidebar rows at the phone size (Home): nav rows, group headers (collapsed,
      * with attention, expanded with controls) and channel rows in every state: mention plus
      * threads, unread plus threads, muted with unread, plain unread, selected (the yellow
-     * sticker), private, away, a subtitle, pressed, focused and a truncated name.
+     * sticker), private, away, a subtitle, pressed, a row and a header whose press-and-hold
+     * menu is open (pressed; the header's attention pixel hidden), focused and a truncated
+     * name.
      */
     @Test
     fun sidebar() =
@@ -694,6 +696,17 @@ class DisplayComponentScreenshotTest {
                     leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, initials = "B", presence = RaftPresence.Online) },
                 )
                 StateCell(pressed = true) { RaftSidebarChannelItem("pressed", onClick = {}) }
+                // Press and hold opened the row's menu: it keeps the press overlay.
+                RaftSidebarChannelItem("menu-open", onClick = {}, onLongClick = {}, menuOpen = true)
+                RaftSidebarSectionHeader(
+                    "Joint Channels",
+                    expanded = false,
+                    onExpandedChange = {},
+                    count = 1,
+                    attention = true,
+                    onLongClick = {},
+                    menuOpen = true,
+                )
                 StateCell(focused = true) { RaftSidebarChannelItem("focused", onClick = {}, unreadCount = 2) }
                 StateCell(focused = true) { RaftSidebarChannelItem("focused-selected", onClick = {}, selected = true) }
                 RaftSidebarChannelItem("a-channel-name-long-enough-to-run-past-the-end-of-the-row", onClick = {}, unreadCount = 9)
