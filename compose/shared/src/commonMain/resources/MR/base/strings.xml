@@ -809,6 +809,7 @@
     <string name="activity_filter_mentions">Mentions</string>
     <string name="activity_updates_one">↑ %1$d new update</string>
     <string name="activity_updates_many">↑ %1$d new updates</string>
+    <string name="activity_new_activity">↑ New activity</string>
     <string name="activity_replies_one">%1$d reply</string>
     <string name="activity_replies_many">%1$d replies</string>
     <string name="activity_mention_you">you</string>

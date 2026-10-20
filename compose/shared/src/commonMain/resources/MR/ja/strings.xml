@@ -813,6 +813,7 @@
     <string name="activity_filter_mentions">メンション</string>
     <string name="activity_updates_one">↑ %1$d 件の新しい更新</string>
     <string name="activity_updates_many">↑ %1$d 件の新しい更新</string>
+    <string name="activity_new_activity">↑ 新しいアクティビティ</string>
     <string name="activity_replies_one">%1$d 件の返信</string>
     <string name="activity_replies_many">%1$d 件の返信</string>
     <string name="activity_mention_you">あなた</string>

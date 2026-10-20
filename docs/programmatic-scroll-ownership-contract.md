@@ -36,6 +36,7 @@ above and update the inventory when they establish a new ownership pattern.
 | Home title and system scroll-to-top | direct user/system action | explicit viewport replacement; compliant |
 | Home / Tasks / Members bottom-tab double-tap | direct user action | per-surface monotonic one-shot request; remount replay fenced; list animation yields to a newer user gesture |
 | Activity automatic top anchor | parked top feed + genuine top update | pagination/read mutation excluded; drag fenced; compliant (#928) |
+| Activity entry/refresh top anchor (task #47) | `ActivityEntryTopAnchorOwner`: panel activation (cold start, route return, foreground) or the user's pull-to-refresh, + genuine head update (`activityHasNewTopRow` / pending markers) | first observed `isScrollInProgress` retires the session; parked at index 0 offset 0 and not scrolling at decision time; same-snapshot `requestScrollToItem(0)`, no delayed job; a scrolled reader gets the “new activity” pill instead; `ActivityRefreshTopAnchorTest` |
 | Activity “new updates” badge | direct user action | explicit viewport replacement; compliant |
 | Settings Activity/Search/Saved titles | direct user action | explicit viewport replacement; compliant |
 | Quiver Feedback conversation tail | parked bottom feed + genuine conversation append | busy-only changes excluded; busy sentinel included; task #541 |
