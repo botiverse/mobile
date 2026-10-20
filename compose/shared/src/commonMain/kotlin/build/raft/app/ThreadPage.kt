@@ -348,6 +348,7 @@ import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import build.raft.app.compat.pager.LocalActivity
@@ -10903,8 +10904,20 @@ private fun SharedThreadRouteContentContent(
         // diagnostics OFF the census session Local is NOT part of the vararg
         // at all — the base array is used by identity, so the production
         // provider scope is unchanged by P1.
+        // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
+        val inPlaceTextSelectionHost =
+            remember(newMessageMenuEnabled, bridge, copiedLabel) {
+                ThreadInPlaceTextSelectionHost(
+                    enabled = newMessageMenuEnabled,
+                    copyText = { text ->
+                        bridge.copyToPasteboard(text)
+                        bridge.toast(copiedLabel)
+                    }
+                )
+            }
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
                         states = inlineVideoPreviewStates,
@@ -21156,10 +21169,21 @@ private fun ThreadMessagesListContent(
                     modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadOfflineLastKnownTipZIndex)
                 )
             }
+            val inPlaceSelectionViewportHost = LocalThreadInPlaceTextSelectionHost.current
             LazyColumn(
                 state = listState.raw,
                 reverseLayout = reverseLayout,
                 modifier = Modifier.fillMaxSize()
+                    .then(
+                        if (inPlaceSelectionViewportHost?.enabled == true) {
+                            // In-place selection bar stays inside the list's visible viewport.
+                            Modifier.onGloballyPositioned { coordinates ->
+                                inPlaceSelectionViewportHost.updateViewport(coordinates.boundsInWindow())
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .raftLongMessageCollapseViewport(
                         controller = longMessageCollapseController,
                         verticalContentPaddingPx =
@@ -24828,7 +24852,12 @@ private fun ThreadMessageCardContent(
         remember(message.id, messageIndex) {
             threadMessagePerformanceKey(message.id, messageIndex)
         }
-    val rowTapAction =
+    val inPlaceSelection =
+        rememberThreadInPlaceSelectionController(
+            messageId = message.id,
+            enabled = !shareSelectionActive && threadMessageUsesFullRowLongPressActions(shareSelectionActive)
+        )
+    val baseRowTapAction =
         if (
             threadMessageTapOpensThread(
                 showReplyAction = showReplyAction,
@@ -24848,11 +24877,37 @@ private fun ThreadMessageCardContent(
         } else {
             null
         }
+    // A tap whose gesture started while a selection was showing (here or on another row) only
+    // dismisses it. The flag is captured at DOWN because the selection is already gone by onTap.
+    val rowTapAction =
+        if (inPlaceSelection == null || baseRowTapAction == null) {
+            baseRowTapAction
+        } else {
+            {
+                val selectionShowingAtDown = inPlaceSelection.dismissalGestureInFlight
+                inPlaceSelection.dismissalGestureInFlight = false
+                when (threadInPlaceSelectionTapDecision(selectionShowingAtDown)) {
+                    ThreadInPlaceSelectionTapDecision.DismissSelectionOnly -> {
+                        diagnosticsLogger("thread_in_place_selection_tap_clear messageId=${message.id}")
+                        inPlaceSelection.clear()
+                    }
+                    ThreadInPlaceSelectionTapDecision.RunRowAction -> baseRowTapAction()
+                }
+            }
+        }
+    val inPlaceSelectionHost = LocalThreadInPlaceTextSelectionHost.current
     Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(RaftColor.Canvas)
+                .then(
+                    if (inPlaceSelection != null) {
+                        Modifier.onGloballyPositioned { inPlaceSelection.rowCoordinates = it }
+                    } else {
+                        Modifier
+                    }
+                )
                 .then(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
@@ -24870,7 +24925,21 @@ private fun ThreadMessageCardContent(
                                 )
                             },
                             onShowActions = onShowActions,
-                            onInputReady = onLongPressInputReady
+                            onInputReady = onLongPressInputReady,
+                            deferLongPressAt =
+                                inPlaceSelection?.let { selection ->
+                                    { offset -> selection.bodyContainsRowOffset(offset) }
+                                },
+                            onPointerDown =
+                                inPlaceSelection?.let { selection ->
+                                    { offset ->
+                                        selection.dismissalGestureInFlight =
+                                            inPlaceSelectionHost?.onRowPointerDown(
+                                                messageId = message.id,
+                                                insideBody = selection.bodyContainsRowOffset(offset)
+                                            ) == true
+                                    }
+                                }
                         )
                     } else {
                         Modifier
@@ -25112,60 +25181,80 @@ private fun ThreadMessageCardContent(
                                                 onToggleLongMessage()
                                             }
                                         ) {
-                                            if (richContentEnabled) {
-                                                val markdownRenderSignature =
-                                                    remember(message.id, bodyForRender) {
-                                                        if (bodyForRender == message.body) {
-                                                            message.threadMarkdownRenderSignature()
-                                                        } else {
-                                                            message.copy(body = bodyForRender).threadMarkdownRenderSignature()
-                                                        }
-                                                    }
-                                                LaunchedEffect(markdownRenderSignature) {
-                                                    diagnosticsLogger(
-                                                        "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                                            "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                                            "sourceBodyLen=${renderedBody.length} " +
-                                                            "bodyHash=${bodyForRender.hashCode().toString(16)} " +
-                                                            "context=$markdownTagContextSignature"
-                                                    )
+                                            ThreadInPlaceSelectableBody(
+                                                controller = inPlaceSelection,
+                                                messageMenuOpen = popupOpen,
+                                                fullMessageText =
+                                                    if (bodyForRender == message.body) {
+                                                        threadMessageSelectionSourceText(message)
+                                                    } else {
+                                                        null
+                                                    },
+                                                diagnosticsLogger = diagnosticsLogger,
+                                                onShowMessageMenu = { rowLocalOffset ->
+                                                    longPressGestureOwner.rootAnchor
+                                                        .resolve(
+                                                            rowLocalOffset?.let { RaftPopoverLocalPoint.Exact(it) }
+                                                                ?: RaftPopoverLocalPoint.BottomStart
+                                                        )
+                                                        ?.let(onShowActions)
                                                 }
-                                                key(markdownRenderSignature) {
-                                                    // web MessageItem taskByNumber: the message's own
-                                                    // linked task wins, for this body only.
-                                                    RaftMarkdownOwnTaskStatusScope(
-                                                        taskNumber = message.taskNumber,
-                                                        taskStatus = message.taskStatus,
-                                                    ) {
-                                                        RaftMarkdownBody(
-                                                            body = bodyForRender,
-                                                            fillWidth = !alignOwnMessageRight,
-                                                            textStyle = messageBodyTextStyle,
-                                                            highlightedMentions = highlightedMentions,
-                                                            isTagValid = isMarkdownTagValid,
-                                                            resolveTagLabel = resolveMarkdownTagLabel,
-                                                            inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                                            activeTagKey = activeMarkdownTagKey,
-                                                            onOpenTagAction = { tag, actionId ->
-                                                                tapMovementGate.rejectChildAction("markdown_tag")
-                                                                onOpenMarkdownTag(tag, actionId)
-                                                            },
-                                                            onOpenUrl = { url ->
-                                                                tapMovementGate.rejectChildAction("markdown_url")
-                                                                onOpenMarkdownUrl(url)
-                                                            },
-                                                            performanceKey = messagePerformanceKey,
-                                                            performanceLogger = diagnosticsLogger
+                                            ) {
+                                                if (richContentEnabled) {
+                                                    val markdownRenderSignature =
+                                                        remember(message.id, bodyForRender) {
+                                                            if (bodyForRender == message.body) {
+                                                                message.threadMarkdownRenderSignature()
+                                                            } else {
+                                                                message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                            }
+                                                        }
+                                                    LaunchedEffect(markdownRenderSignature) {
+                                                        diagnosticsLogger(
+                                                            "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                                "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                                "sourceBodyLen=${renderedBody.length} " +
+                                                                "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                                "context=$markdownTagContextSignature"
                                                         )
                                                     }
+                                                    key(markdownRenderSignature) {
+                                                        // web MessageItem taskByNumber: the message's own
+                                                        // linked task wins, for this body only.
+                                                        RaftMarkdownOwnTaskStatusScope(
+                                                            taskNumber = message.taskNumber,
+                                                            taskStatus = message.taskStatus,
+                                                        ) {
+                                                            RaftMarkdownBody(
+                                                                body = bodyForRender,
+                                                                fillWidth = !alignOwnMessageRight,
+                                                                textStyle = messageBodyTextStyle,
+                                                                highlightedMentions = highlightedMentions,
+                                                                isTagValid = isMarkdownTagValid,
+                                                                resolveTagLabel = resolveMarkdownTagLabel,
+                                                                inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                                activeTagKey = activeMarkdownTagKey,
+                                                                onOpenTagAction = { tag, actionId ->
+                                                                    tapMovementGate.rejectChildAction("markdown_tag")
+                                                                    onOpenMarkdownTag(tag, actionId)
+                                                                },
+                                                                onOpenUrl = { url ->
+                                                                    tapMovementGate.rejectChildAction("markdown_url")
+                                                                    onOpenMarkdownUrl(url)
+                                                                },
+                                                                performanceKey = messagePerformanceKey,
+                                                                performanceLogger = diagnosticsLogger
+                                                            )
+                                                        }
+                                                    }
+                                                } else {
+                                                    Text(
+                                                        text = bodyForRender,
+                                                        style = messageBodyTextStyle,
+                                                        color = RaftColor.TextBlack,
+                                                        modifier = Modifier
+                                                    )
                                                 }
-                                            } else {
-                                                Text(
-                                                    text = bodyForRender,
-                                                    style = messageBodyTextStyle,
-                                                    color = RaftColor.TextBlack,
-                                                    modifier = Modifier
-                                                )
                                             }
                                         }
                                     }
@@ -25575,7 +25664,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
 }
 
 @Composable
-private fun ThreadNewMessageMenuToolButton(
+internal fun ThreadNewMessageMenuToolButton(
     label: String,
     icon: RaftLucideIconName,
     enabled: Boolean,
@@ -26989,7 +27078,9 @@ internal fun Modifier.threadMessageLongPressActions(
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     onShowActions: (RaftPopoverAnchor) -> Unit,
-    onInputReady: ((String) -> Unit)? = null
+    onInputReady: ((String) -> Unit)? = null,
+    deferLongPressAt: ((Offset) -> Boolean)? = null,
+    onPointerDown: ((Offset) -> Unit)? = null
 ): Modifier {
     SideEffect {
         gestureOwner.updateCallbacks(
@@ -26999,7 +27090,9 @@ internal fun Modifier.threadMessageLongPressActions(
                 onTap = onTap,
                 onTapRejected = onTapRejected,
                 onShowActions = onShowActions,
-                onInputReady = onInputReady
+                onInputReady = onInputReady,
+                deferLongPressAt = deferLongPressAt,
+                onPointerDown = onPointerDown
             )
         )
     }
@@ -27016,6 +27109,7 @@ internal fun Modifier.threadMessageLongPressActions(
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val compositionLease =
                     gestureOwner.captureActiveLease() ?: return@awaitEachGesture
+                gestureOwner.callbacksSnapshot(compositionLease)?.onPointerDown?.invoke(down.position)
                 gestureOwner.tapMovementGate.begin(down.position, compositionLease)
                 do {
                     val event = awaitPointerEvent()
@@ -27043,7 +27137,10 @@ internal fun Modifier.threadMessageLongPressActions(
                     // The visual harness uses this optional seam to prove that the exact target
                     // row received the real ACTION_DOWN. The callback lives on the route-owned
                     // gesture owner, so a replacement composition updates the existing handler.
-                    gestureOwner.callbacksSnapshot(compositionLease)?.onInputReady?.invoke(messageId)
+                    val pressCallbacks = gestureOwner.callbacksSnapshot(compositionLease)
+                    pressCallbacks?.onInputReady?.invoke(messageId)
+                    // In-place selection owns presses on the message body: no row press feedback.
+                    if (pressCallbacks?.deferLongPressAt?.invoke(downPosition) == true) return@detectTapGestures
                     var indicated = false
                     try {
                         // Scrolls steal the pointer and cancel this scope
@@ -27096,6 +27193,17 @@ internal fun Modifier.threadMessageLongPressActions(
                                 )
                                 return@detectTapGestures
                             }
+                    val longPressRoute =
+                        threadMessageLongPressRoute(
+                            inPlaceSelectionEnabled = callbacks.deferLongPressAt != null,
+                            pressOnSelectableBody = callbacks.deferLongPressAt?.invoke(localOffset) == true
+                        )
+                    if (longPressRoute == ThreadMessageLongPressRoute.InPlaceSelection) {
+                        callbacks.diagnosticsLogger(
+                            "thread_message_long_press_deferred_to_selection messageId=$messageId"
+                        )
+                        return@detectTapGestures
+                    }
                     val movementDecision = gestureOwner.tapMovementGate.decision(gestureToken)
                     val directPointerMovementDetected =
                         movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
@@ -27170,7 +27278,10 @@ internal data class ThreadMessageLongPressCallbacks(
     val onTap: (() -> Unit)? = null,
     val onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     val onShowActions: (RaftPopoverAnchor) -> Unit = {},
-    val onInputReady: ((String) -> Unit)? = null
+    val onInputReady: ((String) -> Unit)? = null,
+    // In-place text selection (New Message Menu toggle): body presses belong to the selection.
+    val deferLongPressAt: ((Offset) -> Boolean)? = null,
+    val onPointerDown: ((Offset) -> Unit)? = null
 )
 
 internal class ThreadMessageLongPressGestureOwner(
