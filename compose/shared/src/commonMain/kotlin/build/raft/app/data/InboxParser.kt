@@ -14,7 +14,9 @@ import build.raft.app.model.MessageId
 import build.raft.app.network.sync.ReplyPreview
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
@@ -81,34 +83,30 @@ private data class WireInboxItem(
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
     // SSOT per-scope read state (#632): InboxScopeReadFrontier in
-    // packages/shared/src/inboxScopeReadFrontier.ts
-    val readState: WireInboxReadState? = null,
+    // packages/shared/src/inboxScopeReadFrontier.ts. Kept as raw JSON and read
+    // per row so a malformed frontier only drops that row's marker, never the
+    // whole response.
+    val readState: JsonElement? = null,
 )
 
 /**
  * `InboxScopeReadFrontier` (`{kind:"absent"} | {kind:"corrupt"} |
  * {kind:"present", readStateVersion, maxReadSeq, latestActivity}`). Only the
- * present frontier's `latestActivity` pair is consumed here.
+ * present frontier's `latestActivity` pair is consumed: the same-source pair or
+ * nothing. Fails closed to null on absent/corrupt/half pairs and on any
+ * malformed shape (non-object, numeric seq, string latestActivity, ...).
  */
-@Serializable
-private data class WireInboxReadState(
-    val kind: String? = null,
-    val latestActivity: WireInboxReadStateLatestActivity? = null,
-)
-
-@Serializable
-private data class WireInboxReadStateLatestActivity(
-    val messageId: String? = null,
-    val seq: String? = null,
-)
-
-/** The same-source pair or nothing: fail closed on absent/corrupt/half pairs. */
-private fun WireInboxReadState.latestActivitySeqOrNull(): String? {
-    if (kind != "present") return null
-    val pair = latestActivity ?: return null
-    if (pair.messageId.isNullOrBlank()) return null
-    return pair.seq?.takeIf(::isCanonicalActivitySeq)
+private fun JsonElement.latestActivitySeqOrNull(): String? {
+    val frontier = this as? JsonObject ?: return null
+    if (frontier.stringFieldOrNull("kind") != "present") return null
+    val pair = frontier["latestActivity"] as? JsonObject ?: return null
+    if (pair.stringFieldOrNull("messageId").isNullOrBlank()) return null
+    return pair.stringFieldOrNull("seq")?.takeIf(::isCanonicalActivitySeq)
 }
+
+/** A JSON string value only: numbers, booleans, null and containers yield null. */
+private fun JsonObject.stringFieldOrNull(name: String): String? =
+    (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 @Serializable
 private data class WireThreadReplyPreview(
