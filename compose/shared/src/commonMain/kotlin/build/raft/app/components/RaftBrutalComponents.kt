@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -616,7 +617,12 @@ private fun RaftBrutalInputFieldFrame(
 ) {
     val tapModifier =
         if (focusPolicy.containerTapRequestsFocus) {
-            Modifier.clickable { focusRequester.requestFocus() }
+            // No indication: a container tap only forwards focus; the default overlay would
+            // wash the whole field gray instead of the raft focus edge.
+            Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { focusRequester.requestFocus() }
         } else {
             Modifier
         }
