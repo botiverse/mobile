@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftIconTileSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -11,6 +12,9 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftSwitchButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
+import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
@@ -448,8 +452,7 @@ private fun ChannelIdentityCard(channel: HomeChannelRow, editable: Boolean, onCl
                     channel
                         .toThreadLaunchConversationIdentity()
                         .threadRouteChannelKind(),
-                tileSize = 54.dp,
-                iconSize = 26.dp
+                size = RaftIconTileSize.Lg
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
@@ -488,8 +491,7 @@ private fun ChannelStatusBadge(channel: HomeChannelRow) {
     Box(
         modifier =
             Modifier
-                .background(if (channel.archived) RaftColor.EmptyStateGray else RaftColor.AccentLime)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .background(raftSoftWash(if (channel.archived) RaftColor.EmptyStateGray else RaftColor.AccentLime), RoundedCornerShape(RaftAppRadius.Chip))
                 .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(text = text, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
@@ -531,8 +533,7 @@ private fun ChannelMembersCard(
                     modifier =
                         Modifier
                             .size(44.dp)
-                            .background(RaftColor.SurfaceWhite)
-                            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                            .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control),
                     contentAlignment = Alignment.Center
                 ) {
                     RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")

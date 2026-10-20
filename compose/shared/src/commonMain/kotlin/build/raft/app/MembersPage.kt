@@ -8917,8 +8917,7 @@ private fun MembersAgentRoleHelpRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.20f))
-            .background(RaftColor.SurfaceWhite)
+            .raftCardSurface()
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -9077,7 +9076,12 @@ private fun MembersAgentAvatarChoiceGrid(
         Box(
             modifier = Modifier
                 .size(MembersAgentAvatarPickerCellSize)
-                .border(RaftAppStroke.Default, if (activeCustomAvatar) RaftColor.AccentPink else RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Control))
+                .border(
+                    if (activeCustomAvatar) RaftAppStroke.Default else RaftAppStroke.Thin,
+                    if (activeCustomAvatar) RaftColor.AccentPink else RaftColor.BorderHairline,
+                    RoundedCornerShape(RaftAppRadius.Control)
+                )
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
                 .background(if (activeCustomAvatar) RaftColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
                 .clickable(enabled = !uploading) { onUploadClick() },
@@ -9131,7 +9135,12 @@ private fun MembersAgentAvatarPickerCell(
     Box(
         modifier = modifier
             .size(MembersAgentAvatarPickerCellSize)
-            .border(RaftAppStroke.Default, if (active) RaftColor.AccentPink else RaftColor.BorderBlack)
+            .clip(RoundedCornerShape(RaftAppRadius.Control))
+            .border(
+                if (active) RaftAppStroke.Default else RaftAppStroke.Thin,
+                if (active) RaftColor.AccentPink else RaftColor.BorderHairline,
+                RoundedCornerShape(RaftAppRadius.Control)
+            )
             // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
             .background(if (active) RaftColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
             .clickable(onClick = onClick),

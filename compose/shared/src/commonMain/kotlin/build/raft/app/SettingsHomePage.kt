@@ -64,6 +64,7 @@ import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftDisabledActionBackgroundFor
 import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.NetworkRaftHomeApi
@@ -13200,8 +13201,7 @@ private fun SettingsServerPublicAccessCard(
                 Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .background(RaftColor.EmptyStateGray)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.15f))
+                    .raftCardSurface(fill = raftSoftWash(RaftColor.EmptyStateGray))
             )
         } else {
             SettingsPublicAccessChannelList(channels)
@@ -13311,8 +13311,7 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.25f))
+                    .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                     .padding(horizontal = 12.dp, vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -13344,8 +13343,8 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
                     modifier =
                         Modifier
                             .size(28.dp)
-                            .background(RaftColor.SurfaceCream)
-                            .border(RaftAppStroke.Thin, RaftColor.BorderBlack),
+                            .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Sticker))
+                            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Sticker)),
                     contentAlignment = Alignment.Center
                 ) {
                     RaftLucideIcon(RaftLucideIconName.Hash, Modifier.size(14.dp))

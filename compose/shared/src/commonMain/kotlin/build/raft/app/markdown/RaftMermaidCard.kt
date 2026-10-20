@@ -10,11 +10,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.Modal
+import build.raft.app.RaftAppRadius
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.resources.MR
 import build.raft.app.raftBottomSafeAreaPadding
 import build.raft.app.raftTopSafeAreaPadding
@@ -23,7 +26,7 @@ import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.compat.ui.setProp
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +45,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -109,8 +113,8 @@ internal fun RaftMermaidCard(
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
-                .background(RaftColor.SurfaceWhite)
-                .border(1.dp, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
+                .raftCardSurface()
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -289,8 +293,8 @@ private fun RaftMermaidViewTab(
     Row(
         modifier =
             Modifier
-                .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite)
-                .border(1.dp, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Chip))
+                .background(raftSoftWash(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite))
                 .clickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically

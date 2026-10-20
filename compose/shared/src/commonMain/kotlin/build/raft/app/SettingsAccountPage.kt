@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalReadOnlyField
 import build.raft.app.components.RaftBrutalTextField
@@ -29,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -559,8 +562,8 @@ private fun SettingsProfileAvatar(
                 modifier =
                     Modifier
                         .size(30.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                        .background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Control))
+                        .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), spinning = true)
@@ -757,8 +760,7 @@ private fun SettingsConnectedAccountRow(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 64.dp)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.30f))
+                    .raftCardSurface()
                     .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -809,7 +811,7 @@ private fun SettingsConnectedAccountRow(
 @Composable
 private fun SettingsDisclosureRow(iconName: RaftLucideIconName, title: String, subtitle: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).background(RaftColor.SurfaceWhite).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).raftCardSurface().padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -899,7 +901,7 @@ private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconNa
 @Composable
 private fun SettingsStatusBadge(text: String, color: Color, iconName: RaftLucideIconName? = null) {
     Row(
-        modifier = Modifier.background(color).border(1.dp, RaftColor.BorderBlack).padding(horizontal = 6.dp, vertical = 2.dp),
+        modifier = Modifier.background(raftSoftWash(color), RoundedCornerShape(RaftAppRadius.Chip)).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -931,7 +933,7 @@ private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClic
 @Composable
 private fun SettingsAccountWarning(text: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceCream).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream)).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -943,7 +945,7 @@ private fun SettingsAccountWarning(text: String) {
 @Composable
 private fun SettingsAccountSuccess(text: String) {
     Row(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.AccentLime).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(10.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = raftSoftWash(RaftColor.AccentLime)).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -955,7 +957,7 @@ private fun SettingsAccountSuccess(text: String) {
 @Composable
 private fun IconBox(iconName: RaftLucideIconName, color: Color, invert: Boolean = false) {
     Box(
-        modifier = Modifier.size(38.dp).background(color).border(RaftAppStroke.Default, RaftColor.BorderBlack),
+        modifier = Modifier.size(38.dp).background(raftSoftWash(color), RoundedCornerShape(RaftAppRadius.Control)).border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(iconName, color = if (invert) "#FFFFFFFF" else "#FF000000", modifier = Modifier.size(18.dp))
@@ -975,7 +977,7 @@ private fun providerIconAssetSource(provider: String): String? =
 @Composable
 private fun SettingsAccountEmptyMessage(title: String, detail: String) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceCream).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(16.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream)).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(title, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)

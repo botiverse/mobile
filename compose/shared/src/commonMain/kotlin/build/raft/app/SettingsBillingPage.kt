@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
@@ -10,6 +12,7 @@ import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -293,8 +296,7 @@ private fun BillingNoticeCard(notice: RaftSettingsBillingNotice) {
     Column(
         modifier =
             Modifier.fillMaxWidth()
-                .background(background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = raftSoftWash(background))
                 .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -525,8 +527,10 @@ private fun SettingsBillingLoadingContent() {
                     modifier =
                         Modifier.fillMaxWidth()
                             .height(if (index == 0) 28.dp else 18.dp)
-                            .background(if (index == 0) RaftColor.EmptyStateGray else RaftColor.SurfaceCream)
-                            .border(1.dp, RaftColor.BorderBlack)
+                            .background(
+                                raftSoftWash(if (index == 0) RaftColor.EmptyStateGray else RaftColor.SurfaceCream),
+                                RoundedCornerShape(RaftAppRadius.Sticker)
+                            )
                 )
             }
         }
@@ -539,8 +543,7 @@ private fun SettingsBillingLoadingContent() {
                 modifier =
                     Modifier.fillMaxWidth()
                         .height(112.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .raftCardSurface()
                         .padding(14.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -564,11 +567,7 @@ private fun PlanCard(
         Column(
             modifier =
                 Modifier.fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite)
-                    .border(
-                        RaftAppStroke.Default,
-                        if (plan.comingSoon) RaftColor.TextMutedGray else RaftColor.BorderBlack
-                    )
+                    .raftCardSurface()
                     .alpha(if (plan.comingSoon) 0.68f else 1f)
                     .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -627,14 +626,7 @@ private fun PlanCard(
             )
         }
     }
-    if (plan.comingSoon) {
-        Box(modifier = Modifier.fillMaxWidth()) { content() }
-    } else {
-        Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
-            Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(RaftColor.ShadowBlack))
-            content()
-        }
-    }
+    Box(modifier = Modifier.fillMaxWidth()) { content() }
 }
 
 @Composable
@@ -683,7 +675,7 @@ private fun SettingsBillingSectionHeader(iconName: RaftLucideIconName, label: St
 @Composable
 private fun SettingsStatusBadge(text: String, color: Color) {
     Box(
-        modifier = Modifier.background(color).border(1.dp, RaftColor.BorderBlack).padding(horizontal = 8.dp, vertical = 3.dp),
+        modifier = Modifier.background(raftSoftWash(color), RoundedCornerShape(RaftAppRadius.Chip)).padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(

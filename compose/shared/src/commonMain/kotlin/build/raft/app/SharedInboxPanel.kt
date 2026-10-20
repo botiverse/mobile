@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -2332,8 +2333,7 @@ private fun SharedActivityFooterDraftBadge(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .size(20.dp)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                .background(RaftColor.SurfaceWhite)
+                .background(raftSoftWash(RaftColor.SurfaceWhite), RoundedCornerShape(RaftAppRadius.Chip))
                 .raftSquareCorners(),
         contentAlignment = Alignment.Center
     ) {

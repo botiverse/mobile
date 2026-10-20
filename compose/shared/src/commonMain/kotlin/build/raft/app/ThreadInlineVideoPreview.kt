@@ -9,10 +9,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.raftCardSurface
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,8 +104,8 @@ internal fun ThreadInlineVideoAttachmentCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .clip(RoundedCornerShape(RaftAppRadius.Container))
+                    .raftCardSurface()
         ) {
             ThreadInlineVideoSurface(
                 attachment = attachment,

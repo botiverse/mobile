@@ -1,8 +1,6 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.resources.MR
@@ -15,6 +13,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -253,8 +263,9 @@ private fun ThreadFilesList(
     }
     LazyColumn(
         state = listState,
+        // Web ChannelFilesPanel `FilesList`: `p-3 gap-2`.
         modifier = Modifier.fillMaxSize().padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(payload.items.size, key = { payload.items[it].attachmentId }) { index ->
             ThreadFileRow(
@@ -274,7 +285,7 @@ private fun ThreadFilesList(
                         if (payload.errorCode != null) {
                             stringResource(MR.strings.common_retry)
                         } else {
-                            "Load more"
+                            stringResource(MR.strings.thread_files_load_more)
                         }
                 )
             }
@@ -345,6 +356,12 @@ internal fun threadFilesShouldRequestLoadMore(
     return lastVisibleItemIndex >= triggerIndex
 }
 
+/**
+ * One file of the Files tab, as the web `ChannelFilesPanelFileRow` (`AvatarListRow` in a
+ * `SurfaceListItem`): a raft-ui Card (container radius, 1dp `line-hairline` edge, `layer-card`)
+ * with `px-4 py-3`, the 56dp thumbnail top-aligned, the file name in semibold body over Space
+ * Mono meta, and the ghost `icon-sm` jump / download buttons centred on the right.
+ */
 @Composable
 private fun ThreadFileRow(
     item: RaftThreadFileItem,
@@ -353,69 +370,68 @@ private fun ThreadFileRow(
     onDownload: () -> Unit,
     onOpenSource: () -> Unit
 ) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
     val isOpening = openState.threadAttachmentIsOpening()
     val canOpenSource = item.threadFileHasSourceTarget()
     val openIfIdle = if (isOpening) ({}) else onOpen
     val downloadIfIdle = if (isOpening) ({}) else onDownload
     val openSourceIfIdle = if (isOpening || !canOpenSource) ({}) else onOpenSource
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(82.dp)
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(modifier = Modifier.clickable(onClick = openIfIdle)) {
-            ThreadFileThumbnail(item)
-        }
-        Column(
-            modifier = Modifier.weight(1f).clickable(onClick = openIfIdle),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
+    // Inset: the card draws no padding of its own, so the row keeps the web's 16 / 12dp.
+    RaftCard(modifier = Modifier.fillMaxWidth(), variant = RaftCardVariant.Inset) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = item.name,
-                style = RaftType.Input.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    color = RaftColor.TextBlack
-                ),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            ThreadFileMetaLine(item)
-            openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
-                Text(
-                    text = statusLabel,
-                    style = RaftType.Input.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        color = if (isOpening) RaftColor.TextBlack else RaftColor.TextMutedGray
-                    ),
-                    color = if (isOpening) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            Row(
+                modifier = Modifier.weight(1f).clickable(onClick = openIfIdle),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ThreadFileThumbnail(item)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    RaftText(
+                        text = item.name,
+                        style = typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    ThreadFileMetaLine(item)
+                    openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
+                        RaftText(
+                            text = statusLabel,
+                            style = typography.caption,
+                            color = if (isOpening) colors.foreground else colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.align(Alignment.CenterVertically),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ThreadFileIconActionButton(
+                    iconName = RaftLucideIconName.MapPin,
+                    tooltip = stringResource(MR.strings.thread_files_jump_to_message),
+                    enabled = !isOpening && canOpenSource,
+                    onClick = openSourceIfIdle
+                )
+                ThreadFileIconActionButton(
+                    iconName = RaftLucideIconName.Download,
+                    tooltip = stringResource(MR.strings.thread_files_download_file),
+                    enabled = true,
+                    loading = isOpening,
+                    onClick = downloadIfIdle
                 )
             }
-        }
-        Row(
-            modifier = Modifier.align(Alignment.CenterVertically),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ThreadFileIconActionButton(
-                iconName = RaftLucideIconName.ExternalLink,
-                enabled = !isOpening && canOpenSource,
-                onClick = openSourceIfIdle
-            )
-            ThreadFileIconActionButton(
-                iconName = if (isOpening) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Download,
-                enabled = !isOpening,
-                onClick = downloadIfIdle
-            )
         }
     }
 }
@@ -434,11 +450,16 @@ internal fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel()
 private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
     val thumbnailUrl = item.thumbnailUrl?.takeIf { it.isNotBlank() }
     val isImage = raftFilePreviewIsImageAttachment(fileName = item.name, mimeType = item.mimeType)
+    // Web ChannelFileVisual: `size-14 rounded-control border border-line-muted bg-fill-muted
+    // text-foreground-icon`, the image clipped to the radius.
+    val colors = RaftTheme.colors
+    val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
         modifier = Modifier
             .size(56.dp)
-            .background(RaftColor.SurfaceWhite)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+            .clip(shape)
+            .background(colors.fillMuted, shape)
+            .border(RaftStroke.Hairline, colors.lineMuted, shape),
         contentAlignment = Alignment.Center
     ) {
         if (isImage && thumbnailUrl != null) {
@@ -453,7 +474,8 @@ private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
         if (!(isImage && thumbnailUrl != null)) {
             RaftLucideIcon(
                 name = item.threadFileTypeIconName().wireName,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(18.dp),
+                color = raftArgbHex(colors.foregroundIcon)
             )
         }
     }
@@ -461,41 +483,36 @@ private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
 
 @Composable
 private fun ThreadFileMetaLine(item: RaftThreadFileItem) {
+    // Web AvatarListRow subtitle: Space Mono `text-mono-meta` in `foreground-hint`, `gap-x-2`.
+    val colors = RaftTheme.colors
+    val metaStyle = RaftTheme.typography.monoMeta
     Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         item.displaySizeLabel().takeIf { it.isNotBlank() }?.let { label ->
-            Text(
+            RaftText(
                 text = label,
-                style = RaftType.Input.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    color = RaftColor.TextMutedGray
-                ),
-                color = RaftColor.TextMutedGray,
+                style = metaStyle,
+                color = colors.foregroundHint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
         item.createdAtLabel.takeIf { it.isNotBlank() }?.let { label ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RaftLucideIcon(
                     name = RaftLucideIconName.Clock3.wireName,
                     modifier = Modifier.size(12.dp),
-                    color = RaftColor.TextMutedGrayArgb
+                    color = raftArgbHex(colors.foregroundHint)
                 )
                 RaftRelativeTimestampText(
                     value = label,
-                    style = RaftType.Input.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        color = RaftColor.TextMutedGray
-                    ),
-                    color = RaftColor.TextMutedGray,
+                    style = metaStyle.copy(color = colors.foregroundHint),
+                    color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -513,20 +530,25 @@ internal fun RaftThreadFileItem.threadFileHasSourceTarget(): Boolean =
 internal fun RaftThreadFileItem.threadFileSourceFocusMessageId(): String? =
     messageId.takeIf { it.isNotBlank() }
 
+/** Web `Button size="icon-sm" variant="ghost"` with a 14px lucide glyph. */
 @Composable
 private fun ThreadFileIconActionButton(
     iconName: RaftLucideIconName,
+    tooltip: String,
     enabled: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    loading: Boolean = false
 ) {
-    RaftBrutalIconButton(
-        iconName = iconName,
+    RaftIconButton(
         onClick = onClick,
+        tooltip = tooltip,
+        variant = RaftButtonVariant.Ghost,
         enabled = enabled,
-        size = 28.dp,
-        iconSize = 14.dp,
-        iconSpinning = iconName == RaftLucideIconName.LoaderCircle
-    )
+        loading = loading,
+        loadingLabel = tooltip
+    ) {
+        RaftContentLucideIcon(iconName, size = 14.dp)
+    }
 }
 
 private fun RaftThreadFileItem.threadFileTypeIconName(): RaftLucideIconName {
@@ -549,18 +571,17 @@ private fun RaftThreadFileItem.threadFileTypeIconName(): RaftLucideIconName {
 private fun ThreadFilesLoadMore(
     loading: Boolean,
     onClick: () -> Unit,
-    label: String = "Load more"
+    label: String
 ) {
     Box(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
-        RaftBrutalActionButton(
-            label = if (loading) stringResource(MR.strings.common_loading) else label,
+        RaftButton(
+            text = label,
             onClick = onClick,
-            enabled = !loading,
-            minWidth = 112.dp,
-            minHeight = 36.dp
+            loading = loading,
+            loadingLabel = stringResource(MR.strings.common_loading)
         )
     }
 }

@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import build.raft.app.RaftColor
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAppRadius
+import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.RaftType
 import build.raft.app.resources.MR
 import build.raft.app.raftSquareCorners
@@ -44,8 +46,7 @@ internal fun RaftExternalBridgeBadge(
     Box(
         modifier =
             modifier
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RectangleShape)
-                .background(RaftColor.AccentLavender, RectangleShape)
+                .background(raftSoftWash(RaftColor.AccentLavender), RoundedCornerShape(RaftAppRadius.Chip))
                 .raftSquareCorners()
                 .padding(horizontal = 4.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center

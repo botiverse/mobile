@@ -15,6 +15,8 @@ import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.resources.MR
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -122,8 +124,7 @@ internal fun PrivateDeploymentSheet(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(RaftColor.SurfaceCream)
-                            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                            .raftCardSurface(fill = raftSoftWash(RaftColor.SurfaceCream))
                             .padding(RaftAppSpacing.Lg),
                     verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                 ) {

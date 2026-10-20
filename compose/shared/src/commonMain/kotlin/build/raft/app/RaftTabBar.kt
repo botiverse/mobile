@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import build.raft.app.components.raftCardSurface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -618,11 +621,10 @@ internal fun RaftFloatingDockTabBar(
                 .align(Alignment.BottomCenter)
                 .padding(end = RaftAppStroke.Default, bottom = bottomSafeArea + RaftAppSpacing.Md + RaftAppStroke.Default)
         ) {
-            Box(Modifier.matchParentSize().offset(x = RaftAppStroke.Default, y = RaftAppStroke.Default).background(RaftColor.BorderBlack))
             RaftBottomTabBar(
                 items = items,
                 onSelect = onSelect,
-                modifier = Modifier.fillMaxWidth().border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(RaftAppRadius.Container)).border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
             )
         }
     }
@@ -806,15 +808,8 @@ private fun RaftNavigationRailServerTile(
             modifier = Modifier
                 .size(tileSize)
                 .align(Alignment.TopStart)
-                .offset(x = RaftAppStroke.Default, y = RaftAppStroke.Default)
-                .background(RaftColor.BorderBlack)
-        )
-        Box(
-            modifier = Modifier
-                .size(tileSize)
-                .align(Alignment.TopStart)
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Control))
+                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
                 .clickable(enabled = header.enabled) { onSelect(header.key) },
             contentAlignment = Alignment.Center
         ) {
@@ -838,8 +833,8 @@ private fun RaftNavigationRailServerTile(
                 modifier = Modifier
                     .size(10.dp)
                     .align(Alignment.TopEnd)
-                    .background(RaftColor.AccentPink)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                    .background(RaftColor.AccentPink, CircleShape)
+                    .border(RaftAppStroke.Default, RaftColor.StickerInk, CircleShape)
             )
         }
     }

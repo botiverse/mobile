@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.raftCardSurface
+import build.raft.app.components.raftSoftWash
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -14,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -218,7 +221,7 @@ private fun SettingsStorageSummary(
     onRefresh: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface(fill = raftSoftWash(RaftColor.BrandYellow)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(title.raftDisplayUppercase(), style = RaftType.SectionLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
@@ -230,7 +233,7 @@ private fun SettingsStorageSummary(
 @Composable
 private fun SettingsStorageRow(row: RaftSettingsStorageRow, onClear: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceWhite).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
+        modifier = Modifier.fillMaxWidth().raftCardSurface().padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
@@ -287,8 +290,7 @@ private fun SettingsStorageFeedback(text: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.AccentCyan)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .raftCardSurface(fill = raftSoftWash(RaftColor.AccentCyan))
                 .padding(14.dp)
     ) {
         Text(
@@ -302,7 +304,7 @@ private fun SettingsStorageFeedback(text: String) {
 @Composable
 private fun IconBox(iconName: RaftLucideIconName) {
     Box(
-        modifier = Modifier.size(42.dp).background(RaftColor.EmptyStateGray).border(RaftAppStroke.Default, RaftColor.BorderBlack),
+        modifier = Modifier.size(42.dp).background(RaftColor.FillMuted, RoundedCornerShape(RaftAppRadius.Control)).border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
         contentAlignment = Alignment.Center
     ) {
         RaftLucideIcon(iconName, modifier = Modifier.size(22.dp))

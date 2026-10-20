@@ -339,6 +339,8 @@ import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftStickerTile
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -1796,7 +1798,6 @@ private val ThreadHeaderDmAgentActivityLeadingGap = RaftAppSpacing.Sm
 // smaller one-off dot.
 private val ThreadHeaderDmAgentActivityDotSize = RaftStatusIndicatorTokens.InlineSize
 private val ThreadHeaderChannelTileSize = 34.dp
-private val ThreadHeaderChannelIconSize = 16.dp
 private val ThreadHeaderContentSpacing = 6.dp
 private val ThreadHeaderChannelTitleGapExtra = 2.dp
 
@@ -16413,28 +16414,27 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
     }
 }
 
+/**
+ * The channel's identity tile: raft-ui `PanelHeaderIcon` (`iconTone="location"` on the web
+ * channel header), a design-system sticker: 27dp Source Yellow, sticker radius, 1.5dp
+ * `sticker-ink` edge, a 14dp ink glyph ([RaftStickerTile] at [RaftIconTileSize.Sm]).
+ */
 @Composable
 internal fun RaftChannelIdentityTile(
     channelKind: String?,
-    tileSize: Dp = ThreadHeaderChannelTileSize,
-    iconSize: Dp = ThreadHeaderChannelIconSize,
+    size: RaftIconTileSize = RaftIconTileSize.Sm,
     onPublicPage: Boolean = false
 ) {
-    // raft-ui `PanelHeaderIcon`: Source Yellow sticker, sticker radius, 1.5dp sticker-ink edge.
-    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
-    Box(
-        modifier = Modifier.size(tileSize)
-            .background(RaftColor.Brand, shape)
-            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
-        contentAlignment = Alignment.Center
-    ) {
+    RaftStickerTile(fill = RaftColor.Brand, size = size) {
+        val ink = raftArgbHex(RaftColor.StickerInk)
         if (onPublicPage) {
-            build.raft.app.components.RaftHashGlobeIcon(size = iconSize, color = raftArgbHex(RaftColor.StickerInk))
+            build.raft.app.components.RaftHashGlobeIcon(size = size.icon, color = ink)
         } else {
             RaftLucideIcon(
                 channelKind.threadChannelHeaderIcon(),
-                modifier = Modifier.size(iconSize),
-                color = raftArgbHex(RaftColor.StickerInk)
+                modifier = Modifier.size(size.icon),
+                color = ink,
+                strokeWidth = 2f
             )
         }
     }

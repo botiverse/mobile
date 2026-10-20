@@ -425,9 +425,7 @@ internal fun RaftUiInlineCode(text: String, modifier: Modifier = Modifier) {
     Box(
         modifier =
             modifier
-                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
-                .background(RaftColor.BrandYellow.copy(alpha = 0.40f))
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .background(raftSoftWash(RaftColor.BrandYellow), RoundedCornerShape(RaftAppRadius.Chip))
                 .padding(horizontal = 4.dp)
     ) {
         Text(
