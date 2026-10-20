@@ -167,6 +167,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
@@ -195,6 +196,8 @@ import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.designsystem.components.RaftTextLink
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -348,8 +351,6 @@ internal val MembersListMachineLabelTextStyle =
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 // Web AgentActivityLog row: `gap-2` (8) + StatusDot sm (`size-2` = 8) + `gap-2` (8).
-private val MembersAgentActivityIndicatorLaneWidth = 24.dp
-private val MembersAgentActivityContentGap = 0.dp
 
 /** The two create flows exposed by the web Agents section action menu. */
 internal enum class MembersCreateAgentMode {
@@ -12957,10 +12958,12 @@ private fun MembersAgentActivityTab(
     val errorStrings = localizedErrorPresentationStrings()
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
+    // raft-ui agent page Activity tab: the activity log as a Timeline under a section head
+    // with Copy Info.
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite),
+            .background(RaftTheme.colors.layerCanvas),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Row(
@@ -12968,7 +12971,7 @@ private fun MembersAgentActivityTab(
                 .fillMaxWidth()
                 .padding(
                     horizontal = MembersPageInset,
-                    vertical = RaftAppSpacing.Xs
+                    vertical = RaftAppSpacing.Sm
                 ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
@@ -12977,15 +12980,13 @@ private fun MembersAgentActivityTab(
                 stringResource(MR.strings.member_section_activity_diagnostics),
                 modifier = Modifier.weight(1f)
             )
-            RaftBrutalActionButton(
-                label = if (copySucceeded) stringResource(MR.strings.common_done) else stringResource(MR.strings.member_action_copy_info),
-                leadingIcon = if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Clipboard,
+            RaftButton(
+                text = if (copySucceeded) stringResource(MR.strings.common_done) else stringResource(MR.strings.member_action_copy_info),
+                onClick = onCopyDiagnostics,
                 enabled = diagnosticActionState?.inProgress != true,
-                minHeight = 32.dp,
-                minWidth = 72.dp,
-                shadowOffset = 2.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                onClick = onCopyDiagnostics
+                leadingIcon = {
+                    RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                }
             )
         }
         MembersDetailSectionDivider()
@@ -13058,10 +13059,11 @@ private fun MembersAgentActivityTab(
                         scrollUp = NestedScrollMode.SELF_FIRST,
                         scrollDown = NestedScrollMode.SELF_FIRST
                     ),
+                contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = RaftAppSpacing.Md),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
-                    MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
+                    MembersAgentActivityRow(rows[index], timeContext, onOpenUrl, last = index == rows.lastIndex)
                 }
             }
         }
@@ -13082,27 +13084,20 @@ private fun MembersAgentActivityLoadNotice(
             MembersAgentActivityLoadState.Idle,
             MembersAgentActivityLoadState.Loading -> return
         }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(RaftColor.SurfaceCream)
-            .padding(horizontal = MembersPageInset, vertical = RaftAppSpacing.Xs),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = message,
-            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
-                .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextBlack
-        )
-    }
+    // raft-ui PanelNotice: refreshing (info) or the refresh failed (warning) above the log.
+    RaftPanelNotice(
+        message = message,
+        modifier = modifier,
+        status = if (state is MembersAgentActivityLoadState.Error) RaftBannerStatus.Warning else RaftBannerStatus.Info
+    )
 }
 
 @Composable
 private fun MembersAgentActivityRow(
     activity: AgentActivityEntry,
     timeContext: RaftTimeContext,
-    onOpenUrl: (String) -> Unit
+    onOpenUrl: (String) -> Unit,
+    last: Boolean = false
 ) {
     val key = activity.activityTimelineKey()
     var expanded by remember(key) { mutableStateOf(false) }
@@ -13114,90 +13109,61 @@ private fun MembersAgentActivityRow(
         } else {
             body
         }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        // Web: `shrink-0 font-mono text-xs whitespace-nowrap` — natural width, no fixed column.
-        Text(
-            text = activity.timestamp.membersActivityDisplayTime(timeContext),
-            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1
-        )
-        Box(
-            modifier = Modifier.requiredWidth(MembersAgentActivityIndicatorLaneWidth),
-            contentAlignment = Alignment.TopCenter
-        ) {
-            RaftStatusIndicator(
-                color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
-                size = 8.dp,
-                pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
-                modifier = Modifier.padding(top = 6.dp)
-            )
-        }
-        Column(
-            modifier = Modifier
-                .padding(start = MembersAgentActivityContentGap)
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
+    val colors = RaftTheme.colors
+    val detailStyle = RaftTheme.typography.monoMeta
+    // raft-ui Timeline as an activity log: presence-coloured pixels, title and detail in
+    // Space Mono, the time on the right, a `subagent` tag on a subagent's step.
+    RaftTimelineItem(
+        color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
+        last = last,
+        time = activity.timestamp.membersActivityDisplayTime(timeContext),
+        title = {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                RaftText(
                     text = activity.title,
-                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
-                        .withRaftFontWeight(FontWeight.Medium),
-                    color = RaftColor.TextBlack,
+                    style = raftTimelineMonoTitleStyle(),
+                    color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 activity.membersActivitySubagentBadgeLabel()?.let { subagentLabel ->
-                    RaftBrutalBadge(
-                        label = subagentLabel,
-                        tone = RaftBrutalTone.White,
-                        uppercase = false
-                    )
+                    RaftBadge(text = subagentLabel, appearance = RaftBadgeAppearance.Outline)
                 }
             }
-            if (displayBody.isNotBlank()) {
-                // #64 owner override (artin 06-23 17:41): '改成用 RaftMarkdownBody
-                // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
-                // the activity body can render task refs / issue refs (e.g. `#225`,
-                // `#task-7`) as styled inline text + clickable onOpenUrl links
-                // when `refTextEnabled` is true.
-                if (activity.refTextEnabled) {
-                    RaftMarkdownBody(
-                        body = displayBody,
-                        textStyle = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        onOpenUrl = onOpenUrl,
-                    )
-                } else {
-                    Text(
-                        text = displayBody,
-                        style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = if (expanded) 12 else 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (longBody) {
-                Text(
-                    text = if (expanded) stringResource(MR.strings.member_label_show_less) else stringResource(MR.strings.member_label_show_more),
-                    style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-                        .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextBlack,
-                    modifier = Modifier.clickable { expanded = !expanded }
+        }
+    ) {
+        if (displayBody.isNotBlank()) {
+            // #64 owner override (artin 06-23 17:41): '改成用 RaftMarkdownBody
+            // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
+            // the activity body can render task refs / issue refs (e.g. `#225`,
+            // `#task-7`) as styled inline text + clickable onOpenUrl links
+            // when `refTextEnabled` is true.
+            if (activity.refTextEnabled) {
+                RaftMarkdownBody(
+                    body = displayBody,
+                    textStyle = detailStyle.copy(color = colors.foregroundHint),
+                    onOpenUrl = onOpenUrl,
+                )
+            } else {
+                RaftText(
+                    text = displayBody,
+                    style = detailStyle,
+                    color = colors.foregroundHint,
+                    maxLines = if (expanded) 12 else 3,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        if (longBody) {
+            RaftTextLink(
+                text = if (expanded) stringResource(MR.strings.member_label_show_less) else stringResource(MR.strings.member_label_show_more),
+                onClick = { expanded = !expanded },
+                style = RaftTheme.typography.caption
+            )
         }
     }
 }
@@ -14536,29 +14502,18 @@ private const val MembersReminderMillisPerMinute = 60_000L
 private const val MembersReminderMillisPerHour = 3_600_000L
 private const val MembersReminderMillisPerDay = 86_400_000L
 
+// raft-ui Timeline > Activity log: the presence colours (busy yellow while working,
+// error orange, online lime when done), `info` for output, stone when offline.
 private fun String.membersActivityAccentColor(): Color =
     when (membersActivityStatusKey()) {
-        "error", "failed", "failure", "subagent_failed" -> RaftColor.AccentOrange
+        "error", "failed", "failure", "subagent_failed" -> RaftUiPalette.presenceError
         "tool_start", "tool", "thinking", "working", "busy", "subagent_spawned", "subagent_started" ->
-            RaftColor.BrandYellow
-        "running", "active", "online", "compaction_finished", "subagent_completed" -> RaftColor.AccentLime
-        "text", "message", "output" -> RaftColor.AccentCyan
-        "offline", "disconnected", "subagent_suspended" -> RaftColor.StatusNeutralGray
-        "system", "slock_action", "compaction_started" -> RaftColor.AccentOrange
-        else -> RaftColor.BrandYellow
-    }
-
-private fun String.membersActivityPulsing(): Boolean =
-    when (membersActivityStatusKey()) {
-        "tool_start",
-        "tool",
-        "thinking",
-        "working",
-        "running",
-        "busy",
-        "subagent_spawned",
-        "subagent_started" -> true
-        else -> false
+            RaftUiPalette.presenceBusy
+        "running", "active", "online", "compaction_finished", "subagent_completed" -> RaftUiPalette.presenceOnline
+        "text", "message", "output" -> RaftUiPalette.info
+        "offline", "disconnected", "subagent_suspended" -> RaftUiPalette.presenceOffline
+        "system", "slock_action", "compaction_started" -> RaftUiPalette.presenceError
+        else -> RaftUiPalette.presenceBusy
     }
 
 private fun String.membersActivityStatusKey(): String =
