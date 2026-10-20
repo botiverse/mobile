@@ -283,3 +283,25 @@ internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: RaftTh
     } ?: message.taskNumber?.let { taskNumber ->
         get(ThreadTaskNumberLookupPrefix + taskNumber)
     }
+
+/**
+ * Task status by task number for inline `#N` chips in this thread's Markdown
+ * (web MessageItem `taskByNumber`). Later sources win: task facts carried on
+ * the loaded messages, then the server task projection, then the channel
+ * projection (the freshest scope the thread keeps in sync).
+ */
+internal fun threadMarkdownTaskStatusesByNumber(
+    channelTasks: List<TaskSummary>,
+    serverTasks: List<TaskSummary>,
+    messages: List<RaftThreadMessageItem>,
+): Map<Int, TaskStatus> {
+    val statuses = LinkedHashMap<Int, TaskStatus>()
+    messages.forEach { message ->
+        val number = message.taskNumber?.takeIf { it > 0 } ?: return@forEach
+        val status = TaskStatus.fromWireValue(message.taskStatus) ?: return@forEach
+        statuses[number] = status
+    }
+    serverTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
+    channelTasks.forEach { task -> task.taskNumber?.takeIf { it > 0 }?.let { statuses[it] = task.status } }
+    return statuses
+}

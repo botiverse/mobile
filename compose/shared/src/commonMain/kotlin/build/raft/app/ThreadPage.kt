@@ -202,6 +202,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
+import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
@@ -7648,6 +7649,14 @@ private fun SharedThreadRouteContentContent(
                 )
         }
     }
+    val markdownTaskStatuses =
+        remember(taskProjectionSlice.tasks, serverTaskProjectionSlice.tasks, timelineSlice.messages, timelineSlice.originMessage) {
+            threadMarkdownTaskStatusesByNumber(
+                channelTasks = taskProjectionSlice.tasks,
+                serverTasks = serverTaskProjectionSlice.tasks,
+                messages = listOfNotNull(timelineSlice.originMessage) + timelineSlice.messages
+            )
+        }
     val linkedTasksProjection =
         remember(taskProjectionSlice, serverTaskProjectionSlice, taskProjectionReferences) {
             threadLinkedTasksProjection(
@@ -10719,6 +10728,7 @@ private fun SharedThreadRouteContentContent(
                         requestFallback = ::requestInlineImageFallback
                     ),
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+                LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
                 LocalRaftMarkdownRenderConfig provides
                     RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,

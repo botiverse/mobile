@@ -379,6 +379,28 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_URL = "md_code_url"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
+// Inline task refs coloured by task status (web TaskChip inline), mirroring
+// artin's web screenshot: a table, a list and running text. The `_legacy`
+// variant renders the same body without a task source (uniform chip).
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS = "md_task_status_chips"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS_LEGACY = "md_task_status_chips_legacy"
+
+/** Task statuses the message-row host provides to Markdown; null = no task source. */
+internal fun threadVisualFixtureTaskStatuses(fixture: String): Map<Int, TaskStatus>? =
+    when (fixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS ->
+            mapOf(
+                92 to TaskStatus.InReview,
+                321 to TaskStatus.InReview,
+                209 to TaskStatus.Done,
+                145 to TaskStatus.Done,
+                224 to TaskStatus.InReview,
+                12 to TaskStatus.Todo,
+                34 to TaskStatus.InProgress,
+                56 to TaskStatus.Closed,
+            )
+        else -> null
+    }
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
 // Mermaid diagram specimens (task #10, 2026-09-21): the native renderer landed
@@ -1416,6 +1438,57 @@ internal fun threadVisualFixture(
                 mermaid =
                     "graph INVALID_SYNTAX\n" +
                         "  ??? --- !!!\n"
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS,
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TASK_STATUS_CHIPS_LEGACY ->
+            RaftThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Task status chips specimen",
+                status = "content",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        RaftThreadMessageItem(
+                            id = "msg_md_task_status_chips_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "10/20 09:12",
+                            messageType = "Chat",
+                            body =
+                                "### 二、in_review，只差最后一步\n\n" +
+                                    "| # | 差什么 |\n" +
+                                    "|---|---|\n" +
+                                    "| #92 | 附件 |\n" +
+                                    "| #321 | Thread |\n" +
+                                    "| #209 / #145 | 各自 |\n\n" +
+                                    "### 三、可以关掉的\n\n" +
+                                    "- #224（iOS thread 不实时刷新）\n" +
+                                    "- #145（Native onboarding 独立 review）\n" +
+                                    "- #209（GFM task-list checkbox 视觉证据）\n\n" +
+                                    "Todo #12, in progress #34, closed #56, unknown #999."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    RaftThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE ->
             // task #497: GFM tables reportedly don't render on Android. The
