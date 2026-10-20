@@ -9,15 +9,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalCard
-import build.raft.app.components.SlockSwitchButton
+import build.raft.app.components.RaftBrutalCard
+import build.raft.app.components.RaftSwitchButton
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
@@ -116,7 +116,7 @@ internal class ComposeChannelSettingsPage : AuthenticatedProductPager(Authentica
     override fun willInit() {
         super.willInit()
         setAuthenticatedContent {
-            SlockInputFocusDismissHost { focusDismissModifier ->
+            RaftInputFocusDismissHost { focusDismissModifier ->
                 Box(modifier = focusDismissModifier.fillMaxSize()) {
                     ChannelSettingsPageScreen()
                 }
@@ -145,9 +145,9 @@ private fun ChannelSettingsPageScreen() {
     }
 
     val storeScope = remember(params.toString(), pager.pagerId) {
-        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val routeOwner = remember(params.toString()) { params.authenticatedRouteOwnerOrNull() }
     if (routeOwner == null || routeOwner.serverId != route.serverId.value) {
         ChannelSettingsInvalidRouteScreen(onBack = router::closePage)
@@ -265,16 +265,16 @@ private fun ChannelSettingsPageScreen() {
         if (settingsState.effect != null) settingsStore.dispatch(ChannelSettingsIntent.ConsumeEffect)
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SlockTopPageHeader(
+            RaftTopPageHeader(
                 title = stringResource(MR.strings.channel_settings_title),
-                iconName = SlockLucideIconName.Settings,
-                backgroundColor = SlockColor.SurfaceWhite,
+                iconName = RaftLucideIconName.Settings,
+                backgroundColor = RaftColor.SurfaceWhite,
                 refreshing = settingsState.refreshing,
                 leadingContent = {
-                    SlockTopPageHeaderAction(
-                        icon = SlockLucideIconName.ArrowLeft,
+                    RaftTopPageHeaderAction(
+                        icon = RaftLucideIconName.ArrowLeft,
                         onClick = router::closePage
                     )
                 }
@@ -289,7 +289,7 @@ private fun ChannelSettingsPageScreen() {
                         writeActionsEnabled = settingsState.writeActionsEnabled && authorityAccepted,
                         onEdit = { dialog = ChannelSettingsDialog.Edit },
                         onOpenMembers = {
-                            pager.openSlockPage(
+                            pager.openRaftPage(
                                 pageName = THREAD_MEMBERS_PAGE,
                                 pageData = channelSettingsMembersPageData(route),
                                 storeScopeOverride = storeScope,
@@ -321,9 +321,9 @@ private fun ChannelSettingsPageScreen() {
                 subtitle = currentChannel.subtitle,
                 actions =
                     when (activeDialog) {
-                        ChannelSettingsDialog.Visibility -> listOf(KuiklyThreadSettingsAction(id = "visibility"))
-                        ChannelSettingsDialog.Archive -> listOf(KuiklyThreadSettingsAction(id = "archive"))
-                        ChannelSettingsDialog.Delete -> listOf(KuiklyThreadSettingsAction(id = "delete"))
+                        ChannelSettingsDialog.Visibility -> listOf(RaftThreadSettingsAction(id = "visibility"))
+                        ChannelSettingsDialog.Archive -> listOf(RaftThreadSettingsAction(id = "archive"))
+                        ChannelSettingsDialog.Delete -> listOf(RaftThreadSettingsAction(id = "delete"))
                         else -> emptyList()
                     },
                 initialDangerActionId =
@@ -383,7 +383,7 @@ private fun ChannelSettingsContent(
     onDelete: () -> Unit
 ) {
     // task #177: standalone page; the last row clears the system navigation bar.
-    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val bottomSafeArea = raftBottomSafeAreaPadding()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bottomSafeArea),
@@ -425,7 +425,7 @@ private fun ChannelSettingsContent(
 
 @Composable
 private fun ChannelIdentityCard(channel: HomeChannelRow, editable: Boolean, onClick: () -> Unit) {
-    SlockBrutalCard(
+    RaftBrutalCard(
         modifier = Modifier.clickable(enabled = editable, onClick = onClick),
         contentPadding = 16.dp,
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -435,7 +435,7 @@ private fun ChannelIdentityCard(channel: HomeChannelRow, editable: Boolean, onCl
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            SlockChannelIdentityTile(
+            RaftChannelIdentityTile(
                 channelKind =
                     channel
                         .toThreadLaunchConversationIdentity()
@@ -446,22 +446,22 @@ private fun ChannelIdentityCard(channel: HomeChannelRow, editable: Boolean, onCl
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     text = "#${channel.name.removePrefix("#")}",
-                    style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 ChannelStatusBadge(channel)
             }
             if (editable) {
-                SlockLucideIcon(SlockLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF111111")
+                RaftLucideIcon(RaftLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF111111")
             }
         }
         Text(
             text = channel.subtitle?.trim().takeUnless { it.isNullOrBlank() }
                 ?: stringResource(MR.strings.channel_settings_description_empty),
-            style = SlockType.Body,
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body,
+            color = RaftColor.TextMutedGray,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -480,11 +480,11 @@ private fun ChannelStatusBadge(channel: HomeChannelRow) {
     Box(
         modifier =
             Modifier
-                .background(if (channel.archived) SlockColor.EmptyStateGray else SlockColor.AccentLime)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(if (channel.archived) RaftColor.EmptyStateGray else RaftColor.AccentLime)
+                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
                 .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
-        Text(text = text, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
+        Text(text = text, style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold), color = RaftColor.TextBlack)
     }
 }
 
@@ -501,7 +501,7 @@ private fun ChannelMembersCard(
             fallbackCount = fallbackCount,
             loadingLabel = stringResource(MR.strings.common_loading),
         )
-    SlockBrutalCard(
+    RaftBrutalCard(
         modifier = Modifier.clickable(onClick = onClick),
         contentPadding = 16.dp,
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -509,12 +509,12 @@ private fun ChannelMembersCard(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = stringResource(MR.strings.channel_settings_members),
-                style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack
+                style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                color = RaftColor.TextBlack
             )
             Spacer(Modifier.weight(1f))
-            Text(text = countLabel, style = SlockType.Body, color = SlockColor.TextMutedGray)
-            SlockLucideIcon(SlockLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF666666")
+            Text(text = countLabel, style = RaftType.Body, color = RaftColor.TextMutedGray)
+            RaftLucideIcon(RaftLucideIconName.ChevronRight, Modifier.size(20.dp), color = "#FF666666")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             members.forEach { member -> ChannelSettingsMemberAvatar(member) }
@@ -523,11 +523,11 @@ private fun ChannelMembersCard(
                     modifier =
                         Modifier
                             .size(44.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack),
+                            .background(RaftColor.SurfaceWhite)
+                            .border(RaftAppStroke.Default, RaftColor.BorderBlack),
                     contentAlignment = Alignment.Center
                 ) {
-                    SlockLucideIcon(SlockLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")
+                    RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(20.dp), color = "#FF111111")
                 }
             }
         }
@@ -547,12 +547,12 @@ internal fun channelSettingsMemberCountLabel(
 
 @Composable
 private fun ChannelSettingsMemberAvatar(member: MemberProfile) {
-    SlockAvatar(
+    RaftAppAvatar(
         avatarWireValue = member.avatarWireValueForAvatarSlot(),
         label = member.avatarLabel.ifBlank { member.displayName.take(1) },
         avatarSize = 44.dp,
-        borderWidth = SlockStroke.Default,
-        cacheSubject = member.slockAvatarCacheSubject(),
+        borderWidth = RaftAppStroke.Default,
+        cacheSubject = member.raftAvatarCacheSubject(),
         cacheServerId = member.serverId?.value
     )
 }
@@ -566,11 +566,11 @@ private fun ChannelPreferencesCard(
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit
 ) {
-    SlockBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(0.dp)) {
+    RaftBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Text(
             text = stringResource(MR.strings.channel_settings_preferences),
-            style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            color = RaftColor.TextBlack,
             modifier = Modifier.padding(bottom = 12.dp)
         )
         ChannelPreferenceRow(
@@ -609,10 +609,10 @@ private fun ChannelPreferenceRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(text = title, style = SlockType.Body.withSlockFontWeight(FontWeight.W600), color = SlockColor.TextBlack)
-            Text(text = detail, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+            Text(text = title, style = RaftType.Body.withRaftFontWeight(FontWeight.W600), color = RaftColor.TextBlack)
+            Text(text = detail, style = RaftType.Caption, color = RaftColor.TextMutedGray)
         }
-        SlockSwitchButton(checked = checked, enabled = enabled)
+        RaftSwitchButton(checked = checked, enabled = enabled)
     }
 }
 
@@ -625,11 +625,11 @@ private fun ChannelManagementCard(
     onDelete: () -> Unit
 ) {
     val actions = channelSettingsManagementActions(showMakePrivate, showDelete)
-    SlockBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    RaftBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = stringResource(MR.strings.channel_settings_management),
-            style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            color = RaftColor.TextBlack,
             modifier = Modifier.padding(bottom = 2.dp)
         )
         ThreadSettingsChannelActionButtons(
@@ -648,20 +648,20 @@ private fun ChannelManagementCard(
 internal fun channelSettingsManagementActions(
     showMakePrivate: Boolean,
     showDelete: Boolean = true,
-): List<KuiklyThreadSettingsAction> =
+): List<RaftThreadSettingsAction> =
     buildList {
         if (showMakePrivate) {
-            add(KuiklyThreadSettingsAction(id = "visibility"))
+            add(RaftThreadSettingsAction(id = "visibility"))
         }
-        add(KuiklyThreadSettingsAction(id = "archive"))
+        add(RaftThreadSettingsAction(id = "archive"))
         if (showDelete) {
-            add(KuiklyThreadSettingsAction(id = "delete"))
+            add(RaftThreadSettingsAction(id = "delete"))
         }
     }
 
 @Composable
 private fun ChannelSettingsDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
+    Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderBlack))
 }
 
 @Composable
@@ -673,11 +673,11 @@ private fun ChannelSettingsLoading() {
     ) {
         item {
             repeat(3) { index ->
-                SlockBrutalCard(
+                RaftBrutalCard(
                     modifier = Modifier.padding(bottom = if (index == 2) 0.dp else 14.dp),
                     contentPadding = 16.dp
                 ) {
-                    Box(Modifier.fillMaxWidth().height(if (index == 0) 92.dp else 76.dp).background(SlockColor.EmptyStateGray))
+                    Box(Modifier.fillMaxWidth().height(if (index == 0) 92.dp else 76.dp).background(RaftColor.EmptyStateGray))
                 }
             }
         }
@@ -687,13 +687,13 @@ private fun ChannelSettingsLoading() {
 @Composable
 private fun ChannelSettingsMessage(title: String, detail: String, onRetry: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
-        SlockBrutalCard(contentPadding = 18.dp, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(text = title, style = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp), color = SlockColor.TextBlack)
-            Text(text = detail, style = SlockType.Body, color = SlockColor.TextMutedGray)
+        RaftBrutalCard(contentPadding = 18.dp, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(text = title, style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp), color = RaftColor.TextBlack)
+            Text(text = detail, style = RaftType.Body, color = RaftColor.TextMutedGray)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                SlockModalActionButton(
+                RaftModalActionButton(
                     label = stringResource(MR.strings.common_retry),
-                    icon = SlockLucideIconName.RefreshCw,
+                    icon = RaftLucideIconName.RefreshCw,
                     onClick = onRetry
                 )
             }
@@ -703,12 +703,12 @@ private fun ChannelSettingsMessage(title: String, detail: String, onRetry: () ->
 
 @Composable
 private fun ChannelSettingsInvalidRouteScreen(onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
+        RaftTopPageHeader(
             title = stringResource(MR.strings.channel_settings_title),
-            iconName = SlockLucideIconName.Settings,
+            iconName = RaftLucideIconName.Settings,
             leadingContent = {
-                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+                RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = onBack)
             }
         )
         ChannelSettingsMessage(

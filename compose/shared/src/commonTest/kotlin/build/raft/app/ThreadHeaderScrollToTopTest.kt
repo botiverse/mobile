@@ -10,14 +10,14 @@ class ThreadHeaderScrollToTopTest {
 
     @Test
     fun headerScrollToTopOnlyEnabledForReplyThreadChatTab() {
-        assertTrue(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, "chat"))
-        assertTrue(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, " Chat "))
+        assertTrue(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, "chat"))
+        assertTrue(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, " Chat "))
         assertFalse(threadHeaderScrollToTopEnabled(" Thread ", "chat"))
-        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.Channel, "chat"))
-        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.DirectMessage, "chat"))
-        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, "tasks"))
-        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, "files"))
-        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, null))
+        assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.Channel, "chat"))
+        assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.DirectMessage, "chat"))
+        assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, "tasks"))
+        assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, "files"))
+        assertFalse(threadHeaderScrollToTopEnabled(RaftThreadSurfaceKind.ReplyThread, null))
         assertFalse(threadHeaderScrollToTopEnabled(null, "chat"))
     }
 

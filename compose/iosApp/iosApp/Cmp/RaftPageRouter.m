@@ -3,10 +3,10 @@
 #import "iosApp-Swift.h"
 #import <objc/runtime.h>
 
-static NSString *const SlockRouterReplaceCurrentPageKey = @"slockReplaceCurrentPage";
-static char SlockRouterRetiredByLoginKey;
+static NSString *const RaftRouterReplaceCurrentPageKey = @"slockReplaceCurrentPage";
+static char RaftRouterRetiredByLoginKey;
 
-static NSDictionary *SlockRouterIdentityPageData(NSDictionary *pageData) {
+static NSDictionary *RaftRouterIdentityPageData(NSDictionary *pageData) {
     if (![pageData isKindOfClass:NSDictionary.class]) {
         return @{};
     }
@@ -37,7 +37,7 @@ static NSDictionary *SlockRouterIdentityPageData(NSDictionary *pageData) {
     return sanitized;
 }
 
-static BOOL SlockRouterBool(id value) {
+static BOOL RaftRouterBool(id value) {
     if ([value isKindOfClass:NSNumber.class]) {
         return [(NSNumber *)value boolValue];
     }
@@ -51,13 +51,13 @@ static BOOL SlockRouterBool(id value) {
 @implementation RaftPageRouter
 
 - (void)openPageWithName:(NSString *)pageName pageData:(NSDictionary *)pageData controller:(UIViewController *)controller {
-    NSDictionary *sanitizedPageData = SlockRouterIdentityPageData(pageData);
+    NSDictionary *sanitizedPageData = RaftRouterIdentityPageData(pageData);
     UINavigationController *navigationController = controller.navigationController;
-    BOOL replaceCurrent = SlockRouterBool(sanitizedPageData[SlockRouterReplaceCurrentPageKey]);
+    BOOL replaceCurrent = RaftRouterBool(sanitizedPageData[RaftRouterReplaceCurrentPageKey]);
     if (replaceCurrent && [pageName isEqualToString:@"compose_login"]) {
         // A removed page can still have a window during its exit animation.
         // Retire its terminal callbacks before mutating UIKit containment.
-        if ([objc_getAssociatedObject(controller, &SlockRouterRetiredByLoginKey) boolValue]) {
+        if ([objc_getAssociatedObject(controller, &RaftRouterRetiredByLoginKey) boolValue]) {
             return;
         }
         // Logout completion, mounted-page terminal observers and late auth-loss
@@ -65,16 +65,16 @@ static BOOL SlockRouterBool(id value) {
         // later requests must preserve that login instance and its input state.
         UIViewController *top = navigationController.topViewController;
         if ([top isKindOfClass:RaftPageViewController.class] &&
-            ((RaftPageViewController *)top).slockIsLoginPage) {
+            ((RaftPageViewController *)top).raftIsLoginPage) {
             return;
         }
     }
-    UIViewController *renderViewController = [SlockPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
+    UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
             if ([pageName isEqualToString:@"compose_login"]) {
-                objc_setAssociatedObject(viewControllers.lastObject, &SlockRouterRetiredByLoginKey,
+                objc_setAssociatedObject(viewControllers.lastObject, &RaftRouterRetiredByLoginKey,
                                          @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
             [viewControllers removeLastObject];

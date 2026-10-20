@@ -21,7 +21,7 @@ class HomeParserTest {
     @Test
     fun preservesReadStateV1HydrateCarrierForChannelListDmAndDetailWithoutTouchingLegacyCursor() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         channels =
@@ -60,7 +60,7 @@ class HomeParserTest {
         assertNull(dm.readStateMaxReadSeq)
 
         val detail =
-            parseSlockChannelDetail(
+            parseRaftChannelDetail(
                 """{"id":"channel-1","name":"native","type":"channel","maxReadSeq":43,"readStateVersion":9}"""
             )
         requireNotNull(detail)
@@ -71,7 +71,7 @@ class HomeParserTest {
     @Test
     fun detailDirectMessagePreservesLastMessagePreviewAndSenderName() {
         val detail =
-            parseSlockChannelDetail(
+            parseRaftChannelDetail(
                 """{"id":"dm-1","name":"alice","type":"dm","peerType":"user","peerId":"u-1","peerName":"alice","lastMessagePreview":"Hello world","lastMessageSenderName":"Alice"}"""
             )
         requireNotNull(detail)
@@ -82,7 +82,7 @@ class HomeParserTest {
     @Test
     fun detailTypeAlonePreservesCanonicalJointKind() {
         val detail =
-            parseSlockChannelDetail(
+            parseRaftChannelDetail(
                 """{"id":"joint-1","name":"raft-mobile","type":"joint"}"""
             )
 
@@ -94,7 +94,7 @@ class HomeParserTest {
     @Test
     fun preservesIncompleteHydrateMembersWithoutFillingFromLegacyCursor() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         channels =
@@ -155,7 +155,7 @@ class HomeParserTest {
                 unreadCounts = mapOf(ChannelId("channel-1") to 4, ChannelId("dm-1") to 2)
             )
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload = payload,
                 session = sampleSession()
             )
@@ -243,7 +243,7 @@ class HomeParserTest {
     @Test
     fun usesSelectedServerUnreadSummaryForInboxTotal() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         channels =
@@ -287,7 +287,7 @@ class HomeParserTest {
     @Test
     fun preservesPrivateAndJointChannelMetadata() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         channels =
@@ -337,7 +337,7 @@ class HomeParserTest {
             )
 
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         channels =
@@ -381,7 +381,7 @@ class HomeParserTest {
     @Test
     fun dropsArchivedChannels() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         channels =
@@ -428,7 +428,7 @@ class HomeParserTest {
                     )
             )
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload = payload,
                 session = sampleSession()
             )
@@ -450,7 +450,7 @@ class HomeParserTest {
     @Test
     fun directMessageNameFallsBackFromDisplayNameToPeerNameToId() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload =
                     homePayload(
                         directMessages =
@@ -509,7 +509,7 @@ class HomeParserTest {
                     )
             )
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload = payload,
                 session = sampleSession(),
                 warningLogger = warnings::add
@@ -523,7 +523,7 @@ class HomeParserTest {
     @Test
     fun missingSessionServerReturnsEmpty() {
         val result =
-            parseSlockHome(
+            parseRaftHome(
                 payload = homePayload(serverId = ServerId("unknown-server")),
                 session = sampleSession()
             )

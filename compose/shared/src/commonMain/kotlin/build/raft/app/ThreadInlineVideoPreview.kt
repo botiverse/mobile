@@ -7,8 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.foundation.background
@@ -82,7 +82,7 @@ internal val LocalThreadInlineVideoPreviewHost =
 
 @Composable
 internal fun ThreadInlineVideoAttachmentCard(
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     onDownload: () -> Unit
 ) {
     val host = LocalThreadInlineVideoPreviewHost.current
@@ -96,14 +96,14 @@ internal fun ThreadInlineVideoAttachmentCard(
 
     Column(
         modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(RaftColor.SurfaceWhite)
+                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
         ) {
             ThreadInlineVideoSurface(
                 attachment = attachment,
@@ -113,21 +113,21 @@ internal fun ThreadInlineVideoAttachmentCard(
                 onDownload = onDownload
             )
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = attachment.name.ifBlank { stringResource(MR.strings.thread_video_attachment_fallback_name) },
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html)).takeIf { it.isNotBlank() }?.let { meta ->
                     Text(
                         text = meta,
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Caption,
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -139,7 +139,7 @@ internal fun ThreadInlineVideoAttachmentCard(
 
 @Composable
 private fun ThreadInlineVideoSurface(
-    attachment: KuiklyThreadAttachmentItem,
+    attachment: RaftThreadAttachmentItem,
     previewState: ThreadInlineVideoPreviewUiState?,
     previewEnabled: Boolean,
     onRetry: () -> Unit,
@@ -150,14 +150,14 @@ private fun ThreadInlineVideoSurface(
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
     var playState by remember(source) { mutableStateOf(PlayState.NONE) }
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
-    val nativeController = slockPlatformUsesNativeVideoController()
+    val nativeController = raftPlatformUsesNativeVideoController()
 
     Box(
         modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF000000)),
         contentAlignment = Alignment.Center
     ) {
         if (renderMode == ThreadInlineVideoRenderMode.Ready) {
-            SlockFilePreviewKuiklyVideo(
+            RaftFilePreviewKuiklyVideo(
                 source = source,
                 playControl = playControl,
                 seekRequest = null,
@@ -171,43 +171,43 @@ private fun ThreadInlineVideoSurface(
         when {
             !previewEnabled ->
                 ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.TriangleAlert,
+                    iconName = RaftLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_preview_unavailable),
-                    secondaryActionIcon = SlockLucideIconName.Download,
+                    secondaryActionIcon = RaftLucideIconName.Download,
                     secondaryActionLabel = stringResource(MR.strings.file_preview_action_download),
                     onSecondaryAction = onDownload
                 )
             renderMode == ThreadInlineVideoRenderMode.Error ->
                 ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.TriangleAlert,
+                    iconName = RaftLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_preview_unavailable),
-                    actionIcon = SlockLucideIconName.RefreshCw,
+                    actionIcon = RaftLucideIconName.RefreshCw,
                     actionLabel = stringResource(MR.strings.common_retry),
                     onAction = onRetry,
-                    secondaryActionIcon = SlockLucideIconName.Download,
+                    secondaryActionIcon = RaftLucideIconName.Download,
                     secondaryActionLabel = stringResource(MR.strings.file_preview_action_download),
                     onSecondaryAction = onDownload
                 )
             renderMode == ThreadInlineVideoRenderMode.Loading ->
                 ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.LoaderCircle,
+                    iconName = RaftLucideIconName.LoaderCircle,
                     label = stringResource(MR.strings.thread_video_preview_loading),
                     spinning = true
                 )
             playState == PlayState.ERROR ->
                 ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.TriangleAlert,
+                    iconName = RaftLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_playback_failed),
-                    actionIcon = SlockLucideIconName.RefreshCw,
+                    actionIcon = RaftLucideIconName.RefreshCw,
                     actionLabel = stringResource(MR.strings.common_retry),
                     onAction = onRetry,
-                    secondaryActionIcon = SlockLucideIconName.Download,
+                    secondaryActionIcon = RaftLucideIconName.Download,
                     secondaryActionLabel = stringResource(MR.strings.file_preview_action_download),
                     onSecondaryAction = onDownload
                 )
             !nativeController ->
-                SlockBrutalIconButton(
-                    iconName = if (playState == PlayState.PLAYING) SlockLucideIconName.Pause else SlockLucideIconName.Play,
+                RaftBrutalIconButton(
+                    iconName = if (playState == PlayState.PLAYING) RaftLucideIconName.Pause else RaftLucideIconName.Play,
                     onClick = {
                         playControl =
                             if (playState == PlayState.PLAYING) {
@@ -216,14 +216,14 @@ private fun ThreadInlineVideoSurface(
                                 VideoPlayControl.PLAY
                             }
                     },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(SlockSpacing.Sm),
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(RaftAppSpacing.Sm),
+                    backgroundColor = RaftColor.SurfaceWhite,
                     size = 34.dp,
                     shadowOffset = 0.dp
                 )
             !firstFrameVisible ->
                 ThreadInlineVideoOverlay(
-                    iconName = SlockLucideIconName.LoaderCircle,
+                    iconName = RaftLucideIconName.LoaderCircle,
                     label = attachment.name.ifBlank { "Preparing video" },
                     spinning = true
                 )
@@ -233,22 +233,22 @@ private fun ThreadInlineVideoSurface(
 
 @Composable
 private fun ThreadInlineVideoOverlay(
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     label: String,
     spinning: Boolean = false,
-    actionIcon: SlockLucideIconName? = null,
+    actionIcon: RaftLucideIconName? = null,
     actionLabel: String? = null,
     onAction: () -> Unit = {},
-    secondaryActionIcon: SlockLucideIconName? = null,
+    secondaryActionIcon: RaftLucideIconName? = null,
     secondaryActionLabel: String? = null,
     onSecondaryAction: () -> Unit = {}
 ) {
     Column(
-        modifier = Modifier.background(Color(0xCC000000)).padding(SlockSpacing.Sm),
+        modifier = Modifier.background(Color(0xCC000000)).padding(RaftAppSpacing.Sm),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
-        SlockLucideIcon(
+        RaftLucideIcon(
             iconName,
             modifier = Modifier.size(28.dp),
             color = "#FFFFFFFF",
@@ -256,32 +256,32 @@ private fun ThreadInlineVideoOverlay(
         )
         Text(
             text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.SurfaceWhite,
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.SurfaceWhite,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
         if (actionIcon != null || secondaryActionIcon != null) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 actionIcon?.let { icon ->
-                    SlockBrutalIconButton(
+                    RaftBrutalIconButton(
                         iconName = icon,
                         onClick = onAction,
                         contentDescription = actionLabel,
-                        backgroundColor = SlockColor.SurfaceWhite,
+                        backgroundColor = RaftColor.SurfaceWhite,
                         size = 34.dp,
                         shadowOffset = 0.dp
                     )
                 }
                 secondaryActionIcon?.let { icon ->
-                    SlockBrutalIconButton(
+                    RaftBrutalIconButton(
                         iconName = icon,
                         onClick = onSecondaryAction,
                         contentDescription = secondaryActionLabel,
-                        backgroundColor = SlockColor.SurfaceWhite,
+                        backgroundColor = RaftColor.SurfaceWhite,
                         size = 34.dp,
                         shadowOffset = 0.dp
                     )

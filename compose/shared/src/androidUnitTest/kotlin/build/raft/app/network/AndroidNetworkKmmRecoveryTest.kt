@@ -1,7 +1,7 @@
 package build.raft.app.network
 
-import build.raft.app.data.InMemorySlockKeyValueStore
-import build.raft.app.data.SlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RaftKeyValueStore
 import com.tencent.kmm.network.export.VBTransportAndroidEngine
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,7 +15,7 @@ private const val OTHER_ENVIRONMENT = "staging|https://api-staging.raft.build/ap
 class AndroidNetworkKmmRecoveryTest {
     @Test
     fun productionPolicyEnablesReviewedFiveShardRecoveryForEveryBuild() {
-        val policy = slockAndroidNetworkKmmRecoveryPolicy()
+        val policy = raftAndroidNetworkKmmRecoveryPolicy()
 
         assertTrue(policy.enabled)
         assertEquals(5, policy.clientShardCount)
@@ -26,11 +26,11 @@ class AndroidNetworkKmmRecoveryTest {
 
     @Test
     fun installerPublishesTheExactProcessWidePolicy() = withRestoredPolicy {
-        val diagnostics = install(InMemorySlockKeyValueStore())
+        val diagnostics = install(InMemoryRaftKeyValueStore())
         val environmentHash = TEST_ENVIRONMENT.hashCode().toUInt().toString(16)
 
         assertEquals(
-            slockAndroidNetworkKmmRecoveryPolicy(),
+            raftAndroidNetworkKmmRecoveryPolicy(),
             VBTransportAndroidEngine.reusedHttp2Recovery
         )
         assertEquals(
@@ -48,7 +48,7 @@ class AndroidNetworkKmmRecoveryTest {
     fun persistedEnvironmentKillDisablesStartupAndClearsAfterAuthoritativeNonKill() =
         withRestoredPolicy {
             val store =
-                InMemorySlockKeyValueStore(
+                InMemoryRaftKeyValueStore(
                     mapOf("disabledEnvironmentIds.v1" to TEST_ENVIRONMENT)
                 )
 
@@ -68,7 +68,7 @@ class AndroidNetworkKmmRecoveryTest {
 
     @Test
     fun missingFlagDoesNotAlterAnExistingEnvironmentKillLatch() = withRestoredPolicy {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         install(store)
 
         apply(1L, serverId = "server-a", enabled = false, reason = "kill_switch")
@@ -83,7 +83,7 @@ class AndroidNetworkKmmRecoveryTest {
 
     @Test
     fun anyAuthoritativeNonKillServerClearsTheEnvironmentGlobalKill() = withRestoredPolicy {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         install(store)
 
         apply(1L, serverId = "server-a", enabled = false, reason = "kill_switch")
@@ -97,7 +97,7 @@ class AndroidNetworkKmmRecoveryTest {
     @Test
     fun ordinaryDisabledEvaluationClearsRatherThanCreatingAnEmergencyKillLatch() =
         withRestoredPolicy {
-            val store = InMemorySlockKeyValueStore()
+            val store = InMemoryRaftKeyValueStore()
             install(store)
             apply(1L, serverId = "server-a", enabled = false, reason = "kill_switch")
 
@@ -111,28 +111,28 @@ class AndroidNetworkKmmRecoveryTest {
 
     @Test
     fun persistedKillsAreScopedToTheCurrentApiEnvironment() = withRestoredPolicy {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         install(store)
         apply(1L, serverId = "server-a", enabled = false, reason = "kill_switch")
 
-        SlockNetworkKmmRecoveryRemoteFlagBridge.updateCurrentEnvironment(OTHER_ENVIRONMENT)
+        RaftNetworkKmmRecoveryRemoteFlagBridge.updateCurrentEnvironment(OTHER_ENVIRONMENT)
 
         assertEquals(true, VBTransportAndroidEngine.reusedHttp2Recovery.enabled)
         assertEquals(TEST_ENVIRONMENT, store.getString("disabledEnvironmentIds.v1"))
 
-        SlockNetworkKmmRecoveryRemoteFlagBridge.updateCurrentEnvironment(TEST_ENVIRONMENT)
+        RaftNetworkKmmRecoveryRemoteFlagBridge.updateCurrentEnvironment(TEST_ENVIRONMENT)
 
         assertEquals(false, VBTransportAndroidEngine.reusedHttp2Recovery.enabled)
     }
 
     @Test
     fun inactiveLateServerEvaluationCannotMutateTheGlobalLatch() = withRestoredPolicy {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         install(store)
-        SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-1", "server-a")
+        RaftNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-1", "server-a")
         apply(1L, serverId = "server-a", enabled = true, reason = "default")
 
-        SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-1", "server-b")
+        RaftNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-1", "server-b")
         val ignoredLateKill =
             apply(2L, serverId = "server-a", enabled = false, reason = "kill_switch")
 
@@ -140,12 +140,12 @@ class AndroidNetworkKmmRecoveryTest {
         assertEquals(true, VBTransportAndroidEngine.reusedHttp2Recovery.enabled)
         assertNull(store.getString("disabledEnvironmentIds.v1"))
 
-        SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-2", "server-a")
+        RaftNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-2", "server-a")
         apply(3L, serverId = "server-a", enabled = false, reason = "kill_switch")
 
         assertEquals(false, VBTransportAndroidEngine.reusedHttp2Recovery.enabled)
 
-        SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-2", null)
+        RaftNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-2", null)
         val ignoredInactiveClear =
             apply(4L, serverId = "server-a", enabled = true, reason = "default")
 
@@ -156,13 +156,13 @@ class AndroidNetworkKmmRecoveryTest {
     @Test
     fun initialNullSelectionDoesNotChangeAPersistedEnvironmentKillPolicy() = withRestoredPolicy {
         val store =
-            InMemorySlockKeyValueStore(
+            InMemoryRaftKeyValueStore(
                 mapOf("disabledEnvironmentIds.v1" to TEST_ENVIRONMENT)
             )
         install(store)
 
         val update =
-            SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-unselected", null)
+            RaftNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection("shell-unselected", null)
 
         assertNull(update)
         assertEquals(false, VBTransportAndroidEngine.reusedHttp2Recovery.enabled)
@@ -170,7 +170,7 @@ class AndroidNetworkKmmRecoveryTest {
 
     @Test
     fun olderGlobalEvaluationCannotOverrideANewerAuthoritativeResult() = withRestoredPolicy {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         install(store)
 
         apply(2L, serverId = "server-b", enabled = true, reason = "default")
@@ -183,7 +183,7 @@ class AndroidNetworkKmmRecoveryTest {
 
     @Test
     fun newerMissingFlagDoesNotSuppressAnOlderAuthoritativeKill() = withRestoredPolicy {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         install(store)
 
         apply(2L, serverId = "server-b", enabled = false, reason = "missing_flag")
@@ -199,7 +199,7 @@ class AndroidNetworkKmmRecoveryTest {
     fun persistenceDiagnosticRequiresAWriteReadBackMatchAndRetriesOnce() = withRestoredPolicy {
         var writes = 0
         val store =
-            object : SlockKeyValueStore {
+            object : RaftKeyValueStore {
                 override fun getString(key: String): String? = null
 
                 override fun putString(key: String, value: String?) {
@@ -219,7 +219,7 @@ class AndroidNetworkKmmRecoveryTest {
     fun startupReadFailureIsVisibleAndFallsBackToTheReviewedDefaultOnPolicy() =
         withRestoredPolicy {
             val failingStore =
-                object : SlockKeyValueStore {
+                object : RaftKeyValueStore {
                     override fun getString(key: String): String? = error("read failed")
 
                     override fun putString(key: String, value: String?) = Unit
@@ -235,7 +235,7 @@ class AndroidNetworkKmmRecoveryTest {
     @Test
     fun apiEnvironmentReadFailureStillInstallsDefaultOnPolicyAndRemoteBridge() =
         withRestoredPolicy {
-            val store = InMemorySlockKeyValueStore()
+            val store = InMemoryRaftKeyValueStore()
 
             val diagnostics =
                 installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
@@ -266,21 +266,21 @@ class AndroidNetworkKmmRecoveryTest {
     fun environmentIdentityIncludesCustomApiBaseUrlAndNormalizesTrailingSlash() {
         assertEquals(
             "custom|HTTPS://EXAMPLE.TEST/API",
-            slockNetworkKmmRecoveryEnvironmentId(" Custom ", " HTTPS://EXAMPLE.TEST/API/ ")
+            raftNetworkKmmRecoveryEnvironmentId(" Custom ", " HTTPS://EXAMPLE.TEST/API/ ")
         )
     }
 
     @Test
     fun customEnvironmentDiagnosticsNeverExposeTheRawUrlOrCredentials() = withRestoredPolicy {
         val environmentId =
-            slockNetworkKmmRecoveryEnvironmentId(
+            raftNetworkKmmRecoveryEnvironmentId(
                 "custom",
                 "https://user:password@example.test/API?api_key=secret"
             )
 
         val diagnostics =
             installAndroidNetworkKmmReusedHttp2Recovery(
-                InMemorySlockKeyValueStore(),
+                InMemoryRaftKeyValueStore(),
                 environmentId
             )
 
@@ -293,7 +293,7 @@ class AndroidNetworkKmmRecoveryTest {
         assertFalse(diagnostics.contains("example.test"))
     }
 
-    private fun install(store: SlockKeyValueStore): String =
+    private fun install(store: RaftKeyValueStore): String =
         installAndroidNetworkKmmReusedHttp2Recovery(store, TEST_ENVIRONMENT)
 
     private fun apply(
@@ -303,7 +303,7 @@ class AndroidNetworkKmmRecoveryTest {
         reason: String?,
         environmentId: String = TEST_ENVIRONMENT
     ): String? =
-        SlockNetworkKmmRecoveryRemoteFlagBridge.apply(
+        RaftNetworkKmmRecoveryRemoteFlagBridge.apply(
             environmentId = environmentId,
             evaluationGeneration = generation,
             serverId = serverId,

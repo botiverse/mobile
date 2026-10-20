@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.slockLogInfo
-import build.raft.app.slockLogWarn
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -14,22 +14,22 @@ import kotlinx.coroutines.launch
  *
  * The host calls [install] at process start and [updateRegistration] with the
  * Firebase Installation ID from `FirebaseMessagingService.onRegistered`. Logout
- * unbind and account switches go through [SlockPushRegistrationLifecycle].
+ * unbind and account switches go through [RaftPushRegistrationLifecycle].
  * Android has no OS-level remote-notification switch to toggle (the android
  * actual of that hook is a no-op); the server-side unbind is what stops delivery.
  * It also keeps the server's delivery-status answer, which tells the background
  * realtime path whether FCM already delivers a server's tray notifications.
  */
-object SlockAndroidPushRegistrationBridge {
+object RaftAndroidPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
 
     @Volatile
-    private var coordinator: SlockPushRegistrationCoordinator? = null
+    private var coordinator: RaftPushRegistrationCoordinator? = null
 
     fun install(candidateInstallationId: String): String {
         val runtime = coordinator ?: createCoordinator().also {
             coordinator = it
-            SlockPushRegistrationLifecycle.install(it)
+            RaftPushRegistrationLifecycle.install(it)
         }
         val installationId = runtime.installationId(candidateInstallationId)
         runtime.onSessionSaved()
@@ -43,7 +43,7 @@ object SlockAndroidPushRegistrationBridge {
     ) {
         val runtime = coordinator
         if (runtime == null) {
-            slockLogWarn(PUSH_LOG_TAG, "registration_rejected reason=bridge_not_installed provider=fcm")
+            raftLogWarn(PUSH_LOG_TAG, "registration_rejected reason=bridge_not_installed provider=fcm")
             return
         }
         scope.launch {
@@ -68,7 +68,7 @@ object SlockAndroidPushRegistrationBridge {
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (error: Throwable) {
-                slockLogWarn(
+                raftLogWarn(
                     PUSH_LOG_TAG,
                     "delivery_status_result result=error trigger=$reason " +
                         "errorType=${error::class.simpleName ?: "unknown"} provider=fcm"
@@ -81,32 +81,32 @@ object SlockAndroidPushRegistrationBridge {
      * The stored delivery-status answer and this installation's id, for the background realtime path to
      * match against the current environment and user. Null when [install] has not run in this process.
      */
-    fun storedDeliveryStatusOrNull(): SlockPushDeliveryStatus? =
+    fun storedDeliveryStatusOrNull(): RaftPushDeliveryStatus? =
         runCatching { coordinator?.storedDeliveryStatus() }.getOrNull()
 
     fun installationIdOrNull(): String? =
         runCatching { coordinator?.currentInstallationId() }.getOrNull()
 
-    private fun createCoordinator(): SlockPushRegistrationCoordinator {
+    private fun createCoordinator(): RaftPushRegistrationCoordinator {
         val store =
-            SlockSharedKeyValueStoreProvider.create(
-                namespace = SLOCK_PUSH_REGISTRATION_MMKV_NAMESPACE,
+            RaftSharedKeyValueStoreProvider.create(
+                namespace = RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE,
                 storageName = "push registration"
             ).store
-        return SlockPushRegistrationCoordinator(
+        return RaftPushRegistrationCoordinator(
             store = store,
-            spec = SlockPushProviderSpec.Fcm,
-            currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
-            authRuntimeReady = { SlockSharedStoreRegistry.currentOrNull() != null },
+            spec = RaftPushProviderSpec.Fcm,
+            currentSession = { RaftSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
+            authRuntimeReady = { RaftSharedStoreRegistry.currentOrNull() != null },
             apiProvider = {
-                SlockSharedStoreRegistry.currentOrNull()?.networkClient?.let(::SlockPushRegistrationNetworkApi)
+                RaftSharedStoreRegistry.currentOrNull()?.networkClient?.let(::RaftPushRegistrationNetworkApi)
             },
             scope = scope,
             currentEnvironmentId = {
-                SlockSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
+                RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
             },
-            infoLogger = { message -> slockLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },
-            warningLogger = { message -> slockLogWarn(PUSH_LOG_TAG, "$message provider=fcm") }
+            infoLogger = { message -> raftLogInfo(PUSH_LOG_TAG, "$message provider=fcm") },
+            warningLogger = { message -> raftLogWarn(PUSH_LOG_TAG, "$message provider=fcm") }
         )
     }
 }

@@ -1,6 +1,6 @@
 package build.raft.app.core.data.storage
 
-import build.raft.app.data.SlockAndroidSqlDatabaseContext
+import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -13,7 +13,7 @@ class StorageManagementRepositoryTest {
     fun diagnosticsLogsAreCountedButLeftToTheDiagnosticsCleaner() {
         val root = Files.createTempDirectory("slock-storage-test").toFile()
         try {
-            val picked = root.resolve(SLOCK_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME).also { it.mkdirs() }
+            val picked = root.resolve(RAFT_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME).also { it.mkdirs() }
             picked.resolve("picked.png").writeBytesOfSize(7)
             val logRing = root.resolve("raft_diagnostics_logs").also { it.mkdirs() }
             val openLog = logRing.resolve("launch-1/raft-diagnostics.jsonl").also { it.parentFile.mkdirs() }.writeBytesOfSize(20)
@@ -45,8 +45,8 @@ class StorageManagementRepositoryTest {
     fun snapshotCountsDatabaseImageCacheAndTemporaryLogsSeparately() {
         val root = Files.createTempDirectory("slock-storage-test").toFile()
         try {
-            val database = root.resolve(SlockAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
-            val wal = root.resolve("${SlockAndroidSqlDatabaseContext.DatabaseFileName}-wal").writeBytesOfSize(4)
+            val database = root.resolve(RaftAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
+            val wal = root.resolve("${RaftAndroidSqlDatabaseContext.DatabaseFileName}-wal").writeBytesOfSize(4)
             val imageCache = root.resolve("image_cache").also { it.mkdirs() }
             imageCache.resolve("avatar.bin").writeBytesOfSize(8)
             val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }
@@ -83,7 +83,7 @@ class StorageManagementRepositoryTest {
     fun clearOnlyDeletesTheSelectedRebuildableCategory() {
         val root = Files.createTempDirectory("slock-storage-clear-test").toFile()
         try {
-            val database = root.resolve(SlockAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
+            val database = root.resolve(RaftAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
             val imageCache = root.resolve("image_cache").also { it.mkdirs() }
             val image = imageCache.resolve("avatar.bin").writeBytesOfSize(8)
             val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }
@@ -121,7 +121,7 @@ class StorageManagementRepositoryTest {
     fun clearTemporaryFilesAlsoDeletesPickedThreadAttachmentStaging() {
         val root = Files.createTempDirectory("slock-storage-picked-clear-test").toFile()
         try {
-            val database = root.resolve(SlockAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
+            val database = root.resolve(RaftAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
             val pickedAttachments = root.resolve("slock-picked-thread-attachments").also { it.mkdirs() }
             val picked = pickedAttachments.resolve("picked.png").writeBytesOfSize(7)
             val logs = root.resolve("logs").also { it.mkdirs() }
@@ -154,7 +154,7 @@ class StorageManagementRepositoryTest {
     fun clearAttachmentDownloadsKeepsDatabaseImageCacheAndLogs() {
         val root = Files.createTempDirectory("slock-storage-attachment-clear-test").toFile()
         try {
-            val database = root.resolve(SlockAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
+            val database = root.resolve(RaftAndroidSqlDatabaseContext.DatabaseFileName).writeBytesOfSize(10)
             val imageCache = root.resolve("image_cache").also { it.mkdirs() }
             val image = imageCache.resolve("avatar.bin").writeBytesOfSize(8)
             val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }

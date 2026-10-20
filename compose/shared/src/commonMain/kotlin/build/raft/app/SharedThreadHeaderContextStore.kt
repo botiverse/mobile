@@ -7,7 +7,7 @@ import build.raft.app.model.safeDisplayNameOrNull
 internal data class SharedThreadHeaderContext(
     val title: String,
     val subtitle: String?,
-    val originMessage: KuiklyThreadMessageItem?,
+    val originMessage: RaftThreadMessageItem?,
     val originPreview: String?,
     val originParentMessageId: String?,
     val originStatus: String,
@@ -26,13 +26,13 @@ internal object SharedThreadHeaderContextStore {
             originMessage = null,
             originPreview = null,
             originParentMessageId =
-                if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
                     parentMessageId?.takeIf { it.isNotBlank() }
                 } else {
                     null
                 },
             originStatus =
-                if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && !parentMessageId.isNullOrBlank()) {
+                if (surfaceKind == RaftThreadSurfaceKind.ReplyThread && !parentMessageId.isNullOrBlank()) {
                     "loading"
                 } else {
                     "none"
@@ -42,13 +42,13 @@ internal object SharedThreadHeaderContextStore {
     fun conversationContext(
         surfaceKind: String,
         conversation: ConversationSummary,
-        originMessage: KuiklyThreadMessageItem?,
+        originMessage: RaftThreadMessageItem?,
         parentMessageId: String?,
         originFallback: ThreadLaunchOriginFallback? = null,
         dmPeerName: String? = null,
         originPending: Boolean = false
     ): SharedThreadHeaderContext {
-        val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val isReplyThread = surfaceKind == RaftThreadSurfaceKind.ReplyThread
         val routeIdentity = conversation.resolveThreadRouteIdentity()
         val resolvedOriginParentMessageId =
             if (isReplyThread) {
@@ -76,15 +76,15 @@ internal object SharedThreadHeaderContextStore {
         return SharedThreadHeaderContext(
             title =
                 when (surfaceKind) {
-                    KuiklyThreadSurfaceKind.ReplyThread -> ""
-                    KuiklyThreadSurfaceKind.DirectMessage ->
+                    RaftThreadSurfaceKind.ReplyThread -> ""
+                    RaftThreadSurfaceKind.DirectMessage ->
                         launchTitleFor(surfaceKind, dmPeerName ?: safeConversationTitle(conversation))
                     else -> safeConversationTitle(conversation)
                 },
             subtitle =
                 when (surfaceKind) {
-                    KuiklyThreadSurfaceKind.DirectMessage -> null
-                    KuiklyThreadSurfaceKind.ReplyThread ->
+                    RaftThreadSurfaceKind.DirectMessage -> null
+                    RaftThreadSurfaceKind.ReplyThread ->
                         // task #399: a thread hosted in a DM carries the peer's
                         // @-name, not a # channel label — `conversation.name`
                         // is the best available peer projection (inbox items
@@ -123,12 +123,12 @@ internal object SharedThreadHeaderContextStore {
     fun launchOriginContext(
         surfaceKind: String,
         routeIdentity: ThreadRouteIdentity,
-        originMessage: KuiklyThreadMessageItem?,
+        originMessage: RaftThreadMessageItem?,
         parentMessageId: String?,
         originFallback: ThreadLaunchOriginFallback? = null,
         dmPeerName: String? = null
     ): SharedThreadHeaderContext {
-        val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val isReplyThread = surfaceKind == RaftThreadSurfaceKind.ReplyThread
         val resolvedOriginParentMessageId =
             if (isReplyThread) {
                 originMessage?.id
@@ -154,7 +154,7 @@ internal object SharedThreadHeaderContextStore {
         return SharedThreadHeaderContext(
             title =
                 when (surfaceKind) {
-                    KuiklyThreadSurfaceKind.DirectMessage -> launchTitleFor(surfaceKind, dmPeerName)
+                    RaftThreadSurfaceKind.DirectMessage -> launchTitleFor(surfaceKind, dmPeerName)
                     else -> ""
                 },
             subtitle = null,
@@ -173,7 +173,7 @@ internal object SharedThreadHeaderContextStore {
     }
 
     private fun launchTitleFor(surfaceKind: String, dmPeerName: String?): String =
-        if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+        if (surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
             threadHeaderSafeTitleOrNull(dmPeerName) ?: ""
         } else {
             ""
@@ -196,9 +196,9 @@ internal fun ThreadLaunchOriginFallback.matchesOriginParent(
     return "$fallbackParentChannelId:$normalizedParentMessageId" == routeParentKey
 }
 
-internal fun KuiklyThreadScreenPayload.withHeaderContext(
+internal fun RaftThreadScreenPayload.withHeaderContext(
     context: SharedThreadHeaderContext
-): KuiklyThreadScreenPayload =
+): RaftThreadScreenPayload =
     copy(
         title = context.title,
         subtitle = context.subtitle,
@@ -209,7 +209,7 @@ internal fun KuiklyThreadScreenPayload.withHeaderContext(
         originErrorCode = context.originErrorCode
     )
 
-internal fun KuiklyThreadScreenPayload.withLaunchHeaderContext(): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withLaunchHeaderContext(): RaftThreadScreenPayload =
     withHeaderContext(
         SharedThreadHeaderContextStore.launchContext(
             surfaceKind = surfaceKind,

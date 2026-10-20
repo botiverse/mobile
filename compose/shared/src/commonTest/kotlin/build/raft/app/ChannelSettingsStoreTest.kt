@@ -11,7 +11,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
@@ -19,8 +19,8 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
-import build.raft.app.data.SlockExpectedAuthBinding
-import build.raft.app.data.SlockNetworkClient
+import build.raft.app.data.RaftExpectedAuthBinding
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -161,7 +161,7 @@ class ChannelSettingsStoreTest {
         val dataSource =
             RealChannelSettingsDataSource(
                 route = route(),
-                authStore = InMemorySlockAuthSessionStore(),
+                authStore = InMemoryRaftAuthSessionStore(),
                 owner = routeOwner(),
                 gateway = gateway,
             )
@@ -564,8 +564,8 @@ class ChannelSettingsStoreTest {
     ): AuthenticatedRouteOwner =
         AuthenticatedRouteOwner(environmentId, accountId, "server-1")
 
-    private fun authStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun authStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
                 accessToken = "access",
@@ -693,7 +693,7 @@ private class FakeChannelSettingsDataSource(
 }
 
 private class FixedChannelSettingsGateway(
-    private val client: SlockNetworkClient,
+    private val client: RaftNetworkClient,
 ) : AuthenticatedRouteAuthorityGateway {
     private val receipt =
         AuthenticatedRouteAuthorityReceipt(
@@ -702,7 +702,7 @@ private class FixedChannelSettingsGateway(
             selectionGeneration = 1L,
             canManageSettings = true,
             expectedAuthBinding =
-                SlockExpectedAuthBinding(
+                RaftExpectedAuthBinding(
                     accountId = "user-1",
                     accessToken = "access",
                     refreshToken = "refresh",
@@ -717,7 +717,7 @@ private class FixedChannelSettingsGateway(
     override suspend fun isCurrent(receipt: AuthenticatedRouteAuthorityReceipt): Boolean =
         receipt == this.receipt
 
-    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): SlockNetworkClient = client
+    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): RaftNetworkClient = client
 }
 
 private class RejectingChannelSettingsGateway : AuthenticatedRouteAuthorityGateway {
@@ -731,9 +731,9 @@ private class RejectingChannelSettingsGateway : AuthenticatedRouteAuthorityGatew
 
     override suspend fun isCurrent(receipt: AuthenticatedRouteAuthorityReceipt): Boolean = false
 
-    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): SlockNetworkClient {
+    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): RaftNetworkClient {
         networkClientCalls += 1
-        return object : SlockNetworkClient {
+        return object : RaftNetworkClient {
             override suspend fun request(
                 priority: DataRequestPriority,
                 path: String,
@@ -746,7 +746,7 @@ private class RejectingChannelSettingsGateway : AuthenticatedRouteAuthorityGatew
     }
 }
 
-private class RecordingChannelSettingsNetworkClient : SlockNetworkClient {
+private class RecordingChannelSettingsNetworkClient : RaftNetworkClient {
     val paths = mutableListOf<String>()
     val methods = mutableListOf<String>()
     val bodies = mutableListOf<String?>()

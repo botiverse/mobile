@@ -848,8 +848,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(listOf("""{"messageIds":["message-1","message-2","message-3"]}"""), network.savedCheckBodies)
     }
 
-    private fun sampleStore(): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun sampleStore(): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user =
                     StoredAuthUser(
@@ -876,7 +876,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
         var savedJson: String = """{"saved":[]}""",
         var searchJson: String = """{"results":[]}""",
         var savedCheckJson: String = """{"savedIds":[]}"""
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         val inboxCalls = mutableListOf<InboxCall>()
         val searchCalls = mutableListOf<SearchCall>()
         val saveBodies = mutableListOf<String>()

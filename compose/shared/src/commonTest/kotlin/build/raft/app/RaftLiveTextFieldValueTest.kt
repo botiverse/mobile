@@ -15,7 +15,7 @@ class RaftLiveTextFieldValueTest {
         live.recordEdit(committed)
 
         assertEquals(committed, live.value)
-        val snapshot = live.value.toSlockTextInputState().raftWithFinishedComposition()
+        val snapshot = live.value.toRaftTextInputState().raftWithFinishedComposition()
         assertEquals("hello", snapshot.text)
         assertEquals(TextInputState.NO_COMPOSITION, snapshot.compositionStart)
         assertEquals(TextInputState.NO_COMPOSITION, snapshot.compositionEnd)

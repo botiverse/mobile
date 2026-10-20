@@ -29,12 +29,12 @@ class ThreadReverseLayoutPreferenceTest {
     @Test
     fun settingsSwitchShowsTheDefaultUntilChangedThenStoresTheChoice(): Unit = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val keyValues = InMemorySlockKeyValueStore()
+        val keyValues = InMemoryRaftKeyValueStore()
         var flagDefault = true
         val preferenceStore = KeyValueThreadReverseLayoutPreferenceStore(keyValues)
         val dataSource =
             SharedSettingsDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 threadReverseLayoutPreferenceStore = preferenceStore,
                 threadReverseLayoutDefault = { flagDefault }
             )
@@ -65,7 +65,7 @@ class ThreadReverseLayoutPreferenceTest {
 
     @Test
     fun rowIsUnavailableWithoutPreferenceStore(): Unit = runBlocking {
-        val dataSource = SharedSettingsDataSource(sessionStore = InMemorySlockAuthSessionStore(sampleSession()))
+        val dataSource = SharedSettingsDataSource(sessionStore = InMemoryRaftAuthSessionStore(sampleSession()))
         val snapshot = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
         assertFalse(snapshot.data.threadReverseLayout.available)
         assertIs<DataResult.Error>(dataSource.setThreadReverseLayoutEnabled(true))

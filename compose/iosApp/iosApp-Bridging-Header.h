@@ -1,5 +1,5 @@
 #import "RaftPageViewController.h"
 #import "RaftPageRouter.h"
 #import "HRBridgeModule.h"
-#import "SlockCmpBridgeHost.h"
+#import "RaftCmpBridgeHost.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"

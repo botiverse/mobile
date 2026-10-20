@@ -44,7 +44,7 @@ import platform.darwin.NSObject
 internal actual fun RaftSandboxWebViewHost(
     config: RaftWebViewConfig,
     events: RaftWebViewEvents,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
     modifier: Modifier,
 ) {
     UIKitView(
@@ -86,7 +86,7 @@ private const val RaftIosHostBridgeScript =
         "writable:false,configurable:false});})();"
 
 /**
- * Port of the Kuikly iOS `SlockSandboxWebView.m`: WKWebView rebuilt whenever a configuration-time
+ * Port of the Kuikly iOS `RaftSandboxWebView.m`: WKWebView rebuilt whenever a configuration-time
  * attribute changes (scripts, navigation policy, storage, ephemeral store, injected script, host
  * bridge), sandbox navigation fence, `raftHostPort` bridge with origin + document checks, KVO
  * navigation state, desktop `pageZoom` (task #514) and web content process recovery (task #6).
@@ -117,7 +117,7 @@ internal class RaftIosSandboxWebView(
     private var stateTimer: NSTimer? = null
     private var disposed = false
     private var configured = false
-    private var boundController: SlockWebViewController? = null
+    private var boundController: RaftWebViewController? = null
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
@@ -163,7 +163,7 @@ internal class RaftIosSandboxWebView(
         }
     }
 
-    fun bindController(controller: SlockWebViewController) {
+    fun bindController(controller: RaftWebViewController) {
         if (boundController === controller) return
         boundController?.unbindCommandDispatcher(this)
         boundController = controller
@@ -302,7 +302,7 @@ internal class RaftIosSandboxWebView(
         if (widthPoints <= 0.0) return
         val scale = view.window?.screen?.scale?.takeIf { it > 0.0 } ?: UIScreen.mainScreen.scale.takeIf { it > 0.0 } ?: 1.0
         val viewportPx = (widthPoints * scale).roundToInt()
-        val percent = slockFilePreviewDesktopScalePercent(viewportPx, scale.toFloat()) ?: return
+        val percent = raftFilePreviewDesktopScalePercent(viewportPx, scale.toFloat()) ?: return
         view.pageZoom = maxOf(percent / 100.0, 0.01)
     }
 
@@ -324,8 +324,8 @@ internal class RaftIosSandboxWebView(
         if (disposed) return
         val view = webView ?: return
         val command = navigationCommand.trim()
-        if (command.startsWith(SlockWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)) {
-            val script = command.removePrefix(SlockWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)
+        if (command.startsWith(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)) {
+            val script = command.removePrefix(RaftWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)
             if (script.length > RaftWebViewMaxRuntimeJavaScriptLength) return
             val activeURL = view.URL
             val sameTrustedDocument =
@@ -335,16 +335,16 @@ internal class RaftIosSandboxWebView(
             return
         }
         when (command) {
-            SlockWebViewController.COMMAND_GO_BACK -> if (view.canGoBack) view.goBack()
-            SlockWebViewController.COMMAND_GO_FORWARD -> if (view.canGoForward) view.goForward()
-            SlockWebViewController.COMMAND_RELOAD -> {
+            RaftWebViewController.COMMAND_GO_BACK -> if (view.canGoBack) view.goBack()
+            RaftWebViewController.COMMAND_GO_FORWARD -> if (view.canGoForward) view.goForward()
+            RaftWebViewController.COMMAND_RELOAD -> {
                 lastSuccessfulURL = ""
                 lastLoadFailureKey = ""
                 currentProgress = 0
                 currentLoading = true
                 view.reload()
             }
-            SlockWebViewController.COMMAND_STOP -> {
+            RaftWebViewController.COMMAND_STOP -> {
                 view.stopLoading()
                 currentLoading = false
             }
@@ -512,7 +512,7 @@ internal class RaftIosSandboxWebView(
         if (disposed) return
         val view = webView
         val state =
-            SlockWebViewNavigationState(
+            RaftWebViewNavigationState(
                 url = currentURL,
                 title = currentTitle,
                 canGoBack = view?.canGoBack ?: false,

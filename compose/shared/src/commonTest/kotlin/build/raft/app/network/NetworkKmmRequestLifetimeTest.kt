@@ -14,25 +14,25 @@ import kotlin.test.assertFalse
 class NetworkKmmRequestLifetimeTest {
     @Test
     fun concurrentComposerUploadsAndSendRemainProcessBoundAcrossVisibilityEdges() = runBlocking {
-        val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
+        val coordinator = RaftNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
         coordinator.onProcessVisibilityChanged(foreground = true)
         val callbacks = Channel<Pair<NetworkRequest, (NetworkResponse) -> Unit>>(Channel.UNLIMITED)
         var startCount = 0
         var cancelCount = 0
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 requestLifetimeCoordinator = coordinator,
                 requestStarterOverride =
-                    SlockNetworkRequestStarter { request, callback ->
+                    RaftNetworkRequestStarter { request, callback ->
                         startCount += 1
                         callbacks.trySend(request to callback).getOrThrow()
-                        SlockNetworkRequestCancelHandle { cancelCount += 1 }
+                        RaftNetworkRequestCancelHandle { cancelCount += 1 }
                     }
             )
         val sendPending =
             async {
                 executor.execute(
-                    priority = SlockRequestPriority.Foreground,
+                    priority = RaftRequestPriority.Foreground,
                     url = "https://example.test/api/messages",
                     method = "POST",
                     headers = mapOf(HEADER_SERVER_ID to "server-1"),
@@ -43,7 +43,7 @@ class NetworkKmmRequestLifetimeTest {
         val firstUploadPending =
             async {
                 executor.executeMultipart(
-                    priority = SlockRequestPriority.Foreground,
+                    priority = RaftRequestPriority.Foreground,
                     url = "https://example.test/api/attachments/upload",
                     fields = mapOf("channelId" to "channel-1"),
                     files =
@@ -62,7 +62,7 @@ class NetworkKmmRequestLifetimeTest {
         val secondUploadPending =
             async {
                 executor.executeMultipart(
-                    priority = SlockRequestPriority.Foreground,
+                    priority = RaftRequestPriority.Foreground,
                     url = "https://example.test/api/attachments/upload",
                     fields = mapOf("channelId" to "channel-1"),
                     files =
@@ -108,13 +108,13 @@ class NetworkKmmRequestLifetimeTest {
 
     @Test
     fun callbackCompletionReturnsOnTheOwningCoroutineWithNoExtraAttempt() = runBlocking {
-        val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { 2_000L })
+        val coordinator = RaftNetworkRequestLifetimeCoordinator(nowMillis = { 2_000L })
         var startCount = 0
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 requestLifetimeCoordinator = coordinator,
                 requestStarterOverride =
-                    SlockNetworkRequestStarter { request, callback ->
+                    RaftNetworkRequestStarter { request, callback ->
                         startCount += 1
                         callback(
                             NetworkResponse(
@@ -124,13 +124,13 @@ class NetworkKmmRequestLifetimeTest {
                                 body = NetworkResponseBody("ok".encodeToByteArray())
                             )
                         )
-                        SlockNetworkRequestCancelHandle { error("completed call must not cancel") }
+                        RaftNetworkRequestCancelHandle { error("completed call must not cancel") }
                     }
             )
 
         val response =
             executor.execute(
-                priority = SlockRequestPriority.Foreground,
+                priority = RaftRequestPriority.Foreground,
                 url = "https://example.test/messages/channel/channel-1",
                 method = "GET",
                 headers = emptyMap(),

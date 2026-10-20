@@ -22,7 +22,7 @@ import build.raft.app.data.SharedAgentCreateVisibilityRule
 import build.raft.app.data.SharedResolvedAgentCreateForm
 import build.raft.app.data.SharedRuntimeFormDefinitionRef
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,7 +51,7 @@ internal class ComposeHomeTitlebarPreferenceVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         val enabled =
-            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                 .readHomeServerAvatarEnabledSync()
         setContent { HomeTitlebarPreferenceVisualScreen(enabled) }
     }
@@ -107,12 +107,12 @@ internal class ComposeHomeLoadingVisualPage : BasePager() {
 
 @Composable
 private fun HomeLoadingVisualContent() {
-    SlockStructuralHomeShell(
+    RaftStructuralHomeShell(
         currentServerName = VisualFixtureData.Server.NAME,
         currentServerId = VisualFixtureData.Server.ID,
         servers =
             listOf(
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = VisualFixtureData.Server.ID,
                     name = VisualFixtureData.Server.NAME,
                     slug = VisualFixtureData.Server.SLUG
@@ -289,34 +289,34 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
         val bottomSafeArea = pageData.params.optInt("bottomSafeAreaDp").dp
         setContent {
             var selectedKey by remember { mutableStateOf(initialSelectedKey) }
-            SlockAppBottomTabBarHost(
+            RaftAppBottomTabBarHost(
                 items =
                     listOf(
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "home",
                             "Home",
-                            SlockLucideIconName.House,
+                            RaftLucideIconName.House,
                             selected = selectedKey == "home",
                             enabled = disabledKey != "home"
                         ),
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "tasks",
                             "Tasks",
-                            SlockLucideIconName.SquareCheckBig,
+                            RaftLucideIconName.SquareCheckBig,
                             selected = selectedKey == "tasks",
                             enabled = disabledKey != "tasks"
                         ),
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "members",
                             "Members",
-                            SlockLucideIconName.Users,
+                            RaftLucideIconName.Users,
                             selected = selectedKey == "members",
                             enabled = disabledKey != "members"
                         ),
-                        SlockBottomTabItemPayload(
+                        RaftBottomTabItemPayload(
                             "settings",
                             "Settings",
-                            SlockLucideIconName.Settings,
+                            RaftLucideIconName.Settings,
                             selected = selectedKey == "settings",
                             enabled = disabledKey != "settings"
                         )
@@ -339,9 +339,9 @@ internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
                     Modifier
                         .width(390.dp)
                         .height(798.dp)
-                        .background(SlockColor.SurfaceWhite),
+                        .background(RaftColor.SurfaceWhite),
             ) {
-                SlockLucideIcons.Names.chunked(10).forEach { rowNames ->
+                RaftLucideIcons.Names.chunked(10).forEach { rowNames ->
                     Row(
                         modifier = Modifier.width(390.dp).height(42.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -352,7 +352,7 @@ internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
                                 modifier = Modifier.width(39.dp).height(42.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                SlockLucideIcon(name = name, modifier = Modifier.size(24.dp))
+                                RaftLucideIcon(name = name, modifier = Modifier.size(24.dp))
                             }
                         }
                     }
@@ -372,40 +372,40 @@ internal class ComposeLucideStateAtlasVisualPage : BasePager() {
                     Modifier
                         .width(390.dp)
                         .height(84.dp)
-                        .background(SlockColor.SurfaceWhite),
+                        .background(RaftColor.SurfaceWhite),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LucideStateAtlasCell { SlockLucideIcon(SlockLucideIconName.Bookmark, Modifier.size(24.dp)) }
+                LucideStateAtlasCell { RaftLucideIcon(RaftLucideIconName.Bookmark, Modifier.size(24.dp)) }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(
-                        SlockLucideIconName.Bookmark,
+                    RaftLucideIcon(
+                        RaftLucideIconName.Bookmark,
                         Modifier.size(24.dp),
-                        fill = SlockColor.TextBlackArgb,
+                        fill = RaftColor.TextBlackArgb,
                     )
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 2f)
+                    RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 2f)
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 4f)
+                    RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 4f)
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 6f)
+                    RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(24.dp), strokeWidth = 6f)
                 }
                 listOf(0f, 90f, 180f, 270f).forEach { rotation ->
                     LucideStateAtlasCell {
-                        SlockLucideIcon(
-                            SlockLucideIconName.ArrowLeft,
+                        RaftLucideIcon(
+                            RaftLucideIconName.ArrowLeft,
                             Modifier.size(24.dp),
-                            color = if (rotation == 0f) SlockColor.AccentRedArgb else SlockColor.TextBlackArgb,
+                            color = if (rotation == 0f) RaftColor.AccentRedArgb else RaftColor.TextBlackArgb,
                             rotationDegrees = rotation,
                         )
                     }
                 }
                 LucideStateAtlasCell {
-                    SlockLucideIcon(
-                        SlockLucideIconName.CircleArrowUp,
+                    RaftLucideIcon(
+                        RaftLucideIconName.CircleArrowUp,
                         Modifier.size(24.dp),
                         verticalOffsetDp = 4f,
                     )
@@ -812,7 +812,7 @@ internal class ComposeUiSegmentedControlVisualPage : BasePager() {
 internal class ComposeUiButtonVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
     }
 }
 
@@ -831,7 +831,7 @@ internal class ComposeUiButtonThemeVisualPage : BasePager() {
 internal class ComposeUiButtonElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiButtonVisualContent() } }
     }
 }
 
@@ -839,7 +839,7 @@ internal class ComposeUiButtonElegantVisualPage : BasePager() {
 internal class ComposeUiCardVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
     }
 }
 
@@ -848,7 +848,7 @@ internal class ComposeUiCardVisualPage : BasePager() {
 internal class ComposeUiCardElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCardVisualContent() } }
     }
 }
 
@@ -856,7 +856,7 @@ internal class ComposeUiCardElegantVisualPage : BasePager() {
 internal class ComposeUiFormFieldVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
     }
 }
 
@@ -865,7 +865,7 @@ internal class ComposeUiFormFieldVisualPage : BasePager() {
 internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiFormFieldVisualContent() } }
     }
 }
 
@@ -873,7 +873,7 @@ internal class ComposeUiFormFieldElegantVisualPage : BasePager() {
 internal class ComposeUiTextareaVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
     }
 }
 
@@ -882,7 +882,7 @@ internal class ComposeUiTextareaVisualPage : BasePager() {
 internal class ComposeUiTextareaElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiTextareaVisualContent() } }
     }
 }
 
@@ -890,7 +890,7 @@ internal class ComposeUiTextareaElegantVisualPage : BasePager() {
 internal class ComposeUiCheckboxVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
     }
 }
 
@@ -899,7 +899,7 @@ internal class ComposeUiCheckboxVisualPage : BasePager() {
 internal class ComposeUiCheckboxElegantVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
+        setContent { RaftThemeProvider(theme = raftLightTheme) { UiCheckboxVisualContent() } }
     }
 }
 

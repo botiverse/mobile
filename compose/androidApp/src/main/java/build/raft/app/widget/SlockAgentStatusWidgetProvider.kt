@@ -4,10 +4,10 @@ import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockAppLog
-import build.raft.app.core.data.network.RealSlockNetworkClientFactory
+import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.core.data.network.RealRaftNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.model.AgentStatus
 import android.app.PendingIntent
@@ -36,8 +36,8 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        val cache = SlockAgentWidgetCache(context)
-        val config = SlockWidgetServerConfigStore(context)
+        val cache = RaftAgentWidgetCache(context)
+        val config = RaftWidgetServerConfigStore(context)
         appWidgetIds.forEach { appWidgetId ->
             cache.clear(appWidgetId)
             config.clear(appWidgetId)
@@ -92,7 +92,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
         ) {
             if (appWidgetIds.isEmpty()) return
             scope.launch {
-                val cache = SlockAgentWidgetCache(context)
+                val cache = RaftAgentWidgetCache(context)
                 appWidgetIds.forEach { appWidgetId ->
                     val state = loadWidgetState(context, appWidgetId, cache.read(appWidgetId))
                     cache.write(appWidgetId, state)
@@ -106,25 +106,25 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
         private suspend fun loadWidgetState(
             context: Context,
             appWidgetId: Int,
-            previous: SlockAgentWidgetState
-        ): SlockAgentWidgetState {
+            previous: RaftAgentWidgetState
+        ): RaftAgentWidgetState {
             val storedSessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context))
             val session = storedSessionStore.readSession()
-                ?: return SlockAgentWidgetState(statusLabel = "Sign in to see agent activity")
-            val selectedServer = SlockWidgetServerConfigStore(context).resolveServer(appWidgetId, session)
+                ?: return RaftAgentWidgetState(statusLabel = "Sign in to see agent activity")
+            val selectedServer = RaftWidgetServerConfigStore(context).resolveServer(appWidgetId, session)
                 ?: return previous.asStale("Edit widget to choose a server")
             val scopedSession = session.copy(
                 selectedServerId = selectedServer.id,
                 selectedServerSlug = selectedServer.slug
             )
-            val sessionStore = InMemorySlockAuthSessionStore(scopedSession)
+            val sessionStore = InMemoryRaftAuthSessionStore(scopedSession)
             val networkClient =
-                RealSlockNetworkClientFactory.create(sessionStore, baseUrl = AndroidAuthApiFactory.currentBaseUrl(context))
+                RealRaftNetworkClientFactory.create(sessionStore, baseUrl = AndroidAuthApiFactory.currentBaseUrl(context))
             val response =
                 runCatching {
                     networkClient.request(DataRequestPriority.Visible, path = "agents")
                 }.getOrElse { throwable ->
-                    SlockAppLog.w(TAG, "agent refresh failed: ${throwable.javaClass.simpleName}")
+                    RaftAppLog.w(TAG, "agent refresh failed: ${throwable.javaClass.simpleName}")
                     return previous.asStale("Could not refresh")
                 }
             if (!response.isSuccessful) {
@@ -142,16 +142,16 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 .take(MAX_AGENT_ROWS)
                 .map { it.toWidgetRow(context) }
             if (rows.isEmpty()) {
-                return SlockAgentWidgetState(
+                return RaftAgentWidgetState(
                     title = "Live Agents",
                     agentName = "No agents yet",
                     avatarLabel = "A",
                     statusLabel = "No live agent activity",
-                    statusTone = SlockAgentWidgetTone.Offline,
+                    statusTone = RaftAgentWidgetTone.Offline,
                     lastUpdatedAtMillis = System.currentTimeMillis()
                 )
             }
-            return SlockAgentWidgetState(
+            return RaftAgentWidgetState(
                 title = "Live Agents",
                 agentName = rows.first().name,
                 avatarLabel = rows.first().avatarLabel,
@@ -262,21 +262,21 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 .joinToString(" ") { token -> token.replaceFirstChar { char -> char.uppercase() } }
                 .ifBlank { this }
 
-        private suspend fun AgentWidgetSummary.toWidgetRow(context: Context): SlockAgentWidgetRow {
+        private suspend fun AgentWidgetSummary.toWidgetRow(context: Context): RaftAgentWidgetRow {
             val tone =
                 when (status) {
-                    AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Online -> SlockAgentWidgetTone.Active
-                    AgentStatus.Idle -> SlockAgentWidgetTone.Idle
-                    AgentStatus.Error -> SlockAgentWidgetTone.Error
+                    AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Online -> RaftAgentWidgetTone.Active
+                    AgentStatus.Idle -> RaftAgentWidgetTone.Idle
+                    AgentStatus.Error -> RaftAgentWidgetTone.Error
                     AgentStatus.Disconnected, AgentStatus.Offline, null ->
-                        if (status == null && detail.isNotBlank()) SlockAgentWidgetTone.Active else SlockAgentWidgetTone.Offline
+                        if (status == null && detail.isNotBlank()) RaftAgentWidgetTone.Active else RaftAgentWidgetTone.Offline
                 }
-            return SlockAgentWidgetRow(
+            return RaftAgentWidgetRow(
                 name = name,
                 detail = detail,
                 avatarLabel = name.take(1).uppercase().ifBlank { "A" },
                 statusTone = tone,
-                avatarImagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it) }
+                avatarImagePath = avatarWireValue?.let { context.cacheRaftWidgetAvatarPath(it) }
             )
         }
 
@@ -286,7 +286,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             appWidgetIds: IntArray,
             refreshing: Boolean = false
         ) {
-            val cache = SlockAgentWidgetCache(context)
+            val cache = RaftAgentWidgetCache(context)
             appWidgetIds.forEach { widgetId ->
                 appWidgetManager.updateAppWidget(
                     widgetId,
@@ -295,21 +295,21 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private fun buildRemoteViews(context: Context, appWidgetId: Int, state: SlockAgentWidgetState): RemoteViews {
-            val views = RemoteViews(context.packageName, R.layout.slock_agent_status_widget)
-            views.setOnClickPendingIntent(R.id.slock_agent_widget_root, launchAppIntent(context))
-            views.setOnClickPendingIntent(R.id.slock_agent_widget_refresh, refreshIntent(context, appWidgetId))
-            views.setTextViewText(R.id.slock_agent_widget_title, state.title)
-            views.setTextViewText(R.id.slock_agent_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
-            views.setTextViewText(R.id.slock_agent_widget_updated, state.updatedLabel(context))
+        private fun buildRemoteViews(context: Context, appWidgetId: Int, state: RaftAgentWidgetState): RemoteViews {
+            val views = RemoteViews(context.packageName, R.layout.raft_agent_status_widget)
+            views.setOnClickPendingIntent(R.id.raft_agent_widget_root, launchAppIntent(context))
+            views.setOnClickPendingIntent(R.id.raft_agent_widget_refresh, refreshIntent(context, appWidgetId))
+            views.setTextViewText(R.id.raft_agent_widget_title, state.title)
+            views.setTextViewText(R.id.raft_agent_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
+            views.setTextViewText(R.id.raft_agent_widget_updated, state.updatedLabel(context))
             bindAgentRows(views, state)
             return views
         }
 
-        private fun bindAgentRows(views: RemoteViews, state: SlockAgentWidgetState) {
+        private fun bindAgentRows(views: RemoteViews, state: RaftAgentWidgetState) {
             val rows = state.rows.ifEmpty {
                 listOf(
-                    SlockAgentWidgetRow(
+                    RaftAgentWidgetRow(
                         name = state.agentName,
                         detail = state.updatedDetail,
                         avatarLabel = state.avatarLabel,
@@ -319,33 +319,33 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             }
             val rowIds =
                 intArrayOf(
-                    R.id.slock_agent_widget_row_1,
-                    R.id.slock_agent_widget_row_2,
-                    R.id.slock_agent_widget_row_3
+                    R.id.raft_agent_widget_row_1,
+                    R.id.raft_agent_widget_row_2,
+                    R.id.raft_agent_widget_row_3
                 )
             val avatarTextIds =
                 intArrayOf(
-                    R.id.slock_agent_widget_row_1_avatar,
-                    R.id.slock_agent_widget_row_2_avatar,
-                    R.id.slock_agent_widget_row_3_avatar
+                    R.id.raft_agent_widget_row_1_avatar,
+                    R.id.raft_agent_widget_row_2_avatar,
+                    R.id.raft_agent_widget_row_3_avatar
                 )
             val avatarImageIds =
                 intArrayOf(
-                    R.id.slock_agent_widget_row_1_avatar_image,
-                    R.id.slock_agent_widget_row_2_avatar_image,
-                    R.id.slock_agent_widget_row_3_avatar_image
+                    R.id.raft_agent_widget_row_1_avatar_image,
+                    R.id.raft_agent_widget_row_2_avatar_image,
+                    R.id.raft_agent_widget_row_3_avatar_image
                 )
             val dotIds =
                 intArrayOf(
-                    R.id.slock_agent_widget_row_1_status_dot,
-                    R.id.slock_agent_widget_row_2_status_dot,
-                    R.id.slock_agent_widget_row_3_status_dot
+                    R.id.raft_agent_widget_row_1_status_dot,
+                    R.id.raft_agent_widget_row_2_status_dot,
+                    R.id.raft_agent_widget_row_3_status_dot
                 )
             val detailIds =
                 intArrayOf(
-                    R.id.slock_agent_widget_row_1_detail,
-                    R.id.slock_agent_widget_row_2_detail,
-                    R.id.slock_agent_widget_row_3_detail
+                    R.id.raft_agent_widget_row_1_detail,
+                    R.id.raft_agent_widget_row_2_detail,
+                    R.id.raft_agent_widget_row_3_detail
                 )
             rowIds.indices.forEach { index ->
                 val row = rows.getOrNull(index)
@@ -367,16 +367,16 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private val SlockAgentWidgetTone.drawableRes: Int
+        private val RaftAgentWidgetTone.drawableRes: Int
             get() =
                 when (this) {
-                    SlockAgentWidgetTone.Active -> R.drawable.slock_widget_status_dot_active
-                    SlockAgentWidgetTone.Idle -> R.drawable.slock_widget_status_dot_idle
-                    SlockAgentWidgetTone.Error -> R.drawable.slock_widget_status_dot_error
-                    SlockAgentWidgetTone.Offline -> R.drawable.slock_widget_status_dot_offline
+                    RaftAgentWidgetTone.Active -> R.drawable.raft_widget_status_dot_active
+                    RaftAgentWidgetTone.Idle -> R.drawable.raft_widget_status_dot_idle
+                    RaftAgentWidgetTone.Error -> R.drawable.raft_widget_status_dot_error
+                    RaftAgentWidgetTone.Offline -> R.drawable.raft_widget_status_dot_offline
                 }
 
-        private fun SlockAgentWidgetState.updatedLabel(context: Context): String {
+        private fun RaftAgentWidgetState.updatedLabel(context: Context): String {
             if (refreshing) return "Updating..."
             if (lastUpdatedAtMillis <= 0L) return "Open Raft to start"
             val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(lastUpdatedAtMillis))

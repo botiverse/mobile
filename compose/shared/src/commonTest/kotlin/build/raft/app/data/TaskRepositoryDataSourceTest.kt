@@ -204,8 +204,8 @@ class TaskRepositoryDataSourceTest {
         Unit
     }
 
-    private fun sampleStore(): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun sampleStore(): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user =
                     StoredAuthUser(
@@ -237,7 +237,7 @@ class TaskRepositoryDataSourceTest {
         private val channelTasksJson: String = """{"tasks":[]}""",
         private val claimTaskJson: String = """{"task":{}}""",
         private val updateTaskStatusJson: String = """{"task":{}}"""
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         val priorities = mutableListOf<DataRequestPriority>()
         val claimedTaskIds = mutableListOf<String>()
         val channelTaskCalls = mutableListOf<String>()

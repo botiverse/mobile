@@ -19,8 +19,8 @@ internal data class ThreadReplyMetadata(
 internal data class ThreadTimelineSlice(
     val status: String,
     val originStatus: String,
-    val messages: List<KuiklyThreadMessageItem>,
-    val originMessage: KuiklyThreadMessageItem?,
+    val messages: List<RaftThreadMessageItem>,
+    val originMessage: RaftThreadMessageItem?,
     val focusedMessageId: String?,
     val focusedMessageRequestNonce: Int,
     val canLoadMoreBefore: Boolean,
@@ -39,11 +39,11 @@ internal data class ThreadTimelineSlice(
     val showTaskStatusActions: Boolean,
     val canConvertMessagesToTasks: Boolean,
     val beginningReplyCountLabel: String?,
-    /** Task #232 arrival provenance projected from the payload; see [KuiklyThreadScreenPayload.gapRefillMessageIds]. */
+    /** Task #232 arrival provenance projected from the payload; see [RaftThreadScreenPayload.gapRefillMessageIds]. */
     val gapRefillMessageIds: Set<String> = emptySet(),
-    /** Task #1125: the frame is the offline durable stand-in (see [KuiklyThreadScreenPayload.durableLastKnown]). */
+    /** Task #1125: the frame is the offline durable stand-in (see [RaftThreadScreenPayload.durableLastKnown]). */
     val durableLastKnown: Boolean = false,
-    /** Task #168: the stand-in reaches the conversation's start (see [KuiklyThreadScreenPayload.durableReachedOldest]). */
+    /** Task #168: the stand-in reaches the conversation's start (see [RaftThreadScreenPayload.durableReachedOldest]). */
     val durableReachedOldest: Boolean = false
 )
 
@@ -52,7 +52,7 @@ internal data class ThreadInlineSearchMatch(
     val listItemIndex: Int
 )
 
-internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlice =
+internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlice =
     ThreadTimelineSlice(
         status = status,
         originStatus = originStatus,
@@ -65,13 +65,13 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
         olderMessagesStatus = olderMessagesStatus,
         newerMessagesStatus = newerMessagesStatus,
         emptyTitle =
-            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && status == "empty") {
+            if (surfaceKind == RaftThreadSurfaceKind.ReplyThread && status == "empty") {
                 ThreadReplyEmptyTitle
             } else {
                 emptyTitle
             },
         emptyDetail =
-            if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && status == "empty") {
+            if (surfaceKind == RaftThreadSurfaceKind.ReplyThread && status == "empty") {
                 ThreadReplyEmptyDetail
             } else {
                 emptyDetail
@@ -91,7 +91,7 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSl
         beginningReplyCountLabel = threadBeginningReplyCountLabel()
     )
 
-internal fun KuiklyThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =
+internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =
     ThreadReplyMetadata(
         parentMessageId = id,
         threadChannelId = threadChannelId?.takeIf { it.isNotBlank() },
@@ -101,7 +101,7 @@ internal fun KuiklyThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadat
         isThreadFollowed = isThreadFollowed
     )
 
-internal fun KuiklyThreadScreenPayload.toThreadReplyMetadataMap(): Map<String, ThreadReplyMetadata> =
+internal fun RaftThreadScreenPayload.toThreadReplyMetadataMap(): Map<String, ThreadReplyMetadata> =
     buildMap {
         originMessage?.let { message ->
             put(message.id, message.toThreadReplyMetadata())
@@ -112,11 +112,11 @@ internal fun KuiklyThreadScreenPayload.toThreadReplyMetadataMap(): Map<String, T
     }
 
 internal fun Map<String, ThreadReplyMetadata>.threadReplyMetadataFor(
-    message: KuiklyThreadMessageItem
+    message: RaftThreadMessageItem
 ): ThreadReplyMetadata =
     this[message.id] ?: message.toThreadReplyMetadata()
 
-internal fun KuiklyThreadMessageItem.withoutThreadReplyMetadata(): KuiklyThreadMessageItem =
+internal fun RaftThreadMessageItem.withoutThreadReplyMetadata(): RaftThreadMessageItem =
     if (
         threadChannelId == null &&
         replyCount == 0 &&
@@ -135,7 +135,7 @@ internal fun KuiklyThreadMessageItem.withoutThreadReplyMetadata(): KuiklyThreadM
         )
     }
 
-internal fun KuiklyThreadScreenPayload.withoutThreadTimelineContent(): KuiklyThreadScreenPayload =
+internal fun RaftThreadScreenPayload.withoutThreadTimelineContent(): RaftThreadScreenPayload =
     copy(
         messages = emptyList(),
         originMessage = null,
@@ -187,7 +187,7 @@ internal fun ThreadTimelineSlice.threadInlineSearchMatches(query: String): List<
         }
 }
 
-private fun KuiklyThreadMessageItem.matchesThreadInlineSearch(normalizedQuery: String): Boolean =
+private fun RaftThreadMessageItem.matchesThreadInlineSearch(normalizedQuery: String): Boolean =
     body.contains(normalizedQuery, ignoreCase = true) ||
         authorName.contains(normalizedQuery, ignoreCase = true) ||
         authorHandle.contains(normalizedQuery, ignoreCase = true) ||
@@ -289,14 +289,14 @@ internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): 
     }
 }
 
-internal fun ThreadTimelineSlice.threadMessageById(messageId: String): KuiklyThreadMessageItem? =
+internal fun ThreadTimelineSlice.threadMessageById(messageId: String): RaftThreadMessageItem? =
     messages.firstOrNull { it.id == messageId }
         ?: originMessage?.takeIf { originStatus != "none" && it.id == messageId }
 
 internal fun ThreadTimelineSlice.threadActionMessage(
     messageId: String,
     linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap()
-): KuiklyThreadMessageItem? =
+): RaftThreadMessageItem? =
     threadMessageById(messageId)
         ?.let { message ->
             message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
@@ -305,14 +305,14 @@ internal fun ThreadTimelineSlice.threadActionMessage(
 internal fun ThreadTimelineSlice.threadActionMessage(
     messageId: String,
     linkedTasksProjection: ThreadLinkedTasksProjection
-): KuiklyThreadMessageItem? =
+): RaftThreadMessageItem? =
     threadMessageById(messageId)
         ?.withLinkedTaskProjection(linkedTasksProjection)
 
 internal fun ThreadTimelineSlice.findTaskParentMessage(
     taskId: String,
     linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection()
-): KuiklyThreadMessageItem? {
+): RaftThreadMessageItem? {
     val taskKey = taskId.trim().takeIf { it.isNotBlank() } ?: return null
     return messages.firstOrNull { message ->
         message.id == taskKey ||
@@ -331,7 +331,7 @@ internal fun ThreadTimelineSlice.findMarkdownTaskId(
 ): String? {
     val key = tag.label.removePrefix("#").trim()
     val taskNumber = key.toIntOrNull()
-    fun KuiklyThreadMessageItem.markdownTaskMatch(): String? {
+    fun RaftThreadMessageItem.markdownTaskMatch(): String? {
         val linkedTask = linkedTasksProjection.lookup.threadLinkedTaskForMessage(this)
         return when {
             linkedTask?.id?.value?.equals(key, ignoreCase = true) == true -> linkedTask.id.value
@@ -350,7 +350,7 @@ internal fun ThreadTimelineSlice.findThreadAuthorProfile(memberId: String): Memb
         .firstOrNull { it.authorId == memberId }
         ?.toThreadAuthorProfile()
 
-private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile? {
+private fun RaftThreadMessageItem.toThreadAuthorProfile(): MemberProfile? {
     val kind = authorKind.projectedMemberKindOrNull() ?: return null
     return MemberProfile(
         id = MemberId(authorId),
@@ -374,7 +374,7 @@ internal fun ThreadTimelineSlice.findThreadImageAttachmentGroup(attachmentId: St
     return null
 }
 
-internal fun ThreadTimelineSlice.findThreadAttachment(attachmentId: String): KuiklyThreadAttachmentItem? =
+internal fun ThreadTimelineSlice.findThreadAttachment(attachmentId: String): RaftThreadAttachmentItem? =
     (listOfNotNull(originMessage) + messages)
         .asSequence()
         .flatMap { it.attachments.asSequence() }

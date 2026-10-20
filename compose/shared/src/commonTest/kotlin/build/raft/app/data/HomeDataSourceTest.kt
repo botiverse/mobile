@@ -30,7 +30,7 @@ class HomeDataSourceTest {
         listOf(401, 403).forEach { status ->
             val exactReason = "  home-$status raw reason  "
             val api =
-                object : SlockHomeApi {
+                object : RaftHomeApi {
                     override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
                         HomeNetworkResponse(
                             code = status,
@@ -48,7 +48,7 @@ class HomeDataSourceTest {
                         HomeNetworkResponse(code = 200, bodyText = "[]")
                 }
 
-            val result = SlockHomeApiClient(api).homePayload(ServerId("server-1"), DataRequestPriority.Visible)
+            val result = RaftHomeApiClient(api).homePayload(ServerId("server-1"), DataRequestPriority.Visible)
 
             val blocker = assertIs<DataResult.NoPermission>(result).blocker
             assertEquals("home_http_$status", blocker.code)
@@ -61,7 +61,7 @@ class HomeDataSourceTest {
         val localStore = InMemoryComposeLocalDataStore()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 parseHome = { payload, session ->
                     assertEquals(emptyList(), payload.channels)
@@ -85,7 +85,7 @@ class HomeDataSourceTest {
         val api = ConcurrentHomeApi()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = api,
                 parseHome = { payload, _ ->
                     DataResult.Content(sampleHome(payload.serverId))
@@ -106,10 +106,10 @@ class HomeDataSourceTest {
         val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "admin")),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
                 api = FakeHomeApi(),
                 announcementsApi =
-                    object : SlockAnnouncementsRemindersApi {
+                    object : RaftAnnouncementsRemindersApi {
                         override suspend fun activeAnnouncements(): HomeNetworkResponse =
                             error("Home notification center must not request account announcements")
 
@@ -159,7 +159,7 @@ class HomeDataSourceTest {
         suspend fun notifications(offlineComputerAlertsEnabled: Boolean?): List<SharedHomeNotification> {
             val source =
                 SharedHomeDataSource(
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "admin")),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
                     api = FakeHomeApi(),
                     computersApi =
                         ConcurrentComputersApi(
@@ -192,7 +192,7 @@ class HomeDataSourceTest {
     fun outdatedDaemonAlertsExcludeManagedComputersButKeepRawDaemons() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "admin")),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "admin")),
                 api = FakeHomeApi(),
                 computersApi =
                     ConcurrentComputersApi(
@@ -240,7 +240,7 @@ class HomeDataSourceTest {
         val computersApi = RejectingComputersApi()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "member")),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession(role = "member")),
                 api = FakeHomeApi(),
                 computersApi = computersApi,
                 appUpdateStatusProvider = {
@@ -268,7 +268,7 @@ class HomeDataSourceTest {
     fun loadNotificationsAddsAppUpdateWhenNewerHandsBuildExists() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 appUpdateStatusProvider = {
                     DataResult.Content(
@@ -306,7 +306,7 @@ class HomeDataSourceTest {
     fun loadNotificationsSkipsUnsupportedAppUpdateEvenWhenNativeOfferIsPresent() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 appUpdateStatusProvider = {
                     // Play builds report the capability as unsupported and must
@@ -334,7 +334,7 @@ class HomeDataSourceTest {
     fun appUpdateNotificationUsesNativeActionLabel() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 appUpdateStatusProvider = {
                     DataResult.Content(
@@ -392,7 +392,7 @@ class HomeDataSourceTest {
     fun loadNotificationsSkipsAppUpdateWhenLatestCodeDoesNotBeatCurrentCode() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 appUpdateStatusProvider = {
                     DataResult.Content(
@@ -475,7 +475,7 @@ class HomeDataSourceTest {
             )
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 memberRepository = memberRepository,
                 parseHome = { _, session ->
@@ -519,7 +519,7 @@ class HomeDataSourceTest {
         val api = FakeHomeApi()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = api,
                 parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
             )
@@ -553,7 +553,7 @@ class HomeDataSourceTest {
         )
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 serverMembersStore = memberStore,
                 parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
@@ -576,7 +576,7 @@ class HomeDataSourceTest {
         val api = FakeHomeApi()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = api,
                 parseHome = { _, _ -> error("cached read should not parse network") }
             )
@@ -593,7 +593,7 @@ class HomeDataSourceTest {
         val logs = mutableListOf<String>()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = ThrowingHomeApi(),
                 parseHome = { _, _ -> error("network failure should not parse") },
                 diagnosticsLogger = logs::add
@@ -612,7 +612,7 @@ class HomeDataSourceTest {
         val logs = mutableListOf<String>()
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(channelsBody = """{"channels":[]}"""),
                 parseHome = { _, _ -> error("typed home api should reject wrapper before parser") },
                 diagnosticsLogger = logs::add
@@ -643,7 +643,7 @@ class HomeDataSourceTest {
     fun loadHomeRejectsGuessedHomeWrappersBeforeParser() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(channelsBody = """{"channels":[]}"""),
                 parseHome = { _, _ -> error("typed home api should reject wrapper before parser") }
             )
@@ -658,7 +658,7 @@ class HomeDataSourceTest {
     fun loadHomeRejectsGuessedDirectMessageWrappersBeforeParser() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(directMessagesBody = """{"directMessages":[]}"""),
                 parseHome = { _, _ -> error("typed home api should reject wrapper before parser") }
             )
@@ -677,7 +677,7 @@ class HomeDataSourceTest {
     fun guessedUnreadCountWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(unreadCountsBody = """[{"channelId":"channel-1","unreadCount":1}]"""),
                 parseHome = { payload, session ->
                     // Guessed array shape rejected → not mis-accepted as unread data.
@@ -699,7 +699,7 @@ class HomeDataSourceTest {
     fun guessedServerUnreadSummaryWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(serverUnreadSummaryBody = """{"unreadCount":24}"""),
                 parseHome = { payload, session ->
                     // Guessed object shape rejected → not mis-accepted as summary data.
@@ -721,7 +721,7 @@ class HomeDataSourceTest {
     @Test
     fun loadHomeUsesRequestedServerForEveryApiCallAndSessionSelection() = runBlocking {
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 sampleSession().copy(
                     selectedServerId = "server-1",
                     servers =
@@ -771,7 +771,7 @@ class HomeDataSourceTest {
     fun erroringServerUnreadSummaryMustNotBlockCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = UnreadAuxiliaryHomeApi(errorSummary = true),
                 parseHome = { payload, session ->
                     assertFalse(payload.serverUnreadSummaryAvailable)
@@ -792,7 +792,7 @@ class HomeDataSourceTest {
     fun erroringChannelUnreadCountsMustNotBlockCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = UnreadAuxiliaryHomeApi(errorCounts = true),
                 parseHome = { payload, session ->
                     assertTrue(payload.serverUnreadSummaryAvailable)
@@ -814,7 +814,7 @@ class HomeDataSourceTest {
     fun hungUnreadEndpointMustNotBlockCanonicalHome() = runBlocking {
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = UnreadAuxiliaryHomeApi(hangSummary = true),
                 parseHome = { payload, session ->
                     // task #831: a hung/unavailable unread section flags the
@@ -850,7 +850,7 @@ class HomeDataSourceTest {
         // load completes as Content instead of cancelling.
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 api = CancellingUnreadHomeApi(),
                 parseHome = { _, session ->
                     // Reaching here means the cancellation was swallowed into a
@@ -874,7 +874,7 @@ class HomeDataSourceTest {
         private val errorCounts: Boolean = false,
         private val hangSummary: Boolean = false,
         private val hangCounts: Boolean = false,
-    ) : SlockHomeApi {
+    ) : RaftHomeApi {
         private val neverCompletes = CompletableDeferred<HomeNetworkResponse>()
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
@@ -895,7 +895,7 @@ class HomeDataSourceTest {
         private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private class CancellingUnreadHomeApi : SlockHomeApi {
+    private class CancellingUnreadHomeApi : RaftHomeApi {
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
         override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
         override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse = ok("{}")
@@ -914,7 +914,7 @@ class HomeDataSourceTest {
         private val directMessagesBody: String = "[]",
         private val unreadCountsBody: String = "{}",
         private val serverUnreadSummaryBody: String = "[]"
-    ) : SlockHomeApi {
+    ) : RaftHomeApi {
         var calls: Int = 0
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok(channelsBody).also { calls++ }
@@ -925,7 +925,7 @@ class HomeDataSourceTest {
         private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private class ConcurrentHomeApi : SlockHomeApi {
+    private class ConcurrentHomeApi : RaftHomeApi {
         val calls = mutableListOf<String>()
         private val channelsStarted = CompletableDeferred<Unit>()
         private val directMessagesStarted = CompletableDeferred<Unit>()
@@ -966,7 +966,7 @@ class HomeDataSourceTest {
             HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private class ConcurrentAnnouncementsApi : SlockAnnouncementsRemindersApi {
+    private class ConcurrentAnnouncementsApi : RaftAnnouncementsRemindersApi {
         val announcementsStarted = CompletableDeferred<Unit>()
         lateinit var machinesStarted: CompletableDeferred<Unit>
 
@@ -1034,7 +1034,7 @@ class HomeDataSourceTest {
               ]
             }
             """.trimIndent(),
-    ) : SlockComputersApi {
+    ) : RaftComputersApi {
         val machinesStarted = CompletableDeferred<Unit>()
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
@@ -1072,7 +1072,7 @@ class HomeDataSourceTest {
             error("unused")
     }
 
-    private class RejectingComputersApi : SlockComputersApi {
+    private class RejectingComputersApi : RaftComputersApi {
         var machineCalls: Int = 0
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
@@ -1099,7 +1099,7 @@ class HomeDataSourceTest {
         ): HomeNetworkResponse = error("unused")
     }
 
-    private class ThrowingHomeApi : SlockHomeApi {
+    private class ThrowingHomeApi : RaftHomeApi {
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
             throw IllegalStateException("offline")
 
@@ -1113,7 +1113,7 @@ class HomeDataSourceTest {
             error("not reached")
     }
 
-    private class RecordingHomeApi : SlockHomeApi {
+    private class RecordingHomeApi : RaftHomeApi {
         val calls = mutableListOf<String>()
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =

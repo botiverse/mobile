@@ -125,7 +125,7 @@ private fun <T> rejectProjectionWireValue(
 }
 
 internal val strictProjectionDiagnosticsLogger: (String) -> Unit = { message ->
-    slockLogWarn("StrictProjection", message)
+    raftLogWarn("StrictProjection", message)
 }
 
 internal val projectionRejectingDiagnosticsLogger: (String) -> Unit = { message ->

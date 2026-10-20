@@ -97,7 +97,7 @@ class MainActivityLaunchTest {
         assertEquals(1, Regex("private fun handleLaunchIntent\\(intent: Intent\\?\\)").findAll(source).count())
         val handler =
             source.substringAfter("private fun handleLaunchIntent(intent: Intent?)")
-                .substringBefore("private fun handleUnsupportedSlockWebLink")
+                .substringBefore("private fun handleUnsupportedRaftWebLink")
         assertTrue(handler.indexOf("handleMobileOAuthCallback") < handler.indexOf("handleSocialAuthCallback"))
         assertTrue(handler.indexOf("handleSocialAuthCallback") < handler.indexOf("handleEmailVerificationLink"))
         assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("openSharedShell"))
@@ -106,28 +106,28 @@ class MainActivityLaunchTest {
     @Test
     fun unsupportedRaftWebLinkFallsBackToExternalBrowserAfterTypedHandlersDeclineIt() {
         assertTrue(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.raft.build"
             )
         )
         assertTrue(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.slock.ai"
             )
         )
         assertFalse(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "example.com"
             )
         )
         assertFalse(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.MAIN",
                 dataScheme = "https",
                 dataHost = "app.raft.build"
@@ -148,7 +148,7 @@ class MainActivityLaunchTest {
             )
         )
         assertFalse(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.raft.build",
@@ -167,7 +167,7 @@ class MainActivityLaunchTest {
             )
         )
         assertTrue(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.raft.build",
@@ -190,7 +190,7 @@ class MainActivityLaunchTest {
             )
         )
         assertTrue(
-            shouldOpenUnsupportedSlockWebLinkExternally(
+            shouldOpenUnsupportedRaftWebLinkExternally(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.raft.build",
@@ -311,7 +311,7 @@ class MainActivityLaunchTest {
         )
         assertEquals(
             "app_web_view",
-            slockLaunchSource(
+            raftLaunchSource(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.raft.build"
@@ -320,7 +320,7 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun slockAppViewIntentDoesNotClearExistingTask() {
+    fun legacyHostAppViewIntentDoesNotClearExistingTask() {
         assertFalse(
             shouldClearTaskForSharedShell(
                 action = "android.intent.action.VIEW",
@@ -330,7 +330,7 @@ class MainActivityLaunchTest {
         )
         assertEquals(
             "app_web_view",
-            slockLaunchSource(
+            raftLaunchSource(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "app.slock.ai"
@@ -349,7 +349,7 @@ class MainActivityLaunchTest {
         )
         assertEquals(
             "external_view",
-            slockLaunchSource(
+            raftLaunchSource(
                 action = "android.intent.action.VIEW",
                 dataScheme = "https",
                 dataHost = "example.com"
@@ -365,7 +365,7 @@ class MainActivityLaunchTest {
         )
 
         assertTrue(taskLaunch.clearTask)
-        assertEquals("launcher", slockLaunchSource("android.intent.action.MAIN", null, null))
+        assertEquals("launcher", raftLaunchSource("android.intent.action.MAIN", null, null))
     }
 
     @Test
@@ -380,7 +380,7 @@ class MainActivityLaunchTest {
         )
         assertEquals(
             "app_shell_intent",
-            slockLaunchSource(
+            raftLaunchSource(
                 action = null,
                 dataScheme = null,
                 dataHost = null,

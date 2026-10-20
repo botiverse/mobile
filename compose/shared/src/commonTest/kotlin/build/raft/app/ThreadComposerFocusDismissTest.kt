@@ -9,8 +9,8 @@ import kotlin.test.assertNull
 class ThreadComposerFocusDismissTest {
     @Test
     fun stationaryLongPressKeepsComposerStableUntilThePointerIsReleased() {
-        val tracker = SlockInputFocusDismissGestureTracker()
-        val token = SlockInputFocusDismissToken(11L, 1L)
+        val tracker = RaftInputFocusDismissGestureTracker()
+        val token = RaftInputFocusDismissToken(11L, 1L)
 
         assertNull(tracker.onTouch(TouchType.Down, dismissToken = token))
         assertNull(tracker.onTouch(TouchType.Move))
@@ -21,8 +21,8 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun dragDefersLayoutChangingDismissUntilTerminalPointerUp() {
-        val tracker = SlockInputFocusDismissGestureTracker()
-        val token = SlockInputFocusDismissToken(12L, 1L)
+        val tracker = RaftInputFocusDismissGestureTracker()
+        val token = RaftInputFocusDismissToken(12L, 1L)
 
         assertNull(tracker.onTouch(TouchType.Down, dismissToken = token))
         assertNull(tracker.onTouch(TouchType.Move))
@@ -32,7 +32,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun insideInputGestureNeverArmsOutsideDismiss() {
-        val tracker = SlockInputFocusDismissGestureTracker()
+        val tracker = RaftInputFocusDismissGestureTracker()
 
         assertNull(tracker.onTouch(TouchType.Down))
         assertNull(tracker.onTouch(TouchType.Move))
@@ -41,8 +41,8 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun additionalPointerCancelsThePendingOutsideDismiss() {
-        val tracker = SlockInputFocusDismissGestureTracker()
-        val token = SlockInputFocusDismissToken(13L, 1L)
+        val tracker = RaftInputFocusDismissGestureTracker()
+        val token = RaftInputFocusDismissToken(13L, 1L)
 
         assertNull(tracker.onTouch(TouchType.Down, dismissToken = token))
         tracker.cancel()
@@ -77,11 +77,11 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun completedGestureRearmsTheNextOutsideTap() {
-        val tracker = SlockInputFocusDismissGestureTracker()
-        val decisions = mutableListOf<SlockInputFocusDismissToken?>()
+        val tracker = RaftInputFocusDismissGestureTracker()
+        val decisions = mutableListOf<RaftInputFocusDismissToken?>()
         val tokens = listOf(
-            SlockInputFocusDismissToken(20L, 1L),
-            SlockInputFocusDismissToken(21L, 1L)
+            RaftInputFocusDismissToken(20L, 1L),
+            RaftInputFocusDismissToken(21L, 1L)
         )
 
         tokens.forEach { token ->
@@ -94,7 +94,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun duplicateObserversCanClaimOneClearForTheSameFocusGeneration() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         val token = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
@@ -105,7 +105,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun focusedBoundsSkipsDetachedOwnersAndClearsWhenFocusLeaves() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val detachedOwner = Any()
         val attachedOwner = Any()
         val attachedBounds = Rect(4f, 80f, 96f, 124f)
@@ -120,7 +120,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun unreconciledClearClaimIsReleasedForTheNextGesture() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         val token = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
@@ -133,7 +133,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun rootObservedSecondPointerInvalidatesScrollableObserverToken() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         val firstPointerToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
@@ -149,7 +149,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun rootObservedNativeCancelInvalidatesScrollableObserverToken() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         val canceledToken = requireNotNull(registry.outsideFocusToken(Offset(20f, 20f)))
@@ -163,7 +163,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun explicitInputIntentInvalidatesTheOutsideTokenArmedBeforeLongPressRecognition() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         registry.beginPointerFocusClearSequence()
@@ -176,7 +176,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun ordinaryOutsideGestureStillDismissesAfterAnExplicitInputIntent() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         registry.beginPointerFocusClearSequence()
@@ -192,7 +192,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun externalMentionCancelsTheOldTokenBeforeRestoringFocusAndKeyboard() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         registry.beginPointerFocusClearSequence()
@@ -213,7 +213,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun newerPointerDownInvalidatesAnOlderGesturesDelayedClear() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val owner = Any()
         registry.setFocused(owner, true) { Rect(0f, 0f, 10f, 10f) }
         registry.beginPointerFocusClearSequence()
@@ -228,7 +228,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun staleDeferredClearCannotDismissAReplacementFocusOwner() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val firstOwner = Any()
         val replacementOwner = Any()
         registry.setFocused(firstOwner, true) { Rect(0f, 0f, 10f, 10f) }
@@ -242,7 +242,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun composerInteractionRegionPreservesFocusWhileOutsideBlankStillDismisses() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val fieldOwner = Any()
         val composerInteractionOwner = Any()
         registry.setFocused(fieldOwner, true) { Rect(0f, 80f, 100f, 120f) }
@@ -258,7 +258,7 @@ class ThreadComposerFocusDismissTest {
 
     @Test
     fun disposedInteractionRegionNoLongerSuppressesOutsideDismiss() {
-        val registry = SlockInputFocusOwnerRegistry()
+        val registry = RaftInputFocusOwnerRegistry()
         val fieldOwner = Any()
         val composerInteractionOwner = Any()
         registry.setFocused(fieldOwner, true) { Rect(0f, 80f, 100f, 120f) }

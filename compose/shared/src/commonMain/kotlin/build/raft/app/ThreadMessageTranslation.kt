@@ -55,7 +55,7 @@ internal data class ThreadMessageTranslationUi(
     val indicator: ThreadMessageTranslationIndicatorUi? = null,
 )
 
-internal fun KuiklyThreadMessageItem.toTranslationCandidate(): SharedMessageTranslationCandidate =
+internal fun RaftThreadMessageItem.toTranslationCandidate(): SharedMessageTranslationCandidate =
     SharedMessageTranslationCandidate(
         messageId = id,
         body = body,
@@ -63,7 +63,7 @@ internal fun KuiklyThreadMessageItem.toTranslationCandidate(): SharedMessageTran
         isSystem = isSystemMessage(),
     )
 
-internal fun KuiklyThreadMessageItem.isTranslationEligible(settings: SharedMessageTranslationSettings): Boolean =
+internal fun RaftThreadMessageItem.isTranslationEligible(settings: SharedMessageTranslationSettings): Boolean =
     settings.available &&
         settings.translationMode != TranslationModePreference.Original &&
         settings.effectiveLanguage != null &&
@@ -73,7 +73,7 @@ internal fun KuiklyThreadMessageItem.isTranslationEligible(settings: SharedMessa
         body.isNotBlank()
 
 internal fun resolveThreadMessageTranslationUi(
-    message: KuiklyThreadMessageItem,
+    message: RaftThreadMessageItem,
     translationState: SharedMessageTranslationState,
 ): ThreadMessageTranslationUi? {
     if (!message.isTranslationEligible(translationState.settings)) return null
@@ -136,8 +136,8 @@ internal fun ThreadMessageTranslationIndicator(
     onToggleOriginal: () -> Unit,
     onRetry: () -> Unit,
 ) {
-    val tint = if (indicator.failed) SlockColor.AccentOrange else SlockColor.TextMutedGray
-    val tintArgb = if (indicator.failed) SlockColor.AccentOrangeArgb else SlockColor.TextMutedGrayArgb
+    val tint = if (indicator.failed) RaftColor.AccentOrange else RaftColor.TextMutedGray
+    val tintArgb = if (indicator.failed) RaftColor.AccentOrangeArgb else RaftColor.TextMutedGrayArgb
     val localizedMessage =
         when {
             indicator.pending -> stringResource(MR.strings.translation_state_in_progress)
@@ -159,8 +159,8 @@ internal fun ThreadMessageTranslationIndicator(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        SlockLucideIcon(
-            name = if (indicator.failed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Languages,
+        RaftLucideIcon(
+            name = if (indicator.failed) RaftLucideIconName.TriangleAlert else RaftLucideIconName.Languages,
             modifier = Modifier.size(12.dp),
             color = tintArgb,
             spinning = indicator.pending
@@ -168,7 +168,7 @@ internal fun ThreadMessageTranslationIndicator(
         if (localizedMessage.isNotBlank()) {
             Text(
                 text = localizedMessage,
-                style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
+                style = RaftType.Caption.copy(fontSize = 11.sp, color = tint),
                 color = tint
             )
         }
@@ -181,7 +181,7 @@ internal fun ThreadMessageTranslationIndicator(
                 }
             Text(
                 text = localizedActionLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
+                style = RaftType.Caption.copy(fontSize = 11.sp, color = tint),
                 color = tint,
                 modifier =
                     if (onAction != null) {
@@ -201,6 +201,6 @@ internal fun ThreadMessageTranslationPendingPlaceholder() {
             Modifier
                 .width(176.dp)
                 .height(16.dp)
-                .background(SlockColor.AccentStone)
+                .background(RaftColor.AccentStone)
     )
 }

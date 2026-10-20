@@ -1,8 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SlockServerSetupProjectionApi
-import build.raft.app.data.SlockServerSetupProjectionRepository
+import build.raft.app.data.RaftServerSetupProjectionApi
+import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertIs
@@ -16,11 +16,11 @@ class ServerSetupAdmissionControllerTest {
     @Test
     fun lateOldServerResponseCannotAdmitNewIdentity() = runBlocking {
         val oldResponse = CompletableDeferred<HomeNetworkResponse>()
-        val api = object : SlockServerSetupProjectionApi {
+        val api = object : RaftServerSetupProjectionApi {
             override suspend fun projection(serverId: ServerId): HomeNetworkResponse =
                 if (serverId.value == "old") oldResponse.await() else admittedResponse()
         }
-        val controller = ServerSetupAdmissionController(SlockServerSetupProjectionRepository(api))
+        val controller = ServerSetupAdmissionController(RaftServerSetupProjectionRepository(api))
         val old = ServerSetupAdmissionIdentity("env", "account", "old", "generation:1")
         val current = old.copy(serverId = "current", generation = "generation:2")
 
@@ -35,13 +35,13 @@ class ServerSetupAdmissionControllerTest {
     @Test
     fun validWakeOnlyRequestsFreshProjectionAndFreshFalseThenAdmits() = runBlocking {
         var requests = 0
-        val api = object : SlockServerSetupProjectionApi {
+        val api = object : RaftServerSetupProjectionApi {
             override suspend fun projection(serverId: ServerId): HomeNetworkResponse {
                 requests += 1
                 return if (requests == 1) blockedResponse() else admittedResponse()
             }
         }
-        val controller = ServerSetupAdmissionController(SlockServerSetupProjectionRepository(api))
+        val controller = ServerSetupAdmissionController(RaftServerSetupProjectionRepository(api))
         val current = ServerSetupAdmissionIdentity("env", "account", "server", "generation:1")
         controller.begin(current)
 

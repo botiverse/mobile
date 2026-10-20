@@ -106,7 +106,7 @@ internal fun raftVideoPausesOnLifecycleEvent(event: Lifecycle.Event): Boolean = 
  * Media3 (ExoPlayer) backed video view, ported from the Kuikly-era `SlockKRVideoViewAdapter`
  * (task #556): one player covers video and audio-only sources; PlayerView's built-in controller
  * (play/pause, drag-seek, +-10s, fullscreen) is enabled — the shared minimal controls hide
- * themselves via slockPlatformUsesNativeVideoController(). Fullscreen reparents the PlayerView
+ * themselves via raftPlatformUsesNativeVideoController(). Fullscreen reparents the PlayerView
  * onto the activity content view, rotates to landscape and hides the system bars; system back
  * exits fullscreen first.
  */
@@ -130,8 +130,8 @@ internal class RaftAndroidVideoView(
     private var lastReportedState: PlayState? = null
     private var appliedPlayControl: VideoPlayControl? = null
     private var appliedSeekRequestId: Int? = null
-    private val progressContract = SlockVideoProgressContract()
-    private val terminalGate = SlockVideoPlaybackAttemptGate(progressContract.currentGeneration)
+    private val progressContract = RaftVideoProgressContract()
+    private val terminalGate = RaftVideoPlaybackAttemptGate(progressContract.currentGeneration)
     private var awaitingAttemptStart = false
 
     private val hostActivity: ComponentActivity? = context.unwrapRaftComponentActivity()

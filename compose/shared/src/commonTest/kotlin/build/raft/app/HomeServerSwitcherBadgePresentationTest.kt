@@ -7,7 +7,7 @@ class HomeServerSwitcherBadgePresentationTest {
     @Test
     fun exactZeroSuppressesBroaderFallbackWhileAbsentUsesBroaderNumber() {
         val knownZero =
-            SlockServerSwitcherItem(
+            RaftServerSwitcherItem(
                 id = "server-1",
                 broaderUnreadCount = 21,
                 activityUnreadCount = 0,
@@ -30,7 +30,7 @@ class HomeServerSwitcherBadgePresentationTest {
     fun exactAndBroaderFallbackNumbersUseTheSameCap() {
         val exact =
             homeServerSwitcherBadgePresentation(
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "server-exact",
                     broaderUnreadCount = 7,
                     activityUnreadCount = 128,
@@ -38,7 +38,7 @@ class HomeServerSwitcherBadgePresentationTest {
             )
         val fallback =
             homeServerSwitcherBadgePresentation(
-                SlockServerSwitcherItem(
+                RaftServerSwitcherItem(
                     id = "server-fallback",
                     broaderUnreadCount = 150,
                     activityUnreadCount = null,

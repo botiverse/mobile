@@ -416,7 +416,7 @@ class IosMobileOAuthCoordinatorTest {
     fun runtimeNotReadyRetryPreservesAndReturnsExactGenerationForFencedCleanup() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         var availableRuntime: IosMobileOAuthRuntime? = runtime
-        val pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore())
+        val pendingStore = IosMobileOAuthPendingStore(InMemoryRaftKeyValueStore())
         val coordinator = IosMobileOAuthCoordinator(
             pendingStore = pendingStore,
             runtimeProvider = { availableRuntime },
@@ -458,7 +458,7 @@ class IosMobileOAuthCoordinatorTest {
     fun nativeAppleRuntimeRetryPreservesPendingUntilTheSameInMemoryCredentialCanComplete() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         var availableRuntime: IosMobileOAuthRuntime? = runtime
-        val pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore())
+        val pendingStore = IosMobileOAuthPendingStore(InMemoryRaftKeyValueStore())
         val coordinator =
             IosMobileOAuthCoordinator(
                 pendingStore = pendingStore,
@@ -517,7 +517,7 @@ class IosMobileOAuthCoordinatorTest {
         runtime: FakeRuntime,
         nowMillis: () -> Long = { 1_000L },
     ): Fixture {
-        val pendingStore = IosMobileOAuthPendingStore(InMemorySlockKeyValueStore())
+        val pendingStore = IosMobileOAuthPendingStore(InMemoryRaftKeyValueStore())
         return Fixture(
             pendingStore = pendingStore,
             coordinator = IosMobileOAuthCoordinator(

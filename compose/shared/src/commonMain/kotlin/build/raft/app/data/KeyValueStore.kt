@@ -5,26 +5,26 @@ interface SharedPreferenceStore {
     fun putString(key: String, value: String?)
 }
 
-interface SlockKeyValueStore : SharedPreferenceStore
+interface RaftKeyValueStore : SharedPreferenceStore
 
-object SlockSharedKeyValueStoreProvider {
-    private val appScopeFactories = mutableMapOf<String, () -> SlockKeyValueStore>()
+object RaftSharedKeyValueStoreProvider {
+    private val appScopeFactories = mutableMapOf<String, () -> RaftKeyValueStore>()
 
-    fun installAppScopeFactory(namespace: String, factory: () -> SlockKeyValueStore) {
+    fun installAppScopeFactory(namespace: String, factory: () -> RaftKeyValueStore) {
         appScopeFactories[namespace] = factory
     }
 
-    internal fun create(namespace: String, storageName: String): SlockSharedKeyValueStoreBinding {
+    internal fun create(namespace: String, storageName: String): RaftSharedKeyValueStoreBinding {
         val factory = appScopeFactories[namespace]
         if (factory != null) {
-            return SlockSharedKeyValueStoreBinding(
+            return RaftSharedKeyValueStoreBinding(
                 store = factory(),
                 scope = "app"
             )
         }
-        val platformStore = slockCreatePlatformAppScopeKeyValueStore(namespace)
+        val platformStore = raftCreatePlatformAppScopeKeyValueStore(namespace)
         if (platformStore != null) {
-            return SlockSharedKeyValueStoreBinding(
+            return RaftSharedKeyValueStoreBinding(
                 store = platformStore,
                 scope = "app"
             )
@@ -39,43 +39,43 @@ object SlockSharedKeyValueStoreProvider {
     }
 }
 
-object SlockSharedAuthSessionKeyValueStoreProvider {
-    fun installAppScopeFactory(factory: () -> SlockKeyValueStore) {
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(
-            namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
+object RaftSharedAuthSessionKeyValueStoreProvider {
+    fun installAppScopeFactory(factory: () -> RaftKeyValueStore) {
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(
+            namespace = RAFT_AUTH_SESSION_MMKV_NAMESPACE,
             factory = factory
         )
     }
 
-    internal fun create(): SlockSharedKeyValueStoreBinding =
-        SlockSharedKeyValueStoreProvider.create(
-            namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
+    internal fun create(): RaftSharedKeyValueStoreBinding =
+        RaftSharedKeyValueStoreProvider.create(
+            namespace = RAFT_AUTH_SESSION_MMKV_NAMESPACE,
             storageName = "auth session"
         )
 
     internal fun clearAppScopeFactoryForTests() {
-        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
     }
 }
 
-internal data class SlockSharedKeyValueStoreBinding(
-    val store: SlockKeyValueStore,
+internal data class RaftSharedKeyValueStoreBinding(
+    val store: RaftKeyValueStore,
     val scope: String
 )
 
-internal expect fun slockRequiresAppScopeKeyValueStore(namespace: String): Boolean
+internal expect fun raftRequiresAppScopeKeyValueStore(namespace: String): Boolean
 
-internal expect fun slockCreatePlatformAppScopeKeyValueStore(namespace: String): SlockKeyValueStore?
+internal expect fun raftCreatePlatformAppScopeKeyValueStore(namespace: String): RaftKeyValueStore?
 
-object SlockLocalPreferenceStore {
+object RaftLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
 }
 
 /**
- * Task #521: publish the stored font face to [SlockFontFaceState] as soon as the app-scope store is
+ * Task #521: publish the stored font face to [RaftFontFaceState] as soon as the app-scope store is
  * available, i.e. before the first composition.
  *
- * `SlockFontFaceState.preference` is process-scoped state that starts at [FontPreference.Default].
+ * `RaftFontFaceState.preference` is process-scoped state that starts at [FontPreference.Default].
  * Its other restore point lives in `SharedSettingsStore.withLocalMobilePreferences()`, which only
  * runs when a settings snapshot loads. On a cold start the first frames are composed before any
  * snapshot resolves, so the UI rendered the default face and only swapped once unrelated settings
@@ -88,15 +88,15 @@ object SlockLocalPreferenceStore {
  *
  * @return the preference published, or null when the store was not readable.
  */
-fun slockRestoreStoredFontPreferenceOnColdStart(): FontPreference? =
+fun raftRestoreStoredFontPreferenceOnColdStart(): FontPreference? =
     runCatching {
-        val binding = SlockSharedKeyValueStoreProvider.create(
-            namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+        val binding = RaftSharedKeyValueStoreProvider.create(
+            namespace = RaftLocalPreferenceStore.KuiklyNamespace,
             storageName = "local preference"
         )
         KeyValueFontPreferenceStore(binding.store).readFontPreferenceSync()
     }.getOrNull()?.also { stored ->
-        build.raft.app.SlockFontFaceState.apply(stored)
+        build.raft.app.RaftFontFaceState.apply(stored)
     }
 
 /**
@@ -108,10 +108,10 @@ fun slockRestoreStoredFontPreferenceOnColdStart(): FontPreference? =
  * Returns the RAW stored string (or null when absent/unreadable) plus the parsed face, so a device
  * log distinguishes "key missing", "key present but unparsed", and "key present and parsed".
  */
-fun slockReadStoredFontPreferenceForDiagnostics(): String =
+fun raftReadStoredFontPreferenceForDiagnostics(): String =
     runCatching {
-        val binding = SlockSharedKeyValueStoreProvider.create(
-            namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+        val binding = RaftSharedKeyValueStoreProvider.create(
+            namespace = RaftLocalPreferenceStore.KuiklyNamespace,
             storageName = "local preference"
         )
         val raw = binding.store.getString(KEY_FONT_PREFERENCE_STORAGE_KEY)
@@ -128,11 +128,11 @@ fun slockReadStoredFontPreferenceForDiagnostics(): String =
         // underlying stores. To claim that the values must diverge too (same key, one reads a value
         // and the other reads absent).
         "font_preference_coldstart store=${binding.store::class.simpleName}" +
-            " storeId=${slockStoreIdentity(binding.store)} scope=${binding.scope}" +
-            " namespace=${SlockLocalPreferenceStore.KuiklyNamespace} key=$KEY_FONT_PREFERENCE_STORAGE_KEY" +
+            " storeId=${raftStoreIdentity(binding.store)} scope=${binding.scope}" +
+            " namespace=${RaftLocalPreferenceStore.KuiklyNamespace} key=$KEY_FONT_PREFERENCE_STORAGE_KEY" +
             " raw=${raw ?: "<absent>"} parsed=${parsed.storageKey}"
     }.getOrElse { error ->
-        "font_preference_coldstart store=<unavailable> namespace=${SlockLocalPreferenceStore.KuiklyNamespace}" +
+        "font_preference_coldstart store=<unavailable> namespace=${RaftLocalPreferenceStore.KuiklyNamespace}" +
             " key=$KEY_FONT_PREFERENCE_STORAGE_KEY raw=<unreadable> error=${error.message}"
     }
 
@@ -144,14 +144,14 @@ fun slockReadStoredFontPreferenceForDiagnostics(): String =
  * **The comparison is sound in one direction only** — see the note at the call site: this is the
  * wrapper's identity, not the underlying MMKV's.
  */
-private val slockStoreIdentities = mutableListOf<Pair<Any, Int>>()
+private val raftStoreIdentities = mutableListOf<Pair<Any, Int>>()
 
-internal fun slockStoreIdentity(store: Any): String {
+internal fun raftStoreIdentity(store: Any): String {
     // Identity comparison, not equals(): a store wrapper with value equality (or two equal-content
     // handles) must still read as two distinct instances here, which is the whole point.
-    slockStoreIdentities.firstOrNull { (known, _) -> known === store }?.let { return it.second.toString() }
-    val next = slockStoreIdentities.size
-    slockStoreIdentities += store to next
+    raftStoreIdentities.firstOrNull { (known, _) -> known === store }?.let { return it.second.toString() }
+    val next = raftStoreIdentities.size
+    raftStoreIdentities += store to next
     return next.toString()
 }
 
@@ -169,9 +169,9 @@ fun SharedPreferenceStore.putBoolean(key: String, value: Boolean) {
     putString(key, value.toString())
 }
 
-class InMemorySlockKeyValueStore(
+class InMemoryRaftKeyValueStore(
     initialValues: Map<String, String> = emptyMap()
-) : SlockKeyValueStore {
+) : RaftKeyValueStore {
     private val values = initialValues.toMutableMap()
 
     override fun getString(key: String): String? = values[key]

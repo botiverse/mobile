@@ -24,10 +24,10 @@ class AuthShellServerSelectionTest {
     @Test
     fun freshLoginSelectionPublishesToShellAndProcessAuthorities() = runBlocking {
         val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
-        val processStore = InMemorySlockAuthSessionStore(initial)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("fresh-login-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+            SelectedServerStore(RaftShellStoreScope.create("fresh-login-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
 
         assertNull(shellStore.readSession()?.selectedServerId)
 
@@ -53,10 +53,10 @@ class AuthShellServerSelectionTest {
     @Test
     fun scopedChooserSelectionSurvivesAProcessOnlyRestoreRead() = runBlocking {
         val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
-        val processStore = InMemorySlockAuthSessionStore(initial)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
         val selectedServerStore =
-            SelectedServerStore(SlockShellStoreScope.create("restore-read-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+            SelectedServerStore(RaftShellStoreScope.create("restore-read-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
 
         // AppShell has already captured its own null selection before the chooser opens.
         assertNull(shellStore.readSession()?.selectedServerId)
@@ -108,9 +108,9 @@ class AuthShellServerSelectionTest {
                 servers = listOf(StoredAuthServer(id = "server-new", name = "New", slug = "new")),
                 selectedServerId = null,
             )
-        val processStore = InMemorySlockAuthSessionStore(currentSession)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("new-account-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = InMemoryRaftAuthSessionStore(currentSession)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("new-account-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
 
         val result =
@@ -142,9 +142,9 @@ class AuthShellServerSelectionTest {
                 accessToken = "access-generation-b",
                 refreshToken = "refresh-generation-b",
             )
-        val processStore = InMemorySlockAuthSessionStore(generationA)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("same-account-successor-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = InMemoryRaftAuthSessionStore(generationA)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("same-account-successor-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
         processStore.saveRememberedServerSelection(
             generationA.user,
@@ -187,9 +187,9 @@ class AuthShellServerSelectionTest {
                 selectedServerId = null,
             )
         val latest = captured.copy(servers = captured.servers.filterNot { it.id == "server-2" })
-        val processStore = InMemorySlockAuthSessionStore(latest)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("removed-server-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = InMemoryRaftAuthSessionStore(latest)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("removed-server-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
 
         val result =
@@ -212,9 +212,9 @@ class AuthShellServerSelectionTest {
                 servers = authServerFixtures(),
                 selectedServerId = "server-1",
             )
-        val processStore = InMemorySlockAuthSessionStore(initial)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("existing-selection-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("existing-selection-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
 
         val switched =
@@ -244,9 +244,9 @@ class AuthShellServerSelectionTest {
                 servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three"),
                 selectedServerId = "server-1",
             )
-        val processStore = InMemorySlockAuthSessionStore(initial)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("source-race-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("source-race-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
 
         val concurrent =
@@ -283,9 +283,9 @@ class AuthShellServerSelectionTest {
                 servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three"),
                 selectedServerId = "server-1",
             )
-        val processStore = InMemorySlockAuthSessionStore(initial)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("direct-source-race-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("direct-source-race-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
 
         shellStore.updateSelectedServer("server-3", "three")
@@ -311,9 +311,9 @@ class AuthShellServerSelectionTest {
                 servers = authServerFixtures(),
                 selectedServerId = "server-1",
             )
-        val processStore = PausingRememberedSelectionStore(InMemorySlockAuthSessionStore(initial))
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("logout-race-shell"))
-        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+        val processStore = PausingRememberedSelectionStore(InMemoryRaftAuthSessionStore(initial))
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("logout-race-shell"))
+        val shellStore = RaftShellAuthSessionStore(processStore, selectedServerStore)
         shellStore.readSession()
         val events = mutableListOf<AuthSessionEvent>()
         val observer = launch(start = CoroutineStart.UNDISPATCHED) { shellStore.authSessionEvents.collect { events += it } }
@@ -351,10 +351,10 @@ class AuthShellServerSelectionTest {
                 servers = authServerFixtures(),
                 selectedServerId = "server-1",
             )
-        val processStore = InMemorySlockAuthSessionStore(initial)
+        val processStore = InMemoryRaftAuthSessionStore(initial)
         val delayedStore = DelayedMetadataStore(processStore)
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("metadata-race-shell"))
-        val shellStore = SlockShellAuthSessionStore(delayedStore, selectedServerStore)
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("metadata-race-shell"))
+        val shellStore = RaftShellAuthSessionStore(delayedStore, selectedServerStore)
         shellStore.readSession()
 
         val staleMetadata =
@@ -388,12 +388,12 @@ class AuthShellServerSelectionTest {
     @Test
     fun processSelectionEventCannotExposeOldShellSelection() = runBlocking {
         val initial = authSessionFixture(userId = "user-1", servers = authServerFixtures(), selectedServerId = null)
-        val processStore = YieldingEventStore(InMemorySlockAuthSessionStore(initial))
-        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("event-order-shell"))
+        val processStore = YieldingEventStore(InMemoryRaftAuthSessionStore(initial))
+        val selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("event-order-shell"))
         val eventScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
             val shellStore =
-                SlockShellAuthSessionStore(
+                RaftShellAuthSessionStore(
                     delegate = processStore,
                     selectedServerStore = selectedServerStore,
                     eventScope = eventScope,
@@ -420,8 +420,8 @@ class AuthShellServerSelectionTest {
     }
 
     private class DelayedMetadataStore(
-        private val delegate: InMemorySlockAuthSessionStore,
-    ) : SlockAuthSessionStore by delegate {
+        private val delegate: InMemoryRaftAuthSessionStore,
+    ) : RaftAuthSessionStore by delegate {
         val firstMetadataEntered = CompletableDeferred<Unit>()
         val releaseFirstMetadata = CompletableDeferred<Unit>()
         private var delayNextMetadata = true
@@ -440,8 +440,8 @@ class AuthShellServerSelectionTest {
     }
 
     private class PausingRememberedSelectionStore(
-        private val delegate: InMemorySlockAuthSessionStore,
-    ) : SlockAuthSessionStore by delegate, SlockAuthServerSelectionMemory {
+        private val delegate: InMemoryRaftAuthSessionStore,
+    ) : RaftAuthSessionStore by delegate, RaftAuthServerSelectionMemory {
         val rememberEntered = CompletableDeferred<Unit>()
         val releaseRemember = CompletableDeferred<Unit>()
 
@@ -459,8 +459,8 @@ class AuthShellServerSelectionTest {
     }
 
     private class YieldingEventStore(
-        private val delegate: InMemorySlockAuthSessionStore,
-    ) : SlockAuthSessionStore by delegate, SlockAuthSessionEventSource {
+        private val delegate: InMemoryRaftAuthSessionStore,
+    ) : RaftAuthSessionStore by delegate, RaftAuthSessionEventSource {
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 1)
         private var generation = 0L
 

@@ -248,7 +248,7 @@ interface ServerPublicVisibilityRepository {
 }
 
 class NetworkServerPublicVisibilityRepository(
-    private val networkClient: SlockNetworkClient,
+    private val networkClient: RaftNetworkClient,
 ) : ServerPublicVisibilityRepository {
     override suspend fun load(serverId: ServerId): ServerPublicVisibilityLoadResult {
         val response =

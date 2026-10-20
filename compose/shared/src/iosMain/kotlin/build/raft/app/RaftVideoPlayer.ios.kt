@@ -84,7 +84,7 @@ private const val RAFT_IOS_VIDEO_TICK_MS = 500L
 /**
  * AVPlayer in an embedded AVPlayerViewController (system controller: play/pause, scrubbing, +-15s,
  * fullscreen), ported from the Kuikly-era `SlockKRVideoViewHandler.m` (task #11). The shared
- * minimal controls hide themselves via slockPlatformUsesNativeVideoController().
+ * minimal controls hide themselves via raftPlatformUsesNativeVideoController().
  */
 @OptIn(ExperimentalForeignApi::class)
 private class RaftIosVideoController(

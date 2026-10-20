@@ -37,7 +37,7 @@ class ThreadParentNavigationTest {
                 canonicalChannelId = "joint-parent",
                 aliases = setOf("joint-parent"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "general"
             )
@@ -59,7 +59,7 @@ class ThreadParentNavigationTest {
                 canonicalChannelId = "joint-parent",
                 aliases = setOf("joint-parent"),
                 conversationKind = ConversationKind.Joint,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "joint",
                 title = "partner"
             )
@@ -98,16 +98,16 @@ class ThreadParentNavigationTest {
     private fun replyPayload(
         parentChannelId: String,
         parentChannelKind: String?
-    ): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    ): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-reply-stream",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             channelKind = "channel",
             sourceThreadId = "reply-stream",
             streamChannelId = "reply-stream",
             parentChannelId = parentChannelId,
             parentMessageId = "parent-message",
-            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+            parentSurfaceKind = RaftThreadSurfaceKind.Channel,
             parentChannelKind = parentChannelKind,
             showOpenInChannelAction = true
         )

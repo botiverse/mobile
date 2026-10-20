@@ -3,7 +3,7 @@ package build.raft.app.shared
 import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.ThreadComposerTemporaryFileRetirementHandler
 import build.raft.app.ThreadComposerTemporaryFileRetirementResult
-import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.core.data.diagnostics.RaftAppLog
 import android.content.Context
 import java.io.File
 import java.net.URI
@@ -41,7 +41,7 @@ internal fun installAndroidThreadComposerTemporaryFileRetirement(context: Contex
                     fileRefs = fileRefs.toList()
                 )
             if (quarantine.quarantineFiles.isNotEmpty()) {
-                SlockKuiklyThreadAdapter.execute("file-preview-temp-tombstone-delete") {
+                RaftThreadAdapter.execute("file-preview-temp-tombstone-delete") {
                     quarantine.quarantineFiles.forEach { tombstone ->
                         runCatching { tombstone.delete() }
                     }
@@ -62,7 +62,7 @@ internal fun installAndroidThreadComposerTemporaryFileRetirement(context: Contex
             )
         }
     )
-    SlockAppLog.record("SlockFilePreviewCleanup", "android_retirement_handler_installed")
+    RaftAppLog.record("SlockFilePreviewCleanup", "android_retirement_handler_installed")
 }
 
 /**

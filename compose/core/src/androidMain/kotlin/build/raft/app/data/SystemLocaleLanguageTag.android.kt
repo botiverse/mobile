@@ -1,8 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import android.content.res.Resources
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 actual fun currentSystemLanguageTag(): String? =
     Resources.getSystem().configuration.locales[0]?.toLanguageTag()

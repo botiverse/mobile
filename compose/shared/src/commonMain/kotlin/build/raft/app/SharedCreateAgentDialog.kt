@@ -1,15 +1,15 @@
 package build.raft.app
 
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalSelectField
-import build.raft.app.components.SlockBrutalSelectOption
-import build.raft.app.components.SlockBrutalSectionLabel
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockCheckbox
-import build.raft.app.components.SlockRaftUiBanner
-import build.raft.app.components.SlockRaftUiBannerSize
-import build.raft.app.components.SlockRaftUiBannerStatus
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalSelectField
+import build.raft.app.components.RaftBrutalSelectOption
+import build.raft.app.components.RaftBrutalSectionLabel
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftAppCheckbox
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeProviderMode
 import build.raft.app.model.BASE_REASONING_EFFORT_IDS
@@ -151,7 +151,7 @@ internal fun CreateAgentDialogVisualContent() {
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(RaftColor.SurfaceWhite)
     ) {
         SharedCreateAgentDialog(
             submitting = false,
@@ -737,8 +737,8 @@ internal fun createAgentRuntimeModelReasoningSelection(
             )
     )
 
-internal fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
-    map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
+internal fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<RaftBrutalSelectOption> =
+    map { item -> RaftBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
 
 // ── kimi-sdk reasoning effort (task #275) ────────────────────────────────────
 // kimi-sdk stays OUT of the static REASONING_EFFORT_RUNTIMES set: its selector is
@@ -1302,7 +1302,7 @@ internal fun SharedCreateAgentDialog(
         }
     }
 
-    SlockUnifiedDialog(
+    RaftUnifiedDialog(
         title =
             if (external) {
                 stringResource(MR.strings.agent_create_title_external)
@@ -1344,13 +1344,13 @@ internal fun SharedCreateAgentDialog(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                                    .padding(SlockSpacing.Xs)
+                                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                                    .padding(RaftAppSpacing.Xs)
                         ) {
                             Text(
                                 text = hint,
-                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                                color = SlockColor.TextMutedGray
+                                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
+                                color = RaftColor.TextMutedGray
                             )
                         }
                     }
@@ -1366,22 +1366,22 @@ internal fun SharedCreateAgentDialog(
                 }
                 if (dialogBuiltInFormRefreshState.failureVisible) {
                     item(key = "builtin-form-refresh-error") {
-                        SlockRaftUiBanner(
-                            status = SlockRaftUiBannerStatus.Warning,
+                        RaftUiBanner(
+                            status = RaftUiBannerStatus.Warning,
                             description = stringResource(MR.strings.agent_create_error_form_refresh_failed),
-                            size = SlockRaftUiBannerSize.Medium,
+                            size = RaftUiBannerSize.Medium,
                             action = {
-                                SlockBrutalActionButton(
+                                RaftBrutalActionButton(
                                     label = stringResource(MR.strings.common_retry),
                                     onClick = {
                                         dialogBuiltInFormRefreshState = createAgentDialogFormRefreshStarted()
                                         dialogBuiltInFormRefreshAttempt += 1
                                     },
                                     enabled = dialogBuiltInFormRefreshState.retryAvailable && !submitting,
-                                    leadingIcon = SlockLucideIconName.RefreshCw,
+                                    leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
                                     minHeight = 32.dp,
-                                    shadowOffset = SlockShadow.BrutalSmall
+                                    shadowOffset = RaftShadow.BrutalSmall
                                 )
                             }
                         )
@@ -1389,10 +1389,10 @@ internal fun SharedCreateAgentDialog(
                 }
                 errorMessage?.takeIf { !atLimit && it.isNotBlank() }?.let { error ->
                     item(key = "submit-error") {
-                        SlockRaftUiBanner(
-                            status = SlockRaftUiBannerStatus.Warning,
+                        RaftUiBanner(
+                            status = RaftUiBannerStatus.Warning,
                             description = error,
-                            size = SlockRaftUiBannerSize.Medium
+                            size = RaftUiBannerSize.Medium
                         )
                     }
                 }
@@ -1418,7 +1418,7 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 item(key = "name") {
-                    SlockBrutalTextField(
+                    RaftBrutalTextField(
                         label = stringResource(MR.strings.agent_create_label_name),
                         required = true,
                         value = name,
@@ -1438,14 +1438,14 @@ internal fun SharedCreateAgentDialog(
                     item(key = "name-error") {
                         Text(
                             text = localizedInlineNameError ?: inlineNameError,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                            color = SlockColor.AccentRed
+                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                            color = RaftColor.AccentRed
                         )
                     }
                 }
                 item(key = "description") {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SlockBrutalTextField(
+                        RaftBrutalTextField(
                             label = stringResource(MR.strings.agent_create_label_description),
                             optional = true,
                             value = description,
@@ -1461,16 +1461,16 @@ internal fun SharedCreateAgentDialog(
                                     MR.strings.agent_create_error_description_length
                                         .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
                                         .localized(),
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                                color = SlockColor.AccentRed
+                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                                color = RaftColor.AccentRed
                             )
                         } else {
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Spacer(Modifier.weight(1f))
                                 Text(
                                     text = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                                    style = SlockType.Caption,
-                                    color = SlockColor.TextMutedGray
+                                    style = RaftType.Caption,
+                                    color = RaftColor.TextMutedGray
                                 )
                             }
                         }
@@ -1483,20 +1483,20 @@ internal fun SharedCreateAgentDialog(
                 if (!external && v2Candidate && v2FailureCode != null && v1FormMissing) {
                     // v2 failed and there is no v1 form to fall back to: say so instead of a blank section.
                     item(key = "runtime-form-v2-failure") {
-                        SlockRaftUiBanner(
-                            status = SlockRaftUiBannerStatus.Warning,
+                        RaftUiBanner(
+                            status = RaftUiBannerStatus.Warning,
                             description =
                                 MR.strings.runtime_form_v2_load_failed.format(listOf(v2FailureCode)).localized(),
-                            size = SlockRaftUiBannerSize.Medium,
+                            size = RaftUiBannerSize.Medium,
                             action = {
-                                SlockBrutalActionButton(
+                                RaftBrutalActionButton(
                                     label = stringResource(MR.strings.common_retry),
                                     onClick = { v2LoadAttempt += 1 },
                                     enabled = !submitting,
-                                    leadingIcon = SlockLucideIconName.RefreshCw,
+                                    leadingIcon = RaftLucideIconName.RefreshCw,
                                     minWidth = 72.dp,
                                     minHeight = 32.dp,
-                                    shadowOffset = SlockShadow.BrutalSmall
+                                    shadowOffset = RaftShadow.BrutalSmall
                                 )
                             }
                         )
@@ -1535,8 +1535,8 @@ internal fun SharedCreateAgentDialog(
                                 if (v2Loaded == null) {
                                     Text(
                                         text = stringResource(MR.strings.agent_create_state_computers_loading),
-                                        style = SlockType.Caption,
-                                        color = SlockColor.TextMutedGray
+                                        style = RaftType.Caption,
+                                        color = RaftColor.TextMutedGray
                                     )
                                 } else {
                                     RuntimeFormV2Fields(
@@ -1717,14 +1717,14 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
             }
-            SlockDialogFooter {
-                SlockBrutalActionButton(
+            RaftDialogFooter {
+                RaftBrutalActionButton(
                     label = stringResource(MR.strings.common_cancel),
                     enabled = !submitting,
-                    backgroundColor = SlockColor.SurfaceWhite,
+                    backgroundColor = RaftColor.SurfaceWhite,
                     onClick = onDismiss
                 )
-                SlockBrutalActionButton(
+                RaftBrutalActionButton(
                     label =
                         if (submitting) {
                             stringResource(MR.strings.agent_create_action_creating)
@@ -1733,7 +1733,7 @@ internal fun SharedCreateAgentDialog(
                         },
                     enabled = canSubmit,
                     minWidth = 126.dp,
-                    backgroundColor = SlockColor.AccentPink,
+                    backgroundColor = RaftColor.AccentPink,
                     onClick = {
                         val v2Submit = (v2Form ?: v2Loaded)?.takeIf { v2Active }?.let { loaded ->
                             SharedCreateAgentDialogSubmit(
@@ -1748,7 +1748,7 @@ internal fun SharedCreateAgentDialog(
                         }
                         if (v2Submit != null) {
                             onSubmit(v2Submit)
-                            return@SlockBrutalActionButton
+                            return@RaftBrutalActionButton
                         }
                         onSubmit(
                             buildSharedCreateAgentDialogSubmit(
@@ -1811,13 +1811,13 @@ private fun onDismissOnce() {
 @Composable
 private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
     if (planLabel.isNullOrBlank()) {
-        SlockRaftUiBanner(
-            status = SlockRaftUiBannerStatus.Warning,
+        RaftUiBanner(
+            status = RaftUiBannerStatus.Warning,
             description =
                 MR.strings.agent_create_error_limit
                     .format(listOf(currentAgentCount, maxAgents))
                     .localized(),
-            size = SlockRaftUiBannerSize.Medium
+            size = RaftUiBannerSize.Medium
         )
         return
     }
@@ -1831,9 +1831,9 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockRaftUiBannerStatus.Warning.background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockRaftUiBannerSize.Medium.padding)
+                .background(RaftUiBannerStatus.Warning.background)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .padding(RaftUiBannerSize.Medium.padding)
     ) {
         Text(
             text =
@@ -1844,8 +1844,8 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
                     append(action)
                     pop()
                 },
-            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-            color = SlockColor.TextBlack
+            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+            color = RaftColor.TextBlack
         )
     }
 }
@@ -1863,12 +1863,12 @@ private fun MachinePicker(
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_computer), required = true)
+        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_computer), required = true)
         when {
             machinesLoading -> Text(
                 text = stringResource(MR.strings.agent_create_state_computers_loading),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
             !machinesErrorMessage.isNullOrBlank() ->
                 Column(
@@ -1876,37 +1876,37 @@ private fun MachinePicker(
                         Modifier
                             .fillMaxWidth()
                             // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
-                            .border(SlockStroke.Thin, SlockColor.AccentRed.copy(alpha = 0.5f))
-                            .background(SlockColor.SurfaceCream)
-                            .padding(SlockSpacing.Sm),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                            .border(RaftAppStroke.Thin, RaftColor.AccentRed.copy(alpha = 0.5f))
+                            .background(RaftColor.SurfaceCream)
+                            .padding(RaftAppSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
                 ) {
                     Text(
                         text = machinesErrorMessage,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                        color = RaftColor.AccentRed
                     )
-                    SlockBrutalActionButton(
+                    RaftBrutalActionButton(
                         label = stringResource(MR.strings.common_retry),
                         onClick = onRetry,
                         enabled = enabled,
-                        leadingIcon = SlockLucideIconName.RefreshCw,
+                        leadingIcon = RaftLucideIconName.RefreshCw,
                         minWidth = 72.dp,
                         minHeight = 32.dp,
-                        shadowOffset = SlockShadow.BrutalSmall
+                        shadowOffset = RaftShadow.BrutalSmall
                     )
                 }
             machines.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.3f))
-                    .background(SlockColor.SurfaceCream)
-                    .padding(SlockSpacing.Sm)
+                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.3f))
+                    .background(RaftColor.SurfaceCream)
+                    .padding(RaftAppSpacing.Sm)
             ) {
                 Text(
                     text = stringResource(MR.strings.agent_create_state_computers_empty),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
                 )
             }
             else -> {
@@ -1916,7 +1916,7 @@ private fun MachinePicker(
                         requiredComputer = requiredComputer,
                         offlineSuffix = stringResource(MR.strings.agent_create_suffix_offline)
                     )
-                SlockBrutalSelectField(
+                RaftBrutalSelectField(
                     options = machineItems.toBrutalSelectOptions(),
                     selectedId = selectedMachineId.orEmpty(),
                     selectedLabel =
@@ -1932,14 +1932,14 @@ private fun MachinePicker(
         if (!requiredComputer.isNullOrBlank()) {
             Text(
                 text = MR.strings.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized(),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
         } else if (!suggestedComputer.isNullOrBlank()) {
             Text(
                 text = MR.strings.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized(),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
         }
     }
@@ -1990,8 +1990,8 @@ internal fun BuiltInRuntimeSection(
     val fieldCopy = form?.definition?.uiSchema?.localization.orEmpty()
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
-        SlockBrutalSelectField(
+        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
             selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: "Built-in (Pi)",
@@ -2006,8 +2006,8 @@ internal fun BuiltInRuntimeSection(
         if (loading && form == null) {
             Text(
                 text = stringResource(MR.strings.agent_create_state_computers_loading),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
         }
         if (form != null) {
@@ -2015,9 +2015,9 @@ internal fun BuiltInRuntimeSection(
                 val copy = fieldCopy[field]
                 when (field) {
                     "providerId" -> {
-                        SlockBrutalSectionLabel(label = copy?.label ?: "Provider", required = true)
-                        SlockBrutalSelectField(
-                            options = providerOptions.map { SlockBrutalSelectOption(it.value, it.label) },
+                        RaftBrutalSectionLabel(label = copy?.label ?: "Provider", required = true)
+                        RaftBrutalSelectField(
+                            options = providerOptions.map { RaftBrutalSelectOption(it.value, it.label) },
                             selectedId = providerId,
                             selectedLabel = providerOptions.firstOrNull { it.value == providerId }?.label.orEmpty(),
                             placeholder = copy?.placeholder ?: "Provider",
@@ -2032,10 +2032,10 @@ internal fun BuiltInRuntimeSection(
                                 onBaseUrlChange("")
                             }
                         )
-                        copy?.hint?.let { Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray) }
+                        copy?.hint?.let { Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray) }
                     }
                     "apiKey" -> {
-                        SlockBrutalTextField(
+                        RaftBrutalTextField(
                             label = copy?.label ?: "API Key",
                             required = true,
                             value = apiKey,
@@ -2046,7 +2046,7 @@ internal fun BuiltInRuntimeSection(
                         )
                     }
                     "baseUrl" -> if ("/baseUrl" in visiblePointers) {
-                        SlockBrutalTextField(
+                        RaftBrutalTextField(
                             label = copy?.label ?: "Base URL",
                             required = true,
                             value = baseUrl,
@@ -2061,7 +2061,7 @@ internal fun BuiltInRuntimeSection(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            SlockCheckbox(
+                            RaftAppCheckbox(
                                 checked = supportsImageInput,
                                 onCheckedChange = onSupportsImageInputChange,
                                 enabled = enabled
@@ -2069,18 +2069,18 @@ internal fun BuiltInRuntimeSection(
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
                                     text = copy?.label ?: stringResource(MR.strings.agent_create_label_supports_image_input),
-                                    style = SlockType.Caption,
-                                    color = SlockColor.TextBlack
+                                    style = RaftType.Caption,
+                                    color = RaftColor.TextBlack
                                 )
                                 copy?.hint?.let {
-                                    Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                                    Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
                                 }
                             }
                         }
                     }
                     "model" -> {
                         if (customModelAllowed) {
-                            SlockBrutalTextField(
+                            RaftBrutalTextField(
                                 label = copy?.label ?: "Model",
                                 required = true,
                                 value = model,
@@ -2089,9 +2089,9 @@ internal fun BuiltInRuntimeSection(
                                 enabled = enabled
                             )
                         } else {
-                            SlockBrutalSectionLabel(label = copy?.label ?: "Model", required = true)
-                            SlockBrutalSelectField(
-                                options = modelOptions.map { SlockBrutalSelectOption(it.value, it.label) },
+                            RaftBrutalSectionLabel(label = copy?.label ?: "Model", required = true)
+                            RaftBrutalSelectField(
+                                options = modelOptions.map { RaftBrutalSelectOption(it.value, it.label) },
                                 selectedId = model,
                                 selectedLabel = modelOptions.firstOrNull { it.value == model }?.label.orEmpty(),
                                 placeholder = copy?.placeholder ?: "Model",
@@ -2119,7 +2119,7 @@ internal fun BuiltInRuntimeSection(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    SlockCheckbox(
+                                    RaftAppCheckbox(
                                         checked = loadLocalPlugins,
                                         onCheckedChange = onLoadLocalPluginsChange,
                                         enabled = enabled
@@ -2127,11 +2127,11 @@ internal fun BuiltInRuntimeSection(
                                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                         Text(
                                             text = copy?.label ?: "Load local Pi plugins",
-                                            style = SlockType.Caption,
-                                            color = SlockColor.TextBlack
+                                            style = RaftType.Caption,
+                                            color = RaftColor.TextBlack
                                         )
                                         copy?.hint?.let {
-                                            Text(it, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                                            Text(it, style = RaftType.Caption, color = RaftColor.TextMutedGray)
                                         }
                                     }
                                 }
@@ -2215,8 +2215,8 @@ internal fun AdvancedRuntimeSection(
     val focusManager = LocalFocusManager.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
-        SlockBrutalSelectField(
+        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+        RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
             selectedLabel =
@@ -2239,19 +2239,19 @@ internal fun AdvancedRuntimeSection(
                     } else {
                         error
                     },
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                color = RaftColor.AccentRed
             )
         }
         if (runtimeAvailabilityError == null) {
         if (supportsRuntimeApiUrl(runtime)) {
-            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider), required = false)
+            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider), required = false)
             val providerOptions =
                 createAgentProviderDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
                     customLabel = stringResource(MR.strings.agent_create_label_custom)
                 )
-            SlockBrutalSelectField(
+            RaftBrutalSelectField(
                 options = providerOptions.toBrutalSelectOptions(),
                 selectedId = providerMode,
                 selectedLabel =
@@ -2271,11 +2271,11 @@ internal fun AdvancedRuntimeSection(
             )
             Text(
                 text = stringResource(MR.strings.agent_create_hint_provider),
-                style = SlockType.Caption,
-                color = SlockColor.TextMutedGray
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
             )
             if (providerMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_api_url),
                     required = true,
                     value = providerApiUrl,
@@ -2286,11 +2286,11 @@ internal fun AdvancedRuntimeSection(
                 if (providerApiUrl.isNotBlank() && providerUrlInvalid) {
                     Text(
                         text = stringResource(MR.strings.agent_create_error_provider_url),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                        color = RaftColor.AccentRed
                     )
                 }
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_api_key),
                     required = true,
                     value = providerApiKey,
@@ -2304,22 +2304,22 @@ internal fun AdvancedRuntimeSection(
                 if (providerKeyInvalid) {
                     Text(
                         text = stringResource(MR.strings.agent_create_error_provider_key),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                        color = RaftColor.AccentRed
                     )
                 }
             }
         }
         if (runtime == "pi") {
-            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider))
-            SlockBrutalSelectField(
+            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider))
+            RaftBrutalSelectField(
                 options =
                     listOf(
-                        SlockBrutalSelectOption(
+                        RaftBrutalSelectOption(
                             id = "configured",
                             label = stringResource(MR.strings.agent_create_action_default)
                         ),
-                        SlockBrutalSelectOption(id = "deepseek", label = "DeepSeek")
+                        RaftBrutalSelectOption(id = "deepseek", label = "DeepSeek")
                     ),
                 selectedId = piProviderId,
                 selectedLabel =
@@ -2335,7 +2335,7 @@ internal fun AdvancedRuntimeSection(
                 }
             )
             if (piProviderId != "configured") {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_api_key),
                     required = true,
                     value = piProviderApiKey,
@@ -2349,13 +2349,13 @@ internal fun AdvancedRuntimeSection(
         CreateAgentSectionLabelWithAction(
             label = stringResource(MR.strings.agent_create_label_model),
             required = false,
-            actionIcon = SlockLucideIconName.RefreshCw,
+            actionIcon = RaftLucideIconName.RefreshCw,
             actionEnabled = enabled && !runtimeModelsLoading,
             loading = runtimeModelsLoading,
             onAction = onRuntimeModelsRefresh
         )
         val modelSelectItems = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) }
-        SlockBrutalSelectField(
+        RaftBrutalSelectField(
             options = modelSelectItems.toBrutalSelectOptions(),
             selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
             selectedLabel =
@@ -2391,7 +2391,7 @@ internal fun AdvancedRuntimeSection(
         )
         key(customModelMode) {
             if (customModelMode) {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_custom_model),
                     required = true,
                     value = customModelName,
@@ -2402,8 +2402,8 @@ internal fun AdvancedRuntimeSection(
                 if (customModelName.isBlank()) {
                     Text(
                         text = stringResource(MR.strings.agent_create_error_custom_model),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                        color = SlockColor.AccentRed
+                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                        color = RaftColor.AccentRed
                     )
                 }
             }
@@ -2411,7 +2411,7 @@ internal fun AdvancedRuntimeSection(
         if (supportsRuntimeReasoningEffort(runtime)) {
             val reasoningModel =
                 if (customModelMode) customModelName.trim() else model
-            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
             val reasoningOptions =
                 createAgentReasoningDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
@@ -2420,7 +2420,7 @@ internal fun AdvancedRuntimeSection(
                     runtimeModelsOverride = runtimeModelsOverride
                 )
             val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
-            SlockBrutalSelectField(
+            RaftBrutalSelectField(
                 options = reasoningOptions.toBrutalSelectOptions(),
                 selectedId = reasoningSelectedId,
                 selectedLabel =
@@ -2440,14 +2440,14 @@ internal fun AdvancedRuntimeSection(
         // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
         // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
         if (runtime == CREATE_AGENT_KIMI_SDK_RUNTIME_ID && kimiSdkReasoningCapability != null) {
-            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
+            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
             val kimiReasoningOptions =
                 createAgentKimiSdkReasoningDropdownItems(
                     capability = kimiSdkReasoningCapability,
                     defaultLabel = stringResource(MR.strings.agent_create_action_default)
                 )
             val kimiReasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
-            SlockBrutalSelectField(
+            RaftBrutalSelectField(
                 options = kimiReasoningOptions.toBrutalSelectOptions(),
                 selectedId = kimiReasoningSelectedId,
                 selectedLabel =
@@ -2465,21 +2465,21 @@ internal fun AdvancedRuntimeSection(
             )
         }
         if (supportsRuntimeFastMode(runtime)) {
-            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
+            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockCheckbox(
+                RaftAppCheckbox(
                     checked = fastMode,
                     onCheckedChange = { onFastModeChange(it) },
                     enabled = enabled
                 )
                 Text(
                     text = stringResource(MR.strings.agent_create_label_fast_mode),
-                    style = SlockType.Caption,
-                    color = SlockColor.TextBlack
+                    style = RaftType.Caption,
+                    color = RaftColor.TextBlack
                 )
             }
         }
@@ -2494,8 +2494,8 @@ internal fun AdvancedRuntimeSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                    .padding(SlockSpacing.Sm),
+                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                    .padding(RaftAppSpacing.Sm),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 EnvVarsEditor(
@@ -2504,7 +2504,7 @@ internal fun AdvancedRuntimeSection(
                     enabled = enabled
                 )
                 if (supportsRuntimeCommand(runtime)) {
-                    SlockBrutalTextField(
+                    RaftBrutalTextField(
                         label = stringResource(MR.strings.agent_create_label_command),
                         optional = true,
                         value = command,
@@ -2514,8 +2514,8 @@ internal fun AdvancedRuntimeSection(
                     )
                     Text(
                         text = stringResource(MR.strings.agent_create_hint_command),
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
+                        style = RaftType.Caption,
+                        color = RaftColor.TextMutedGray
                     )
                 }
             }
@@ -2534,15 +2534,15 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        SlockLucideIcon(
-            if (open) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
+        RaftLucideIcon(
+            if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
             modifier = Modifier.size(16.dp),
-            color = SlockColor.TextMutedGrayArgb
+            color = RaftColor.TextMutedGrayArgb
         )
         Text(
             text = stringResource(MR.strings.agent_create_label_advanced),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+            color = RaftColor.TextMutedGray
         )
     }
 }
@@ -2551,7 +2551,7 @@ internal fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
 internal fun CreateAgentSectionLabelWithAction(
     label: String,
     required: Boolean = false,
-    actionIcon: SlockLucideIconName,
+    actionIcon: RaftLucideIconName,
     actionEnabled: Boolean,
     loading: Boolean = false,
     onAction: () -> Unit
@@ -2560,7 +2560,7 @@ internal fun CreateAgentSectionLabelWithAction(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockBrutalSectionLabel(label = label, required = required, modifier = Modifier.weight(1f))
+        RaftBrutalSectionLabel(label = label, required = required, modifier = Modifier.weight(1f))
         Box(
             modifier =
                 Modifier
@@ -2569,12 +2569,12 @@ internal fun CreateAgentSectionLabelWithAction(
             contentAlignment = Alignment.Center
         ) {
             if (loading) {
-                SlockCreateAgentSpinnerIcon()
+                RaftCreateAgentSpinnerIcon()
             } else {
-                SlockLucideIcon(
+                RaftLucideIcon(
                     actionIcon,
                     modifier = Modifier.size(13.dp),
-                    color = if (actionEnabled) SlockColor.TextMutedGrayArgb else "#33000000"
+                    color = if (actionEnabled) RaftColor.TextMutedGrayArgb else "#33000000"
                 )
             }
         }
@@ -2591,8 +2591,8 @@ private fun CreateAgentRandomNameButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    SlockBrutalIconButton(
-        iconName = SlockLucideIconName.Dices,
+    RaftBrutalIconButton(
+        iconName = RaftLucideIconName.Dices,
         onClick = onClick,
         contentDescription = stringResource(MR.strings.agent_create_random_name),
         enabled = enabled,
@@ -2602,8 +2602,8 @@ private fun CreateAgentRandomNameButton(
         disabledBorderColor = Color.Transparent,
         shadowColor = Color.Transparent,
         disabledShadowColor = Color.Transparent,
-        iconColor = SlockColor.TextBlackArgb,
-        disabledIconColor = SlockColor.TextMutedGrayArgb,
+        iconColor = RaftColor.TextBlackArgb,
+        disabledIconColor = RaftColor.TextMutedGrayArgb,
         size = 22.dp,
         shadowOffset = 0.dp,
         iconSize = 13.dp
@@ -2611,11 +2611,11 @@ private fun CreateAgentRandomNameButton(
 }
 
 @Composable
-private fun SlockCreateAgentSpinnerIcon() {
-    SlockLucideIcon(
-        SlockLucideIconName.LoaderCircle,
+private fun RaftCreateAgentSpinnerIcon() {
+    RaftLucideIcon(
+        RaftLucideIconName.LoaderCircle,
         modifier = Modifier.size(13.dp),
-        color = SlockColor.TextMutedGrayArgb,
+        color = RaftColor.TextMutedGrayArgb,
         spinning = true
     )
 }
@@ -2629,7 +2629,7 @@ internal fun EnvVarsEditor(
     required: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(
+        RaftBrutalSectionLabel(
             label = label ?: stringResource(MR.strings.agent_create_label_environment_variables),
             required = required,
             optional = !required
@@ -2640,7 +2640,7 @@ internal fun EnvVarsEditor(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_key),
                     value = key,
                     onValueChange = { newKey ->
@@ -2651,7 +2651,7 @@ internal fun EnvVarsEditor(
                     fieldMinHeight = 32.dp,
                     modifier = Modifier.weight(1f)
                 )
-                SlockBrutalTextField(
+                RaftBrutalTextField(
                     label = stringResource(MR.strings.agent_create_label_value),
                     value = value,
                     onValueChange = { newValue ->
@@ -2670,9 +2670,9 @@ internal fun EnvVarsEditor(
                             .padding(horizontal = 8.dp)
                 ) {
                     // Icon affordances are Lucide, never text glyphs (task #494).
-                    SlockLucideIcon(
-                        name = SlockLucideIconName.X,
-                        color = if (enabled) SlockColor.AccentRedArgb else SlockColor.TextMutedGrayArgb,
+                    RaftLucideIcon(
+                        name = RaftLucideIconName.X,
+                        color = if (enabled) RaftColor.AccentRedArgb else RaftColor.TextMutedGrayArgb,
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -2686,8 +2686,8 @@ internal fun EnvVarsEditor(
         ) {
             Text(
                 text = stringResource(MR.strings.agent_create_action_add_env_var),
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
+                color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray
             )
         }
     }

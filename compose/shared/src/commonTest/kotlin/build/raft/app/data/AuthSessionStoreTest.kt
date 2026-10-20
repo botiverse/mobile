@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class AuthSessionStoreTest {
     @Test
     fun authInstallationIdentityPersistsAcrossStoreInstancesAndAccounts() = runBlocking {
-        val keyValue = InMemorySlockKeyValueStore()
+        val keyValue = InMemoryRaftKeyValueStore()
         val first = KeyValueAuthSessionStore(keyValue)
         val firstId = first.readOrCreateAuthInstallationId("ari_00000000000000000000000000000001")
         first.replaceAuthenticatedSession(sampleSession())
@@ -34,7 +34,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun durableAttemptAndSuccessorCommitShareOneSessionRecord() = runBlocking {
-        val keyValue = InMemorySlockKeyValueStore()
+        val keyValue = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValue)
         val original = sampleSession()
         store.replaceAuthenticatedSession(original)
@@ -113,7 +113,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun storedSessionExposesSharedSnapshotAndAuthTokens() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(sampleSession())
+        val store = InMemoryRaftAuthSessionStore(sampleSession())
 
         val session = store.readSession()
 
@@ -125,7 +125,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun updateSelectedServerAndClearSession() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(sampleSession())
+        val store = InMemoryRaftAuthSessionStore(sampleSession())
 
         store.updateSelectedServer("server-2", "work")
         assertEquals("server-2", store.readSession()?.currentServerId)
@@ -144,7 +144,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun mmkvAuthSessionStorePersistsThroughAuthNamespaceOnly() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val logs = mutableListOf<String>()
         val criticalLogs = mutableListOf<String>()
         val store =
@@ -180,7 +180,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun qaBootstrapMonotonicBoundariesPersistAsDecimalStringsBeyondJavascriptSafeInteger() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValueStore)
         val session =
             sampleSession().copy(
@@ -213,7 +213,7 @@ class AuthSessionStoreTest {
 
         store.replaceAuthenticatedSession(session)
 
-        val encoded = keyValueStore.getString(SLOCK_AUTH_SESSION_RECORD_KEY).orEmpty()
+        val encoded = keyValueStore.getString(RAFT_AUTH_SESSION_RECORD_KEY).orEmpty()
         assertContains(encoded, "\"processGeneration\":\"9007199254740992\"")
         assertContains(encoded, "\"deviceReadyElapsedRealtimeNanos\":\"9007199254740993\"")
         assertEquals("9007199254740993", store.readSession()?.qaBootstrap?.runtimeEnvelope?.deviceReadyElapsedRealtimeNanos)
@@ -221,7 +221,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun successfulSessionReadsUseDecodedProcessCache() = runBlocking {
-        val keyValueStore = CountingSlockKeyValueStore()
+        val keyValueStore = CountingRaftKeyValueStore()
         val logs = mutableListOf<String>()
         val store = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
         val secondStore = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
@@ -238,7 +238,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun mmkvAuthSessionStoreBroadcastsChangedSessionFingerprint() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValueStore)
         val firstChange = async(start = CoroutineStart.UNDISPATCHED) { store.sessionChanges.first() }
 
@@ -273,7 +273,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun mmkvAuthSessionStoreClearsLocalSessionWithoutPeerNotify() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValueStore)
         val staleSession = sampleSession()
         val staleFingerprint = staleSession.authSessionClearFingerprint()
@@ -302,7 +302,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun mmkvAuthSessionStoreSkipsStaleRemoteClearAfterNewLogin() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValueStore)
         val staleSession = sampleSession()
         val freshSession = sampleSession().copy(accessToken = "token-new", refreshToken = "token-new-r")
@@ -329,7 +329,7 @@ class AuthSessionStoreTest {
         // the socket coordinator rotated the token in between, and the metadata write then wrote
         // the captured OLD token back — clobbering the successor. The fix: metadata writes go
         // through updateMetadata, which reads latest under lock and never touches tokens.
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession()) // access=token-a / refresh=token-r
 
         val captured = store.readSession()!! // metadata writer captures the OLD session
@@ -353,7 +353,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun qaBootstrapBindingCasRejectsSameAccountSuccessorAttemptAndPreservesPendingState() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val attemptA = sampleSession().copy(qaBootstrap = sampleQaBootstrap(attempt = 1))
         store.replaceAuthenticatedSession(attemptA)
         val capturedA = requireNotNull(store.readSession()?.qaBootstrap)
@@ -385,7 +385,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun qaBootstrapBindingCasUsesLatestRotatedTokensForSameBinding() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession().copy(qaBootstrap = sampleQaBootstrap(attempt = 1)))
         val captured = requireNotNull(store.readSession()?.qaBootstrap)
         store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r")
@@ -404,7 +404,7 @@ class AuthSessionStoreTest {
     fun refreshOnlyRotationIsPreservedAgainstStaleMetadata() = runBlocking {
         // #496 (Artea Xiaomi, 2nd device): android_socket rotated only the REFRESH (access unchanged),
         // then a stale metadata write must not revert it. Mirrors the Xiaomi trace exactly.
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession()) // access=token-a / refresh=token-r
         val captured = store.readSession()!!
 
@@ -428,7 +428,7 @@ class AuthSessionStoreTest {
     fun updateMetadataSkipsWhenAccountSwitched() = runBlocking {
         // #466 account-generation guard: after a metadata writer captures account A, a login replaces
         // the session with account B; A's metadata write must NOT land on B.
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession()) // account user-1
         val capturedA = store.readSession()!!
 
@@ -456,7 +456,7 @@ class AuthSessionStoreTest {
         // The serialization lock is shared across KeyValueAuthSessionStore INSTANCES backing the
         // same store, so concurrent rotate (instance b) + metadata write (instance a) can never
         // lose the rotation regardless of interleaving/instance identity.
-        val kv = InMemorySlockKeyValueStore()
+        val kv = InMemoryRaftKeyValueStore()
         val a = KeyValueAuthSessionStore(kv)
         val b = KeyValueAuthSessionStore(kv)
         a.replaceAuthenticatedSession(sampleSession())
@@ -479,7 +479,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun updateMetadataFailsClosedOnTokenChange() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession())
         assertFailsWith<IllegalArgumentException> {
             store.updateMetadata(expectedAccountId = null) { latest -> latest.copy(accessToken = "sneaky") }
@@ -489,7 +489,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun rotateTokensIfMatchNoOpsOnStaleExpected() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession())
         assertNull(store.rotateTokensIfMatch("stale-a", "stale-r", "new-a", "new-r"))
         assertEquals("token-a", store.readSession()?.accessToken) // not overwritten
@@ -501,7 +501,7 @@ class AuthSessionStoreTest {
         // observer on instance A (e.g. AppShell) — the bus is process-wide shared, not per-instance.
         // Without the companion-shared flow, A's observer silently misses B's mutations (the exact
         // gap that would break #560's push seam).
-        val kv = InMemorySlockKeyValueStore()
+        val kv = InMemoryRaftKeyValueStore()
         val a = KeyValueAuthSessionStore(kv)
         val b = KeyValueAuthSessionStore(kv)
         a.replaceAuthenticatedSession(sampleSession()) // emitted before A subscribes (replay=0)
@@ -517,7 +517,7 @@ class AuthSessionStoreTest {
     fun authSessionEventGenerationsAreMonotonicAndTyped() = runBlocking {
         // generation is assigned INSIDE the store lock so consumers can order events by generation
         // regardless of delivery order (rapid rotate→clear never reorders semantically).
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val collected = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.take(3).toList() }
         store.replaceAuthenticatedSession(sampleSession()) // Authenticated
         store.rotateTokensIfMatch("token-a", "token-r", "token-a2", "token-r2") // TokensRotated
@@ -536,7 +536,7 @@ class AuthSessionStoreTest {
         // #466 (AD2 blocker): the remote-clear path (clearSessionFromSessionClearedNotify — used by
         // Settings/AppShell/Provider) must publish to the typed process-wide bus too, else #560 misses
         // this real session mutation. A matched remove on instance B is seen by A's typed observer.
-        val kv = InMemorySlockKeyValueStore()
+        val kv = InMemoryRaftKeyValueStore()
         val a = KeyValueAuthSessionStore(kv)
         val b = KeyValueAuthSessionStore(kv)
         val session = sampleSession()
@@ -558,7 +558,7 @@ class AuthSessionStoreTest {
     fun clearNotifyOnEmptyStoreDoesNotFabricateTypedMutation() = runBlocking {
         // A duplicate remote-clear notify (current=null, nothing removed) must NOT fabricate a typed
         // Cleared event — the first typed event a subscriber sees is the subsequent REAL login.
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val firstEvent = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.first() }
         store.clearSessionFromSessionClearedNotify("remote_session_cleared", "nonexistent-fp")
         store.replaceAuthenticatedSession(sampleSession()) // real Authenticated
@@ -569,7 +569,7 @@ class AuthSessionStoreTest {
     @Test
     fun authenticatedReplacementEmitsCanonicalCredentialIdentityWithoutEmailOrTokens() = runBlocking {
         val logs = mutableListOf<String>()
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore(), diagnosticsLogger = logs::add)
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore(), diagnosticsLogger = logs::add)
         store.replaceAuthenticatedSession(sampleSession())
         val identity = logs.single { it.startsWith("QA_CREDENTIAL_IDENTITY ") }
         assertTrue(
@@ -584,7 +584,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun terminalCleanupCommitRejectsSuccessorLoginAfterOldClearAdmission() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession())
         store.clearSession("refresh_http_401", "test")
         val admittedClear = store.readAuthSessionTerminalSnapshot()
@@ -606,7 +606,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun terminalAuthLossCommitClearsExactCapturedAuthorityLeftByEarlierClearFailure() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val captured = sampleSession()
         store.replaceAuthenticatedSession(captured)
         val admitted = store.readAuthSessionTerminalSnapshot()
@@ -634,7 +634,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun terminalAuthLossCommitRejectsDifferentSuccessorAuthority() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val captured = sampleSession()
         store.replaceAuthenticatedSession(captured)
         val admitted = store.readAuthSessionTerminalSnapshot()
@@ -661,7 +661,7 @@ class AuthSessionStoreTest {
 
     @Test
     fun terminalAuthLossCommitAcceptsExactAuthorityAfterMetadataGenerationDrift() = runBlocking {
-        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
         val captured = sampleSession()
         store.replaceAuthenticatedSession(captured)
         val admitted = store.readAuthSessionTerminalSnapshot()
@@ -688,8 +688,8 @@ class AuthSessionStoreTest {
         assertNull(store.readSession())
     }
 
-    private class CountingSlockKeyValueStore : SlockKeyValueStore {
-        private val delegate = InMemorySlockKeyValueStore()
+    private class CountingRaftKeyValueStore : RaftKeyValueStore {
+        private val delegate = InMemoryRaftKeyValueStore()
         var readCount: Int = 0
 
         override fun getString(key: String): String? {

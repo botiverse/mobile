@@ -2,18 +2,18 @@ package build.raft.app.data
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.KuiklyThreadMessageItem
-import build.raft.app.KuiklyThreadPendingSendContext
+import build.raft.app.RaftThreadMessageItem
+import build.raft.app.RaftThreadPendingSendContext
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.ThreadMessageDeliveryFailed
 import build.raft.app.ThreadMessageDeliverySending
 import build.raft.app.ThreadRouteIdentity
-import build.raft.app.KuiklyThreadSurfaceKind
-import build.raft.app.KuiklyThreadScreenPayload
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftThreadScreenPayload
 import build.raft.app.model.ConversationKind
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.threadPendingSendOwnerScopeId
-import build.raft.app.shared.data.local.SlockDatabase
+import build.raft.app.shared.data.local.RaftDatabase
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
@@ -480,7 +480,7 @@ class ThreadPendingSendJournalTest {
                     driver = driver,
                     provenance = provenance,
                     route = route.copy(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         channelKind = null,
                         parentConversationKind = ConversationKind.Channel,
                         instanceKey = "reply-stream:malformed-route",
@@ -506,7 +506,7 @@ class ThreadPendingSendJournalTest {
         withDatabase { path ->
             val provenance = provenance()
             val unresolved = resolveThreadRouteIdentity(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = null,
                 instanceId = "reply-parent:channel-a:parent-a",
                 sourceThreadId = "channel-a",
@@ -516,7 +516,7 @@ class ThreadPendingSendJournalTest {
                 parentConversationKind = ConversationKind.Channel,
             )
             val resolved = resolveThreadRouteIdentity(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 channelKind = null,
                 instanceId = "reply-stream:thread-a",
                 sourceThreadId = "thread-a",
@@ -565,19 +565,19 @@ class ThreadPendingSendJournalTest {
                 binders = null,
             ).value
         if (version == 0L) {
-            SlockDatabase.Schema.create(driver).value
+            RaftDatabase.Schema.create(driver).value
             // SQLDelight's Schema.create intentionally creates objects but does not own the
             // platform user_version marker.  The real preflight/migration layer writes it;
             // mirror that boundary here so a second JDBC connection represents a restarted
             // process instead of trying to create the schema a second time.
             driver.execute(
                 identifier = null,
-                sql = "PRAGMA user_version = ${SlockDatabase.Schema.version}",
+                sql = "PRAGMA user_version = ${RaftDatabase.Schema.version}",
                 parameters = 0,
                 binders = null,
             )
         }
-        return ThreadPendingSendJournal(SlockSqlDatabase(driver), nowMillis = { 123L })
+        return ThreadPendingSendJournal(RaftSqlDatabase(driver), nowMillis = { 123L })
     }
 
     private fun insertRaw(
@@ -688,7 +688,7 @@ class ThreadPendingSendJournalTest {
 
     private fun route(serverId: String = "channel-a"): ThreadRouteIdentity =
         resolveThreadRouteIdentity(
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = "channel",
             instanceId = serverId,
             sourceThreadId = serverId,
@@ -697,15 +697,15 @@ class ThreadPendingSendJournalTest {
             parentMessageId = null,
         )
 
-    private fun message(localId: String, randomId: String): KuiklyThreadMessageItem {
+    private fun message(localId: String, randomId: String): RaftThreadMessageItem {
         val context =
-            KuiklyThreadPendingSendContext(
+            RaftThreadPendingSendContext(
                 channelId = "channel-a",
                 body = "hello",
                 streamChannelId = "channel-a",
                 randomId = randomId,
             )
-        return KuiklyThreadMessageItem(
+        return RaftThreadMessageItem(
             id = localId,
             authorId = "principal-a",
             authorName = "A",

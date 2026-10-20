@@ -161,7 +161,7 @@ internal enum class RealtimeAuthAdvanceResult {
 }
 
 internal class KeyValueRealtimeAuthRevisionStore(
-    private val store: SlockKeyValueStore,
+    private val store: RaftKeyValueStore,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
 ) : RealtimeAuthRevisionStore {
     override fun read(): RealtimeAuthRevision? =

@@ -23,7 +23,7 @@ internal const val FOREGROUND_RECONCILE_COALESCE_MS = 10_000L
  * current-state refresh and the coalescing window.
  */
 class SharedForegroundReconciler internal constructor(
-    private val authStore: SlockAuthSessionStore,
+    private val authStore: RaftAuthSessionStore,
     private val refreshMembers: suspend (ServerId) -> Unit,
     private val scope: CoroutineScope,
     private val coalesceWindowMs: Long = FOREGROUND_RECONCILE_COALESCE_MS,

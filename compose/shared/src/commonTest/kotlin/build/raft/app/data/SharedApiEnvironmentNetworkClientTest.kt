@@ -1,9 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.network.MultipartFile
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockHttpExecutorResponse
-import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftHttpExecutorResponse
+import build.raft.app.network.RaftRequestPriority
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,7 +15,7 @@ class SharedApiEnvironmentNetworkClientTest {
     fun refreshAttemptUsesCanonicalReplayHeaders() = runBlocking {
         val executor = RecordingHttpExecutor(responseCode = 401)
         val transport =
-            SharedSlockAuthTransport(
+            SharedRaftAuthTransport(
                 baseUrl = "https://api.raft.build/api/",
                 executor = executor,
             )
@@ -26,17 +26,17 @@ class SharedApiEnvironmentNetworkClientTest {
             installationId = "ari_0123456789abcdef0123456789abcdef",
         )
 
-        assertEquals("arf_0123456789abcdef", executor.headers.single()[SLOCK_AUTH_REFRESH_ATTEMPT_HEADER])
+        assertEquals("arf_0123456789abcdef", executor.headers.single()[RAFT_AUTH_REFRESH_ATTEMPT_HEADER])
         assertEquals(
             "ari_0123456789abcdef0123456789abcdef",
-            executor.headers.single()[SLOCK_AUTH_INSTALLATION_HEADER],
+            executor.headers.single()[RAFT_AUTH_INSTALLATION_HEADER],
         )
     }
 
     @Test
     fun boundMultipartAuthorityMismatchSkipsExecutorAndPlatformStreamOpen() = runBlocking {
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-b", email = "b@raft.build"),
                     accessToken = "access-b",
@@ -47,19 +47,19 @@ class SharedApiEnvironmentNetworkClientTest {
             )
         var streamOpenCalls = 0
         val resolver =
-            object : SlockPlatformFileResolver {
-                override suspend fun readFile(fileRef: String): SlockPlatformFileReadResult =
+            object : RaftPlatformFileResolver {
+                override suspend fun readFile(fileRef: String): RaftPlatformFileReadResult =
                     error("whole-file read must not run")
 
-                override suspend fun statFile(fileRef: String): SlockPlatformFileStatResult =
-                    SlockPlatformFileStatResult(code = 200, sizeBytes = 4L)
+                override suspend fun statFile(fileRef: String): RaftPlatformFileStatResult =
+                    RaftPlatformFileStatResult(code = 200, sizeBytes = 4L)
 
                 override suspend fun openFileStream(
                     fileRef: String,
                     expectedSizeBytes: Long
-                ): SlockPlatformFileChunkSource {
+                ): RaftPlatformFileChunkSource {
                     streamOpenCalls += 1
-                    return object : SlockPlatformFileChunkSource {
+                    return object : RaftPlatformFileChunkSource {
                         override suspend fun read(maxBytes: Int): ByteArray = ByteArray(0)
                         override fun close() = Unit
                     }
@@ -67,7 +67,7 @@ class SharedApiEnvironmentNetworkClientTest {
             }
         val executor = RecordingHttpExecutor()
         val client =
-            SharedSlockNetworkClient(
+            SharedRaftNetworkClient(
                 sessionStore = sessionStore,
                 platformFileResolver = resolver,
                 executor = executor
@@ -88,7 +88,7 @@ class SharedApiEnvironmentNetworkClientTest {
                         )
                     ),
                 expectedAuthority =
-                    SlockExpectedAuthBinding(
+                    RaftExpectedAuthBinding(
                         accountId = "user-a",
                         accessToken = "access-a",
                         refreshToken = "refresh-a",
@@ -103,11 +103,11 @@ class SharedApiEnvironmentNetworkClientTest {
 
     @Test
     fun boundJsonEnvironmentMismatchSkipsExecutor() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         environmentStore.select("staging")
         val executor = RecordingHttpExecutor()
         val client =
-            SharedSlockNetworkClient(
+            SharedRaftNetworkClient(
                 sessionStore = authenticatedSessionStore(),
                 baseUrlProvider = { environmentStore.current().apiBaseUrl },
                 executor = executor,
@@ -125,11 +125,11 @@ class SharedApiEnvironmentNetworkClientTest {
 
     @Test
     fun boundJsonRequestUsesCapturedEnvironmentBaseUrl() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val executor = RecordingHttpExecutor()
         val capturedEnvironment = environmentStore.current().apiBaseUrl
         val client =
-            SharedSlockNetworkClient(
+            SharedRaftNetworkClient(
                 sessionStore = authenticatedSessionStore(),
                 baseUrlProvider = { environmentStore.current().apiBaseUrl },
                 executor = executor,
@@ -146,7 +146,7 @@ class SharedApiEnvironmentNetworkClientTest {
 
     @Test
     fun boundJsonEnvironmentChangeDuringTransportSkipsOldEnvironmentRefresh() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val capturedEnvironment = environmentStore.current().apiBaseUrl
         val executor =
             RecordingHttpExecutor(
@@ -154,7 +154,7 @@ class SharedApiEnvironmentNetworkClientTest {
                 onExecute = { environmentStore.select("staging") },
             )
         val client =
-            SharedSlockNetworkClient(
+            SharedRaftNetworkClient(
                 sessionStore = authenticatedSessionStore(),
                 baseUrlProvider = { environmentStore.current().apiBaseUrl },
                 executor = executor,
@@ -171,10 +171,10 @@ class SharedApiEnvironmentNetworkClientTest {
 
     @Test
     fun currentEnvironmentAuthDataSourceTracksLatestApiEnvironmentWithoutRecreation() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val executor = RecordingHttpExecutor(responseCode = 500)
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
                     accessToken = "staging-access-token",
@@ -186,7 +186,7 @@ class SharedApiEnvironmentNetworkClientTest {
             apiEnvironmentStore = environmentStore,
             authStore = sessionStore,
             transportFactory = { baseUrlProvider ->
-                SharedSlockAuthTransport(
+                SharedRaftAuthTransport(
                     baseUrlProvider = baseUrlProvider,
                     executor = executor
                 )
@@ -207,10 +207,10 @@ class SharedApiEnvironmentNetworkClientTest {
 
     @Test
     fun sharedNetworkClientReadsLatestApiEnvironmentForEachRequest() = runBlocking {
-        val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         val executor = RecordingHttpExecutor()
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
                     accessToken = "access-token",
@@ -220,7 +220,7 @@ class SharedApiEnvironmentNetworkClientTest {
                 )
             )
         val client =
-            SharedSlockNetworkClient(
+            SharedRaftNetworkClient(
                 sessionStore = sessionStore,
                 baseUrlProvider = { environmentStore.current().apiBaseUrl },
                 executor = executor
@@ -260,7 +260,7 @@ class SharedApiEnvironmentNetworkClientTest {
 
         suspend fun requestWith(code: Int) {
             val sessionStore =
-                InMemorySlockAuthSessionStore(
+                InMemoryRaftAuthSessionStore(
                     StoredAuthSession(
                         user = StoredAuthUser(id = "user-$code", email = "user-$code@raft.build"),
                         accessToken = "access-$code",
@@ -269,7 +269,7 @@ class SharedApiEnvironmentNetworkClientTest {
                         servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
                     )
                 )
-            SharedSlockNetworkClient(
+            SharedRaftNetworkClient(
                 sessionStore = sessionStore,
                 warningLogger = normal::add,
                 criticalWarningLogger = critical::add,
@@ -295,41 +295,41 @@ class SharedApiEnvironmentNetworkClientTest {
     private class RecordingHttpExecutor(
         private val responseCode: Int = 200,
         private val onExecute: (String) -> Unit = {},
-    ) : SlockHttpExecutor {
+    ) : RaftHttpExecutor {
         val urls = mutableListOf<String>()
         val headers = mutableListOf<Map<String, String>>()
         var multipartCalls = 0
 
         override suspend fun execute(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             method: String,
             headers: Map<String, String>,
             bodyText: String?,
             jsonBody: Boolean
-        ): SlockHttpExecutorResponse {
+        ): RaftHttpExecutorResponse {
             urls += url
             this.headers += headers
             onExecute(url)
-            return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
+            return RaftHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
 
         override suspend fun executeMultipart(
-            priority: SlockRequestPriority,
+            priority: RaftRequestPriority,
             url: String,
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.SlockTransferProgress) -> Unit)?
-        ): SlockHttpExecutorResponse {
+            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+        ): RaftHttpExecutorResponse {
             multipartCalls += 1
             urls += url
-            return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
+            return RaftHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
     }
 
-    private fun authenticatedSessionStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun authenticatedSessionStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
                 accessToken = "access-token",
@@ -339,8 +339,8 @@ class SharedApiEnvironmentNetworkClientTest {
             )
         )
 
-    private fun expectedBinding(environmentId: String): SlockExpectedAuthBinding =
-        SlockExpectedAuthBinding(
+    private fun expectedBinding(environmentId: String): RaftExpectedAuthBinding =
+        RaftExpectedAuthBinding(
             accountId = "user-1",
             accessToken = "access-token",
             refreshToken = "refresh-token",

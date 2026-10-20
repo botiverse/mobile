@@ -1,20 +1,20 @@
 package build.raft.app
 
-import build.raft.app.components.SlockAnchoredMetaChip
-import build.raft.app.components.SlockAttachmentPreviewCard
-import build.raft.app.components.SlockAttachmentPreviewCardWidth
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockChipLoadingIndicator
-import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockBrutalSearchField
-import build.raft.app.components.SlockBrutalTextField
-import build.raft.app.components.SlockRaftUiBanner
-import build.raft.app.components.SlockRaftUiBannerSize
-import build.raft.app.components.SlockRaftUiBannerStatus
-import build.raft.app.components.SlockRaftUiControlledMenu
-import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.components.RaftAnchoredMetaChip
+import build.raft.app.components.RaftAttachmentPreviewCard
+import build.raft.app.components.RaftAttachmentPreviewCardWidth
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftChipLoadingIndicator
+import build.raft.app.components.RaftBrutalIconButton
+import build.raft.app.components.RaftBrutalSearchField
+import build.raft.app.components.RaftBrutalTextField
+import build.raft.app.components.RaftUiBanner
+import build.raft.app.components.RaftUiBannerSize
+import build.raft.app.components.RaftUiBannerStatus
+import build.raft.app.components.RaftUiControlledMenu
+import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
-import build.raft.app.components.SlockToolbarChip
+import build.raft.app.components.RaftToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -35,9 +35,9 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.NetworkSlockTasksApi
-import build.raft.app.data.NetworkSlockThreadApi
-import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.NetworkRaftTasksApi
+import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -47,7 +47,7 @@ import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
-import build.raft.app.data.SlockEventBus
+import build.raft.app.data.RaftEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -59,22 +59,22 @@ import build.raft.app.data.ThreadReadAnchorOwner
 import build.raft.app.data.ThreadReadAnchorStore
 import build.raft.app.data.ThreadUnreadAnchorMessage
 import build.raft.app.data.projectThreadUnreadJump
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.KuiklyRealtimeEvents
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftAgentsNetworkApi
+import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.formatAttachmentSizeLabel
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
-import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
-import build.raft.app.data.isSlockHostVisible
+import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersPickerSlice
@@ -111,9 +111,9 @@ import build.raft.app.data.SharedTaskReferenceResolution
 import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
-import build.raft.app.data.SlockAuthSessionStore
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
@@ -148,20 +148,20 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
-import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
-import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
-import build.raft.app.markdown.SlockMarkdownBody
-import build.raft.app.markdown.LocalSlockMarkdownPlainCandidateSession
-import build.raft.app.markdown.SlockMarkdownPlainCandidateSession
+import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
+import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.LocalRaftMarkdownPlainCandidateSession
+import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.resolveThreadMarkdownSingleParagraphLightPathEnabled
 import build.raft.app.markdown.threadMarkdownLightGateInputsOrNull
-import build.raft.app.markdown.slockMarkdownProvidedValuesWith
-import build.raft.app.markdown.slockTraceDiagnosticsEnabled
-import build.raft.app.markdown.SlockMarkdownRenderConfig
+import build.raft.app.markdown.raftMarkdownProvidedValuesWith
+import build.raft.app.markdown.raftTraceDiagnosticsEnabled
+import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
-import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
-import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
+import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
+import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
@@ -174,16 +174,16 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
-import build.raft.app.model.formatSlockTimestampEpochMillis
-import build.raft.app.model.formatSlockTimestampLabel
+import build.raft.app.model.formatRaftTimestampEpochMillis
+import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
-import build.raft.app.model.slockEpochMillisUtcIso
-import build.raft.app.model.SlockTimeFormat24Hour
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.raftEpochMillisUtcIso
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resources.MR
@@ -402,7 +402,7 @@ internal fun threadMessageVisualHostPadding(visualFixture: String): Dp =
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY,
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607,
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE -> 0.dp
-        else -> SlockSpacing.Md
+        else -> RaftAppSpacing.Md
     }
 
 /**
@@ -422,7 +422,7 @@ private val ThreadVisualFixtureAgentAvatars: Map<String, String> =
     ).associateWith { "pixel:robot" }
 
 internal val ThreadVisualMemberAvatarResolver =
-    SlockMemberAvatarResolver(
+    RaftMemberAvatarResolver(
         currentAvatar = { memberId -> ThreadVisualFixtureAgentAvatars[memberId] },
         avatarFlow = { memberId -> kotlinx.coroutines.flow.flowOf(ThreadVisualFixtureAgentAvatars[memberId]) }
     )
@@ -441,7 +441,7 @@ internal fun threadMessageVisualWidth(visualFixture: String): Dp =
 internal fun threadVisualFixture(
     fixture: String,
     instanceId: String
-): KuiklyThreadScreenPayload {
+): RaftThreadScreenPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
     return when (fixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_NEW_MESSAGE_MENU_DEMO -> {
@@ -526,12 +526,12 @@ internal fun threadVisualFixture(
             )
         }
         THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#design",
                 subtitle = "Thread visual fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-design",
                 sourceThreadId = "channel-design",
                 selectedTab = "chat",
@@ -544,7 +544,7 @@ internal fun threadVisualFixture(
                 knownMarkdownChannelNames = listOf("product"),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-agent-reply",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -561,20 +561,20 @@ internal fun threadVisualFixture(
                             firstUnreadReplyMessageId = "reply-agent-visual-2",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 1, selected = false)
                                 )
                         )
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
@@ -585,18 +585,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#design",
                 subtitle = "Deleted human author fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-design",
                 sourceThreadId = "channel-design",
                 selectedTab = "chat",
@@ -608,7 +608,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-deleted-human",
                             authorId = "visual-human-designer",
                             authorName = "Designer",
@@ -623,13 +623,13 @@ internal fun threadVisualFixture(
                             threadChannelId = "thread-msg-deleted-human",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👀", count = 1, selected = false)
+                                    RaftThreadReactionItem(emoji = "👀", count = 1, selected = false)
                                 )
                         )
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-human-designer",
                             displayName = "Designer",
                             handle = "designer",
@@ -641,18 +641,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#design",
                 subtitle = "Thread rich message fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-design",
                 sourceThreadId = "channel-design",
                 selectedTab = "chat",
@@ -665,7 +665,7 @@ internal fun threadVisualFixture(
                 knownMarkdownChannelNames = listOf("design"),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_rich_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -689,18 +689,18 @@ internal fun threadVisualFixture(
                             taskAssigneeName = "Cindy",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = false)
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false)
                                 ),
                             attachments =
                                 listOf(
-                                    KuiklyThreadAttachmentItem(
+                                    RaftThreadAttachmentItem(
                                         id = "att-visual-spec",
                                         name = "visual-parity-notes.pdf",
                                         mimeType = "application/pdf",
                                         sizeLabel = "184 KB",
                                         commentCount = 3
                                     ),
-                                    KuiklyThreadAttachmentItem(
+                                    RaftThreadAttachmentItem(
                                         id = "att-thread-preview",
                                         name = "thread-screen-preview.html",
                                         mimeType = "text/html",
@@ -711,7 +711,7 @@ internal fun threadVisualFixture(
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task_222",
                             title = "Thread screens + rich message row fixture",
                             status = "in_progress",
@@ -724,14 +724,14 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
@@ -742,18 +742,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_INLINE_REPLIES ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#mobile",
                 subtitle = "Inline replies visual fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-mobile",
                 sourceThreadId = "channel-mobile",
                 selectedTab = "chat",
@@ -764,7 +764,7 @@ internal fun threadVisualFixture(
                 nowEpochMillis = 1_784_888_400_000L,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-inline-replies",
                             authorId = "agent-mahua",
                             authorName = "Mahua",
@@ -790,8 +790,8 @@ internal fun threadVisualFixture(
                             taskAssigneeName = "Nathan",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "✅", count = 2, selected = true),
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = false),
+                                    RaftThreadReactionItem(emoji = "✅", count = 2, selected = true),
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false),
                                 ),
                             inlineReplies =
                                 build.raft.app.network.sync.initialThreadRepliesReadModel(
@@ -842,28 +842,28 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-mahua",
                             displayName = "Mahua",
                             handle = "Mahua",
                             kind = "agent",
                             avatarLabel = "MH",
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "user-artin",
                             displayName = "Artin",
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR",
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI",
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-nathan",
                             displayName = "Nathan",
                             handle = "Nathan",
@@ -874,19 +874,19 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false,
                     ),
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION,
         THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#design",
                 subtitle = "Share selected messages fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-design",
                 sourceThreadId = "channel-design",
                 selectedTab = "chat",
@@ -898,7 +898,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-share-visual-a",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -909,7 +909,7 @@ internal fun threadVisualFixture(
                             messageType = "Chat",
                             body = "Selected the two discussion points that should become a summarized handoff message."
                         ),
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg-share-visual-b",
                             authorId = "visual-user",
                             authorName = "artin",
@@ -922,14 +922,14 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
@@ -940,18 +940,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Full markdown + long inline code fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -966,7 +966,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(42, 43),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_long_inline_code_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1007,12 +1007,12 @@ internal fun threadVisualFixture(
                             taskAssigneeName = "Cindy",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = false),
-                                    KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true)
+                                    RaftThreadReactionItem(emoji = "👍", count = 3, selected = false),
+                                    RaftThreadReactionItem(emoji = "✅", count = 1, selected = true)
                                 ),
                             attachments =
                                 listOf(
-                                    KuiklyThreadAttachmentItem(
+                                    RaftThreadAttachmentItem(
                                         id = "att-markdown-fixture",
                                         name = "standard-markdown-fixture.md",
                                         mimeType = "text/markdown",
@@ -1023,7 +1023,7 @@ internal fun threadVisualFixture(
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task_42",
                             title = "Markdown inline code uses standard CODE_SPAN renderer",
                             status = "in_review",
@@ -1033,7 +1033,7 @@ internal fun threadVisualFixture(
                             assigneeName = "Cindy",
                             updatedAtLabel = "06/25 05:55"
                         ),
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task_43",
                             title = "Tighten markdown tag chip padding",
                             status = "in_review",
@@ -1046,21 +1046,21 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-kmp-expert",
                             displayName = "KMP-专家",
                             handle = "KMP-专家",
@@ -1071,18 +1071,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_LINK_REF ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#visual-testing",
                 subtitle = "Markdown link label owns nested refs (task #517)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-visual-testing",
                 sourceThreadId = "channel-visual-testing",
                 selectedTab = "chat",
@@ -1097,7 +1097,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(1487),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_link_ref_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1125,7 +1125,7 @@ internal fun threadVisualFixture(
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task_1487",
                             title = "feat(search): pin entities from long-press and channel settings",
                             status = "in_review",
@@ -1138,14 +1138,14 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
@@ -1156,18 +1156,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#demo-visuals",
                 subtitle = "Narrow markdown wrap fixture (slice-1)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1184,7 +1184,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(101),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_wrap_slice1_visual",
                             authorId = "visual-bot",
                             authorName = "Visual Bot",
@@ -1204,21 +1204,21 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "human-mahua",
                             displayName = "Mahua",
                             handle = "Mahua",
                             kind = "human",
                             avatarLabel = "MA"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "human-wangxiaoming",
                             displayName = "王小明",
                             handle = "王小明",
@@ -1229,18 +1229,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#conversation-flow",
                 subtitle = "Narrow markdown wrap fixture (clarify)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1254,7 +1254,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(31, 521),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_wrap_clarify_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1269,7 +1269,7 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-android-dev-4",
                             displayName = "Android-Developer-4",
                             handle = "Android-Developer-4",
@@ -1280,18 +1280,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Agent-status markdown specimen (thread-ref + hex codes)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1306,7 +1306,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(606),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_wrap_status606_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1323,7 +1323,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1331,12 +1331,12 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK ->
             // Fenced code block specimen (task #66): pins the block chrome and
             // the persistent top-right copy affordance.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Fenced code block + copy affordance specimen (task #66)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1348,7 +1348,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_code_block_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1371,7 +1371,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1423,12 +1423,12 @@ internal fun threadVisualFixture(
             // separator, body rows with bold/checkmark cells) plus paragraphs
             // around it, so the capture shows exactly what a table body
             // becomes — a rendered grid, raw pipe text, or nothing.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "GFM table specimen (task #497)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1440,7 +1440,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_table_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1463,7 +1463,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1474,12 +1474,12 @@ internal fun threadVisualFixture(
             // tables cannot interrupt a paragraph, so the jetbrains parser
             // may lazy-continue the paragraph and render raw pipes — while
             // web's renderer shows a table. This body mirrors that shape.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "GFM table tight-follow specimen (task #497)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1491,7 +1491,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_table_tight_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1513,7 +1513,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1523,12 +1523,12 @@ internal fun threadVisualFixture(
             // unpaired tildes were silently dropped by the annotator. The
             // specimen pins all three shapes so before/after captures show
             // exactly which characters survive.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Escaped-backtick / tilde specimen (patrol #1048)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1540,7 +1540,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_escapes_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1559,7 +1559,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1571,12 +1571,12 @@ internal fun threadVisualFixture(
             // "<artin@example.test>" part. The specimen pins all three shapes so the
             // capture proves: code keeps it literal, the bare form autolinks,
             // plain text stays text.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Code-span angle-bracket email specimen (task #493)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1588,7 +1588,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_code_email_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1607,7 +1607,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1616,12 +1616,12 @@ internal fun threadVisualFixture(
             // task #513: exact XiShi message reported by artin. Every URL-like
             // payload wrapped in backticks must keep inline-code chrome and
             // must not inherit bare-URL link color/underline semantics.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#stamp",
                 subtitle = "Exact backticked HTTP URL specimen (task #513)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-stamp",
                 sourceThreadId = "channel-stamp",
                 selectedTab = "chat",
@@ -1633,7 +1633,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_code_url_visual",
                             authorId = "agent-xishi",
                             authorName = "XiShi",
@@ -1657,7 +1657,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1667,12 +1667,12 @@ internal fun threadVisualFixture(
             // Pins a leading horizontal rule, Chinese prose, bold emphasis,
             // inline-code routes containing angle-bracket placeholders, and a
             // plain PR reference in one message across Android/iOS/OHOS.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Latest release landing markdown specimen (task #502)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1684,7 +1684,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_latest_release_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1704,7 +1704,7 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
@@ -1713,12 +1713,12 @@ internal fun threadVisualFixture(
             // Blockquote geometry specimen (task #62): paragraphs above and
             // below the quote pin the rail's expected bounds — the 2dp rail
             // must span exactly the two quoted lines, no overshoot.
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Blockquote rail geometry specimen (task #62)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1730,7 +1730,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_blockquote_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1750,18 +1750,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE_TABLE ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Blockquote table intrinsic-measurement regression",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1773,7 +1773,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_blockquote_table_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1795,18 +1795,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE_LIST_TABLE ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Nested table intrinsic-measurement regression",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1818,7 +1818,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_blockquote_list_table_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1841,18 +1841,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Adjacent-chip acceptance fixture (task #60)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1866,7 +1866,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(31, 521, 607),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_wrap_adjacent_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1883,18 +1883,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_CJK_ADJACENT_URL ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "CJK-adjacent bare URL fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1906,7 +1906,7 @@ internal fun threadVisualFixture(
                 showTaskStatusActions = false,
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_cjk_adjacent_url_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1924,18 +1924,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#对话流专修",
                 subtitle = "Narrow markdown wrap fixture (task607)",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown",
                 sourceThreadId = "channel-markdown",
                 selectedTab = "chat",
@@ -1950,7 +1950,7 @@ internal fun threadVisualFixture(
                 knownMarkdownTaskNumbers = listOf(607),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_md_wrap_task607_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -1965,14 +1965,14 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-android-dev-2",
                             displayName = "Android-Developer-2",
                             handle = "Android-Developer-2",
@@ -1983,18 +1983,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",
                 subtitle = "Wide markdown wrap fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 streamChannelId = "channel-markdown-wide",
                 sourceThreadId = "channel-markdown-wide",
                 selectedTab = "chat",
@@ -2007,7 +2007,7 @@ internal fun threadVisualFixture(
                 knownMarkdownChannelNames = listOf("markdown专修"),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_wide_markdown_wrap_visual",
                             authorId = "agent-cindy",
                             authorName = "Cindy",
@@ -2025,14 +2025,14 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cindy",
                             displayName = "Cindy",
                             handle = "Cindy",
                             kind = "agent",
                             avatarLabel = "CI"
                         ),
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "visual-user",
                             displayName = "artin",
                             handle = "artin",
@@ -2043,18 +2043,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                     )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#首页专修",
                 subtitle = "Task #524 markdown visibility fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 streamChannelId = "thread-task524-visible",
                 sourceThreadId = "thread-task524-visible",
                 parentChannelId = "channel-home",
@@ -2069,7 +2069,7 @@ internal fun threadVisualFixture(
                 knownMarkdownChannelNames = listOf("首页专修"),
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "msg_task524_markdown_visible",
                             authorId = "agent-cc-wow",
                             authorName = "CC-Wow",
@@ -2092,7 +2092,7 @@ internal fun threadVisualFixture(
                     ),
                 members =
                     listOf(
-                        KuiklyThreadMemberItem(
+                        RaftThreadMemberItem(
                             id = "agent-cc-wow",
                             displayName = "CC-Wow",
                             handle = "CC-Wow",
@@ -2103,18 +2103,18 @@ internal fun threadVisualFixture(
                 showComposer = false,
                 joined = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
                 )
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_GFM_TASK_LIST_SHORT ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown-task-list",
                 subtitle = "GFM task-list visual fixture",
                 status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 streamChannelId = "thread-gfm-task-list-short",
                 sourceThreadId = "thread-gfm-task-list-short",
                 parentChannelId = "channel-markdown",
@@ -2127,7 +2127,7 @@ internal fun threadVisualFixture(
                 showTaskOpenActions = false,
                 showTaskStatusActions = false,
                 knownMarkdownChannelNames = listOf("markdown-task-list"),
-                messages = listOf(KuiklyThreadMessageItem(
+                messages = listOf(RaftThreadMessageItem(
                     id = "msg_gfm_task_list_short",
                     authorId = "agent-gfm",
                     authorName = "GFM Bot",
@@ -2147,12 +2147,12 @@ internal fun threadVisualFixture(
                     taskAssigneeId = "agent-gfm",
                     taskAssigneeName = "GFM Bot"
                 )),
-                members = listOf(KuiklyThreadMemberItem(
+                members = listOf(RaftThreadMemberItem(
                     id = "agent-gfm", displayName = "GFM Bot", handle = "GFM Bot", kind = "agent", avatarLabel = "GF"
                 )),
                 showComposer = false,
                 joined = true,
-                composer = KuiklyThreadComposerPayload(instanceId = resolvedInstanceId, enabled = false)
+                composer = RaftThreadComposerPayload(instanceId = resolvedInstanceId, enabled = false)
             )
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS,
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW ->
@@ -2164,20 +2164,20 @@ internal fun threadVisualFixture(
         THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED ->
             threadActionCardVisualFixture(resolvedInstanceId, approveLoginActionCardVisualMessages(executed = true))
         else ->
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 status = "error",
                 errorCode = "visual_fixture_unknown"
             )
     }
 }
-internal fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThreadScreenPayload =
-    KuiklyThreadScreenPayload(
+internal fun threadMessagePermalinkVisualPayload(instanceId: String): RaftThreadScreenPayload =
+    RaftThreadScreenPayload(
         instanceId = instanceId,
         title = "#permalink",
         subtitle = "Generic inline-box permalink fixture",
         status = "content",
-        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        surfaceKind = RaftThreadSurfaceKind.Channel,
         streamChannelId = "channel-permalink",
         sourceThreadId = "channel-permalink",
         selectedTab = "chat",
@@ -2189,7 +2189,7 @@ internal fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThre
         showTaskStatusActions = false,
         messages =
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "msg_permalink_visual",
                     authorId = "agent-kmp-expert",
                     authorName = "KMP-专家",
@@ -2208,7 +2208,7 @@ internal fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThre
             ),
         members =
             listOf(
-                KuiklyThreadMemberItem(
+                RaftThreadMemberItem(
                     id = "agent-kmp-expert",
                     displayName = "KMP-专家",
                     handle = "KMP-专家",
@@ -2219,21 +2219,21 @@ internal fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThre
         showComposer = false,
         joined = true,
         composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 instanceId = instanceId,
                 enabled = false
             )
     )
 internal fun threadActionCardVisualFixture(
     resolvedInstanceId: String,
-    messages: List<KuiklyThreadMessageItem>
-): KuiklyThreadScreenPayload =
-    KuiklyThreadScreenPayload(
+    messages: List<RaftThreadMessageItem>
+): RaftThreadScreenPayload =
+    RaftThreadScreenPayload(
         instanceId = resolvedInstanceId,
         title = "#visual-testing",
         subtitle = "Thread action card visual fixture",
         status = "content",
-        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        surfaceKind = RaftThreadSurfaceKind.Channel,
         streamChannelId = "channel-visual-testing",
         sourceThreadId = "channel-visual-testing",
         selectedTab = "chat",
@@ -2246,14 +2246,14 @@ internal fun threadActionCardVisualFixture(
         messages = messages,
         members =
             listOf(
-                KuiklyThreadMemberItem(
+                RaftThreadMemberItem(
                     id = "agent-cindy",
                     displayName = "Cindy",
                     handle = "Cindy",
                     kind = "agent",
                     avatarLabel = "CI"
                 ),
-                KuiklyThreadMemberItem(
+                RaftThreadMemberItem(
                     id = "visual-user",
                     displayName = "artin",
                     handle = "artin",
@@ -2264,12 +2264,12 @@ internal fun threadActionCardVisualFixture(
         showComposer = false,
         joined = true,
         composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 instanceId = resolvedInstanceId,
                 enabled = false
             )
     )
-internal fun threadActionCardCatalogMessages(): List<KuiklyThreadMessageItem> =
+internal fun threadActionCardCatalogMessages(): List<RaftThreadMessageItem> =
     listOf(
         threadActionCardVisualMessage(
             id = "msg-action-card-channel-create",
@@ -2359,7 +2359,7 @@ internal fun threadActionCardCatalogMessages(): List<KuiklyThreadMessageItem> =
                 )
         )
     )
-internal fun approveLoginActionCardVisualMessages(executed: Boolean): List<KuiklyThreadMessageItem> {
+internal fun approveLoginActionCardVisualMessages(executed: Boolean): List<RaftThreadMessageItem> {
     val duplicateDraftHint =
         "LiBai is requesting human approval to use Hands. Server-installed apps do not need this approval; Marketplace apps do."
     val prepared =
@@ -2399,8 +2399,8 @@ internal fun threadActionCardVisualMessage(
     id: String,
     body: String,
     card: ThreadActionCard
-): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
+): RaftThreadMessageItem =
+    RaftThreadMessageItem(
         id = id,
         authorId = "agent-cindy",
         authorName = "Cindy",
@@ -2442,13 +2442,13 @@ private fun threadMermaidVisualFixture(
     subtitle: String,
     intro: String,
     mermaid: String
-): KuiklyThreadScreenPayload =
-    KuiklyThreadScreenPayload(
+): RaftThreadScreenPayload =
+    RaftThreadScreenPayload(
         instanceId = resolvedInstanceId,
         title = "#markdown",
         subtitle = subtitle,
         status = "content",
-        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        surfaceKind = RaftThreadSurfaceKind.Channel,
         streamChannelId = "channel-markdown",
         sourceThreadId = "channel-markdown",
         selectedTab = "chat",
@@ -2460,7 +2460,7 @@ private fun threadMermaidVisualFixture(
         showTaskStatusActions = false,
         messages =
             listOf(
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = messageId,
                     authorId = "agent-cindy",
                     authorName = "Cindy",
@@ -2476,7 +2476,7 @@ private fun threadMermaidVisualFixture(
         showComposer = false,
         joined = true,
         composer =
-            KuiklyThreadComposerPayload(
+            RaftThreadComposerPayload(
                 instanceId = resolvedInstanceId,
                 enabled = false
             )

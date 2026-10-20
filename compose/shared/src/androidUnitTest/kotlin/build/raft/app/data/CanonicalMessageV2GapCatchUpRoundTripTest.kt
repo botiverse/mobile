@@ -113,7 +113,7 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
         }
     }
 
-    private class Rig(private val database: SlockSqlDatabase, threadSummariesBody: String? = "{}") {
+    private class Rig(private val database: RaftSqlDatabase, threadSummariesBody: String? = "{}") {
         val logs = mutableListOf<String>()
         private val network = RecordingNetworkClient(canonicalV2TestPage(), threadSummariesBody = threadSummariesBody)
         private val store = SqlDelightCanonicalMessageV2Store(
@@ -159,11 +159,11 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
             writer.extendWithAdjacentPage(partition, "channel-1", direction, anchorSeq, rawMessages, limit, replyParent = null) { true }
     }
 
-    private fun <T> withFreshDatabase(block: (SlockSqlDatabase) -> T): T {
+    private fun <T> withFreshDatabase(block: (RaftSqlDatabase) -> T): T {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            return block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            return block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

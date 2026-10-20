@@ -11,8 +11,8 @@ class ThreadHeaderActionSpacingTest {
 
     @Test
     fun leftHeaderSlotsUseHalfTheCanonicalPageHeaderGap() {
-        assertEquals(12f, SlockTopPageHeaderContentSpacing.value)
-        assertEquals(SlockTopPageHeaderContentSpacing.value / 2f, threadHeaderContentSpacingDp())
+        assertEquals(12f, RaftTopPageHeaderContentSpacing.value)
+        assertEquals(RaftTopPageHeaderContentSpacing.value / 2f, threadHeaderContentSpacingDp())
     }
 
     @Test

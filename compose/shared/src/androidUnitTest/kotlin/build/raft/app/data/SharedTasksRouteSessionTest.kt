@@ -19,7 +19,7 @@ class SharedTasksRouteSessionTest {
         accessToken = "test", refreshToken = "test", selectedServerId = server
     )
 
-    private class Api : SlockTasksApi {
+    private class Api : RaftTasksApi {
         val calls = mutableListOf<String>()
         var blockedServer: String? = null
         val release = CompletableDeferred<Unit>()
@@ -51,7 +51,7 @@ class SharedTasksRouteSessionTest {
 
     @Test
     fun switchingServerDropsFreshOldContentAndObservesNewServerStatusWithoutTabReentry() = runTest {
-        val auth = InMemorySlockAuthSessionStore(session("A"))
+        val auth = InMemoryRaftAuthSessionStore(session("A"))
         val api = Api()
         val shared = SharedTasksDataStore(scope = backgroundScope)
         fun route(server: String) = SharedTasksRouteSession(
@@ -81,7 +81,7 @@ class SharedTasksRouteSessionTest {
 
     @Test
     fun lateOldServerResponseCannotReplaceNewServerList() = runTest {
-        val auth = InMemorySlockAuthSessionStore(session("A"))
+        val auth = InMemoryRaftAuthSessionStore(session("A"))
         val api = Api().apply { blockedServer = "A" }
         val shared = SharedTasksDataStore(scope = backgroundScope)
         fun route(server: String) = SharedTasksRouteSession(
@@ -107,7 +107,7 @@ class SharedTasksRouteSessionTest {
 
     @Test
     fun returningToPreviouslyLoadedServerRevalidatesItsFirstPage() = runTest {
-        val auth = InMemorySlockAuthSessionStore(session("A"))
+        val auth = InMemoryRaftAuthSessionStore(session("A"))
         val api = Api()
         val shared = SharedTasksDataStore(scope = backgroundScope)
         fun route() = SharedTasksRouteSession(
@@ -130,7 +130,7 @@ class SharedTasksRouteSessionTest {
 
     @Test
     fun queuedOldRouteCannotLoadForNewAccountOrServer() = runTest {
-        val auth = InMemorySlockAuthSessionStore(session("A"))
+        val auth = InMemoryRaftAuthSessionStore(session("A"))
         val api = Api()
         val route = SharedTasksRouteSession(
             SharedTasksRouteOwner("test-api", "user", "A"), backgroundScope,

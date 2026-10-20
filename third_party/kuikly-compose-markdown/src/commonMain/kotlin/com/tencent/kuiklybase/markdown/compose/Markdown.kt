@@ -28,8 +28,8 @@ import com.tencent.kuiklybase.markdown.model.NoOpImageTransformerImpl
 import com.tencent.kuiklybase.markdown.model.NoOpTextProvider
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
-import com.tencent.kuiklybase.markdown.model.SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL
-import com.tencent.kuiklybase.markdown.model.SlockGFMFlavourDescriptor
+import com.tencent.kuiklybase.markdown.model.RAFT_MARKDOWN_PARSE_DISPATCHER_LABEL
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
@@ -72,7 +72,7 @@ fun Markdown(
     modifier: Modifier = Modifier.fillMaxSize(),
     padding: MarkdownPadding = markdownPadding(),
     dimens: MarkdownDimens = markdownDimens(),
-    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
     parser: MarkdownParser = MarkdownParser(flavour),
     imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
     imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),
@@ -120,7 +120,7 @@ fun Markdown(
     modifier: Modifier = Modifier.fillMaxSize(),
     padding: MarkdownPadding = markdownPadding(),
     dimens: MarkdownDimens = markdownDimens(),
-    flavour: MarkdownFlavourDescriptor = SlockGFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
     parser: MarkdownParser = MarkdownParser(flavour),
     imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
     imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),
@@ -144,12 +144,12 @@ fun Markdown(
         }
         val parseStartMark = TimeSource.Monotonic.markNow()
         val cacheHit = state.parse(parserContent, false)
-        val parseDurationUs = slockMarkdownMonotonicNanosSince(parseStartMark) / 1_000L
-        if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-            slockMarkdownLogSubTrace {
+        val parseDurationUs = raftMarkdownMonotonicNanosSince(parseStartMark) / 1_000L
+        if (parseDurationUs >= RaftMarkdownVendorTraceThresholdUs) {
+            raftMarkdownLogSubTrace {
                 "phase=markdown.layout.parse_tree durationUs=$parseDurationUs " +
                     "bodyLength=${content.sourceContent.length} parserLength=${parserContent.length} cacheHit=$cacheHit " +
-                    "dispatcher=$SLOCK_MARKDOWN_PARSE_DISPATCHER_LABEL"
+                    "dispatcher=$RAFT_MARKDOWN_PARSE_DISPATCHER_LABEL"
             }
         }
     }
@@ -264,18 +264,18 @@ fun MarkdownSuccess(
     // t6-a node timing (diagnostics only): fresh per-execution handle only when
     // the host installed a sink; null keeps the pre-existing untimed path (the
     // null check is the only added work — no clock read, no allocation).
-    val nodeTiming = slockMarkdownRenderTimingOrNull()
+    val nodeTiming = raftMarkdownRenderTimingOrNull()
     // Row census cost sink: read the Local ONLY when node timing is active —
     // with diagnostics OFF generic vendor consumers perform no tracked Local
     // read here at all (reviewed OFF-path requirement).
     val rowRenderCostSink =
-        if (nodeTiming != null) LocalSlockMarkdownRowRenderCostSink.current else null
+        if (nodeTiming != null) LocalRaftMarkdownRowRenderCostSink.current else null
     val renderStartMark = TimeSource.Monotonic.markNow()
-    slockMarkdownLogSubTrace {
+    raftMarkdownLogSubTrace {
         "phase=markdown.success.compose contentHash=${content().hashCode().toString(16)} " +
             "contentLength=${content().length} nodeListSize=${state.nodeListState.size}"
     }
-    CompositionLocalProvider(LocalSlockMarkdownRenderTiming provides nodeTiming) {
+    CompositionLocalProvider(LocalRaftMarkdownRenderTiming provides nodeTiming) {
         Column(modifier = modifier) {
             state.nodeListState.forEachIndexed { index, result ->
                 handleElement(
@@ -288,9 +288,9 @@ fun MarkdownSuccess(
             }
         }
     }
-    val renderDurationUs = slockMarkdownMonotonicNanosSince(renderStartMark) / 1_000L
-    if (renderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
-        slockMarkdownLogSubTrace {
+    val renderDurationUs = raftMarkdownMonotonicNanosSince(renderStartMark) / 1_000L
+    if (renderDurationUs >= RaftMarkdownVendorTraceThresholdUs) {
+        raftMarkdownLogSubTrace {
             "phase=markdown.layout.render_nodes durationUs=$renderDurationUs nodeCount=${state.nodeListState.size}"
         }
     }
@@ -303,9 +303,9 @@ fun MarkdownSuccess(
     }
 }
 
-internal const val SlockMarkdownVendorTraceThresholdUs: Long = 200L
+internal const val RaftMarkdownVendorTraceThresholdUs: Long = 200L
 
-internal fun slockMarkdownMonotonicNanosSince(mark: TimeMark): Long =
+internal fun raftMarkdownMonotonicNanosSince(mark: TimeMark): Long =
     mark.elapsedNow().inWholeNanoseconds
 
 /**
@@ -313,14 +313,14 @@ internal fun slockMarkdownMonotonicNanosSince(mark: TimeMark): Long =
  * channel used to be an unconditional raw println, so every text composition
  * paid message interpolation + annotation scans + a System.out logcat
  * round-trip even in production. The host app assigns this alongside the node
- * timing sink (see SlockMarkdownNodeTrace); default OFF so a bare vendor
+ * timing sink (see RaftMarkdownNodeTrace); default OFF so a bare vendor
  * consumer pays nothing until diagnostics are explicitly enabled.
  */
-object SlockMarkdownSubTrace {
+object RaftMarkdownSubTrace {
     var enabled: Boolean = false
 }
 
-internal inline fun slockMarkdownLogSubTrace(message: () -> String) {
-    if (!SlockMarkdownSubTrace.enabled) return
+internal inline fun raftMarkdownLogSubTrace(message: () -> String) {
+    if (!RaftMarkdownSubTrace.enabled) return
     println("SlockMarkdownSpike ${message()}")
 }

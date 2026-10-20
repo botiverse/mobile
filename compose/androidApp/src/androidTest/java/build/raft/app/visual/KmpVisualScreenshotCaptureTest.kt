@@ -19,7 +19,7 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import build.raft.app.shared.SlockCmpActivity
+import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.VisualCaptureLocaleRestoreToken
@@ -27,7 +27,7 @@ import build.raft.app.data.applyVisualCaptureLocale
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.parseVisualCaptureLocale
 import build.raft.app.data.restoreVisualCaptureLocale
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -273,9 +273,9 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Android-only theme-axis case: captures SlockBrutalActionButton under both
-    // SlockThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
-    // theme axis) — guards that the LocalSlockTheme switch keeps driving border/corner/
+    // Android-only theme-axis case: captures RaftBrutalActionButton under both
+    // RaftThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
+    // theme axis) — guards that the LocalRaftTheme switch keeps driving border/corner/
     // shadow/ink (brutal row must stay byte-identical to the shipping look).
     @Test
     fun captureUiButtonThemeStates() {
@@ -287,7 +287,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     // Elegant-register capture of the button (same content as button.states, under
-    // SlockThemeProvider(elegantTheme)). Paired against the React elegant render as
+    // RaftThemeProvider(elegantTheme)). Paired against the React elegant render as
     // components.ui.button.states.elegant → react-elegant <-> android-elegant parity.
     @Test
     fun captureUiButtonStatesElegant() {
@@ -307,7 +307,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register card capture (same content under SlockThemeProvider(elegantTheme)).
+    // Elegant-register card capture (same content under RaftThemeProvider(elegantTheme)).
     // Paired against the React elegant card render as components.ui.card.states.elegant.
     @Test
     fun captureUiCardStatesElegant() {
@@ -327,7 +327,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register form-field capture (same content under SlockThemeProvider(elegantTheme)):
+    // Elegant-register form-field capture (same content under RaftThemeProvider(elegantTheme)):
     // flat rounded #CACACE-hairline inputs, no brutal offset shadow. Paired against the React
     // elegant render as components.ui.form-field.states.elegant.
     @Test
@@ -348,8 +348,8 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register textarea capture (same content under SlockThemeProvider(elegantTheme)):
-    // inherits the SlockBrutalInputField elegant flat-field register. Paired against the React
+    // Elegant-register textarea capture (same content under RaftThemeProvider(elegantTheme)):
+    // inherits the RaftBrutalInputField elegant flat-field register. Paired against the React
     // elegant render as components.ui.textarea.states.elegant.
     @Test
     fun captureUiTextareaStatesElegant() {
@@ -369,7 +369,7 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // Elegant-register checkbox capture (same content under SlockThemeProvider(elegantTheme)):
+    // Elegant-register checkbox capture (same content under RaftThemeProvider(elegantTheme)):
     // rounded 4dp box + #CACACE hairline + #0A0A0A ink fill. Paired against the React elegant
     // render as components.ui.checkbox.states.elegant.
     @Test
@@ -1246,12 +1246,12 @@ class KmpVisualScreenshotCaptureTest {
         targetYDp: Float,
         composerBoundaryVisible: Boolean = false
     ) {
-        val backingStore = slockSharedPreferenceStore()
+        val backingStore = raftSharedPreferenceStore()
         val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
         var menuArtifact: Bitmap? = null
         try {
             backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
-            val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+            val preferenceStore = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
             assertFalse(preferenceStore.readNewMessageMenuEnabledSync())
             runBlocking { preferenceStore.saveNewMessageMenuEnabled(true) }
             assertTrue(preferenceStore.readNewMessageMenuEnabledSync())
@@ -1614,7 +1614,7 @@ class KmpVisualScreenshotCaptureTest {
     // both the exact detector signal and visible classic-menu chrome.
     @Test
     fun captureThreadNewMessageMenuPreferenceOffFallback() {
-        val backingStore = slockSharedPreferenceStore()
+        val backingStore = raftSharedPreferenceStore()
         val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
         val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
         val longPressReadyToken = "thread_message_long_press_ready_$launchTokenSuffix"
@@ -1622,7 +1622,7 @@ class KmpVisualScreenshotCaptureTest {
         try {
             backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
             assertFalse(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readNewMessageMenuEnabledSync()
             )
             captureKmpComponentCase(
@@ -1786,7 +1786,7 @@ class KmpVisualScreenshotCaptureTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockCmpActivity::class.java)
+            Intent(context, RaftCmpActivity::class.java)
                 .putExtra("pageName", "compose_thread_forward_modal_visual")
                 .putExtra(
                     "pageData",
@@ -1796,8 +1796,8 @@ class KmpVisualScreenshotCaptureTest {
                             .put("fixture", "scroll_probe")
                     ).toString()
                 )
-                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockCmpActivity>(intent)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+        val scenario = ActivityScenario.launch<RaftCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         var before: Bitmap? = null
         var afterSwipe: Bitmap? = null
@@ -2795,12 +2795,12 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureHomeTitlebarPreferencePersistenceStates() {
-        val store = slockSharedPreferenceStore()
+        val store = raftSharedPreferenceStore()
         val previous = store.getString(HOME_SERVER_AVATAR_PREFERENCE_KEY)
         try {
             store.putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
             assertTrue(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
@@ -2810,11 +2810,11 @@ class KmpVisualScreenshotCaptureTest {
             )
 
             runBlocking {
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .saveHomeServerAvatarEnabled(true)
             }
             assertTrue(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
@@ -2824,11 +2824,11 @@ class KmpVisualScreenshotCaptureTest {
             )
 
             runBlocking {
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .saveHomeServerAvatarEnabled(false)
             }
             assertFalse(
-                KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readHomeServerAvatarEnabledSync()
             )
             captureKmpComponentCase(
@@ -2849,10 +2849,10 @@ class KmpVisualScreenshotCaptureTest {
                 .getString(HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG)
                 .orEmpty()
         assumeTrue("process-restart phase is opt-in", phase.isNotBlank())
-        val preferenceStore = KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        val preferenceStore = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
         when (phase) {
             "seed-on" -> {
-                slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+                raftSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
                 runBlocking { preferenceStore.saveHomeServerAvatarEnabled(true) }
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
@@ -2874,7 +2874,7 @@ class KmpVisualScreenshotCaptureTest {
                     pageName = "compose_home_titlebar_preference_visual",
                     crop = HOME_TITLEBAR_PREFERENCE_CROP
                 )
-                slockSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
+                raftSharedPreferenceStore().putString(HOME_SERVER_AVATAR_PREFERENCE_KEY, null)
                 assertTrue(preferenceStore.readHomeServerAvatarEnabledSync())
             }
             else -> error("Unknown $HOME_SERVER_AVATAR_PROCESS_RESTART_PHASE_ARG=$phase")
@@ -3956,7 +3956,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureAuthLoginScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.login",
-            pageName = SlockCmpActivity.PAGE_LOGIN,
+            pageName = RaftCmpActivity.PAGE_LOGIN,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 12_000
         )
@@ -3966,7 +3966,7 @@ class KmpVisualScreenshotCaptureTest {
     fun captureAuthForgotPasswordScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.forgot-password",
-            pageName = SlockCmpActivity.PAGE_FORGOT_PASSWORD,
+            pageName = RaftCmpActivity.PAGE_FORGOT_PASSWORD,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 12_000
         )
@@ -4023,7 +4023,7 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     // React baselines have no device status bar, so captures must not inherit
-    // the host/native top inset. Read by slockTopSafeAreaPadding().
+    // the host/native top inset. Read by raftTopSafeAreaPadding().
     private fun withVisualCaptureParams(pageData: JSONObject?): JSONObject =
         (pageData ?: JSONObject()).apply {
             if (!has("slockVisualZeroSafeArea")) {
@@ -4095,7 +4095,7 @@ class KmpVisualScreenshotCaptureTest {
      * reported OK with the image it already produced.
      */
     private fun closeScenarioBounded(
-        scenario: ActivityScenario<SlockCmpActivity>,
+        scenario: ActivityScenario<RaftCmpActivity>,
         maxMs: Long = SCENARIO_CLOSE_TIMEOUT_MS
     ) {
         val closed = CountDownLatch(1)
@@ -4121,7 +4121,7 @@ class KmpVisualScreenshotCaptureTest {
 
     /**
      * Finish predecessor fixture activities leaked by an abandoned teardown
-     * (see [closeScenarioBounded]). Since #3043 gave SlockCmpActivity a
+     * (see [closeScenarioBounded]). Since #3043 gave RaftCmpActivity a
      * translucent window, a leaked predecessor is only PAUSED — never STOPPED —
      * when the next case launches on top of it: it stays visible underneath,
      * keeps receiving frames, and its churn starves the new case's main thread.
@@ -4159,11 +4159,11 @@ class KmpVisualScreenshotCaptureTest {
         lastReadyTokenObserved = false
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
-            Intent(context, SlockCmpActivity::class.java)
-                .putExtra("pageName", SlockCmpActivity.PAGE_HOME)
+            Intent(context, RaftCmpActivity::class.java)
+                .putExtra("pageName", RaftCmpActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockCmpActivity>(intent)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+        val scenario = ActivityScenario.launch<RaftCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
@@ -4251,11 +4251,11 @@ class KmpVisualScreenshotCaptureTest {
         currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val intent =
-            Intent(context, SlockCmpActivity::class.java)
+            Intent(context, RaftCmpActivity::class.java)
                 .putExtra("pageName", pageName)
-                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        val scenario = ActivityScenario.launch<SlockCmpActivity>(intent)
+        val scenario = ActivityScenario.launch<RaftCmpActivity>(intent)
         finishLeakedPredecessorActivities()
         try {
             onActivityNoIdle { applyVisualFullscreen(it, hideKeyboard = suppressSoftKeyboard) }
@@ -6653,7 +6653,7 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 260
             )
         // React's measured element rect is x=16,y=16,374x108dp (deleted-human
-        // 374x109dp) — the row card inside the fixture's SlockSpacing.Md (16dp)
+        // 374x109dp) — the row card inside the fixture's RaftAppSpacing.Md (16dp)
         // padding, from the paired validation run's metadata. The android
         // fixture is the same 390dp-wide Column with 16dp padding, so cropping
         // the identical rect makes both providers emit 374dp-wide images
@@ -6794,8 +6794,8 @@ class KmpVisualScreenshotCaptureTest {
         // fallback frame, never a failure) so a signal regression can't break
         // the shard.
         private const val REACTION_ATLAS_READY_TOKEN = "thread_reaction_atlas_ready"
-        // Kuikly bridge host tag the token rides (SlockCmpActivity ->
-        // SlockAndroidLocalDiagnostics.recordLog(level, "SlockKuikly", content)).
+        // Kuikly bridge host tag the token rides (RaftCmpActivity ->
+        // RaftAndroidLocalDiagnostics.recordLog(level, "SlockKuikly", content)).
         private const val REACTION_ATLAS_LOG_TAG = "SlockKuikly"
         private const val REACTION_ATLAS_TIMEOUT_MS = 20_000L
         private const val REACTION_ATLAS_POLL_MS = 250L

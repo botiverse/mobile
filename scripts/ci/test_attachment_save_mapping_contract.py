@@ -33,7 +33,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 FILES = {
-    "android": Path("compose/androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt"),
+    "android": Path("compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"),
     "ios": Path("compose/iosApp/iosApp/Host/HRBridgeModule.m"),
 }
 

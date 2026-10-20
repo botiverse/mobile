@@ -11,7 +11,7 @@ class IntegrationsActionsPushApiTest {
     @Test
     fun typedIntegrationsActionsPushApiAcceptsCanonicalUpstreamShapes() = runBlocking {
         val transport = RecordingIntegrationsActionsPushApi()
-        val client = SlockIntegrationsActionsPushApiClient(transport)
+        val client = RaftIntegrationsActionsPushApiClient(transport)
 
         assertEquals(1, assertIs<DataResult.Content<IntegrationsOverviewPage>>(client.integrationsOverview()).data.itemCount)
         assertEquals("Linear", assertIs<DataResult.Content<IntegrationClientsPage>>(client.integrationClients()).data.firstName)
@@ -101,7 +101,7 @@ class IntegrationsActionsPushApiTest {
     @Test
     fun typedIntegrationsActionsPushApiRejectsGuessedWrappersAndAliases() = runBlocking {
         val client =
-            SlockIntegrationsActionsPushApiClient(
+            RaftIntegrationsActionsPushApiClient(
                 RecordingIntegrationsActionsPushApi(
                     overviewBody = """{"items":[{"id":"integration-1"}]}""",
                     clientsBody = """{"clients":[{"id":"client-1"}]}""",
@@ -147,7 +147,7 @@ class IntegrationsActionsPushApiTest {
     @Test
     fun agentIntegrationsPreservesCanonicalServerErrorText() = runBlocking {
         val client =
-            SlockIntegrationsActionsPushApiClient(
+            RaftIntegrationsActionsPushApiClient(
                 RecordingIntegrationsActionsPushApi(
                     agentIntegrationsCode = 500,
                     agentIntegrationsErrorBody = """{"error":"Failed to load agent integrations"}"""
@@ -177,7 +177,7 @@ class IntegrationsActionsPushApiTest {
         fixtures.forEach { (name, fixture) ->
             val (body, expectedMessage) = fixture
             val client =
-                SlockIntegrationsActionsPushApiClient(
+                RaftIntegrationsActionsPushApiClient(
                     RecordingIntegrationsActionsPushApi(
                         agentIntegrationsCode = 500,
                         agentIntegrationsErrorBody = body
@@ -197,7 +197,7 @@ class IntegrationsActionsPushApiTest {
     @Test
     fun agentIntegrationsKeepsForbiddenClassification() = runBlocking {
         val client =
-            SlockIntegrationsActionsPushApiClient(
+            RaftIntegrationsActionsPushApiClient(
                 RecordingIntegrationsActionsPushApi(
                     agentIntegrationsCode = 403,
                     agentIntegrationsErrorBody = """{"error":"Only server admins can view integrations"}"""
@@ -251,7 +251,7 @@ class IntegrationsActionsPushApiTest {
         private val vapidBody: String = """{"publicKey":"vapid-public-key"}""",
         private val pushCommandBody: String = """{"ok":true}""",
         private val pushTestBody: String = """{"ok":true,"attempted":1,"delivered":1,"failed":0,"stale":0}"""
-    ) : SlockIntegrationsActionsPushApi {
+    ) : RaftIntegrationsActionsPushApi {
         val calls = mutableListOf<String>()
 
         override suspend fun integrationsOverview(): HomeNetworkResponse {

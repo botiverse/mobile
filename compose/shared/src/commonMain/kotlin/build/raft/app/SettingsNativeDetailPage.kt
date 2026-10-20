@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedSettingsDestination
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
@@ -103,7 +103,7 @@ internal class ComposeSettingsNativeDetailPage :
 
 internal fun settingsNativeDetailPageData(
     page: SettingsNativeDetailPage,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     itemId: String? = null,
     launchIntent: SettingsNativeDetailLaunchIntent = SettingsNativeDetailLaunchIntent(),
 ): JSONObject? {
@@ -112,8 +112,8 @@ internal fun settingsNativeDetailPageData(
         put("pageName", SETTINGS_NATIVE_DETAIL_PAGE)
         put(SETTINGS_NATIVE_DETAIL_PAGE_KEY, route.page.key)
         route.itemId?.let { put(SETTINGS_NATIVE_DETAIL_ITEM_ID, it) }
-        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+        put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
         if (route.page == SettingsNativeDetailPage.Diagnostics) {
             route.launchIntent.autoCloseMs
                 .coerceIn(0L, SETTINGS_NATIVE_DETAIL_MAX_AUTO_CLOSE_MS)
@@ -156,7 +156,7 @@ internal fun settingsNativeDetailRoute(params: JSONObject): SettingsNativeDetail
 
 internal fun Pager.openSettingsNativeDetailPage(
     page: SettingsNativeDetailPage,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
     itemId: String? = null,
     launchIntent: SettingsNativeDetailLaunchIntent = SettingsNativeDetailLaunchIntent(),
 ): Boolean {
@@ -173,20 +173,20 @@ internal fun Pager.openSettingsNativeDetailPage(
 
 internal fun settingsStandalonePageData(
     pageName: String,
-    storeScope: SlockShellStoreScope,
+    storeScope: RaftShellStoreScope,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", pageName)
-        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+        put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
     }
 
-internal fun Pager.openSettingsAccountPage(storeScope: SlockShellStoreScope) {
+internal fun Pager.openSettingsAccountPage(storeScope: RaftShellStoreScope) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(SETTINGS_ACCOUNT_PAGE, settingsStandalonePageData(SETTINGS_ACCOUNT_PAGE, storeScope))
 }
 
-internal fun Pager.openSettingsStoragePage(storeScope: SlockShellStoreScope) {
+internal fun Pager.openSettingsStoragePage(storeScope: RaftShellStoreScope) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(SETTINGS_STORAGE_PAGE, settingsStandalonePageData(SETTINGS_STORAGE_PAGE, storeScope))
 }

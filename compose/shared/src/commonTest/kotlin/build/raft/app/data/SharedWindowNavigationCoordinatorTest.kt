@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.ConversationOpenSource
 import build.raft.app.ConversationOpenSourceMessageIdentity
-import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -136,9 +136,9 @@ class SharedWindowNavigationCoordinatorTest {
 
     @Test
     fun windowScopesKeepReadinessAndOpenStateIsolatedThenReleaseClearsTheOldQueue() {
-        val cache = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
-        val shellA = SlockShellStoreScope.create("window-a", "server-a")
-        val shellB = SlockShellStoreScope.create("window-b", "server-b")
+        val cache = RaftShellScopedStoreCache<SharedWindowNavigationCoordinator>()
+        val shellA = RaftShellStoreScope.create("window-a", "server-a")
+        val shellB = RaftShellStoreScope.create("window-b", "server-b")
         val coordinatorA = cache.getOrPut(shellA) { SharedWindowNavigationCoordinator() }
         val coordinatorB = cache.getOrPut(shellB) { SharedWindowNavigationCoordinator() }
         val intentA = notificationIntent("server-a")
@@ -173,11 +173,11 @@ class SharedWindowNavigationCoordinatorTest {
 
     @Test
     fun rejectionInOneWindowCannotConsumeAnotherWindowsIntent() {
-        val cache = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
-        val coordinatorA = cache.getOrPut(SlockShellStoreScope.create("window-a", "server-a")) {
+        val cache = RaftShellScopedStoreCache<SharedWindowNavigationCoordinator>()
+        val coordinatorA = cache.getOrPut(RaftShellStoreScope.create("window-a", "server-a")) {
             SharedWindowNavigationCoordinator()
         }
-        val coordinatorB = cache.getOrPut(SlockShellStoreScope.create("window-b", "server-b")) {
+        val coordinatorB = cache.getOrPut(RaftShellStoreScope.create("window-b", "server-b")) {
             SharedWindowNavigationCoordinator()
         }
         coordinatorA.enqueue(notificationIntent("server-missing"))
@@ -243,8 +243,8 @@ class SharedWindowNavigationCoordinatorTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftThreadSurfaceKind.Channel,
                 title = "General"
             )
         ).toSharedConversationDirectoryState()
@@ -270,8 +270,8 @@ class SharedWindowNavigationCoordinatorTest {
                 canonicalChannelId = "parent-channel",
                 aliases = setOf("parent-channel"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftThreadSurfaceKind.Channel,
                 title = "General"
             ),
             SharedConversationDirectoryProjection(
@@ -279,8 +279,8 @@ class SharedWindowNavigationCoordinatorTest {
                 canonicalChannelId = "reply-stream",
                 aliases = setOf("reply-stream"),
                 conversationKind = ConversationKind.Thread,
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                channelKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                channelKind = RaftThreadSurfaceKind.ReplyThread,
                 title = "Reply",
                 parentChannelId = "parent-channel",
                 parentMessageId = "parent-message"

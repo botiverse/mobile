@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.Message
-import build.raft.app.toKuiklySurfaceKind
+import build.raft.app.toRaftSurfaceKind
 
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean,
@@ -310,4 +310,4 @@ fun buildSystemUnreadNotificationRequestFromPush(
 }
 
 fun SystemUnreadNotificationRequest.conversationKindWireValue(): String? =
-    conversationKind?.toKuiklySurfaceKind()
+    conversationKind?.toRaftSurfaceKind()

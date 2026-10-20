@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import kotlin.test.Test
@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
 class SettingsStandaloneStoreTest {
     @Test
     fun standaloneWebBaseUrlReadsTheCanonicalCurrentEnvironment() {
-        val persistence = InMemorySlockKeyValueStore()
+        val persistence = InMemoryRaftKeyValueStore()
         val store = SharedApiEnvironmentStore(persistence)
 
         assertEquals(
@@ -40,7 +40,7 @@ class SettingsStandaloneStoreTest {
 
     @Test
     fun blankCanonicalWebUrlKeepsTheProductionFallback() {
-        val store = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+        val store = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
         store.save(
             SharedSettingsApiEnvironmentRequest(
                 key = SharedApiEnvironmentStore.CustomKey,

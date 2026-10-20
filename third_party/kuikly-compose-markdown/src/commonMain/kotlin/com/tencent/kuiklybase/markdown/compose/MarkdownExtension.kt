@@ -42,8 +42,8 @@ fun handleElement(
     val node = nodeProvider.node
     // t6-a: enter/exit pairs are sequential (Compose forbids try/finally
     // around composable calls); an abandoned pass emits nothing — see
-    // LocalSlockMarkdownRenderTiming docs. Null timing = zero added work.
-    val nodeTiming = LocalSlockMarkdownRenderTiming.current
+    // LocalRaftMarkdownRenderTiming docs. Null timing = zero added work.
+    val nodeTiming = LocalRaftMarkdownRenderTiming.current
     nodeTiming?.enterNode(node.type.name)
     val markdownTypography = LocalMarkdownTypography.current
     val model = MarkdownComponentModel(
@@ -103,7 +103,7 @@ fun handleElement(
     skipLinkDefinition: Boolean = true,
 ) {
     // t6-a: same sequential enter/exit contract as the ParseResult overload.
-    val nodeTiming = LocalSlockMarkdownRenderTiming.current
+    val nodeTiming = LocalRaftMarkdownRenderTiming.current
     nodeTiming?.enterNode(node.type.name)
     val markdownTypography = LocalMarkdownTypography.current
     val model = MarkdownComponentModel(

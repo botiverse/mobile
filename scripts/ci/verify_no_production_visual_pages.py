@@ -5,7 +5,7 @@ Incident / origin:
 Task #193 moved visual fixture @Pages out of production source sets in phases:
 - Phase 1: ThreadMessageRowVisualHost (PR #189)
 - Phase 2: ThreadPage.kt remaining visual pages (PR #192)
-- Phase 3: SlockFilePreview, FloatingOverlayTouchGuard, SettingsHomePage (PR #2115, PR #2117, PR #2656)
+- Phase 3: RaftFilePreview, FloatingOverlayTouchGuard, SettingsHomePage (PR #2115, PR #2117, PR #2656)
 - Phase 4 (this gate): Wire verifyNoProductionVisualPages into required CI so regressions
   cannot silently enter production source sets again.
 

@@ -1,6 +1,6 @@
 package build.raft.app.network.sync
 
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 
 enum class ReadStateV1CommitMode {
     Snapshot,
@@ -36,7 +36,7 @@ class ReadStateV1StoredFactCorrupt(val scope: ReadStateV1Scope) :
 private object ReadStateV1GrantRevoked : RuntimeException()
 
 internal class SqlDelightReadStateV1Store(
-    private val database: SlockSqlDatabase,
+    private val database: RaftSqlDatabase,
     private val now: () -> Long,
     private val faultHook: PersistFaultHook = PersistFaultHook.Never,
 ) : ReadStateV1Store {

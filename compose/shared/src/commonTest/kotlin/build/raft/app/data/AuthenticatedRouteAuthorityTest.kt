@@ -104,7 +104,7 @@ class AuthenticatedRouteAuthorityTest {
             selectionGeneration = 7L,
             canManageSettings = true,
             expectedAuthBinding =
-                SlockExpectedAuthBinding(
+                RaftExpectedAuthBinding(
                     accountId = "account-a",
                     accessToken = "access-a",
                     refreshToken = "refresh-a",
@@ -139,10 +139,10 @@ private class FakeAuthenticatedRouteAuthorityGateway(
         return current
     }
 
-    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): SlockNetworkClient {
+    override fun networkClient(receipt: AuthenticatedRouteAuthorityReceipt): RaftNetworkClient {
         networkClientCalls += 1
         onNetworkClient()
-        return object : SlockNetworkClient {
+        return object : RaftNetworkClient {
             override suspend fun request(
                 priority: DataRequestPriority,
                 path: String,

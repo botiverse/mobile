@@ -28,7 +28,7 @@ class SettingsWebViewAuthBootstrapTest {
         assertFalse(storage.containsKey("slock_refresh_token"))
         assertEquals(
             "{\"accountId\":\"user-1\",\"serverId\":\"server-1\",\"sessionGeneration\":42,\"webViewGeneration\":7}",
-            storage[SLOCK_HOST_AUTH_BINDING_STORAGE_KEY],
+            storage[RAFT_HOST_AUTH_BINDING_STORAGE_KEY],
         )
         assertEquals("native-refresh-secret", session.refreshToken)
     }
@@ -37,7 +37,7 @@ class SettingsWebViewAuthBootstrapTest {
     fun missingSessionOrBindingRemovesStaleHostBinding() {
         val storage =
             mutableMapOf(
-                SLOCK_HOST_AUTH_BINDING_STORAGE_KEY to "stale",
+                RAFT_HOST_AUTH_BINDING_STORAGE_KEY to "stale",
                 "slock_access_token" to "stale-access",
             )
 
@@ -45,7 +45,7 @@ class SettingsWebViewAuthBootstrapTest {
             mutation.value?.let { storage[mutation.key] = it } ?: storage.remove(mutation.key)
         }
 
-        assertFalse(storage.containsKey(SLOCK_HOST_AUTH_BINDING_STORAGE_KEY))
+        assertFalse(storage.containsKey(RAFT_HOST_AUTH_BINDING_STORAGE_KEY))
         assertFalse(storage.containsKey("slock_access_token"))
     }
 

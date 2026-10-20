@@ -13,13 +13,13 @@ class PerformanceTraceFeedbackArchiveConnectedTest {
     @Test
     fun feedbackArchiveIncludesRecentPerformanceTraceWithClockAnchor() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        SlockPerformanceTraceRing.configure(true)
+        RaftPerformanceTraceRing.configure(true)
         try {
-            SlockPerformanceTraceRing.recordThreadMarker(
+            RaftPerformanceTraceRing.recordThreadMarker(
                 phase = "thread_reconcile_generation",
                 metadataFields = mapOf("generation" to "7", "messages" to "3")
             )
-            SlockPerformanceTraceRing.recordThreadMarker(
+            RaftPerformanceTraceRing.recordThreadMarker(
                 phase = "composer_send",
                 metadataFields =
                     mapOf(
@@ -31,7 +31,7 @@ class PerformanceTraceFeedbackArchiveConnectedTest {
                     )
             )
             repeat(PerformanceTraceRingCapacity - 2) {
-                SlockPerformanceTraceRing.recordThreadMarker(
+                RaftPerformanceTraceRing.recordThreadMarker(
                     phase = "composer_send",
                     metadataFields =
                         mapOf(
@@ -43,7 +43,7 @@ class PerformanceTraceFeedbackArchiveConnectedTest {
             }
 
             val archive =
-                SlockAndroidLocalDiagnostics.prepareDiagnosticsFeedbackArchive(
+                RaftAndroidLocalDiagnostics.prepareDiagnosticsFeedbackArchive(
                     context = context,
                     summaryText = "performance trace connected test"
                 )
@@ -66,7 +66,7 @@ class PerformanceTraceFeedbackArchiveConnectedTest {
             }
             archive.delete()
         } finally {
-            SlockPerformanceTraceRing.configure(false)
+            RaftPerformanceTraceRing.configure(false)
         }
     }
 }

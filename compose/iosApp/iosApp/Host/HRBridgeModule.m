@@ -35,83 +35,83 @@
 #define RAFT_IOS_GIT_COMMIT @""
 #endif
 
-static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
-static NSUInteger const SlockThreadAttachmentImageMaxEdge = 2048;
-static CGFloat const SlockThreadAttachmentImageJPEGQuality = 0.82;
-static NSString *const SlockThreadAttachmentImageCompressionErrorDomain =
+static NSString *const RaftBridgeDefaultLogTag = @"SlockKuikly";
+static NSUInteger const RaftThreadAttachmentImageMaxEdge = 2048;
+static CGFloat const RaftThreadAttachmentImageJPEGQuality = 0.82;
+static NSString *const RaftThreadAttachmentImageCompressionErrorDomain =
     @"build.raft.app.thread-attachment-image-compression";
-static NSString *const SlockThreadImageCompressionSource = @"composer_image_compressor";
-static NSString *const SlockThreadImageCompressionDirectoryName = @"PickedAttachments";
-// Caches/<SlockPickedAttachmentParentDirectoryName>/<SlockThreadImageCompressionDirectoryName>
+static NSString *const RaftThreadImageCompressionSource = @"composer_image_compressor";
+static NSString *const RaftThreadImageCompressionDirectoryName = @"PickedAttachments";
+// Caches/<RaftPickedAttachmentParentDirectoryName>/<RaftThreadImageCompressionDirectoryName>
 // holds composer-picked/compressed attachments (camera roll, Files, image compressor).
-static NSString *const SlockPickedAttachmentParentDirectoryName = @"Slock";
-static NSUInteger const SlockThreadImageCompressionMaxRequestIdLength = 128;
-static NSUInteger const SlockThreadImageCompressionMaxFileNameLength = 256;
-static NSString *const SlockAttachmentExportDestinationFiles = @"files";
-static NSString *const SlockAttachmentExportDestinationPhotos = @"photos";
-static NSString *const SlockAttachmentExportDestinationOpen = @"open";
-static NSString *const SlockAttachmentExportDirectoryName = @"SlockAttachmentExports";
-// Camera captures are written as tmp/<UUID>.<SlockCameraCaptureFileExtension>.
-static NSString *const SlockCameraCaptureFileExtension = @"jpg";
-static NSString *const SlockThreadShareImageDirectoryName = @"RaftThreadShareImages";
-static NSTimeInterval const SlockThreadShareImageMaximumAgeSeconds = 24.0 * 60.0 * 60.0;
-static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
-static NSString *const SlockDiagnosticsLogDirName = @"raft_diagnostics_logs";
-static NSString *const SlockDiagnosticsLogFileName = @"raft-diagnostics.jsonl";
-static NSString *const SlockDiagnosticsFeedbackDirName = @"raft-feedback";
-static NSString *const SlockDiagnosticsFeedbackFilePrefix = @"raft-feedback-";
-static NSString *const SlockFeedbackDiagnosticsArchivePrefix = @"raft-feedback-diagnostics-";
-static NSString *const SlockFeedbackDiagnosticsArchiveExtension = @"zip";
+static NSString *const RaftPickedAttachmentParentDirectoryName = @"Slock";
+static NSUInteger const RaftThreadImageCompressionMaxRequestIdLength = 128;
+static NSUInteger const RaftThreadImageCompressionMaxFileNameLength = 256;
+static NSString *const RaftAttachmentExportDestinationFiles = @"files";
+static NSString *const RaftAttachmentExportDestinationPhotos = @"photos";
+static NSString *const RaftAttachmentExportDestinationOpen = @"open";
+static NSString *const RaftAttachmentExportDirectoryName = @"SlockAttachmentExports";
+// Camera captures are written as tmp/<UUID>.<RaftCameraCaptureFileExtension>.
+static NSString *const RaftCameraCaptureFileExtension = @"jpg";
+static NSString *const RaftThreadShareImageDirectoryName = @"RaftThreadShareImages";
+static NSTimeInterval const RaftThreadShareImageMaximumAgeSeconds = 24.0 * 60.0 * 60.0;
+static NSString *const RaftBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
+static NSString *const RaftDiagnosticsLogDirName = @"raft_diagnostics_logs";
+static NSString *const RaftDiagnosticsLogFileName = @"raft-diagnostics.jsonl";
+static NSString *const RaftDiagnosticsFeedbackDirName = @"raft-feedback";
+static NSString *const RaftDiagnosticsFeedbackFilePrefix = @"raft-feedback-";
+static NSString *const RaftFeedbackDiagnosticsArchivePrefix = @"raft-feedback-diagnostics-";
+static NSString *const RaftFeedbackDiagnosticsArchiveExtension = @"zip";
 // Mirrors iosDatabaseBasePath() in compose/shared/src/iosMain/kotlin/build/raft/app/data/
 // RelationalStoreFactory.ios.kt (Application Support/Slock/databases). That helper and
-// SlockSqlDatabase.DatabaseName are Kotlin-internal, so they are not exported to Objective-C.
-static NSString *const SlockSqlDatabaseDirectoryRelativePath = @"Slock/databases";
-static NSString *const SlockDiagnosticsSummaryFileName = @"raft-diagnostics-summary.txt";
-static NSString *const SlockFeedbackDiagnosticsContentType = @"application/zip";
-static unsigned long long const SlockFeedbackDiagnosticsMaxBytes = 200ULL * 1024ULL * 1024ULL;
-static NSUInteger const SlockFeedbackDiagnosticsMaxR2KeyLength = 1024;
-static NSString *const SlockHandsFeedbackBaseURL = @"https://hands.build";
-static NSString *const SlockHandsFeedbackAppSlug = @"raft-ios";
-static NSString *const SlockHandsFeedbackClientKey = @"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99";
-static NSString *const SlockApiEnvironmentMMKVNamespace = @"slock_api_server_environment";
-static NSUInteger const SlockDiagnosticsMemoryEntryLimit = 512;
-static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
-static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
-static unsigned long long const SlockDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
-static NSUInteger const SlockDiagnosticsLogMaxFiles = 4;
-static NSUInteger const SlockDiagnosticsMaxLaunchSessions = 5;
-static NSUInteger const SlockDiagnosticsAttachmentMaxLogFiles = 20;
-static NSUInteger const SlockDiagnosticsMinimumRetainedSnapshotCount = 5;
-static NSTimeInterval const SlockDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
-static NSUInteger const SlockDiagnosticsOutstandingLimit = 512;
-static NSUInteger const SlockDiagnosticsOrdinaryOutstandingLimit = 496;
-static NSUInteger const SlockDiagnosticsRawLevelMaxChars = 16;
-static NSUInteger const SlockDiagnosticsRawTagMaxChars = 128;
-static NSUInteger const SlockDiagnosticsRawMessageMaxChars = 4096;
-static NSUInteger const SlockDiagnosticsThreadNameMaxChars = 64;
-static NSUInteger const SlockDiagnosticsQueueLabelMaxChars = 96;
-static NSUInteger const SlockDiagnosticsExceptionPageMaxChars = 128;
-static NSUInteger const SlockDiagnosticsExceptionReasonMaxChars = 1024;
-static NSUInteger const SlockDiagnosticsExceptionStackMaxChars = 2048;
-static char SlockDiagnosticsWriterQueueSpecificKey;
-static os_unfair_lock SlockDiagnosticsAdmissionLock = OS_UNFAIR_LOCK_INIT;
-static NSUInteger SlockDiagnosticsOutstandingCount = 0;
-static uint64_t SlockDiagnosticsNextSequence = 0;
-static atomic_uint_fast64_t SlockDiagnosticsAttemptedCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsAcceptedCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsAcceptedCriticalCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsDroppedOrdinaryCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsDroppedCriticalCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsDroppedContentionCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsRejectedInvalidCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsProcessedCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsWrittenCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsCriticalSynchronizedCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsWriteFailedCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsRotationFailedCount = ATOMIC_VAR_INIT(0);
-static atomic_uint_fast64_t SlockDiagnosticsMaxOutstandingCount = ATOMIC_VAR_INIT(0);
+// RaftSqlDatabase.DatabaseName are Kotlin-internal, so they are not exported to Objective-C.
+static NSString *const RaftSqlDatabaseDirectoryRelativePath = @"Slock/databases";
+static NSString *const RaftDiagnosticsSummaryFileName = @"raft-diagnostics-summary.txt";
+static NSString *const RaftFeedbackDiagnosticsContentType = @"application/zip";
+static unsigned long long const RaftFeedbackDiagnosticsMaxBytes = 200ULL * 1024ULL * 1024ULL;
+static NSUInteger const RaftFeedbackDiagnosticsMaxR2KeyLength = 1024;
+static NSString *const RaftHandsFeedbackBaseURL = @"https://hands.build";
+static NSString *const RaftHandsFeedbackAppSlug = @"raft-ios";
+static NSString *const RaftHandsFeedbackClientKey = @"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99";
+static NSString *const RaftApiEnvironmentMMKVNamespace = @"slock_api_server_environment";
+static NSUInteger const RaftDiagnosticsMemoryEntryLimit = 512;
+static NSUInteger const RaftDiagnosticsMessageMaxChars = 2048;
+static NSUInteger const RaftDiagnosticsRecentMaxChars = 120000;
+static unsigned long long const RaftDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
+static NSUInteger const RaftDiagnosticsLogMaxFiles = 4;
+static NSUInteger const RaftDiagnosticsMaxLaunchSessions = 5;
+static NSUInteger const RaftDiagnosticsAttachmentMaxLogFiles = 20;
+static NSUInteger const RaftDiagnosticsMinimumRetainedSnapshotCount = 5;
+static NSTimeInterval const RaftDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
+static NSUInteger const RaftDiagnosticsOutstandingLimit = 512;
+static NSUInteger const RaftDiagnosticsOrdinaryOutstandingLimit = 496;
+static NSUInteger const RaftDiagnosticsRawLevelMaxChars = 16;
+static NSUInteger const RaftDiagnosticsRawTagMaxChars = 128;
+static NSUInteger const RaftDiagnosticsRawMessageMaxChars = 4096;
+static NSUInteger const RaftDiagnosticsThreadNameMaxChars = 64;
+static NSUInteger const RaftDiagnosticsQueueLabelMaxChars = 96;
+static NSUInteger const RaftDiagnosticsExceptionPageMaxChars = 128;
+static NSUInteger const RaftDiagnosticsExceptionReasonMaxChars = 1024;
+static NSUInteger const RaftDiagnosticsExceptionStackMaxChars = 2048;
+static char RaftDiagnosticsWriterQueueSpecificKey;
+static os_unfair_lock RaftDiagnosticsAdmissionLock = OS_UNFAIR_LOCK_INIT;
+static NSUInteger RaftDiagnosticsOutstandingCount = 0;
+static uint64_t RaftDiagnosticsNextSequence = 0;
+static atomic_uint_fast64_t RaftDiagnosticsAttemptedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsAcceptedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsAcceptedCriticalCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsDroppedOrdinaryCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsDroppedCriticalCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsDroppedContentionCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsRejectedInvalidCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsProcessedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsWrittenCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsCriticalSynchronizedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsWriteFailedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsRotationFailedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t RaftDiagnosticsMaxOutstandingCount = ATOMIC_VAR_INIT(0);
 
-@interface SlockDiagnosticsCapture : NSObject
+@interface RaftDiagnosticsCapture : NSObject
 
 @property(nonatomic, copy) NSString *rawLevel;
 @property(nonatomic, copy) NSString *rawTag;
@@ -129,10 +129,10 @@ static atomic_uint_fast64_t SlockDiagnosticsMaxOutstandingCount = ATOMIC_VAR_INI
 
 @end
 
-@implementation SlockDiagnosticsCapture
+@implementation RaftDiagnosticsCapture
 @end
 
-static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
+static NSDictionary *RaftBridgeDictionaryFromValue(id value) {
     if ([value isKindOfClass:NSDictionary.class]) {
         return (NSDictionary *)value;
     }
@@ -148,11 +148,11 @@ static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
     return [object isKindOfClass:NSDictionary.class] ? object : @{};
 }
 
-static NSDictionary *SlockBridgeParams(NSDictionary *args) {
-    return SlockBridgeDictionaryFromValue(args[RaftBridgeParamKey]);
+static NSDictionary *RaftBridgeParams(NSDictionary *args) {
+    return RaftBridgeDictionaryFromValue(args[RaftBridgeParamKey]);
 }
 
-static NSString *SlockBridgeString(id value) {
+static NSString *RaftBridgeString(id value) {
     if ([value isKindOfClass:NSString.class]) {
         return [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     }
@@ -162,7 +162,7 @@ static NSString *SlockBridgeString(id value) {
     return @"";
 }
 
-static NSString *SlockBridgeRawString(id value) {
+static NSString *RaftBridgeRawString(id value) {
     if ([value isKindOfClass:NSString.class]) {
         return (NSString *)value;
     }
@@ -172,7 +172,7 @@ static NSString *SlockBridgeRawString(id value) {
     return @"";
 }
 
-static NSString *SlockFeedbackDraftAccountSegment(NSString *accountId) {
+static NSString *RaftFeedbackDraftAccountSegment(NSString *accountId) {
     NSString *scope = accountId.length > 0 ? accountId : @"anonymous";
     NSData *accountData = [scope dataUsingEncoding:NSUTF8StringEncoding];
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];
@@ -184,7 +184,7 @@ static NSString *SlockFeedbackDraftAccountSegment(NSString *accountId) {
     return segment;
 }
 
-static NSString *SlockFeedbackDraftExtension(NSString *fileName, NSString *mimeType) {
+static NSString *RaftFeedbackDraftExtension(NSString *fileName, NSString *mimeType) {
     NSString *normalizedMime = [[mimeType componentsSeparatedByString:@";"] firstObject].lowercaseString;
     if ([normalizedMime isEqualToString:@"image/avif"]) return @"avif";
     if ([normalizedMime isEqualToString:@"image/gif"]) return @"gif";
@@ -203,14 +203,14 @@ static NSString *SlockFeedbackDraftExtension(NSString *fileName, NSString *mimeT
     return @"bin";
 }
 
-static NSString *SlockFeedbackDraftTargetName(NSUInteger index, NSDictionary *file) {
-    NSString *extension = SlockFeedbackDraftExtension(
-        SlockBridgeString(file[@"fileName"]),
-        SlockBridgeString(file[@"mimeType"]));
+static NSString *RaftFeedbackDraftTargetName(NSUInteger index, NSDictionary *file) {
+    NSString *extension = RaftFeedbackDraftExtension(
+        RaftBridgeString(file[@"fileName"]),
+        RaftBridgeString(file[@"mimeType"]));
     return [NSString stringWithFormat:@"%02lu-attachment.%@", (unsigned long)index, extension];
 }
 
-static NSString *SlockFeedbackDraftDisplayName(NSString *fileName, NSString *targetName) {
+static NSString *RaftFeedbackDraftDisplayName(NSString *fileName, NSString *targetName) {
     NSString *rawName = fileName.lastPathComponent;
     if (rawName.length == 0) {
         NSRange separator = [targetName rangeOfString:@"-"];
@@ -223,7 +223,7 @@ static NSString *SlockFeedbackDraftDisplayName(NSString *fileName, NSString *tar
     return [stem stringByAppendingPathExtension:targetExtension];
 }
 
-static NSArray<NSDictionary *> *SlockFeedbackDraftFilesAtDirectory(
+static NSArray<NSDictionary *> *RaftFeedbackDraftFilesAtDirectory(
     NSURL *directory,
     NSArray *files,
     unsigned long long maxBytes,
@@ -240,19 +240,19 @@ static NSArray<NSDictionary *> *SlockFeedbackDraftFilesAtDirectory(
     NSMutableArray<NSDictionary *> *attachments = [NSMutableArray arrayWithCapacity:files.count];
     for (NSUInteger index = 0; index < files.count; index++) {
         NSDictionary *file = [files[index] isKindOfClass:NSDictionary.class] ? files[index] : @{};
-        NSString *targetName = SlockFeedbackDraftTargetName(index, file);
+        NSString *targetName = RaftFeedbackDraftTargetName(index, file);
         NSURL *targetURL = [directory URLByAppendingPathComponent:targetName isDirectory:NO];
         NSNumber *targetSize = nil;
         if (![targetURL getResourceValue:&targetSize forKey:NSURLFileSizeKey error:nil] ||
             targetSize.unsignedLongLongValue == 0 || targetSize.unsignedLongLongValue > maxBytes) {
             return nil;
         }
-        NSString *displayName = SlockFeedbackDraftDisplayName(
-            SlockBridgeString(file[@"fileName"]), targetName);
+        NSString *displayName = RaftFeedbackDraftDisplayName(
+            RaftBridgeString(file[@"fileName"]), targetName);
         [attachments addObject:@{
-            @"id" : SlockBridgeString(file[@"id"]),
+            @"id" : RaftBridgeString(file[@"id"]),
             @"fileName" : displayName,
-            @"mimeType" : SlockBridgeString(file[@"mimeType"]),
+            @"mimeType" : RaftBridgeString(file[@"mimeType"]),
             @"sizeBytes" : targetSize,
             @"previewUri" : targetURL.absoluteString ?: @"",
             @"fileRef" : targetURL.absoluteString ?: @"",
@@ -262,11 +262,11 @@ static NSArray<NSDictionary *> *SlockFeedbackDraftFilesAtDirectory(
     return attachments;
 }
 
-static NSString *SlockHandsFeedbackAttachmentBlock(NSArray<NSString *> *attachmentPaths) {
+static NSString *RaftHandsFeedbackAttachmentBlock(NSArray<NSString *> *attachmentPaths) {
     NSMutableArray<NSString *> *attachmentNames = [NSMutableArray array];
     NSCharacterSet *lineBreaks = NSCharacterSet.newlineCharacterSet;
     for (id value in attachmentPaths ?: @[]) {
-        NSString *path = SlockBridgeString(value);
+        NSString *path = RaftBridgeString(value);
         NSString *fileName = path.lastPathComponent;
         if (fileName.length == 0) {
             continue;
@@ -284,39 +284,39 @@ static NSString *SlockHandsFeedbackAttachmentBlock(NSArray<NSString *> *attachme
     return [NSString stringWithFormat:@"attachments:\n%@", [attachmentNames componentsJoinedByString:@"\n"]];
 }
 
-static NSString *SlockBridgeBuildTime(void) {
-    return SlockBridgeString(RAFT_IOS_BUILD_TIME);
+static NSString *RaftBridgeBuildTime(void) {
+    return RaftBridgeString(RAFT_IOS_BUILD_TIME);
 }
 
-static NSString *SlockBridgeGitCommit(void) {
-    return SlockBridgeString(RAFT_IOS_GIT_COMMIT);
+static NSString *RaftBridgeGitCommit(void) {
+    return RaftBridgeString(RAFT_IOS_GIT_COMMIT);
 }
 
-static NSDictionary *SlockDiagnosticsCurrentEnvironmentAbout(void) {
+static NSDictionary *RaftDiagnosticsCurrentEnvironmentAbout(void) {
     __block NSDictionary *about = nil;
     dispatch_block_t collect = ^{
         NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
-        NSString *version = SlockBridgeString(info[@"CFBundleShortVersionString"]);
-        NSString *build = SlockBridgeString(info[@"CFBundleVersion"]);
-        NSString *gitCommit = SlockBridgeGitCommit();
+        NSString *version = RaftBridgeString(info[@"CFBundleShortVersionString"]);
+        NSString *build = RaftBridgeString(info[@"CFBundleVersion"]);
+        NSString *gitCommit = RaftBridgeGitCommit();
         UIDevice *device = UIDevice.currentDevice;
         UIScreen *screen = UIScreen.mainScreen;
         CGRect bounds = screen.bounds;
         CGFloat scale = screen.scale;
         NSString *contentSizeCategory = @"--";
         if (@available(iOS 10.0, *)) {
-            contentSizeCategory = SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory).length > 0
-                ? SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory)
+            contentSizeCategory = RaftBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory).length > 0
+                ? RaftBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory)
                 : @"--";
         }
         about = @{
-            @"appName" : SlockBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? SlockBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
+            @"appName" : RaftBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? RaftBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
             @"versionLabel" : version,
             @"versionCodeLabel" : build,
             @"buildLabel" : build,
             @"sourceLabel" : gitCommit.length > 0 ? gitCommit : @"unknown",
-            @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
-            @"buildTime" : SlockBridgeBuildTime(),
+            @"packageName" : RaftBridgeString(NSBundle.mainBundle.bundleIdentifier),
+            @"buildTime" : RaftBridgeBuildTime(),
             @"gitCommit" : gitCommit,
             @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
             @"modelLabel" : device.model ?: @"--",
@@ -329,7 +329,7 @@ static NSDictionary *SlockDiagnosticsCurrentEnvironmentAbout(void) {
             @"sessionStatusLabel" : @"Not wired",
             @"signedInUserLabel" : @"--",
             @"selectedServerLabel" : @"--",
-            @"socketStatusLabel" : [SlockIosRealtimeHost shared].statusLabel,
+            @"socketStatusLabel" : [RaftIosRealtimeHost shared].statusLabel,
             @"notificationStatusLabel" : @"Notifications unsupported"
         };
     };
@@ -341,23 +341,23 @@ static NSDictionary *SlockDiagnosticsCurrentEnvironmentAbout(void) {
     return about ?: @{};
 }
 
-static BOOL SlockBridgeBool(id value) {
+static BOOL RaftBridgeBool(id value) {
     if ([value isKindOfClass:NSNumber.class]) {
         return [(NSNumber *)value boolValue];
     }
-    NSString *text = [SlockBridgeString(value) lowercaseString];
+    NSString *text = [RaftBridgeString(value) lowercaseString];
     return [text isEqualToString:@"true"] || [text isEqualToString:@"1"] || [text isEqualToString:@"yes"];
 }
 
-static MMKV *SlockBridgeApiEnvironmentStore(void) {
+static MMKV *RaftBridgeApiEnvironmentStore(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         [MMKV initializeMMKV:nil];
     });
-    return [MMKV mmkvWithID:SlockApiEnvironmentMMKVNamespace] ?: [MMKV defaultMMKV];
+    return [MMKV mmkvWithID:RaftApiEnvironmentMMKVNamespace] ?: [MMKV defaultMMKV];
 }
 
-static NSDictionary *SlockBridgeIdentityPageData(NSDictionary *pageData) {
+static NSDictionary *RaftBridgeIdentityPageData(NSDictionary *pageData) {
     if (![pageData isKindOfClass:NSDictionary.class]) {
         return @{};
     }
@@ -382,24 +382,24 @@ static NSDictionary *SlockBridgeIdentityPageData(NSDictionary *pageData) {
     for (NSString *key in blockedKeys) {
         if (sanitized[key] != nil) {
             [sanitized removeObjectForKey:key];
-            NSLog(@"[%@][warn] dropped non-identity route payload key=%@", SlockBridgeDefaultLogTag, key);
+            NSLog(@"[%@][warn] dropped non-identity route payload key=%@", RaftBridgeDefaultLogTag, key);
         }
     }
     return sanitized;
 }
 
-static BOOL SlockDiagnosticsIsAsciiIdentifierCharacter(unichar character) {
+static BOOL RaftDiagnosticsIsAsciiIdentifierCharacter(unichar character) {
     return (character >= 'a' && character <= 'z') ||
         (character >= 'A' && character <= 'Z') ||
         (character >= '0' && character <= '9') ||
         character == '_' || character == '-';
 }
 
-static BOOL SlockDiagnosticsIsWhitespace(unichar character) {
+static BOOL RaftDiagnosticsIsWhitespace(unichar character) {
     return [[NSCharacterSet whitespaceAndNewlineCharacterSet] characterIsMember:character];
 }
 
-static NSInteger SlockDiagnosticsHexValue(unichar character) {
+static NSInteger RaftDiagnosticsHexValue(unichar character) {
     if (character >= '0' && character <= '9') {
         return character - '0';
     }
@@ -412,7 +412,7 @@ static NSInteger SlockDiagnosticsHexValue(unichar character) {
     return -1;
 }
 
-static NSString *SlockDiagnosticsNormalizedCredentialKey(NSString *key) {
+static NSString *RaftDiagnosticsNormalizedCredentialKey(NSString *key) {
     NSMutableString *normalized = [NSMutableString stringWithCapacity:key.length];
     for (NSUInteger index = 0; index < key.length; index++) {
         unichar character = [key characterAtIndex:index];
@@ -421,7 +421,7 @@ static NSString *SlockDiagnosticsNormalizedCredentialKey(NSString *key) {
             NSInteger decoded = 0;
             BOOL validEscape = YES;
             for (NSUInteger offset = 2; offset < 6; offset++) {
-                NSInteger digit = SlockDiagnosticsHexValue([key characterAtIndex:index + offset]);
+                NSInteger digit = RaftDiagnosticsHexValue([key characterAtIndex:index + offset]);
                 if (digit < 0) {
                     validEscape = NO;
                     break;
@@ -443,7 +443,7 @@ static NSString *SlockDiagnosticsNormalizedCredentialKey(NSString *key) {
     return normalized;
 }
 
-static BOOL SlockDiagnosticsIsCredentialKey(NSString *key) {
+static BOOL RaftDiagnosticsIsCredentialKey(NSString *key) {
     static NSSet<NSString *> *keys;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -470,7 +470,7 @@ static BOOL SlockDiagnosticsIsCredentialKey(NSString *key) {
             @"privatekey"
         ]];
     });
-    NSString *canonicalKey = SlockDiagnosticsNormalizedCredentialKey(key);
+    NSString *canonicalKey = RaftDiagnosticsNormalizedCredentialKey(key);
     if ([keys containsObject:canonicalKey]) {
         return YES;
     }
@@ -478,7 +478,7 @@ static BOOL SlockDiagnosticsIsCredentialKey(NSString *key) {
         [keys containsObject:[canonicalKey substringFromIndex:1]];
 }
 
-static BOOL SlockDiagnosticsParseAssignmentAtIndex(
+static BOOL RaftDiagnosticsParseAssignmentAtIndex(
     NSString *text,
     NSUInteger index,
     BOOL requireCredentialKey,
@@ -489,7 +489,7 @@ static BOOL SlockDiagnosticsParseAssignmentAtIndex(
     if (index >= text.length) {
         return NO;
     }
-    if (index > 0 && SlockDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:index - 1])) {
+    if (index > 0 && RaftDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:index - 1])) {
         return NO;
     }
     NSUInteger cursor = index;
@@ -518,26 +518,26 @@ static BOOL SlockDiagnosticsParseAssignmentAtIndex(
         keyEnd = cursor;
         cursor++;
     } else {
-        if (!SlockDiagnosticsIsAsciiIdentifierCharacter(quote)) {
+        if (!RaftDiagnosticsIsAsciiIdentifierCharacter(quote)) {
             return NO;
         }
         while (cursor < text.length) {
-            while (cursor < text.length && SlockDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:cursor])) {
+            while (cursor < text.length && RaftDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:cursor])) {
                 cursor++;
             }
             keyEnd = cursor;
             NSUInteger nextWord = cursor;
-            while (nextWord < text.length && SlockDiagnosticsIsWhitespace([text characterAtIndex:nextWord])) {
+            while (nextWord < text.length && RaftDiagnosticsIsWhitespace([text characterAtIndex:nextWord])) {
                 nextWord++;
             }
             if (!requireCredentialKey || nextWord == cursor || nextWord >= text.length ||
-                !SlockDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:nextWord])) {
+                !RaftDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:nextWord])) {
                 break;
             }
             cursor = nextWord;
         }
     }
-    while (cursor < text.length && SlockDiagnosticsIsWhitespace([text characterAtIndex:cursor])) {
+    while (cursor < text.length && RaftDiagnosticsIsWhitespace([text characterAtIndex:cursor])) {
         cursor++;
     }
     if (cursor >= text.length) {
@@ -548,12 +548,12 @@ static BOOL SlockDiagnosticsParseAssignmentAtIndex(
         return NO;
     }
     NSString *key = [text substringWithRange:NSMakeRange(keyStart, keyEnd - keyStart)];
-    NSString *canonicalKey = SlockDiagnosticsNormalizedCredentialKey(key);
-    if (requireCredentialKey && !SlockDiagnosticsIsCredentialKey(canonicalKey)) {
+    NSString *canonicalKey = RaftDiagnosticsNormalizedCredentialKey(key);
+    if (requireCredentialKey && !RaftDiagnosticsIsCredentialKey(canonicalKey)) {
         return NO;
     }
     cursor++;
-    while (cursor < text.length && SlockDiagnosticsIsWhitespace([text characterAtIndex:cursor])) {
+    while (cursor < text.length && RaftDiagnosticsIsWhitespace([text characterAtIndex:cursor])) {
         cursor++;
     }
     if (valueStart) {
@@ -568,7 +568,7 @@ static BOOL SlockDiagnosticsParseAssignmentAtIndex(
     return YES;
 }
 
-static NSUInteger SlockDiagnosticsJsonContainerEnd(NSString *text, NSUInteger start) {
+static NSUInteger RaftDiagnosticsJsonContainerEnd(NSString *text, NSUInteger start) {
     if (start >= text.length) {
         return start;
     }
@@ -614,14 +614,14 @@ static NSUInteger SlockDiagnosticsJsonContainerEnd(NSString *text, NSUInteger st
     return text.length;
 }
 
-static NSString *SlockDiagnosticsRedactCredentialAssignments(NSString *content) {
+static NSString *RaftDiagnosticsRedactCredentialAssignments(NSString *content) {
     NSMutableString *result = [content mutableCopy] ?: [NSMutableString string];
     NSUInteger index = 0;
     while (index < result.length) {
         NSUInteger valueStart = 0;
         NSString *normalizedKey = nil;
         BOOL jsonStyle = NO;
-        if (!SlockDiagnosticsParseAssignmentAtIndex(result, index, YES, &valueStart, &normalizedKey, &jsonStyle)) {
+        if (!RaftDiagnosticsParseAssignmentAtIndex(result, index, YES, &valueStart, &normalizedKey, &jsonStyle)) {
             index++;
             continue;
         }
@@ -659,7 +659,7 @@ static NSString *SlockDiagnosticsRedactCredentialAssignments(NSString *content) 
         NSUInteger cursor = valueStart;
         if (jsonStyle && cursor < result.length &&
             ([result characterAtIndex:cursor] == '{' || [result characterAtIndex:cursor] == '[')) {
-            cursor = SlockDiagnosticsJsonContainerEnd(result, cursor);
+            cursor = RaftDiagnosticsJsonContainerEnd(result, cursor);
         } else {
             while (cursor < result.length) {
                 unichar character = [result characterAtIndex:cursor];
@@ -671,13 +671,13 @@ static NSString *SlockDiagnosticsRedactCredentialAssignments(NSString *content) 
                     break;
                 }
                 if (!consumeWholeHeader &&
-                    (SlockDiagnosticsIsWhitespace(character) || character == ',' || character == ';' || character == '&')) {
-                    NSUInteger candidate = cursor + (SlockDiagnosticsIsWhitespace(character) ? 0 : 1);
-                    while (candidate < result.length && SlockDiagnosticsIsWhitespace([result characterAtIndex:candidate])) {
+                    (RaftDiagnosticsIsWhitespace(character) || character == ',' || character == ';' || character == '&')) {
+                    NSUInteger candidate = cursor + (RaftDiagnosticsIsWhitespace(character) ? 0 : 1);
+                    while (candidate < result.length && RaftDiagnosticsIsWhitespace([result characterAtIndex:candidate])) {
                         candidate++;
                     }
                     if (candidate >= result.length ||
-                        SlockDiagnosticsParseAssignmentAtIndex(result, candidate, NO, NULL, NULL, NULL)) {
+                        RaftDiagnosticsParseAssignmentAtIndex(result, candidate, NO, NULL, NULL, NULL)) {
                         break;
                     }
                 }
@@ -693,7 +693,7 @@ static NSString *SlockDiagnosticsRedactCredentialAssignments(NSString *content) 
     return result;
 }
 
-static NSString *SlockBridgeSanitizedLogString(NSString *content) {
+static NSString *RaftBridgeSanitizedLogString(NSString *content) {
     NSString *sanitized = [content isKindOfClass:NSString.class] ? content : @"";
     static NSArray<NSDictionary<NSString *, id> *> *tokenRules;
     static dispatch_once_t onceToken;
@@ -725,10 +725,10 @@ static NSString *SlockBridgeSanitizedLogString(NSString *content) {
                                                       range:NSMakeRange(0, sanitized.length)
                                                withTemplate:rule[@"template"]];
     }
-    return SlockDiagnosticsRedactCredentialAssignments(sanitized);
+    return RaftDiagnosticsRedactCredentialAssignments(sanitized);
 }
 
-static void SlockBridgeRunOnMain(dispatch_block_t block) {
+static void RaftBridgeRunOnMain(dispatch_block_t block) {
     if ([NSThread isMainThread]) {
         block();
     } else {
@@ -736,22 +736,22 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
     }
 }
 
-static NSUInteger SlockDiagnosticsMemoryStart = 0;
-static NSUInteger SlockDiagnosticsMemoryCount = 0;
+static NSUInteger RaftDiagnosticsMemoryStart = 0;
+static NSUInteger RaftDiagnosticsMemoryCount = 0;
 
-static NSMutableArray *SlockDiagnosticsMemorySlots(void) {
+static NSMutableArray *RaftDiagnosticsMemorySlots(void) {
     static NSMutableArray *slots;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        slots = [NSMutableArray arrayWithCapacity:SlockDiagnosticsMemoryEntryLimit];
-        for (NSUInteger index = 0; index < SlockDiagnosticsMemoryEntryLimit; index++) {
+        slots = [NSMutableArray arrayWithCapacity:RaftDiagnosticsMemoryEntryLimit];
+        for (NSUInteger index = 0; index < RaftDiagnosticsMemoryEntryLimit; index++) {
             [slots addObject:NSNull.null];
         }
     });
     return slots;
 }
 
-static dispatch_queue_t SlockDiagnosticsOwnerQueue(void) {
+static dispatch_queue_t RaftDiagnosticsOwnerQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -760,22 +760,22 @@ static dispatch_queue_t SlockDiagnosticsOwnerQueue(void) {
         queue = dispatch_queue_create("build.raft.app.ios.diagnostics.owner", attributes);
         dispatch_queue_set_specific(
             queue,
-            &SlockDiagnosticsWriterQueueSpecificKey,
-            &SlockDiagnosticsWriterQueueSpecificKey,
+            &RaftDiagnosticsWriterQueueSpecificKey,
+            &RaftDiagnosticsWriterQueueSpecificKey,
             NULL
         );
     });
     return queue;
 }
 
-static id SlockDiagnosticsPerformOwnerOperation(id (^operation)(void)) {
-    if (dispatch_get_specific(&SlockDiagnosticsWriterQueueSpecificKey) == &SlockDiagnosticsWriterQueueSpecificKey) {
+static id RaftDiagnosticsPerformOwnerOperation(id (^operation)(void)) {
+    if (dispatch_get_specific(&RaftDiagnosticsWriterQueueSpecificKey) == &RaftDiagnosticsWriterQueueSpecificKey) {
         return operation ? operation() : nil;
     }
     dispatch_semaphore_t completion = dispatch_semaphore_create(0);
     __block id result = nil;
-    os_unfair_lock_lock(&SlockDiagnosticsAdmissionLock);
-    dispatch_async(SlockDiagnosticsOwnerQueue(), ^{
+    os_unfair_lock_lock(&RaftDiagnosticsAdmissionLock);
+    dispatch_async(RaftDiagnosticsOwnerQueue(), ^{
         @autoreleasepool {
             @try {
                 result = operation ? operation() : nil;
@@ -784,12 +784,12 @@ static id SlockDiagnosticsPerformOwnerOperation(id (^operation)(void)) {
             }
         }
     });
-    os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+    os_unfair_lock_unlock(&RaftDiagnosticsAdmissionLock);
     dispatch_semaphore_wait(completion, DISPATCH_TIME_FOREVER);
     return result;
 }
 
-static NSString *SlockDiagnosticsTimestampForMillis(int64_t timestampMillis) {
+static NSString *RaftDiagnosticsTimestampForMillis(int64_t timestampMillis) {
     static NSDateFormatter *formatter;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -801,13 +801,13 @@ static NSString *SlockDiagnosticsTimestampForMillis(int64_t timestampMillis) {
     return [formatter stringFromDate:date];
 }
 
-static NSString *SlockDiagnosticsDirectoryPath(void) {
+static NSString *RaftDiagnosticsDirectoryPath(void) {
     NSArray<NSString *> *urls = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
     NSString *base = urls.firstObject ?: NSTemporaryDirectory();
-    return [base stringByAppendingPathComponent:SlockDiagnosticsLogDirName];
+    return [base stringByAppendingPathComponent:RaftDiagnosticsLogDirName];
 }
 
-static NSString *SlockDiagnosticsLaunchSessionIdentifier(void) {
+static NSString *RaftDiagnosticsLaunchSessionIdentifier(void) {
     static NSString *identifier;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -817,8 +817,8 @@ static NSString *SlockDiagnosticsLaunchSessionIdentifier(void) {
     return identifier;
 }
 
-static NSArray<NSString *> *SlockDiagnosticsLaunchSessionDirectories(void) {
-    NSString *root = SlockDiagnosticsDirectoryPath();
+static NSArray<NSString *> *RaftDiagnosticsLaunchSessionDirectories(void) {
+    NSString *root = RaftDiagnosticsDirectoryPath();
     NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:root error:nil] ?: @[];
     NSMutableArray<NSString *> *directories = [NSMutableArray array];
     for (NSString *name in names) {
@@ -837,16 +837,16 @@ static NSArray<NSString *> *SlockDiagnosticsLaunchSessionDirectories(void) {
     return directories;
 }
 
-static NSString *SlockDiagnosticsCurrentLaunchDirectoryPath(void) {
+static NSString *RaftDiagnosticsCurrentLaunchDirectoryPath(void) {
     static NSString *path;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        NSString *root = SlockDiagnosticsDirectoryPath();
-        path = [root stringByAppendingPathComponent:SlockDiagnosticsLaunchSessionIdentifier()];
+        NSString *root = RaftDiagnosticsDirectoryPath();
+        path = [root stringByAppendingPathComponent:RaftDiagnosticsLaunchSessionIdentifier()];
         NSFileManager *fileManager = [NSFileManager defaultManager];
         [fileManager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
-        NSArray<NSString *> *sessions = SlockDiagnosticsLaunchSessionDirectories();
-        for (NSUInteger index = SlockDiagnosticsMaxLaunchSessions; index < sessions.count; index++) {
+        NSArray<NSString *> *sessions = RaftDiagnosticsLaunchSessionDirectories();
+        for (NSUInteger index = RaftDiagnosticsMaxLaunchSessions; index < sessions.count; index++) {
             NSString *candidate = sessions[index];
             if (![candidate isEqualToString:path]) {
                 [fileManager removeItemAtPath:candidate error:nil];
@@ -856,26 +856,26 @@ static NSString *SlockDiagnosticsCurrentLaunchDirectoryPath(void) {
     return path;
 }
 
-static NSString *SlockDiagnosticsActiveLogPath(void) {
-    return [SlockDiagnosticsCurrentLaunchDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsLogFileName];
+static NSString *RaftDiagnosticsActiveLogPath(void) {
+    return [RaftDiagnosticsCurrentLaunchDirectoryPath() stringByAppendingPathComponent:RaftDiagnosticsLogFileName];
 }
 
-static BOOL SlockDiagnosticsIsHighSurrogate(unichar character) {
+static BOOL RaftDiagnosticsIsHighSurrogate(unichar character) {
     return character >= 0xD800 && character <= 0xDBFF;
 }
 
-static BOOL SlockDiagnosticsIsLowSurrogate(unichar character) {
+static BOOL RaftDiagnosticsIsLowSurrogate(unichar character) {
     return character >= 0xDC00 && character <= 0xDFFF;
 }
 
-static NSString *SlockDiagnosticsStringByReplacingInvalidSurrogates(NSString *source) {
+static NSString *RaftDiagnosticsStringByReplacingInvalidSurrogates(NSString *source) {
     NSMutableString *result = [NSMutableString stringWithCapacity:source.length];
     for (NSUInteger index = 0; index < source.length; index++) {
         unichar character = [source characterAtIndex:index];
-        if (SlockDiagnosticsIsHighSurrogate(character)) {
+        if (RaftDiagnosticsIsHighSurrogate(character)) {
             if (index + 1 < source.length) {
                 unichar next = [source characterAtIndex:index + 1];
-                if (SlockDiagnosticsIsLowSurrogate(next)) {
+                if (RaftDiagnosticsIsLowSurrogate(next)) {
                     [result appendFormat:@"%C%C", character, next];
                     index++;
                     continue;
@@ -884,7 +884,7 @@ static NSString *SlockDiagnosticsStringByReplacingInvalidSurrogates(NSString *so
             [result appendString:@"\uFFFD"];
             continue;
         }
-        if (SlockDiagnosticsIsLowSurrogate(character)) {
+        if (RaftDiagnosticsIsLowSurrogate(character)) {
             [result appendString:@"\uFFFD"];
             continue;
         }
@@ -893,12 +893,12 @@ static NSString *SlockDiagnosticsStringByReplacingInvalidSurrogates(NSString *so
     return result;
 }
 
-static NSUInteger SlockDiagnosticsSafePrefixEnd(NSString *source, NSUInteger maxLength) {
+static NSUInteger RaftDiagnosticsSafePrefixEnd(NSString *source, NSUInteger maxLength) {
     NSUInteger end = MIN(source.length, maxLength);
     if (end < source.length && end > 0) {
         unichar previous = [source characterAtIndex:end - 1];
         unichar next = [source characterAtIndex:end];
-        if (SlockDiagnosticsIsHighSurrogate(previous) && SlockDiagnosticsIsLowSurrogate(next)) {
+        if (RaftDiagnosticsIsHighSurrogate(previous) && RaftDiagnosticsIsLowSurrogate(next)) {
             end--;
         }
         if (end > 0) {
@@ -915,46 +915,46 @@ static NSUInteger SlockDiagnosticsSafePrefixEnd(NSString *source, NSUInteger max
     return end;
 }
 
-static NSUInteger SlockDiagnosticsRawPrefixEnd(NSString *source, NSUInteger maxLength) {
+static NSUInteger RaftDiagnosticsRawPrefixEnd(NSString *source, NSUInteger maxLength) {
     NSUInteger end = MIN(source.length, maxLength);
     if (end < source.length && end > 0) {
         unichar previous = [source characterAtIndex:end - 1];
         unichar next = [source characterAtIndex:end];
-        if (SlockDiagnosticsIsHighSurrogate(previous) && SlockDiagnosticsIsLowSurrogate(next)) {
+        if (RaftDiagnosticsIsHighSurrogate(previous) && RaftDiagnosticsIsLowSurrogate(next)) {
             end--;
         }
     }
     return end;
 }
 
-static NSString *SlockDiagnosticsValidClippedString(NSString *value, NSUInteger maxLength) {
+static NSString *RaftDiagnosticsValidClippedString(NSString *value, NSUInteger maxLength) {
     NSString *source = [value isKindOfClass:NSString.class] ? value : @"";
-    NSUInteger end = SlockDiagnosticsSafePrefixEnd(source, maxLength);
+    NSUInteger end = RaftDiagnosticsSafePrefixEnd(source, maxLength);
     NSString *clipped = end < source.length ? [source substringToIndex:end] : source;
-    return SlockDiagnosticsStringByReplacingInvalidSurrogates(clipped);
+    return RaftDiagnosticsStringByReplacingInvalidSurrogates(clipped);
 }
 
-static NSString *SlockDiagnosticsClippedString(NSString *value, NSUInteger maxLength) {
-    return SlockDiagnosticsValidClippedString(value, maxLength);
+static NSString *RaftDiagnosticsClippedString(NSString *value, NSUInteger maxLength) {
+    return RaftDiagnosticsValidClippedString(value, maxLength);
 }
 
-static NSString *SlockDiagnosticsClippedCopy(NSString *value, NSUInteger maxLength) {
+static NSString *RaftDiagnosticsClippedCopy(NSString *value, NSUInteger maxLength) {
     NSString *source = [value isKindOfClass:NSString.class] ? value : @"";
-    NSUInteger end = SlockDiagnosticsRawPrefixEnd(source, maxLength);
+    NSUInteger end = RaftDiagnosticsRawPrefixEnd(source, maxLength);
     return [(end < source.length ? [source substringToIndex:end] : source) copy] ?: @"";
 }
 
-static BOOL SlockDiagnosticsContainsNonWhitespace(NSString *value) {
+static BOOL RaftDiagnosticsContainsNonWhitespace(NSString *value) {
     for (NSUInteger index = 0; index < value.length; index++) {
-        if (!SlockDiagnosticsIsWhitespace([value characterAtIndex:index])) {
+        if (!RaftDiagnosticsIsWhitespace([value characterAtIndex:index])) {
             return YES;
         }
     }
     return NO;
 }
 
-static NSString *SlockDiagnosticsValidSuffixString(NSString *value, NSUInteger maxLength) {
-    NSString *source = SlockDiagnosticsStringByReplacingInvalidSurrogates(
+static NSString *RaftDiagnosticsValidSuffixString(NSString *value, NSUInteger maxLength) {
+    NSString *source = RaftDiagnosticsStringByReplacingInvalidSurrogates(
         [value isKindOfClass:NSString.class] ? value : @""
     );
     if (source.length <= maxLength) {
@@ -962,8 +962,8 @@ static NSString *SlockDiagnosticsValidSuffixString(NSString *value, NSUInteger m
     }
     NSUInteger start = source.length - maxLength;
     if (start < source.length && start > 0 &&
-        SlockDiagnosticsIsLowSurrogate([source characterAtIndex:start]) &&
-        SlockDiagnosticsIsHighSurrogate([source characterAtIndex:start - 1])) {
+        RaftDiagnosticsIsLowSurrogate([source characterAtIndex:start]) &&
+        RaftDiagnosticsIsHighSurrogate([source characterAtIndex:start - 1])) {
         start++;
     }
     if (start < source.length) {
@@ -979,7 +979,7 @@ static NSString *SlockDiagnosticsValidSuffixString(NSString *value, NSUInteger m
     return start < source.length ? [source substringFromIndex:start] : @"";
 }
 
-static NSString *SlockDiagnosticsBoundedUTF8String(const char *value, NSUInteger maxLength, NSString *fallback) {
+static NSString *RaftDiagnosticsBoundedUTF8String(const char *value, NSUInteger maxLength, NSString *fallback) {
     if (!value || maxLength == 0) {
         return fallback ?: @"";
     }
@@ -991,7 +991,7 @@ static NSString *SlockDiagnosticsBoundedUTF8String(const char *value, NSUInteger
     return result.length > 0 ? result : (fallback ?: @"");
 }
 
-static int64_t SlockDiagnosticsNowMillis(void) {
+static int64_t RaftDiagnosticsNowMillis(void) {
     struct timespec now;
     if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
         return (int64_t)(NSDate.date.timeIntervalSince1970 * 1000.0);
@@ -999,7 +999,7 @@ static int64_t SlockDiagnosticsNowMillis(void) {
     return ((int64_t)now.tv_sec * 1000LL) + ((int64_t)now.tv_nsec / 1000000LL);
 }
 
-static BOOL SlockDiagnosticsRawRecordIsCritical(NSString *level, NSString *tag, NSString *message, BOOL forceCritical) {
+static BOOL RaftDiagnosticsRawRecordIsCritical(NSString *level, NSString *tag, NSString *message, BOOL forceCritical) {
     (void)tag;
     (void)message;
     NSString *normalizedLevel = [level stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
@@ -1012,7 +1012,7 @@ static BOOL SlockDiagnosticsRawRecordIsCritical(NSString *level, NSString *tag, 
     return NO;
 }
 
-static SlockDiagnosticsCapture *SlockDiagnosticsCreateCapture(
+static RaftDiagnosticsCapture *RaftDiagnosticsCreateCapture(
     NSString *level,
     NSString *tag,
     NSString *message,
@@ -1020,29 +1020,29 @@ static SlockDiagnosticsCapture *SlockDiagnosticsCreateCapture(
     BOOL emitConsole,
     BOOL forceCritical
 ) {
-    NSString *rawLevel = SlockDiagnosticsClippedCopy(level ?: @"info", SlockDiagnosticsRawLevelMaxChars);
-    NSString *rawTag = SlockDiagnosticsClippedCopy(tag ?: @"", SlockDiagnosticsRawTagMaxChars);
-    NSString *rawMessage = SlockDiagnosticsClippedCopy(message ?: @"", SlockDiagnosticsRawMessageMaxChars);
-    if (rawTag.length == 0 || rawMessage.length == 0 || !SlockDiagnosticsContainsNonWhitespace(rawMessage)) {
+    NSString *rawLevel = RaftDiagnosticsClippedCopy(level ?: @"info", RaftDiagnosticsRawLevelMaxChars);
+    NSString *rawTag = RaftDiagnosticsClippedCopy(tag ?: @"", RaftDiagnosticsRawTagMaxChars);
+    NSString *rawMessage = RaftDiagnosticsClippedCopy(message ?: @"", RaftDiagnosticsRawMessageMaxChars);
+    if (rawTag.length == 0 || rawMessage.length == 0 || !RaftDiagnosticsContainsNonWhitespace(rawMessage)) {
         return nil;
     }
     char threadNameBuffer[128] = {0};
     pthread_getname_np(pthread_self(), threadNameBuffer, sizeof(threadNameBuffer));
     BOOL mainThread = pthread_main_np() != 0;
-    NSString *threadName = SlockDiagnosticsBoundedUTF8String(
+    NSString *threadName = RaftDiagnosticsBoundedUTF8String(
         threadNameBuffer,
-        SlockDiagnosticsThreadNameMaxChars,
+        RaftDiagnosticsThreadNameMaxChars,
         mainThread ? @"main" : @"background"
     );
     const char *queueLabelValue = dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL);
-    NSString *queueLabel = SlockDiagnosticsBoundedUTF8String(
+    NSString *queueLabel = RaftDiagnosticsBoundedUTF8String(
         queueLabelValue,
-        SlockDiagnosticsQueueLabelMaxChars,
+        RaftDiagnosticsQueueLabelMaxChars,
         mainThread ? @"com.apple.main-thread" : @"unknown"
     );
     uint64_t threadId = 0;
     pthread_threadid_np(NULL, &threadId);
-    SlockDiagnosticsCapture *capture = [[SlockDiagnosticsCapture alloc] init];
+    RaftDiagnosticsCapture *capture = [[RaftDiagnosticsCapture alloc] init];
     capture.rawLevel = rawLevel;
     capture.rawTag = rawTag;
     capture.rawMessage = rawMessage;
@@ -1050,24 +1050,24 @@ static SlockDiagnosticsCapture *SlockDiagnosticsCreateCapture(
     capture.queueLabel = queueLabel;
     capture.monotonicTicks = mach_continuous_time();
     capture.threadId = threadId;
-    capture.timestampMillis = timestampMillis > 0 ? timestampMillis : SlockDiagnosticsNowMillis();
+    capture.timestampMillis = timestampMillis > 0 ? timestampMillis : RaftDiagnosticsNowMillis();
     capture.mainThread = mainThread;
-    capture.rawMessageTruncated = (message.length > SlockDiagnosticsRawMessageMaxChars);
-    capture.critical = SlockDiagnosticsRawRecordIsCritical(rawLevel, rawTag, rawMessage, forceCritical);
+    capture.rawMessageTruncated = (message.length > RaftDiagnosticsRawMessageMaxChars);
+    capture.critical = RaftDiagnosticsRawRecordIsCritical(rawLevel, rawTag, rawMessage, forceCritical);
     capture.emitConsole = emitConsole;
     return capture;
 }
 
-static NSString *SlockDiagnosticsEventName(NSString *message) {
+static NSString *RaftDiagnosticsEventName(NSString *message) {
     NSString *event = message ?: @"";
     NSRange range = [event rangeOfString:@" "];
     if (range.location != NSNotFound) {
         event = [event substringToIndex:range.location];
     }
-    return SlockDiagnosticsClippedString(event, 96);
+    return RaftDiagnosticsClippedString(event, 96);
 }
 
-static NSString * _Nullable SlockDiagnosticsJsonLine(NSDictionary *entry) {
+static NSString * _Nullable RaftDiagnosticsJsonLine(NSDictionary *entry) {
     NSError *error = nil;
     NSData *data = [NSJSONSerialization dataWithJSONObject:entry options:0 error:&error];
     if (!data) {
@@ -1076,24 +1076,24 @@ static NSString * _Nullable SlockDiagnosticsJsonLine(NSDictionary *entry) {
     return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 }
 
-static void SlockDiagnosticsRemember(NSDictionary *entry) {
-    NSMutableArray *slots = SlockDiagnosticsMemorySlots();
+static void RaftDiagnosticsRemember(NSDictionary *entry) {
+    NSMutableArray *slots = RaftDiagnosticsMemorySlots();
     NSUInteger index = 0;
-    if (SlockDiagnosticsMemoryCount < SlockDiagnosticsMemoryEntryLimit) {
-        index = (SlockDiagnosticsMemoryStart + SlockDiagnosticsMemoryCount) % SlockDiagnosticsMemoryEntryLimit;
-        SlockDiagnosticsMemoryCount++;
+    if (RaftDiagnosticsMemoryCount < RaftDiagnosticsMemoryEntryLimit) {
+        index = (RaftDiagnosticsMemoryStart + RaftDiagnosticsMemoryCount) % RaftDiagnosticsMemoryEntryLimit;
+        RaftDiagnosticsMemoryCount++;
     } else {
-        index = SlockDiagnosticsMemoryStart;
-        SlockDiagnosticsMemoryStart = (SlockDiagnosticsMemoryStart + 1) % SlockDiagnosticsMemoryEntryLimit;
+        index = RaftDiagnosticsMemoryStart;
+        RaftDiagnosticsMemoryStart = (RaftDiagnosticsMemoryStart + 1) % RaftDiagnosticsMemoryEntryLimit;
     }
     [slots replaceObjectAtIndex:index withObject:entry];
 }
 
-static NSArray<NSDictionary *> *SlockDiagnosticsSnapshotMemoryEntries(void) {
-    NSMutableArray *slots = SlockDiagnosticsMemorySlots();
-    NSMutableArray<NSDictionary *> *entries = [NSMutableArray arrayWithCapacity:SlockDiagnosticsMemoryCount];
-    for (NSUInteger offset = 0; offset < SlockDiagnosticsMemoryCount; offset++) {
-        NSUInteger index = (SlockDiagnosticsMemoryStart + offset) % SlockDiagnosticsMemoryEntryLimit;
+static NSArray<NSDictionary *> *RaftDiagnosticsSnapshotMemoryEntries(void) {
+    NSMutableArray *slots = RaftDiagnosticsMemorySlots();
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray arrayWithCapacity:RaftDiagnosticsMemoryCount];
+    for (NSUInteger offset = 0; offset < RaftDiagnosticsMemoryCount; offset++) {
+        NSUInteger index = (RaftDiagnosticsMemoryStart + offset) % RaftDiagnosticsMemoryEntryLimit;
         id value = slots[index];
         if ([value isKindOfClass:NSDictionary.class]) {
             [entries addObject:value];
@@ -1102,11 +1102,11 @@ static NSArray<NSDictionary *> *SlockDiagnosticsSnapshotMemoryEntries(void) {
     return entries;
 }
 
-static BOOL SlockDiagnosticsIsLogFileName(NSString *name) {
-    return [name hasPrefix:SlockDiagnosticsLogFileName];
+static BOOL RaftDiagnosticsIsLogFileName(NSString *name) {
+    return [name hasPrefix:RaftDiagnosticsLogFileName];
 }
 
-static NSString *SlockDiagnosticsUniqueSnapshotPath(
+static NSString *RaftDiagnosticsUniqueSnapshotPath(
     NSString *directory,
     NSString *fileName,
     NSMutableSet<NSString *> *reservedPaths
@@ -1131,7 +1131,7 @@ static NSString *SlockDiagnosticsUniqueSnapshotPath(
     }
 }
 
-static NSComparisonResult SlockDiagnosticsComparePathsByMtimeThenPath(NSString *left, NSString *right) {
+static NSComparisonResult RaftDiagnosticsComparePathsByMtimeThenPath(NSString *left, NSString *right) {
     NSDate *leftDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:left error:nil] fileModificationDate]
         ?: NSDate.distantPast;
     NSDate *rightDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:right error:nil] fileModificationDate]
@@ -1140,15 +1140,15 @@ static NSComparisonResult SlockDiagnosticsComparePathsByMtimeThenPath(NSString *
     return timeResult == NSOrderedSame ? [left compare:right] : timeResult;
 }
 
-static NSString *SlockDiagnosticsCanonicalDescendantFilePath(NSString *root, NSString *path) {
+static NSString *RaftDiagnosticsCanonicalDescendantFilePath(NSString *root, NSString *path) {
     return RaftDiagnosticsCanonicalDescendantRegularFilePath(NSFileManager.defaultManager, root, path);
 }
 
-static BOOL SlockIosPathHasControlCharacter(NSString *value) {
+static BOOL RaftIosPathHasControlCharacter(NSString *value) {
     return [value rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound;
 }
 
-static BOOL SlockIosPathIsSymlink(NSString *path) {
+static BOOL RaftIosPathIsSymlink(NSString *path) {
     if (path.length == 0) return NO;
     const char *fileSystemPath = path.fileSystemRepresentation;
     if (fileSystemPath == NULL) return NO;
@@ -1156,14 +1156,14 @@ static BOOL SlockIosPathIsSymlink(NSString *path) {
     return lstat(fileSystemPath, &attributes) == 0 && S_ISLNK(attributes.st_mode);
 }
 
-static BOOL SlockIosPathIsSafeComponent(NSString *component) {
+static BOOL RaftIosPathIsSafeComponent(NSString *component) {
     return component.length > 0 &&
         ![component isEqualToString:@"."] &&
         ![component isEqualToString:@".."] &&
-        !SlockIosPathHasControlCharacter(component);
+        !RaftIosPathHasControlCharacter(component);
 }
 
-static NSString * _Nullable SlockIosPathWithoutTrailingSlashes(NSString *path);
+static NSString * _Nullable RaftIosPathWithoutTrailingSlashes(NSString *path);
 
 /*
  * iOS/Darwin presents a small, fixed set of system aliases as symlinks.  They
@@ -1171,13 +1171,13 @@ static NSString * _Nullable SlockIosPathWithoutTrailingSlashes(NSString *path);
  * symlinks remain rejected.  Containment is still decided on the fully
  * resolved path after this allow-list check.
  */
-static BOOL SlockIosIsAllowedDarwinAliasSymlink(NSString *path, const struct stat *attributes) {
+static BOOL RaftIosIsAllowedDarwinAliasSymlink(NSString *path, const struct stat *attributes) {
     if (attributes == NULL || !S_ISLNK(attributes->st_mode)) return NO;
-    NSString *trimmed = SlockIosPathWithoutTrailingSlashes(path);
+    NSString *trimmed = RaftIosPathWithoutTrailingSlashes(path);
     return [trimmed isEqualToString:@"/var"] || [trimmed isEqualToString:@"/tmp"];
 }
 
-static NSString * _Nullable SlockIosPathWithoutTrailingSlashes(NSString *path) {
+static NSString * _Nullable RaftIosPathWithoutTrailingSlashes(NSString *path) {
     if (path.length == 0 || ![path hasPrefix:@"/"]) return nil;
     NSString *trimmed = path;
     while (trimmed.length > 1 && [trimmed hasSuffix:@"/"]) {
@@ -1192,21 +1192,21 @@ static NSString * _Nullable SlockIosPathWithoutTrailingSlashes(NSString *path) {
  * stringByStandardizingPath.  Empty interior components are rejected too so
  * that the pathname we later rename is exactly the pathname we validated.
  */
-static NSArray<NSString *> * _Nullable SlockIosRawAbsolutePathComponents(NSString *path) {
-    NSString *trimmed = SlockIosPathWithoutTrailingSlashes(path);
+static NSArray<NSString *> * _Nullable RaftIosRawAbsolutePathComponents(NSString *path) {
+    NSString *trimmed = RaftIosPathWithoutTrailingSlashes(path);
     if (trimmed.length == 0) return nil;
     NSArray<NSString *> *parts = [trimmed componentsSeparatedByString:@"/"];
     if (parts.count == 0 || ![parts.firstObject isEqualToString:@""]) return nil;
     NSMutableArray<NSString *> *components = [NSMutableArray array];
     for (NSUInteger index = 1; index < parts.count; index++) {
         NSString *component = parts[index];
-        if (!SlockIosPathIsSafeComponent(component)) return nil;
+        if (!RaftIosPathIsSafeComponent(component)) return nil;
         [components addObject:component];
     }
     return components;
 }
 
-static BOOL SlockIosLstatPath(NSString *path, struct stat * _Nullable output) {
+static BOOL RaftIosLstatPath(NSString *path, struct stat * _Nullable output) {
     if (path.length == 0) return NO;
     const char *fileSystemPath = path.fileSystemRepresentation;
     if (fileSystemPath == NULL) return NO;
@@ -1217,14 +1217,14 @@ static BOOL SlockIosLstatPath(NSString *path, struct stat * _Nullable output) {
 }
 
 /* Validate the root itself and every parent component with lstat/no-follow. */
-static BOOL SlockIosValidateDirectoryRoot(NSString *root) {
-    NSString *trimmed = SlockIosPathWithoutTrailingSlashes(root);
-    NSArray<NSString *> *components = SlockIosRawAbsolutePathComponents(trimmed ?: @"");
+static BOOL RaftIosValidateDirectoryRoot(NSString *root) {
+    NSString *trimmed = RaftIosPathWithoutTrailingSlashes(root);
+    NSArray<NSString *> *components = RaftIosRawAbsolutePathComponents(trimmed ?: @"");
     if (components == nil) return NO;
     struct stat rootAttributes;
-    if (!SlockIosLstatPath(trimmed, &rootAttributes) ||
+    if (!RaftIosLstatPath(trimmed, &rootAttributes) ||
         (S_ISLNK(rootAttributes.st_mode) &&
-            !SlockIosIsAllowedDarwinAliasSymlink(trimmed, &rootAttributes)) ||
+            !RaftIosIsAllowedDarwinAliasSymlink(trimmed, &rootAttributes)) ||
         (!S_ISLNK(rootAttributes.st_mode) && !S_ISDIR(rootAttributes.st_mode))) {
         return NO;
     }
@@ -1232,9 +1232,9 @@ static BOOL SlockIosValidateDirectoryRoot(NSString *root) {
     for (NSString *component in components) {
         cursor = [cursor stringByAppendingPathComponent:component];
         struct stat attributes;
-        if (!SlockIosLstatPath(cursor, &attributes) ||
+        if (!RaftIosLstatPath(cursor, &attributes) ||
             (S_ISLNK(attributes.st_mode)
-                ? !SlockIosIsAllowedDarwinAliasSymlink(cursor, &attributes)
+                ? !RaftIosIsAllowedDarwinAliasSymlink(cursor, &attributes)
                 : !S_ISDIR(attributes.st_mode))) {
             return NO;
         }
@@ -1247,17 +1247,17 @@ static BOOL SlockIosValidateDirectoryRoot(NSString *root) {
  * lstat-style checked.  The retirement transition must rename this exact pathname;
  * returning a symlink-resolved path would re-open an alias/ABA window.
  */
-static NSString *SlockIosCacheOwnedTemporaryPath(NSString *root, NSString *candidatePath) {
+static NSString *RaftIosCacheOwnedTemporaryPath(NSString *root, NSString *candidatePath) {
     if (root.length == 0 || candidatePath.length == 0 ||
-        SlockIosPathHasControlCharacter(root) || SlockIosPathHasControlCharacter(candidatePath)) {
+        RaftIosPathHasControlCharacter(root) || RaftIosPathHasControlCharacter(candidatePath)) {
         return nil;
     }
-    NSString *rawRoot = SlockIosPathWithoutTrailingSlashes(root);
-    NSString *rawCandidate = SlockIosPathWithoutTrailingSlashes(candidatePath);
-    NSArray<NSString *> *rootComponents = SlockIosRawAbsolutePathComponents(rawRoot ?: @"");
-    NSArray<NSString *> *candidateComponents = SlockIosRawAbsolutePathComponents(rawCandidate ?: @"");
+    NSString *rawRoot = RaftIosPathWithoutTrailingSlashes(root);
+    NSString *rawCandidate = RaftIosPathWithoutTrailingSlashes(candidatePath);
+    NSArray<NSString *> *rootComponents = RaftIosRawAbsolutePathComponents(rawRoot ?: @"");
+    NSArray<NSString *> *candidateComponents = RaftIosRawAbsolutePathComponents(rawCandidate ?: @"");
     if (rawRoot.length == 0 || rawCandidate.length == 0 || rootComponents == nil ||
-        candidateComponents == nil || !SlockIosValidateDirectoryRoot(rawRoot)) {
+        candidateComponents == nil || !RaftIosValidateDirectoryRoot(rawRoot)) {
         return nil;
     }
     /* Validate the candidate's complete raw path without following any component. */
@@ -1267,13 +1267,13 @@ static NSString *SlockIosCacheOwnedTemporaryPath(NSString *root, NSString *candi
         cursor = [cursor stringByAppendingPathComponent:component];
         struct stat attributes;
         BOOL isFinal = index + 1 == candidateComponents.count;
-        if (!SlockIosLstatPath(cursor, &attributes)) return nil;
+        if (!RaftIosLstatPath(cursor, &attributes)) return nil;
         if (isFinal) {
             if (S_ISLNK(attributes.st_mode) || !S_ISREG(attributes.st_mode) || attributes.st_size <= 0) {
                 return nil;
             }
         } else if (S_ISLNK(attributes.st_mode)
-            ? !SlockIosIsAllowedDarwinAliasSymlink(cursor, &attributes)
+            ? !RaftIosIsAllowedDarwinAliasSymlink(cursor, &attributes)
             : !S_ISDIR(attributes.st_mode)) {
             return nil;
         }
@@ -1295,8 +1295,8 @@ static NSString *SlockIosCacheOwnedTemporaryPath(NSString *root, NSString *candi
     return rawCandidate;
 }
 
-static NSString *SlockIosFilePathFromRetirementRef(NSString *fileRef) {
-    if (fileRef.length == 0 || SlockIosPathHasControlCharacter(fileRef)) return nil;
+static NSString *RaftIosFilePathFromRetirementRef(NSString *fileRef) {
+    if (fileRef.length == 0 || RaftIosPathHasControlCharacter(fileRef)) return nil;
     if ([fileRef hasPrefix:@"/"]) return fileRef;
     NSURL *url = [NSURL URLWithString:fileRef];
     if (!url.isFileURL || url.host.length != 0 || url.user.length != 0 ||
@@ -1308,7 +1308,7 @@ static NSString *SlockIosFilePathFromRetirementRef(NSString *fileRef) {
 }
 
 static SharedThreadComposerTemporaryFileRetirementResult *
-SlockIosRetireThreadComposerTemporaryFileRefs(
+RaftIosRetireThreadComposerTemporaryFileRefs(
     NSString *sessionId,
     NSSet<NSString *> *fileRefs
 ) {
@@ -1322,7 +1322,7 @@ SlockIosRetireThreadComposerTemporaryFileRefs(
         if (ref.length > 0) [requested addObject:ref];
     }
     if (cleanSessionId.length == 0 || cleanSessionId.length > 256 ||
-        SlockIosPathHasControlCharacter(cleanSessionId)) {
+        RaftIosPathHasControlCharacter(cleanSessionId)) {
         return [[SharedThreadComposerTemporaryFileRetirementResult alloc]
             initWithSessionId:cleanSessionId
             requestedFileRefs:requested
@@ -1346,7 +1346,7 @@ SlockIosRetireThreadComposerTemporaryFileRefs(
     NSMutableArray<NSString *> *roots = [NSMutableArray array];
     for (NSString *candidateRoot in candidateRoots) {
         NSString *root = candidateRoot.stringByStandardizingPath;
-        if (root.length == 0 || SlockIosPathIsSymlink(root)) continue;
+        if (root.length == 0 || RaftIosPathIsSymlink(root)) continue;
         NSDictionary<NSFileAttributeKey, id> *attributes =
             [fileManager attributesOfItemAtPath:root error:nil];
         if (![attributes[NSFileType] isEqualToString:NSFileTypeDirectory]) continue;
@@ -1361,10 +1361,10 @@ SlockIosRetireThreadComposerTemporaryFileRefs(
     NSMutableArray<NSString *> *tombstones = [NSMutableArray array];
 
     for (NSString *ref in requested) {
-        NSString *rawPath = SlockIosFilePathFromRetirementRef(ref);
+        NSString *rawPath = RaftIosFilePathFromRetirementRef(ref);
         NSString *ownedPath = nil;
         for (NSString *root in roots) {
-            ownedPath = SlockIosCacheOwnedTemporaryPath(root, rawPath ?: @"");
+            ownedPath = RaftIosCacheOwnedTemporaryPath(root, rawPath ?: @"");
             if (ownedPath.length > 0) break;
         }
         if (ownedPath.length == 0) {
@@ -1418,32 +1418,32 @@ SlockIosRetireThreadComposerTemporaryFileRefs(
         errorCode:errorCode];
 }
 
-@interface SlockIosThreadComposerTemporaryFileRetirementHandler : NSObject
+@interface RaftIosThreadComposerTemporaryFileRetirementHandler : NSObject
     <SharedThreadComposerTemporaryFileRetirementHandler>
 @end
 
-@implementation SlockIosThreadComposerTemporaryFileRetirementHandler
+@implementation RaftIosThreadComposerTemporaryFileRetirementHandler
 - (SharedThreadComposerTemporaryFileRetirementResult *)retireSessionId:(NSString *)sessionId
                                                                fileRefs:(NSSet<NSString *> *)fileRefs {
-    return SlockIosRetireThreadComposerTemporaryFileRefs(sessionId, fileRefs);
+    return RaftIosRetireThreadComposerTemporaryFileRefs(sessionId, fileRefs);
 }
 @end
 
-static SlockIosThreadComposerTemporaryFileRetirementHandler *SlockIosRetirementHandlerInstance;
+static RaftIosThreadComposerTemporaryFileRetirementHandler *RaftIosRetirementHandlerInstance;
 
-void SlockIosInstallThreadComposerTemporaryFileRetirement(void) {
-    if (SlockIosRetirementHandlerInstance == nil) {
-        SlockIosRetirementHandlerInstance = [SlockIosThreadComposerTemporaryFileRetirementHandler new];
+void RaftIosInstallThreadComposerTemporaryFileRetirement(void) {
+    if (RaftIosRetirementHandlerInstance == nil) {
+        RaftIosRetirementHandlerInstance = [RaftIosThreadComposerTemporaryFileRetirementHandler new];
     }
     [SharedThreadComposerTemporaryFileRetirement.shared
-        installHandler:SlockIosRetirementHandlerInstance];
-    SlockIosDiagnosticsRecord(
+        installHandler:RaftIosRetirementHandlerInstance];
+    RaftIosDiagnosticsRecord(
         @"info",
         @"SlockFilePreviewCleanup",
         @"ios_retirement_handler_installed");
 }
 
-static NSArray<NSString *> *SlockDiagnosticsLogFilesAtRoot(NSString *root, NSUInteger maxSessions) {
+static NSArray<NSString *> *RaftDiagnosticsLogFilesAtRoot(NSString *root, NSUInteger maxSessions) {
     NSMutableArray<NSString *> *paths = [NSMutableArray array];
     NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:root error:nil] ?: @[];
     NSMutableArray<NSString *> *sessions = [NSMutableArray array];
@@ -1464,10 +1464,10 @@ static NSArray<NSString *> *SlockDiagnosticsLogFilesAtRoot(NSString *root, NSUIn
         NSArray<NSString *> *sessionNames = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
         NSMutableArray<NSString *> *sessionPaths = [NSMutableArray array];
         for (NSString *name in sessionNames) {
-            if (!SlockDiagnosticsIsLogFileName(name)) {
+            if (!RaftDiagnosticsIsLogFileName(name)) {
                 continue;
             }
-            NSString *path = SlockDiagnosticsCanonicalDescendantFilePath(
+            NSString *path = RaftDiagnosticsCanonicalDescendantFilePath(
                 root,
                 [dir stringByAppendingPathComponent:name]
             );
@@ -1480,15 +1480,15 @@ static NSArray<NSString *> *SlockDiagnosticsLogFilesAtRoot(NSString *root, NSUIn
             }
         }
         [sessionPaths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
-            return SlockDiagnosticsComparePathsByMtimeThenPath(left, right);
+            return RaftDiagnosticsComparePathsByMtimeThenPath(left, right);
         }];
         [paths addObjectsFromArray:sessionPaths];
     }
-    if (sessionCount < SlockDiagnosticsMaxLaunchSessions) {
+    if (sessionCount < RaftDiagnosticsMaxLaunchSessions) {
         NSMutableArray<NSString *> *flatPaths = [NSMutableArray array];
         for (NSString *name in names) {
-            if (!SlockDiagnosticsIsLogFileName(name)) continue;
-            NSString *path = SlockDiagnosticsCanonicalDescendantFilePath(
+            if (!RaftDiagnosticsIsLogFileName(name)) continue;
+            NSString *path = RaftDiagnosticsCanonicalDescendantFilePath(
                 root,
                 [root stringByAppendingPathComponent:name]
             );
@@ -1497,43 +1497,43 @@ static NSArray<NSString *> *SlockDiagnosticsLogFilesAtRoot(NSString *root, NSUIn
             if ([attributes[NSFileSize] unsignedLongLongValue] > 0) [flatPaths addObject:path];
         }
         [flatPaths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
-            return SlockDiagnosticsComparePathsByMtimeThenPath(left, right);
+            return RaftDiagnosticsComparePathsByMtimeThenPath(left, right);
         }];
         [paths addObjectsFromArray:flatPaths];
     }
     return paths;
 }
 
-static NSArray<NSString *> *SlockDiagnosticsLogFiles(void) {
-    return SlockDiagnosticsLogFilesAtRoot(
-        SlockDiagnosticsDirectoryPath(),
-        SlockDiagnosticsMaxLaunchSessions
+static NSArray<NSString *> *RaftDiagnosticsLogFiles(void) {
+    return RaftDiagnosticsLogFilesAtRoot(
+        RaftDiagnosticsDirectoryPath(),
+        RaftDiagnosticsMaxLaunchSessions
     );
 }
 
-static BOOL SlockDiagnosticsRemoveItemIfPresent(NSFileManager *fileManager, NSString *path) {
+static BOOL RaftDiagnosticsRemoveItemIfPresent(NSFileManager *fileManager, NSString *path) {
     return ![fileManager fileExistsAtPath:path] || [fileManager removeItemAtPath:path error:nil];
 }
 
-static BOOL SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
+static BOOL RaftDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
     NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:activePath error:nil];
-    if ([attributes[NSFileSize] unsignedLongLongValue] < SlockDiagnosticsLogMaxBytes) {
+    if ([attributes[NSFileSize] unsignedLongLongValue] < RaftDiagnosticsLogMaxBytes) {
         return YES;
     }
     NSString *dir = [activePath stringByDeletingLastPathComponent];
     NSFileManager *fileManager = [NSFileManager defaultManager];
-    for (NSInteger index = (NSInteger)SlockDiagnosticsLogMaxFiles - 1; index >= 1; index--) {
-        NSString *source = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%ld", SlockDiagnosticsLogFileName, (long)index]];
-        NSString *target = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%ld", SlockDiagnosticsLogFileName, (long)index + 1]];
+    for (NSInteger index = (NSInteger)RaftDiagnosticsLogMaxFiles - 1; index >= 1; index--) {
+        NSString *source = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%ld", RaftDiagnosticsLogFileName, (long)index]];
+        NSString *target = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%ld", RaftDiagnosticsLogFileName, (long)index + 1]];
         if (![fileManager fileExistsAtPath:source]) {
             continue;
         }
-        if ((NSUInteger)index == SlockDiagnosticsLogMaxFiles - 1) {
-            if (!SlockDiagnosticsRemoveItemIfPresent(fileManager, source)) {
+        if ((NSUInteger)index == RaftDiagnosticsLogMaxFiles - 1) {
+            if (!RaftDiagnosticsRemoveItemIfPresent(fileManager, source)) {
                 return NO;
             }
         } else {
-            if (!SlockDiagnosticsRemoveItemIfPresent(fileManager, target)) {
+            if (!RaftDiagnosticsRemoveItemIfPresent(fileManager, target)) {
                 return NO;
             }
             if (![fileManager moveItemAtPath:source toPath:target error:nil]) {
@@ -1541,26 +1541,26 @@ static BOOL SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
             }
         }
     }
-    NSString *rotated = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.1", SlockDiagnosticsLogFileName]];
-    if (!SlockDiagnosticsRemoveItemIfPresent(fileManager, rotated)) {
+    NSString *rotated = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.1", RaftDiagnosticsLogFileName]];
+    if (!RaftDiagnosticsRemoveItemIfPresent(fileManager, rotated)) {
         return NO;
     }
     return [fileManager moveItemAtPath:activePath toPath:rotated error:nil];
 }
 
-static BOOL SlockDiagnosticsAppendEntry(NSDictionary *entry, BOOL synchronize) {
+static BOOL RaftDiagnosticsAppendEntry(NSDictionary *entry, BOOL synchronize) {
     @try {
-        NSString *activePath = SlockDiagnosticsActiveLogPath();
+        NSString *activePath = RaftDiagnosticsActiveLogPath();
         NSString *dir = activePath.stringByDeletingLastPathComponent;
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *directoryError = nil;
         if (![fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&directoryError]) {
             return NO;
         }
-        if (!SlockDiagnosticsRotateLogsIfNeeded(activePath)) {
-            atomic_fetch_add_explicit(&SlockDiagnosticsRotationFailedCount, 1, memory_order_relaxed);
+        if (!RaftDiagnosticsRotateLogsIfNeeded(activePath)) {
+            atomic_fetch_add_explicit(&RaftDiagnosticsRotationFailedCount, 1, memory_order_relaxed);
         }
-        NSString *jsonLine = SlockDiagnosticsJsonLine(entry);
+        NSString *jsonLine = RaftDiagnosticsJsonLine(entry);
         if (!jsonLine) {
             return NO;
         }
@@ -1597,7 +1597,7 @@ static BOOL SlockDiagnosticsAppendEntry(NSDictionary *entry, BOOL synchronize) {
     }
 }
 
-static NSString *SlockDiagnosticsProcessSessionIdentifier(void) {
+static NSString *RaftDiagnosticsProcessSessionIdentifier(void) {
     static NSString *identifier;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -1606,16 +1606,16 @@ static NSString *SlockDiagnosticsProcessSessionIdentifier(void) {
     return identifier;
 }
 
-static void SlockDiagnosticsProcessCapture(SlockDiagnosticsCapture *capture) {
-    NSString *normalizedTag = [SlockBridgeSanitizedLogString(
-        SlockDiagnosticsStringByReplacingInvalidSurrogates(capture.rawTag)
+static void RaftDiagnosticsProcessCapture(RaftDiagnosticsCapture *capture) {
+    NSString *normalizedTag = [RaftBridgeSanitizedLogString(
+        RaftDiagnosticsStringByReplacingInvalidSurrogates(capture.rawTag)
     ) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    NSString *safeTag = SlockDiagnosticsClippedString(
-        normalizedTag.length > 0 ? normalizedTag : SlockBridgeDefaultLogTag,
+    NSString *safeTag = RaftDiagnosticsClippedString(
+        normalizedTag.length > 0 ? normalizedTag : RaftBridgeDefaultLogTag,
         48
     );
-    NSString *safeMessage = [SlockBridgeSanitizedLogString(
-        SlockDiagnosticsStringByReplacingInvalidSurrogates(capture.rawMessage)
+    NSString *safeMessage = [RaftBridgeSanitizedLogString(
+        RaftDiagnosticsStringByReplacingInvalidSurrogates(capture.rawMessage)
     ) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (safeTag.length == 0 || safeMessage.length == 0) {
         return;
@@ -1628,31 +1628,31 @@ static void SlockDiagnosticsProcessCapture(SlockDiagnosticsCapture *capture) {
     if (![@[@"debug", @"info", @"warn", @"error"] containsObject:normalizedLevel]) {
         normalizedLevel = @"info";
     }
-    BOOL truncated = capture.rawMessageTruncated || safeMessage.length > SlockDiagnosticsMessageMaxChars;
-    NSString *finalMessage = SlockDiagnosticsClippedString(safeMessage, SlockDiagnosticsMessageMaxChars);
-    NSString *safeThread = SlockDiagnosticsClippedString(
-        SlockBridgeSanitizedLogString(capture.threadName),
-        SlockDiagnosticsThreadNameMaxChars
+    BOOL truncated = capture.rawMessageTruncated || safeMessage.length > RaftDiagnosticsMessageMaxChars;
+    NSString *finalMessage = RaftDiagnosticsClippedString(safeMessage, RaftDiagnosticsMessageMaxChars);
+    NSString *safeThread = RaftDiagnosticsClippedString(
+        RaftBridgeSanitizedLogString(capture.threadName),
+        RaftDiagnosticsThreadNameMaxChars
     );
-    NSString *safeQueue = SlockDiagnosticsClippedString(
-        SlockBridgeSanitizedLogString(capture.queueLabel),
-        SlockDiagnosticsQueueLabelMaxChars
+    NSString *safeQueue = RaftDiagnosticsClippedString(
+        RaftBridgeSanitizedLogString(capture.queueLabel),
+        RaftDiagnosticsQueueLabelMaxChars
     );
-    uint64_t droppedOrdinary = atomic_load_explicit(&SlockDiagnosticsDroppedOrdinaryCount, memory_order_relaxed);
-    uint64_t droppedCritical = atomic_load_explicit(&SlockDiagnosticsDroppedCriticalCount, memory_order_relaxed);
+    uint64_t droppedOrdinary = atomic_load_explicit(&RaftDiagnosticsDroppedOrdinaryCount, memory_order_relaxed);
+    uint64_t droppedCritical = atomic_load_explicit(&RaftDiagnosticsDroppedCriticalCount, memory_order_relaxed);
     NSDictionary *entry = @{
-        @"ts" : SlockDiagnosticsTimestampForMillis(capture.timestampMillis),
+        @"ts" : RaftDiagnosticsTimestampForMillis(capture.timestampMillis),
         @"timestampMillis" : @(capture.timestampMillis),
         @"level" : normalizedLevel,
         @"tag" : safeTag,
-        @"event" : SlockDiagnosticsEventName(finalMessage),
+        @"event" : RaftDiagnosticsEventName(finalMessage),
         @"message" : finalMessage,
         @"thread" : safeThread,
         @"threadId" : @(capture.threadId),
         @"queue" : safeQueue,
         @"mainThread" : @(capture.mainThread),
         @"processId" : @(NSProcessInfo.processInfo.processIdentifier),
-        @"processSession" : SlockDiagnosticsProcessSessionIdentifier(),
+        @"processSession" : RaftDiagnosticsProcessSessionIdentifier(),
         @"seq" : @(capture.sequence),
         @"monotonicTicks" : @(capture.monotonicTicks),
         @"dropped" : @(droppedOrdinary + droppedCritical),
@@ -1661,21 +1661,21 @@ static void SlockDiagnosticsProcessCapture(SlockDiagnosticsCapture *capture) {
         @"truncated" : @(truncated),
         @"critical" : @(capture.critical)
     };
-    SlockDiagnosticsRemember(entry);
+    RaftDiagnosticsRemember(entry);
     if (capture.emitConsole) {
         NSLog(@"[%@][%@] %@", safeTag, normalizedLevel, finalMessage);
     }
-    if (SlockDiagnosticsAppendEntry(entry, capture.critical)) {
-        atomic_fetch_add_explicit(&SlockDiagnosticsWrittenCount, 1, memory_order_relaxed);
+    if (RaftDiagnosticsAppendEntry(entry, capture.critical)) {
+        atomic_fetch_add_explicit(&RaftDiagnosticsWrittenCount, 1, memory_order_relaxed);
         if (capture.critical) {
-            atomic_fetch_add_explicit(&SlockDiagnosticsCriticalSynchronizedCount, 1, memory_order_relaxed);
+            atomic_fetch_add_explicit(&RaftDiagnosticsCriticalSynchronizedCount, 1, memory_order_relaxed);
         }
     } else {
-        atomic_fetch_add_explicit(&SlockDiagnosticsWriteFailedCount, 1, memory_order_relaxed);
+        atomic_fetch_add_explicit(&RaftDiagnosticsWriteFailedCount, 1, memory_order_relaxed);
     }
 }
 
-static uint64_t SlockDiagnosticsRecordWithContext(
+static uint64_t RaftDiagnosticsRecordWithContext(
     NSString *level,
     NSString *tag,
     NSString *message,
@@ -1683,8 +1683,8 @@ static uint64_t SlockDiagnosticsRecordWithContext(
     BOOL emitConsole,
     BOOL forceCritical
 ) {
-    atomic_fetch_add_explicit(&SlockDiagnosticsAttemptedCount, 1, memory_order_relaxed);
-    SlockDiagnosticsCapture *capture = SlockDiagnosticsCreateCapture(
+    atomic_fetch_add_explicit(&RaftDiagnosticsAttemptedCount, 1, memory_order_relaxed);
+    RaftDiagnosticsCapture *capture = RaftDiagnosticsCreateCapture(
         level,
         tag,
         message,
@@ -1693,72 +1693,72 @@ static uint64_t SlockDiagnosticsRecordWithContext(
         forceCritical
     );
     if (!capture) {
-        atomic_fetch_add_explicit(&SlockDiagnosticsRejectedInvalidCount, 1, memory_order_relaxed);
+        atomic_fetch_add_explicit(&RaftDiagnosticsRejectedInvalidCount, 1, memory_order_relaxed);
         return 0;
     }
-    if (!os_unfair_lock_trylock(&SlockDiagnosticsAdmissionLock)) {
-        atomic_fetch_add_explicit(&SlockDiagnosticsDroppedContentionCount, 1, memory_order_relaxed);
+    if (!os_unfair_lock_trylock(&RaftDiagnosticsAdmissionLock)) {
+        atomic_fetch_add_explicit(&RaftDiagnosticsDroppedContentionCount, 1, memory_order_relaxed);
         atomic_fetch_add_explicit(
-            capture.critical ? &SlockDiagnosticsDroppedCriticalCount : &SlockDiagnosticsDroppedOrdinaryCount,
+            capture.critical ? &RaftDiagnosticsDroppedCriticalCount : &RaftDiagnosticsDroppedOrdinaryCount,
             1,
             memory_order_relaxed
         );
         return 0;
     }
     NSUInteger limit = capture.critical
-        ? SlockDiagnosticsOutstandingLimit
-        : SlockDiagnosticsOrdinaryOutstandingLimit;
-    if (SlockDiagnosticsOutstandingCount >= limit) {
+        ? RaftDiagnosticsOutstandingLimit
+        : RaftDiagnosticsOrdinaryOutstandingLimit;
+    if (RaftDiagnosticsOutstandingCount >= limit) {
         atomic_fetch_add_explicit(
-            capture.critical ? &SlockDiagnosticsDroppedCriticalCount : &SlockDiagnosticsDroppedOrdinaryCount,
+            capture.critical ? &RaftDiagnosticsDroppedCriticalCount : &RaftDiagnosticsDroppedOrdinaryCount,
             1,
             memory_order_relaxed
         );
-        os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+        os_unfair_lock_unlock(&RaftDiagnosticsAdmissionLock);
         return 0;
     }
-    capture.sequence = ++SlockDiagnosticsNextSequence;
-    SlockDiagnosticsOutstandingCount++;
-    uint64_t maxOutstanding = atomic_load_explicit(&SlockDiagnosticsMaxOutstandingCount, memory_order_relaxed);
-    if (SlockDiagnosticsOutstandingCount > maxOutstanding) {
+    capture.sequence = ++RaftDiagnosticsNextSequence;
+    RaftDiagnosticsOutstandingCount++;
+    uint64_t maxOutstanding = atomic_load_explicit(&RaftDiagnosticsMaxOutstandingCount, memory_order_relaxed);
+    if (RaftDiagnosticsOutstandingCount > maxOutstanding) {
         atomic_store_explicit(
-            &SlockDiagnosticsMaxOutstandingCount,
-            SlockDiagnosticsOutstandingCount,
+            &RaftDiagnosticsMaxOutstandingCount,
+            RaftDiagnosticsOutstandingCount,
             memory_order_relaxed
         );
     }
-    atomic_fetch_add_explicit(&SlockDiagnosticsAcceptedCount, 1, memory_order_relaxed);
+    atomic_fetch_add_explicit(&RaftDiagnosticsAcceptedCount, 1, memory_order_relaxed);
     if (capture.critical) {
-        atomic_fetch_add_explicit(&SlockDiagnosticsAcceptedCriticalCount, 1, memory_order_relaxed);
+        atomic_fetch_add_explicit(&RaftDiagnosticsAcceptedCriticalCount, 1, memory_order_relaxed);
     }
-    dispatch_async(SlockDiagnosticsOwnerQueue(), ^{
+    dispatch_async(RaftDiagnosticsOwnerQueue(), ^{
         @autoreleasepool {
             @try {
-                SlockDiagnosticsProcessCapture(capture);
+                RaftDiagnosticsProcessCapture(capture);
             } @finally {
-                atomic_fetch_add_explicit(&SlockDiagnosticsProcessedCount, 1, memory_order_relaxed);
-                os_unfair_lock_lock(&SlockDiagnosticsAdmissionLock);
-                if (SlockDiagnosticsOutstandingCount > 0) {
-                    SlockDiagnosticsOutstandingCount--;
+                atomic_fetch_add_explicit(&RaftDiagnosticsProcessedCount, 1, memory_order_relaxed);
+                os_unfair_lock_lock(&RaftDiagnosticsAdmissionLock);
+                if (RaftDiagnosticsOutstandingCount > 0) {
+                    RaftDiagnosticsOutstandingCount--;
                 }
-                os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+                os_unfair_lock_unlock(&RaftDiagnosticsAdmissionLock);
             }
         }
     });
     uint64_t sequence = capture.sequence;
-    os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+    os_unfair_lock_unlock(&RaftDiagnosticsAdmissionLock);
     return sequence;
 }
 
-static void SlockDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
-    SlockDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
+static void RaftDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
+    RaftDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
 }
 
-void SlockIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
-    SlockDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
+void RaftIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
+    RaftDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
 }
 
-void SlockIosDiagnosticsRecordWithContext(
+void RaftIosDiagnosticsRecordWithContext(
     NSString *level,
     NSString *tag,
     NSString *message,
@@ -1766,114 +1766,114 @@ void SlockIosDiagnosticsRecordWithContext(
     BOOL emitConsole,
     BOOL forceCritical
 ) {
-    SlockDiagnosticsRecordWithContext(level, tag, message, timestampMillis, emitConsole, forceCritical);
+    RaftDiagnosticsRecordWithContext(level, tag, message, timestampMillis, emitConsole, forceCritical);
 }
 
-void SlockIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message) {
-    NSString *boundedTag = SlockDiagnosticsClippedCopy(
-        tag ?: SlockBridgeDefaultLogTag,
-        SlockDiagnosticsRawTagMaxChars
+void RaftIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message) {
+    NSString *boundedTag = RaftDiagnosticsClippedCopy(
+        tag ?: RaftBridgeDefaultLogTag,
+        RaftDiagnosticsRawTagMaxChars
     );
-    NSString *boundedMessage = SlockDiagnosticsClippedCopy(
+    NSString *boundedMessage = RaftDiagnosticsClippedCopy(
         message ?: @"",
-        SlockDiagnosticsRawMessageMaxChars
+        RaftDiagnosticsRawMessageMaxChars
     );
-    NSString *safeTag = SlockDiagnosticsClippedString(
-        [SlockBridgeSanitizedLogString(
-            SlockDiagnosticsStringByReplacingInvalidSurrogates(boundedTag)
+    NSString *safeTag = RaftDiagnosticsClippedString(
+        [RaftBridgeSanitizedLogString(
+            RaftDiagnosticsStringByReplacingInvalidSurrogates(boundedTag)
         )
             stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet],
         48
     );
-    NSString *safeMessage = SlockDiagnosticsClippedString(
-        [SlockBridgeSanitizedLogString(SlockDiagnosticsStringByReplacingInvalidSurrogates(boundedMessage))
+    NSString *safeMessage = RaftDiagnosticsClippedString(
+        [RaftBridgeSanitizedLogString(RaftDiagnosticsStringByReplacingInvalidSurrogates(boundedMessage))
             stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet],
-        SlockDiagnosticsMessageMaxChars
+        RaftDiagnosticsMessageMaxChars
     );
     if (safeMessage.length == 0) {
         return;
     }
     if (safeTag.length == 0) {
-        safeTag = SlockBridgeDefaultLogTag;
+        safeTag = RaftBridgeDefaultLogTag;
     }
     NSLog(@"[%@][error] %@", safeTag, safeMessage);
-    SlockDiagnosticsRecordWithContext(@"error", safeTag, safeMessage, 0, NO, YES);
+    RaftDiagnosticsRecordWithContext(@"error", safeTag, safeMessage, 0, NO, YES);
 }
 
-void SlockIosDiagnosticsRecordUnhandledException(
+void RaftIosDiagnosticsRecordUnhandledException(
     NSString *pageName,
     NSInteger mode,
     NSString *reason,
     NSString *stack
 ) {
-    NSString *boundedPage = SlockDiagnosticsClippedCopy(
+    NSString *boundedPage = RaftDiagnosticsClippedCopy(
         pageName ?: @"unknown",
-        SlockDiagnosticsExceptionPageMaxChars
+        RaftDiagnosticsExceptionPageMaxChars
     );
-    NSString *boundedReason = SlockDiagnosticsClippedCopy(
+    NSString *boundedReason = RaftDiagnosticsClippedCopy(
         reason ?: @"KuiklyUnhandledException",
-        SlockDiagnosticsExceptionReasonMaxChars
+        RaftDiagnosticsExceptionReasonMaxChars
     );
-    NSString *boundedStack = SlockDiagnosticsClippedCopy(
+    NSString *boundedStack = RaftDiagnosticsClippedCopy(
         stack ?: @"",
-        SlockDiagnosticsExceptionStackMaxChars
+        RaftDiagnosticsExceptionStackMaxChars
     );
     NSString *message = [NSString stringWithFormat:@"kuikly_unhandled_exception page=%@ mode=%ld reason=%@ stack=%@",
         boundedPage,
         (long)mode,
         boundedReason,
         boundedStack];
-    SlockIosDiagnosticsRecordCriticalSynchronously(@"SlockKuikly", message);
+    RaftIosDiagnosticsRecordCriticalSynchronously(@"SlockKuikly", message);
 }
 
-static NSString *SlockDiagnosticsExportRecentJsonl(NSUInteger maxChars) {
+static NSString *RaftDiagnosticsExportRecentJsonl(NSUInteger maxChars) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    for (NSDictionary *entry in SlockDiagnosticsSnapshotMemoryEntries()) {
-        NSString *line = SlockDiagnosticsJsonLine(entry);
+    for (NSDictionary *entry in RaftDiagnosticsSnapshotMemoryEntries()) {
+        NSString *line = RaftDiagnosticsJsonLine(entry);
         if (line) {
             [lines addObject:line];
         }
     }
     NSString *text = [lines componentsJoinedByString:@"\n"];
     if (text.length > maxChars) {
-        return SlockDiagnosticsValidSuffixString(text, maxChars);
+        return RaftDiagnosticsValidSuffixString(text, maxChars);
     }
     return text;
 }
 
-static NSString *SlockDiagnosticsReadTail(NSString *path, NSUInteger maxChars) {
+static NSString *RaftDiagnosticsReadTail(NSString *path, NSUInteger maxChars) {
     NSData *data = [NSData dataWithContentsOfFile:path] ?: [NSData data];
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
-    text = SlockBridgeSanitizedLogString(text);
+    text = RaftBridgeSanitizedLogString(text);
     if (text.length > maxChars) {
-        return SlockDiagnosticsValidSuffixString(text, maxChars);
+        return RaftDiagnosticsValidSuffixString(text, maxChars);
     }
     return text;
 }
 
-static NSString *SlockDiagnosticsExportRecentText(NSUInteger maxChars) {
-    NSString *result = SlockDiagnosticsPerformOwnerOperation(^id{
-        NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
+static NSString *RaftDiagnosticsExportRecentText(NSUInteger maxChars) {
+    NSString *result = RaftDiagnosticsPerformOwnerOperation(^id{
+        NSArray<NSString *> *files = RaftDiagnosticsLogFiles();
         NSMutableString *text = [NSMutableString string];
         [text appendString:@"App-owned recent diagnostics\n"];
         [text appendFormat:@"Files: %lu\n", (unsigned long)files.count];
         [text appendFormat:
             @"Queue: attempted=%llu accepted=%llu acceptedCritical=%llu rejectedInvalid=%llu processed=%llu written=%llu criticalSynchronized=%llu writeFailed=%llu rotationFailed=%llu droppedOrdinary=%llu droppedCritical=%llu droppedContention=%llu maxDepth=%lu\n",
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsAttemptedCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsAcceptedCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsAcceptedCriticalCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsRejectedInvalidCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsProcessedCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsWrittenCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsCriticalSynchronizedCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsWriteFailedCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsRotationFailedCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsDroppedOrdinaryCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsDroppedCriticalCount, memory_order_relaxed),
-            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsDroppedContentionCount, memory_order_relaxed),
-            (unsigned long)atomic_load_explicit(&SlockDiagnosticsMaxOutstandingCount, memory_order_relaxed)
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsAttemptedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsAcceptedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsAcceptedCriticalCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsRejectedInvalidCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsProcessedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsWrittenCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsCriticalSynchronizedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsWriteFailedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsRotationFailedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsDroppedOrdinaryCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsDroppedCriticalCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&RaftDiagnosticsDroppedContentionCount, memory_order_relaxed),
+            (unsigned long)atomic_load_explicit(&RaftDiagnosticsMaxOutstandingCount, memory_order_relaxed)
         ];
-        NSString *memoryJsonl = SlockDiagnosticsExportRecentJsonl(maxChars / 2);
+        NSString *memoryJsonl = RaftDiagnosticsExportRecentJsonl(maxChars / 2);
         if (memoryJsonl.length > 0) {
             [text appendString:@"\n### recent-memory.jsonl\n"];
             [text appendString:memoryJsonl];
@@ -1889,29 +1889,29 @@ static NSString *SlockDiagnosticsExportRecentText(NSUInteger maxChars) {
                 ? [NSString stringWithFormat:@"%@/%@", sessionName, path.lastPathComponent]
                 : [NSString stringWithFormat:@"flat/%@", path.lastPathComponent];
             [text appendFormat:@"\n### %@ (%llu bytes)\n", displayName, [attributes[NSFileSize] unsignedLongLongValue]];
-            [text appendString:SlockDiagnosticsReadTail(path, MAX(fileBudget / MAX(fileCount, 1), 1000))];
+            [text appendString:RaftDiagnosticsReadTail(path, MAX(fileBudget / MAX(fileCount, 1), 1000))];
         }
         if (text.length > maxChars) {
-            return SlockDiagnosticsValidSuffixString(text, maxChars);
+            return RaftDiagnosticsValidSuffixString(text, maxChars);
         }
         return text;
     });
     return result ?: @"";
 }
 
-static void SlockDiagnosticsClear(void) {
-    SlockDiagnosticsPerformOwnerOperation(^id{
-        NSMutableArray *slots = SlockDiagnosticsMemorySlots();
-        for (NSUInteger index = 0; index < SlockDiagnosticsMemoryEntryLimit; index++) {
+static void RaftDiagnosticsClear(void) {
+    RaftDiagnosticsPerformOwnerOperation(^id{
+        NSMutableArray *slots = RaftDiagnosticsMemorySlots();
+        for (NSUInteger index = 0; index < RaftDiagnosticsMemoryEntryLimit; index++) {
             [slots replaceObjectAtIndex:index withObject:NSNull.null];
         }
-        SlockDiagnosticsMemoryStart = 0;
-        SlockDiagnosticsMemoryCount = 0;
-        NSString *dir = SlockDiagnosticsDirectoryPath();
+        RaftDiagnosticsMemoryStart = 0;
+        RaftDiagnosticsMemoryCount = 0;
+        NSString *dir = RaftDiagnosticsDirectoryPath();
         NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
         for (NSString *name in names) {
-            if (SlockDiagnosticsIsLogFileName(name) || [name hasPrefix:@"launch-"] ||
-                [name hasPrefix:SlockDiagnosticsFeedbackDirName]) {
+            if (RaftDiagnosticsIsLogFileName(name) || [name hasPrefix:@"launch-"] ||
+                [name hasPrefix:RaftDiagnosticsFeedbackDirName]) {
                 [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
             }
         }
@@ -1919,7 +1919,7 @@ static void SlockDiagnosticsClear(void) {
     });
 }
 
-static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about, BOOL omitEmptyRows) {
+static NSString *RaftDiagnosticsBuildExportText(NSDictionary *about, BOOL omitEmptyRows) {
     NSMutableString *text = [NSMutableString string];
     [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
     NSArray<NSDictionary *> *rows = @[
@@ -1950,11 +1950,11 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about, BOOL omitE
     // the diagnostics attachment passes omitEmptyRows=NO and keeps full rows.
     [text appendString:RaftDiagnosticsEnvironmentRowsText(about, rows, omitEmptyRows)];
     [text appendString:@"\niOS diagnostics\n"];
-    [text appendString:SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars)];
+    [text appendString:RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars)];
     return text;
 }
 
-static NSString *SlockDiagnosticsEnvironmentSectionFromExportText(NSString *exportText) {
+static NSString *RaftDiagnosticsEnvironmentSectionFromExportText(NSString *exportText) {
     NSRange environmentRange = [exportText rangeOfString:@"Environment\n"];
     if (environmentRange.location == NSNotFound) {
         return @"";
@@ -1966,18 +1966,18 @@ static NSString *SlockDiagnosticsEnvironmentSectionFromExportText(NSString *expo
     return [section stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
 }
 
-static NSString *SlockDiagnosticsFeedbackDirectoryPath(void) {
-    return [SlockDiagnosticsDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsFeedbackDirName];
+static NSString *RaftDiagnosticsFeedbackDirectoryPath(void) {
+    return [RaftDiagnosticsDirectoryPath() stringByAppendingPathComponent:RaftDiagnosticsFeedbackDirName];
 }
 
-static id SlockDiagnosticsSanitizedJsonValue(id value) {
+static id RaftDiagnosticsSanitizedJsonValue(id value) {
     if ([value isKindOfClass:NSString.class]) {
-        return SlockBridgeSanitizedLogString((NSString *)value);
+        return RaftBridgeSanitizedLogString((NSString *)value);
     }
     if ([value isKindOfClass:NSArray.class]) {
         NSMutableArray *sanitized = [NSMutableArray arrayWithCapacity:[(NSArray *)value count]];
         for (id item in (NSArray *)value) {
-            [sanitized addObject:SlockDiagnosticsSanitizedJsonValue(item) ?: NSNull.null];
+            [sanitized addObject:RaftDiagnosticsSanitizedJsonValue(item) ?: NSNull.null];
         }
         return sanitized;
     }
@@ -1986,10 +1986,10 @@ static id SlockDiagnosticsSanitizedJsonValue(id value) {
         [(NSDictionary *)value enumerateKeysAndObjectsUsingBlock:^(id key, id item, BOOL *stop) {
             (void)stop;
             NSString *stringKey = [key isKindOfClass:NSString.class] ? key : [key description];
-            if (SlockDiagnosticsIsCredentialKey(stringKey)) {
+            if (RaftDiagnosticsIsCredentialKey(stringKey)) {
                 sanitized[stringKey] = @"<redacted>";
             } else {
-                sanitized[stringKey] = SlockDiagnosticsSanitizedJsonValue(item) ?: NSNull.null;
+                sanitized[stringKey] = RaftDiagnosticsSanitizedJsonValue(item) ?: NSNull.null;
             }
         }];
         return sanitized;
@@ -1997,7 +1997,7 @@ static id SlockDiagnosticsSanitizedJsonValue(id value) {
     return value ?: NSNull.null;
 }
 
-static BOOL SlockDiagnosticsWriteSanitizedSnapshotLog(NSString *sourcePath, NSString *destinationPath) {
+static BOOL RaftDiagnosticsWriteSanitizedSnapshotLog(NSString *sourcePath, NSString *destinationPath) {
     NSData *sourceData = [NSData dataWithContentsOfFile:sourcePath];
     if (!sourceData) {
         return NO;
@@ -2012,7 +2012,7 @@ static BOOL SlockDiagnosticsWriteSanitizedSnapshotLog(NSString *sourcePath, NSSt
         (void)stop;
         NSData *lineData = [line dataUsingEncoding:NSUTF8StringEncoding];
         id object = lineData ? [NSJSONSerialization JSONObjectWithData:lineData options:0 error:nil] : nil;
-        id sanitizedObject = SlockDiagnosticsSanitizedJsonValue(object);
+        id sanitizedObject = RaftDiagnosticsSanitizedJsonValue(object);
         if (!sanitizedObject || ![NSJSONSerialization isValidJSONObject:sanitizedObject]) {
             omittedLineCount++;
             return;
@@ -2028,7 +2028,7 @@ static BOOL SlockDiagnosticsWriteSanitizedSnapshotLog(NSString *sourcePath, NSSt
         }
     }];
     if (omittedLineCount > 0) {
-        NSString *omissionLine = SlockDiagnosticsJsonLine(@{
+        NSString *omissionLine = RaftDiagnosticsJsonLine(@{
             @"event" : @"snapshot_invalid_jsonl_omitted",
             @"count" : @(omittedLineCount)
         });
@@ -2046,11 +2046,11 @@ static BOOL SlockDiagnosticsWriteSanitizedSnapshotLog(NSString *sourcePath, NSSt
     return [sanitizedData writeToFile:destinationPath atomically:YES];
 }
 
-static void SlockDiagnosticsPruneFeedbackFiles(NSString *dir) {
+static void RaftDiagnosticsPruneFeedbackFiles(NSString *dir) {
     NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
     NSMutableArray<NSString *> *paths = [NSMutableArray array];
     for (NSString *name in names) {
-        if (![name hasPrefix:SlockDiagnosticsFeedbackFilePrefix]) {
+        if (![name hasPrefix:RaftDiagnosticsFeedbackFilePrefix]) {
             continue;
         }
         NSString *path = [dir stringByAppendingPathComponent:name];
@@ -2065,22 +2065,22 @@ static void SlockDiagnosticsPruneFeedbackFiles(NSString *dir) {
         return [rightDate compare:leftDate];
     }];
     NSDate *now = NSDate.date;
-    for (NSUInteger index = SlockDiagnosticsMinimumRetainedSnapshotCount; index < paths.count; index++) {
+    for (NSUInteger index = RaftDiagnosticsMinimumRetainedSnapshotCount; index < paths.count; index++) {
         NSString *path = paths[index];
         NSDate *modifiedAt = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil] fileModificationDate]
             ?: NSDate.distantPast;
-        if ([now timeIntervalSinceDate:modifiedAt] >= SlockDiagnosticsFeedbackPruneMinimumAgeSeconds) {
+        if ([now timeIntervalSinceDate:modifiedAt] >= RaftDiagnosticsFeedbackPruneMinimumAgeSeconds) {
             [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
         }
     }
 }
 
-static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about, NSString *reason, BOOL includeBodyBase64) {
-    NSDictionary *result = SlockDiagnosticsPerformOwnerOperation(^id{
-        NSString *summaryText = SlockDiagnosticsStringByReplacingInvalidSurrogates(
-            SlockBridgeSanitizedLogString(SlockDiagnosticsBuildExportText(about ?: @{}, NO))
+static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, NSString *reason, BOOL includeBodyBase64) {
+    NSDictionary *result = RaftDiagnosticsPerformOwnerOperation(^id{
+        NSString *summaryText = RaftDiagnosticsStringByReplacingInvalidSurrogates(
+            RaftBridgeSanitizedLogString(RaftDiagnosticsBuildExportText(about ?: @{}, NO))
         );
-        NSString *safeReason = SlockBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
+        NSString *safeReason = RaftBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
         NSData *summaryData = [summaryText dataUsingEncoding:NSUTF8StringEncoding];
         if (!summaryData) {
             return @{
@@ -2089,14 +2089,14 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
                 @"message" : @"Unable to encode diagnostics summary."
             };
         }
-        NSString *dir = SlockDiagnosticsFeedbackDirectoryPath();
+        NSString *dir = RaftDiagnosticsFeedbackDirectoryPath();
         NSFileManager *fileManager = [NSFileManager defaultManager];
         [fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-        long long timestampMs = SlockDiagnosticsNowMillis();
+        long long timestampMs = RaftDiagnosticsNowMillis();
         NSString *snapshotIdentifier = NSUUID.UUID.UUIDString.lowercaseString;
         NSString *snapshotDir =
             [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@%lld-%@",
-                SlockDiagnosticsFeedbackFilePrefix,
+                RaftDiagnosticsFeedbackFilePrefix,
                 timestampMs,
                 snapshotIdentifier]];
         if (![fileManager createDirectoryAtPath:snapshotDir
@@ -2109,7 +2109,7 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
                 @"message" : @"Unable to create diagnostics snapshot directory."
             };
         }
-        NSString *fileName = SlockDiagnosticsSummaryFileName;
+        NSString *fileName = RaftDiagnosticsSummaryFileName;
         NSString *path = [snapshotDir stringByAppendingPathComponent:fileName];
         if (![summaryData writeToFile:path atomically:YES]) {
             [fileManager removeItemAtPath:snapshotDir error:nil];
@@ -2121,8 +2121,8 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
         }
         NSMutableArray<NSString *> *attachmentPaths = [NSMutableArray arrayWithObject:path];
         NSMutableSet<NSString *> *reservedSnapshotPaths = [NSMutableSet setWithObject:path];
-        NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
-        NSUInteger fileCount = MIN(files.count, SlockDiagnosticsAttachmentMaxLogFiles);
+        NSArray<NSString *> *files = RaftDiagnosticsLogFiles();
+        NSUInteger fileCount = MIN(files.count, RaftDiagnosticsAttachmentMaxLogFiles);
         for (NSUInteger index = 0; index < fileCount; index++) {
             NSString *logPath = files[index];
             if (![fileManager isReadableFileAtPath:logPath]) {
@@ -2133,18 +2133,18 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
                 ? [snapshotDir stringByAppendingPathComponent:sessionName]
                 : [snapshotDir stringByAppendingPathComponent:@"flat"];
             [fileManager createDirectoryAtPath:snapshotLogDir withIntermediateDirectories:YES attributes:nil error:nil];
-            NSString *snapshotLogPath = SlockDiagnosticsUniqueSnapshotPath(
+            NSString *snapshotLogPath = RaftDiagnosticsUniqueSnapshotPath(
                 snapshotLogDir,
                 logPath.lastPathComponent,
                 reservedSnapshotPaths
             );
-            if (SlockDiagnosticsWriteSanitizedSnapshotLog(logPath, snapshotLogPath)) {
+            if (RaftDiagnosticsWriteSanitizedSnapshotLog(logPath, snapshotLogPath)) {
                 [attachmentPaths addObject:snapshotLogPath];
             } else {
                 [fileManager removeItemAtPath:snapshotLogPath error:nil];
             }
         }
-        SlockDiagnosticsPruneFeedbackFiles(dir);
+        RaftDiagnosticsPruneFeedbackFiles(dir);
         NSMutableDictionary *prepared = [@{
             @"status" : @"ok",
             @"reason" : safeReason.length > 0 ? safeReason : @"diagnostics",
@@ -2162,12 +2162,12 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
     });
     if ([result[@"status"] isEqualToString:@"ok"]) {
         NSArray *paths = [result[@"attachmentPaths"] isKindOfClass:NSArray.class] ? result[@"attachmentPaths"] : @[];
-        SlockDiagnosticsRecord(
+        RaftDiagnosticsRecord(
             @"info",
             @"SlockDiagnostics",
             [NSString stringWithFormat:@"diagnostics_attachments_prepared reason=%@ summary=%@ bytes=%@ paths=%lu",
                 result[@"reason"] ?: @"diagnostics",
-                result[@"fileName"] ?: SlockDiagnosticsSummaryFileName,
+                result[@"fileName"] ?: RaftDiagnosticsSummaryFileName,
                 result[@"sizeBytes"] ?: @0,
                 (unsigned long)paths.count]
         );
@@ -2176,8 +2176,8 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
 }
 
 
-static NSDictionary *SlockDiagnosticsCrashAbout(long long crashAtMillis) {
-    NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+static NSDictionary *RaftDiagnosticsCrashAbout(long long crashAtMillis) {
+    NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
     [about addEntriesFromDictionary:@{
         @"diagnosticsReason" : @"crash",
         @"crashAtMillis" : @(crashAtMillis)
@@ -2195,45 +2195,45 @@ static NSDictionary *SlockDiagnosticsCrashAbout(long long crashAtMillis) {
     return about;
 }
 
-NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason) {
-    NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+NSArray<NSString *> *RaftIosPrepareDiagnosticsAttachmentPaths(NSString *reason) {
+    NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
     about[@"diagnosticsReason"] = reason ?: @"crash";
-    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(about, reason ?: @"crash", NO);
+    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(about, reason ?: @"crash", NO);
     NSArray *paths = [attachments[@"attachmentPaths"] isKindOfClass:NSArray.class] ? attachments[@"attachmentPaths"] : @[];
     return paths;
 }
 
-NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis) {
+NSArray<NSString *> *RaftIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis) {
     NSString *reason = crashAtMillis > 0
         ? [NSString stringWithFormat:@"crash-%lld", (long long)crashAtMillis]
         : @"crash";
-    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(SlockDiagnosticsCrashAbout((long long)crashAtMillis), reason, NO);
+    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(RaftDiagnosticsCrashAbout((long long)crashAtMillis), reason, NO);
     NSArray *paths = [attachments[@"attachmentPaths"] isKindOfClass:NSArray.class] ? attachments[@"attachmentPaths"] : @[];
     return paths;
 }
 
-NSString *SlockIosPrepareDiagnosticsCrashAttachmentPath(void) {
-    return SlockIosPrepareDiagnosticsAttachmentPaths(@"crash").firstObject;
+NSString *RaftIosPrepareDiagnosticsCrashAttachmentPath(void) {
+    return RaftIosPrepareDiagnosticsAttachmentPaths(@"crash").firstObject;
 }
 
-static void SlockIosRegisterHandsDiagnosticsProvider(void) {
+static void RaftIosRegisterHandsDiagnosticsProvider(void) {
     Class crashReporter = NSClassFromString(@"HandsCrashReporter");
     SEL selector = NSSelectorFromString(@"setDiagnosticsProvider:");
     if (!crashReporter || ![crashReporter respondsToSelector:selector]) {
-        SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"hands_diagnostics_provider_unavailable");
+        RaftDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"hands_diagnostics_provider_unavailable");
         return;
     }
     NSArray<NSString *> *_Nullable (^provider)(int64_t) = ^NSArray<NSString *> *_Nullable(int64_t crashAtMillis) {
-        return SlockIosPrepareDiagnosticsAttachmentPathsForCrash(crashAtMillis);
+        return RaftIosPrepareDiagnosticsAttachmentPathsForCrash(crashAtMillis);
     };
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
     [crashReporter performSelector:selector withObject:[provider copy]];
 #pragma clang diagnostic pop
-    SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_diagnostics_provider_registered crashAtMillis=true");
+    RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_diagnostics_provider_registered crashAtMillis=true");
 }
 
-void SlockIosInstallHandsReporting(void) {
+void RaftIosInstallHandsReporting(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         // App-owned Hands reporting config (client key is DSN-class: it
@@ -2244,12 +2244,12 @@ void SlockIosInstallHandsReporting(void) {
                                                         clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
         // Install fatal handlers before our diagnostic registration/logging.
         // The provider is evaluated on a later upload, not during registration.
-        SlockIosRegisterHandsDiagnosticsProvider();
+        RaftIosRegisterHandsDiagnosticsProvider();
     });
 }
 
-static NSString *SlockAttachmentExportFileName(NSString *value) {
-    NSString *source = SlockBridgeString(value).lastPathComponent;
+static NSString *RaftAttachmentExportFileName(NSString *value) {
+    NSString *source = RaftBridgeString(value).lastPathComponent;
     NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "];
     NSMutableString *result = [NSMutableString string];
     for (NSUInteger index = 0; index < source.length; index++) {
@@ -2264,7 +2264,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     return trimmed.length > 0 ? trimmed : @"attachment";
 }
 
-static UTType *SlockPreferredPickedMediaType(NSItemProvider *provider) {
+static UTType *RaftPreferredPickedMediaType(NSItemProvider *provider) {
     UTType *preferred = nil;
     NSInteger preferredScore = NSIntegerMin;
     for (NSString *identifier in provider.registeredTypeIdentifiers) {
@@ -2294,11 +2294,11 @@ static UTType *SlockPreferredPickedMediaType(NSItemProvider *provider) {
     return preferred;
 }
 
-static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
+static NSString *RaftPickedAttachmentDisplayName(NSString *suggestedName,
                                                    NSURL *sourceURL,
                                                    NSString *mimeType) {
     NSString *displayName =
-        SlockAttachmentExportFileName(suggestedName.length > 0 ? suggestedName : sourceURL.lastPathComponent);
+        RaftAttachmentExportFileName(suggestedName.length > 0 ? suggestedName : sourceURL.lastPathComponent);
     if (displayName.pathExtension.length > 0) {
         return displayName;
     }
@@ -2312,10 +2312,10 @@ static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
     return displayName;
 }
 
-static BOOL SlockAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL *sourceURL) {
-    NSString *normalizedMimeType = SlockBridgeString(mimeType).lowercaseString;
+static BOOL RaftAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL *sourceURL) {
+    NSString *normalizedMimeType = RaftBridgeString(mimeType).lowercaseString;
     normalizedMimeType = [[normalizedMimeType componentsSeparatedByString:@";"] firstObject] ?: @"";
-    NSString *nameExtension = SlockBridgeString(fileName).pathExtension.lowercaseString;
+    NSString *nameExtension = RaftBridgeString(fileName).pathExtension.lowercaseString;
     NSString *sourceExtension = sourceURL.pathExtension.lowercaseString;
     // Picker providers occasionally pair an image MIME/name with a movie-backed URL.  Treat a
     // known video suffix from either identity as authoritative and reject it before accepting
@@ -2342,18 +2342,18 @@ static BOOL SlockAttachmentIsImage(NSString *fileName, NSString *mimeType, NSURL
     return [imageExtensions containsObject:extension];
 }
 
-static NSError *SlockThreadAttachmentImageCompressionError(NSString *message) {
-    return [NSError errorWithDomain:SlockThreadAttachmentImageCompressionErrorDomain
+static NSError *RaftThreadAttachmentImageCompressionError(NSString *message) {
+    return [NSError errorWithDomain:RaftThreadAttachmentImageCompressionErrorDomain
                                 code:1
                             userInfo:@{ NSLocalizedDescriptionKey :
                                             message.length > 0 ? message : @"Unable to compress image attachment" }];
 }
 
-static BOOL SlockIsThreadAttachmentImageCompressionError(NSError *error) {
-    return [error.domain isEqualToString:SlockThreadAttachmentImageCompressionErrorDomain];
+static BOOL RaftIsThreadAttachmentImageCompressionError(NSError *error) {
+    return [error.domain isEqualToString:RaftThreadAttachmentImageCompressionErrorDomain];
 }
 
-static NSDictionary *SlockThreadImageCompressionFailurePayload(void) {
+static NSDictionary *RaftThreadImageCompressionFailurePayload(void) {
     return @{
         @"code" : @400,
         @"errorCode" : @"attachment_image_compression_failed",
@@ -2361,14 +2361,14 @@ static NSDictionary *SlockThreadImageCompressionFailurePayload(void) {
     };
 }
 
-static NSString *SlockThreadImageCompressionMimeType(NSString *value) {
-    NSString *mime = SlockBridgeString(value).lowercaseString;
+static NSString *RaftThreadImageCompressionMimeType(NSString *value) {
+    NSString *mime = RaftBridgeString(value).lowercaseString;
     return [[mime componentsSeparatedByString:@";"] firstObject] ?: @"";
 }
 
-static BOOL SlockThreadImageCompressionSafeName(NSString *value) {
-    NSString *name = SlockBridgeString(value);
-    if (name.length == 0 || name.length > SlockThreadImageCompressionMaxFileNameLength) {
+static BOOL RaftThreadImageCompressionSafeName(NSString *value) {
+    NSString *name = RaftBridgeString(value);
+    if (name.length == 0 || name.length > RaftThreadImageCompressionMaxFileNameLength) {
         return NO;
     }
     if ([name containsString:@"/"] || [name containsString:@"\\"] || [name containsString:@".."] ||
@@ -2378,8 +2378,8 @@ static BOOL SlockThreadImageCompressionSafeName(NSString *value) {
     return YES;
 }
 
-static NSString *SlockThreadImageCompressionOutputName(NSString *fileName) {
-    NSString *leaf = SlockBridgeString(fileName).lastPathComponent;
+static NSString *RaftThreadImageCompressionOutputName(NSString *fileName) {
+    NSString *leaf = RaftBridgeString(fileName).lastPathComponent;
     if (leaf.length == 0) leaf = @"image";
     NSString *stem = [leaf stringByDeletingPathExtension];
     if (stem.length == 0) stem = @"image";
@@ -2392,19 +2392,19 @@ static NSString *SlockThreadImageCompressionOutputName(NSString *fileName) {
     }
     NSString *trimmed = [safe stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmed.length == 0) trimmed = @"image";
-    if (trimmed.length > SlockThreadImageCompressionMaxFileNameLength) {
-        trimmed = [trimmed substringToIndex:SlockThreadImageCompressionMaxFileNameLength];
+    if (trimmed.length > RaftThreadImageCompressionMaxFileNameLength) {
+        trimmed = [trimmed substringToIndex:RaftThreadImageCompressionMaxFileNameLength];
     }
     return [trimmed stringByAppendingPathExtension:@"jpg"];
 }
 
-static BOOL SlockThreadImageCompressionPathInside(NSString *rootPath, NSString *candidatePath) {
+static BOOL RaftThreadImageCompressionPathInside(NSString *rootPath, NSString *candidatePath) {
     NSString *prefix = [rootPath hasSuffix:@"/"] ? rootPath : [rootPath stringByAppendingString:@"/"];
     return [candidatePath hasPrefix:prefix];
 }
 
-static NSURL *SlockThreadImageCompressionSourceURL(NSString *fileRef, NSArray<NSURL *> *roots) {
-    NSString *raw = SlockBridgeString(fileRef);
+static NSURL *RaftThreadImageCompressionSourceURL(NSString *fileRef, NSArray<NSURL *> *roots) {
+    NSString *raw = RaftBridgeString(fileRef);
     if (raw.length == 0 ||
         [raw rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) {
         return nil;
@@ -2431,17 +2431,17 @@ static NSURL *SlockThreadImageCompressionSourceURL(NSString *fileRef, NSArray<NS
     }
     for (NSURL *rootURL in roots) {
         NSString *rootPath = [[[rootURL URLByResolvingSymlinksInPath] standardizedURL] path];
-        if (rootPath.length > 0 && SlockThreadImageCompressionPathInside(rootPath, resolved.path)) {
+        if (rootPath.length > 0 && RaftThreadImageCompressionPathInside(rootPath, resolved.path)) {
             return resolved;
         }
     }
     return nil;
 }
 
-static BOOL SlockThreadImageCompressionInputIsImage(NSString *fileName,
+static BOOL RaftThreadImageCompressionInputIsImage(NSString *fileName,
                                                      NSString *mimeType,
                                                      NSURL *sourceURL) {
-    NSString *mime = SlockThreadImageCompressionMimeType(mimeType);
+    NSString *mime = RaftThreadImageCompressionMimeType(mimeType);
     if (![mime hasPrefix:@"image/"]) return NO;
     NSSet<NSString *> *videoExtensions = [NSSet setWithArray:@[
         @"3gp", @"3g2", @"avi", @"flv", @"m4v", @"mkv", @"mov", @"mp4", @"mpeg", @"mpg",
@@ -2455,11 +2455,11 @@ static BOOL SlockThreadImageCompressionInputIsImage(NSString *fileName,
         ![videoExtensions containsObject:sourceExtension];
 }
 
-typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
-    SlockThreadImageCompressionOperationStateActive = 0,
-    SlockThreadImageCompressionOperationStatePending = 1,
-    SlockThreadImageCompressionOperationStateDelivered = 2,
-    SlockThreadImageCompressionOperationStateCancelled = 3,
+typedef NS_ENUM(NSInteger, RaftThreadImageCompressionOperationState) {
+    RaftThreadImageCompressionOperationStateActive = 0,
+    RaftThreadImageCompressionOperationStatePending = 1,
+    RaftThreadImageCompressionOperationStateDelivered = 2,
+    RaftThreadImageCompressionOperationStateCancelled = 3,
 };
 
 /**
@@ -2469,7 +2469,7 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
  * delivery state on a small lock-protected object lets the worker finish its autorelease pool
  * without ever invoking a stale callback or publishing a part file as a JPEG.
  */
-@interface SlockThreadImageCompressionOperation : NSObject
+@interface RaftThreadImageCompressionOperation : NSObject
 
 @property(nonatomic, copy) NSString *requestId;
 @property(nonatomic, copy) RaftBridgeCallback callback;
@@ -2478,7 +2478,7 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 @property(nonatomic, strong) NSRecursiveLock *lock;
 /** Serializes write→rename with every output cleanup path. */
 @property(nonatomic, strong) NSRecursiveLock *outputLock;
-@property(nonatomic) SlockThreadImageCompressionOperationState state;
+@property(nonatomic) RaftThreadImageCompressionOperationState state;
 
 - (BOOL)markCancelled;
 - (BOOL)markCancelledForce:(BOOL)force;
@@ -2491,7 +2491,7 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 
 @end
 
-@implementation SlockThreadImageCompressionOperation
+@implementation RaftThreadImageCompressionOperation
 
 - (instancetype)init {
     self = [super init];
@@ -2503,7 +2503,7 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
         // Keep output ownership independent from state/map locks.  Callers must never acquire
         // the map/state fence while holding this lock, which keeps teardown lock ordering acyclic.
         _outputLock = [[NSRecursiveLock alloc] init];
-        _state = SlockThreadImageCompressionOperationStateActive;
+        _state = RaftThreadImageCompressionOperationStateActive;
     }
     return self;
 }
@@ -2515,9 +2515,9 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 - (BOOL)markCancelledForce:(BOOL)force {
     BOOL changed = NO;
     [self.lock lock];
-    if (self.state != SlockThreadImageCompressionOperationStateCancelled &&
-        (force || self.state != SlockThreadImageCompressionOperationStateDelivered)) {
-        self.state = SlockThreadImageCompressionOperationStateCancelled;
+    if (self.state != RaftThreadImageCompressionOperationStateCancelled &&
+        (force || self.state != RaftThreadImageCompressionOperationStateDelivered)) {
+        self.state = RaftThreadImageCompressionOperationStateCancelled;
         changed = YES;
     }
     [self.lock unlock];
@@ -2527,8 +2527,8 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 - (BOOL)markPending {
     BOOL changed = NO;
     [self.lock lock];
-    if (self.state == SlockThreadImageCompressionOperationStateActive) {
-        self.state = SlockThreadImageCompressionOperationStatePending;
+    if (self.state == RaftThreadImageCompressionOperationStateActive) {
+        self.state = RaftThreadImageCompressionOperationStatePending;
         changed = YES;
     }
     [self.lock unlock];
@@ -2538,8 +2538,8 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 - (BOOL)markDelivered {
     BOOL changed = NO;
     [self.lock lock];
-    if (self.state == SlockThreadImageCompressionOperationStatePending) {
-        self.state = SlockThreadImageCompressionOperationStateDelivered;
+    if (self.state == RaftThreadImageCompressionOperationStatePending) {
+        self.state = RaftThreadImageCompressionOperationStateDelivered;
         changed = YES;
     }
     [self.lock unlock];
@@ -2548,21 +2548,21 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 
 - (BOOL)isCancelled {
     [self.lock lock];
-    BOOL cancelled = self.state == SlockThreadImageCompressionOperationStateCancelled;
+    BOOL cancelled = self.state == RaftThreadImageCompressionOperationStateCancelled;
     [self.lock unlock];
     return cancelled;
 }
 
 - (BOOL)isDelivered {
     [self.lock lock];
-    BOOL delivered = self.state == SlockThreadImageCompressionOperationStateDelivered;
+    BOOL delivered = self.state == RaftThreadImageCompressionOperationStateDelivered;
     [self.lock unlock];
     return delivered;
 }
 
 - (BOOL)isPending {
     [self.lock lock];
-    BOOL pending = self.state == SlockThreadImageCompressionOperationStatePending;
+    BOOL pending = self.state == RaftThreadImageCompressionOperationStatePending;
     [self.lock unlock];
     return pending;
 }
@@ -2580,8 +2580,8 @@ typedef NS_ENUM(NSInteger, SlockThreadImageCompressionOperationState) {
 
 @end
 
-static NSString *SlockCompressedAttachmentFileName(NSString *fileName) {
-    NSString *leaf = SlockBridgeString(fileName).lastPathComponent;
+static NSString *RaftCompressedAttachmentFileName(NSString *fileName) {
+    NSString *leaf = RaftBridgeString(fileName).lastPathComponent;
     if (leaf.length == 0) {
         leaf = @"image";
     }
@@ -2592,11 +2592,11 @@ static NSString *SlockCompressedAttachmentFileName(NSString *fileName) {
     return [stem stringByAppendingPathExtension:@"jpg"];
 }
 
-static BOOL SlockWriteJPEGFromCGImage(CGImageRef image,
+static BOOL RaftWriteJPEGFromCGImage(CGImageRef image,
                                       NSURL *targetURL,
                                       NSError **error) {
     if (!image || CGImageGetWidth(image) == 0 || CGImageGetHeight(image) == 0) {
-        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
+        if (error) *error = RaftThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
         return NO;
     }
     CGImageDestinationRef destination = CGImageDestinationCreateWithURL(
@@ -2606,29 +2606,29 @@ static BOOL SlockWriteJPEGFromCGImage(CGImageRef image,
         NULL
     );
     if (!destination) {
-        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to prepare image encoder");
+        if (error) *error = RaftThreadAttachmentImageCompressionError(@"Unable to prepare image encoder");
         return NO;
     }
     NSDictionary *properties = @{
-        (NSString *)kCGImageDestinationLossyCompressionQuality : @(SlockThreadAttachmentImageJPEGQuality)
+        (NSString *)kCGImageDestinationLossyCompressionQuality : @(RaftThreadAttachmentImageJPEGQuality)
     };
     CGImageDestinationAddImage(destination, image, (__bridge CFDictionaryRef)properties);
     BOOL finalized = CGImageDestinationFinalize(destination);
     CFRelease(destination);
     if (!finalized) {
-        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+        if (error) *error = RaftThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
         return NO;
     }
     NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:targetURL.path error:nil];
     if (![attributes[NSFileSize] respondsToSelector:@selector(unsignedLongLongValue)] ||
         [attributes[NSFileSize] unsignedLongLongValue] == 0) {
-        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+        if (error) *error = RaftThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
         return NO;
     }
     return YES;
 }
 
-static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
+static BOOL RaftWriteCompressedPickedImage(NSURL *sourceURL,
                                             NSURL *targetURL,
                                             NSError **error) {
     // Encode into a sibling part first.  A picker/bridge cancellation or encoder failure must
@@ -2639,13 +2639,13 @@ static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)sourceURL, NULL);
     if (!source || CGImageSourceGetCount(source) == 0) {
         if (source) CFRelease(source);
-        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
+        if (error) *error = RaftThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
         return NO;
     }
     NSDictionary *thumbnailOptions = @{
         (NSString *)kCGImageSourceCreateThumbnailFromImageAlways : @YES,
         (NSString *)kCGImageSourceCreateThumbnailWithTransform : @YES,
-        (NSString *)kCGImageSourceThumbnailMaxPixelSize : @(SlockThreadAttachmentImageMaxEdge),
+        (NSString *)kCGImageSourceThumbnailMaxPixelSize : @(RaftThreadAttachmentImageMaxEdge),
         (NSString *)kCGImageSourceShouldCacheImmediately : @NO
     };
     CGImageRef thumbnail = CGImageSourceCreateThumbnailAtIndex(
@@ -2653,7 +2653,7 @@ static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
         0,
         (__bridge CFDictionaryRef)thumbnailOptions
     );
-    BOOL result = SlockWriteJPEGFromCGImage(thumbnail, partURL, error);
+    BOOL result = RaftWriteJPEGFromCGImage(thumbnail, partURL, error);
     if (thumbnail) CFRelease(thumbnail);
     CFRelease(source);
     if (!result) {
@@ -2663,7 +2663,7 @@ static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
     NSError *moveError = nil;
     if (![NSFileManager.defaultManager moveItemAtURL:partURL toURL:targetURL error:&moveError]) {
         [NSFileManager.defaultManager removeItemAtURL:partURL error:nil];
-        if (error) *error = SlockThreadAttachmentImageCompressionError(
+        if (error) *error = RaftThreadAttachmentImageCompressionError(
             moveError.localizedDescription ?: @"Unable to commit image attachment"
         );
         return NO;
@@ -2671,17 +2671,17 @@ static BOOL SlockWriteCompressedPickedImage(NSURL *sourceURL,
     return result;
 }
 
-static BOOL SlockWriteCompressedCameraImage(UIImage *image,
+static BOOL RaftWriteCompressedCameraImage(UIImage *image,
                                             NSURL *targetURL,
                                             NSError **error) {
     CGImageRef source = image.CGImage;
     if (!source || CGImageGetWidth(source) == 0 || CGImageGetHeight(source) == 0) {
-        if (error) *error = SlockThreadAttachmentImageCompressionError(@"Unable to decode captured image");
+        if (error) *error = RaftThreadAttachmentImageCompressionError(@"Unable to decode captured image");
         return NO;
     }
     CGFloat sourceWidth = (CGFloat)CGImageGetWidth(source);
     CGFloat sourceHeight = (CGFloat)CGImageGetHeight(source);
-    CGFloat scale = MIN(1.0, (CGFloat)SlockThreadAttachmentImageMaxEdge /
+    CGFloat scale = MIN(1.0, (CGFloat)RaftThreadAttachmentImageMaxEdge /
                               MAX(sourceWidth, sourceHeight));
     CGSize targetSize = CGSizeMake(MAX(1.0, round(sourceWidth * scale)),
                                    MAX(1.0, round(sourceHeight * scale)));
@@ -2695,17 +2695,17 @@ static BOOL SlockWriteCompressedCameraImage(UIImage *image,
         CGContextFillRect(context.CGContext, CGRectMake(0, 0, targetSize.width, targetSize.height));
         [image drawInRect:CGRectMake(0, 0, targetSize.width, targetSize.height)];
     }];
-    return SlockWriteJPEGFromCGImage(normalized.CGImage, targetURL, error);
+    return RaftWriteJPEGFromCGImage(normalized.CGImage, targetURL, error);
 }
 
-static NSDictionary *SlockThreadShareImageFailure(NSString *message) {
+static NSDictionary *RaftThreadShareImageFailure(NSString *message) {
     return @{
         @"status" : @"failed",
         @"message" : message.length > 0 ? message : @"Unable to export image"
     };
 }
 
-static CGFloat SlockThreadShareImageScale(UIView *view) {
+static CGFloat RaftThreadShareImageScale(UIView *view) {
     CGFloat scale = view.window.screen.scale;
     if (scale <= 0) {
         scale = UIScreen.mainScreen.scale;
@@ -2713,13 +2713,13 @@ static CGFloat SlockThreadShareImageScale(UIView *view) {
     return MAX(1.0, scale);
 }
 
-static NSString *SlockThreadShareImageDirectoryPath(void) {
-    return [NSTemporaryDirectory() stringByAppendingPathComponent:SlockThreadShareImageDirectoryName];
+static NSString *RaftThreadShareImageDirectoryPath(void) {
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:RaftThreadShareImageDirectoryName];
 }
 
-static BOOL SlockThreadSharePrepareDirectory(BOOL pruneExpiredFiles) {
+static BOOL RaftThreadSharePrepareDirectory(BOOL pruneExpiredFiles) {
     NSFileManager *fileManager = NSFileManager.defaultManager;
-    NSString *directory = SlockThreadShareImageDirectoryPath();
+    NSString *directory = RaftThreadShareImageDirectoryPath();
     BOOL isDirectory = NO;
     if ([fileManager fileExistsAtPath:directory isDirectory:&isDirectory]) {
         if (!isDirectory) {
@@ -2732,7 +2732,7 @@ static BOOL SlockThreadSharePrepareDirectory(BOOL pruneExpiredFiles) {
         return NO;
     }
     if (pruneExpiredFiles) {
-        NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-SlockThreadShareImageMaximumAgeSeconds];
+        NSDate *cutoff = [NSDate dateWithTimeIntervalSinceNow:-RaftThreadShareImageMaximumAgeSeconds];
         for (NSString *name in [fileManager contentsOfDirectoryAtPath:directory error:nil] ?: @[]) {
             NSString *path = [directory stringByAppendingPathComponent:name];
             NSDate *modified = [[fileManager attributesOfItemAtPath:path error:nil] fileModificationDate];
@@ -2744,21 +2744,21 @@ static BOOL SlockThreadSharePrepareDirectory(BOOL pruneExpiredFiles) {
     return YES;
 }
 
-static NSDictionary *SlockThreadShareWriteImage(UIImage *image, BOOL pruneExpiredFiles) {
+static NSDictionary *RaftThreadShareWriteImage(UIImage *image, BOOL pruneExpiredFiles) {
     CGImageRef cgImage = image.CGImage;
     if (!cgImage || CGImageGetWidth(cgImage) == 0 || CGImageGetHeight(cgImage) == 0) {
-        return SlockThreadShareImageFailure(@"Unable to capture image");
+        return RaftThreadShareImageFailure(@"Unable to capture image");
     }
-    if (!SlockThreadSharePrepareDirectory(pruneExpiredFiles)) {
-        return SlockThreadShareImageFailure(@"Storage unavailable");
+    if (!RaftThreadSharePrepareDirectory(pruneExpiredFiles)) {
+        return RaftThreadShareImageFailure(@"Storage unavailable");
     }
     NSString *fileName = [NSString stringWithFormat:@"raft-message-share-%lld-%@.png",
                                                        (long long)(NSDate.date.timeIntervalSince1970 * 1000.0),
                                                        NSUUID.UUID.UUIDString.lowercaseString];
-    NSString *path = [SlockThreadShareImageDirectoryPath() stringByAppendingPathComponent:fileName];
+    NSString *path = [RaftThreadShareImageDirectoryPath() stringByAppendingPathComponent:fileName];
     NSData *data = UIImagePNGRepresentation(image);
     if (data.length == 0 || ![data writeToFile:path options:NSDataWritingAtomic error:nil]) {
-        return SlockThreadShareImageFailure(@"Unable to write image");
+        return RaftThreadShareImageFailure(@"Unable to write image");
     }
     return @{
         @"status" : @"ok",
@@ -2771,11 +2771,11 @@ static NSDictionary *SlockThreadShareWriteImage(UIImage *image, BOOL pruneExpire
     };
 }
 
-static UIImage *SlockThreadShareCaptureView(UIView *view, NSDictionary *params) {
+static UIImage *RaftThreadShareCaptureView(UIView *view, NSDictionary *params) {
     if (!view || CGRectIsEmpty(view.bounds)) {
         return nil;
     }
-    CGFloat scale = SlockThreadShareImageScale(view);
+    CGFloat scale = RaftThreadShareImageScale(view);
     CGFloat requestedX = [params[@"x"] respondsToSelector:@selector(doubleValue)] ? [params[@"x"] doubleValue] : 0;
     CGFloat requestedY = [params[@"y"] respondsToSelector:@selector(doubleValue)] ? [params[@"y"] doubleValue] : 0;
     CGFloat requestedWidth = [params[@"width"] respondsToSelector:@selector(doubleValue)] ? [params[@"width"] doubleValue] : 0;
@@ -2809,11 +2809,11 @@ static UIImage *SlockThreadShareCaptureView(UIView *view, NSDictionary *params) 
     }];
 }
 
-static UIFont *SlockThreadShareFont(NSString *name, CGFloat size, UIFontWeight fallbackWeight) {
+static UIFont *RaftThreadShareFont(NSString *name, CGFloat size, UIFontWeight fallbackWeight) {
     return [UIFont fontWithName:name size:size] ?: [UIFont systemFontOfSize:size weight:fallbackWeight];
 }
 
-static UIImage *SlockThreadShareFrameImage(UIImage *content) {
+static UIImage *RaftThreadShareFrameImage(UIImage *content) {
     CGImageRef contentCGImage = content.CGImage;
     if (!contentCGImage) {
         return nil;
@@ -2850,7 +2850,7 @@ static UIImage *SlockThreadShareFrameImage(UIImage *content) {
         } else {
             CGFloat titleSize = MIN(48.0, MAX(36.0, width * 0.07));
             NSDictionary *attributes = @{
-                NSFontAttributeName : SlockThreadShareFont(@"SpaceGrotesk-Bold", titleSize, UIFontWeightBold),
+                NSFontAttributeName : RaftThreadShareFont(@"SpaceGrotesk-Bold", titleSize, UIFontWeightBold),
                 NSForegroundColorAttributeName : UIColor.blackColor
             };
             CGSize titleBounds = [@"RAFT" sizeWithAttributes:attributes];
@@ -2860,7 +2860,7 @@ static UIImage *SlockThreadShareFrameImage(UIImage *content) {
 
         CGFloat captionSize = MIN(26.0, MAX(18.0, width * 0.034));
         NSDictionary *captionAttributes = @{
-            NSFontAttributeName : SlockThreadShareFont(@"SpaceGrotesk-SemiBold", captionSize, UIFontWeightSemibold),
+            NSFontAttributeName : RaftThreadShareFont(@"SpaceGrotesk-SemiBold", captionSize, UIFontWeightSemibold),
             NSForegroundColorAttributeName : [UIColor colorWithRed:(24.0 / 255.0)
                                                               green:(24.0 / 255.0)
                                                                blue:(24.0 / 255.0)
@@ -2883,7 +2883,7 @@ static UIImage *SlockThreadShareFrameImage(UIImage *content) {
     }];
 }
 
-static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPaths) {
+static UIImage *RaftThreadShareStitchFragments(NSArray<NSString *> *fragmentPaths) {
     NSMutableArray<UIImage *> *images = [NSMutableArray array];
     CGFloat width = 0;
     CGFloat height = 0;
@@ -2921,7 +2921,7 @@ static UIImage *SlockThreadShareStitchFragments(NSArray<NSString *> *fragmentPat
 // optional WebView upload self-contained: generate a small store-only ZIP, ask Hands for one
 // signed object, then stream that object with URLSession.  This avoids putting access tokens or
 // raw diagnostics bytes through the JavaScript bridge.
-static uint32_t SlockFeedbackDiagnosticsCRC32(NSData *data) {
+static uint32_t RaftFeedbackDiagnosticsCRC32(NSData *data) {
     static uint32_t table[256];
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -2941,12 +2941,12 @@ static uint32_t SlockFeedbackDiagnosticsCRC32(NSData *data) {
     return crc ^ 0xffffffffU;
 }
 
-static void SlockFeedbackDiagnosticsWriteU16(NSOutputStream *stream, uint16_t value) {
+static void RaftFeedbackDiagnosticsWriteU16(NSOutputStream *stream, uint16_t value) {
     uint8_t bytes[] = { (uint8_t)(value & 0xffU), (uint8_t)((value >> 8U) & 0xffU) };
     [stream write:bytes maxLength:sizeof(bytes)];
 }
 
-static void SlockFeedbackDiagnosticsWriteU32(NSOutputStream *stream, uint32_t value) {
+static void RaftFeedbackDiagnosticsWriteU32(NSOutputStream *stream, uint32_t value) {
     uint8_t bytes[] = {
         (uint8_t)(value & 0xffU), (uint8_t)((value >> 8U) & 0xffU),
         (uint8_t)((value >> 16U) & 0xffU), (uint8_t)((value >> 24U) & 0xffU)
@@ -2954,7 +2954,7 @@ static void SlockFeedbackDiagnosticsWriteU32(NSOutputStream *stream, uint32_t va
     [stream write:bytes maxLength:sizeof(bytes)];
 }
 
-static BOOL SlockFeedbackDiagnosticsWriteBytes(NSOutputStream *stream, NSData *data) {
+static BOOL RaftFeedbackDiagnosticsWriteBytes(NSOutputStream *stream, NSData *data) {
     const uint8_t *bytes = data.bytes;
     NSUInteger remaining = data.length;
     while (remaining > 0) {
@@ -2966,7 +2966,7 @@ static BOOL SlockFeedbackDiagnosticsWriteBytes(NSOutputStream *stream, NSData *d
     return YES;
 }
 
-static NSString *SlockFeedbackDiagnosticsSafeEntryName(NSString *name, NSUInteger index) {
+static NSString *RaftFeedbackDiagnosticsSafeEntryName(NSString *name, NSUInteger index) {
     NSString *leaf = name.lastPathComponent;
     if (leaf.length == 0) leaf = [NSString stringWithFormat:@"diagnostics-%lu.log", (unsigned long)index];
     NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:
@@ -2980,19 +2980,19 @@ static NSString *SlockFeedbackDiagnosticsSafeEntryName(NSString *name, NSUIntege
     return [NSString stringWithFormat:@"%02lu-%@", (unsigned long)index, safe];
 }
 
-static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(void), NSError **error) {
-    NSDictionary *about = SlockDiagnosticsCurrentEnvironmentAbout();
-    NSDictionary *prepared = SlockDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback_web", NO);
+static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(void), NSError **error) {
+    NSDictionary *about = RaftDiagnosticsCurrentEnvironmentAbout();
+    NSDictionary *prepared = RaftDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback_web", NO);
     NSArray<NSString *> *paths = [prepared[@"attachmentPaths"] isKindOfClass:NSArray.class]
         ? prepared[@"attachmentPaths"] : @[];
-    if (![SlockBridgeString(prepared[@"status"]) isEqualToString:@"ok"] || paths.count == 0) {
+    if (![RaftBridgeString(prepared[@"status"]) isEqualToString:@"ok"] || paths.count == 0) {
         if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:1 userInfo:@{
             NSLocalizedDescriptionKey : @"Unable to create diagnostics snapshot"
         }];
         return nil;
     }
-    NSString *name = [[SlockFeedbackDiagnosticsArchivePrefix stringByAppendingString:NSUUID.UUID.UUIDString.lowercaseString]
-        stringByAppendingPathExtension:SlockFeedbackDiagnosticsArchiveExtension];
+    NSString *name = [[RaftFeedbackDiagnosticsArchivePrefix stringByAppendingString:NSUUID.UUID.UUIDString.lowercaseString]
+        stringByAppendingPathExtension:RaftFeedbackDiagnosticsArchiveExtension];
     NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
     NSOutputStream *stream = [NSOutputStream outputStreamToFileAtPath:path append:NO];
     [stream open];
@@ -3005,12 +3005,12 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     BOOL success = YES;
     for (NSUInteger index = 0; index < paths.count; index++) {
         if (isCancelled && isCancelled()) { success = NO; break; }
-        NSString *sourcePath = SlockBridgeString(paths[index]);
+        NSString *sourcePath = RaftBridgeString(paths[index]);
         unsigned long long sourceSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:sourcePath error:nil][NSFileSize] unsignedLongLongValue];
         // Reject oversized inputs before mapping/allocating their bytes. The fixed ZIP headers
         // and central directory are covered by the conservative 1 KiB allowance and the final
         // archive-size check below remains authoritative.
-        if (sourceSize == 0 || sourceSize + offset + 1024ULL > SlockFeedbackDiagnosticsMaxBytes) {
+        if (sourceSize == 0 || sourceSize + offset + 1024ULL > RaftFeedbackDiagnosticsMaxBytes) {
             if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{
                 NSLocalizedDescriptionKey : @"Diagnostics archive exceeds upload limit",
                 @"tooLarge" : @YES
@@ -3020,10 +3020,10 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         }
         NSData *data = [NSData dataWithContentsOfFile:sourcePath options:NSDataReadingMappedIfSafe error:nil];
         if (!data) { success = NO; break; }
-        NSString *entryName = index == 0 ? @"diagnostics-summary.txt" : SlockFeedbackDiagnosticsSafeEntryName(sourcePath, index);
+        NSString *entryName = index == 0 ? @"diagnostics-summary.txt" : RaftFeedbackDiagnosticsSafeEntryName(sourcePath, index);
         NSData *entryNameData = [entryName dataUsingEncoding:NSUTF8StringEncoding];
         if (entryNameData.length > UINT16_MAX || data.length > UINT32_MAX ||
-            data.length + offset + 1024ULL > SlockFeedbackDiagnosticsMaxBytes) {
+            data.length + offset + 1024ULL > RaftFeedbackDiagnosticsMaxBytes) {
             if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{
                 NSLocalizedDescriptionKey : @"Diagnostics archive exceeds upload limit",
                 @"tooLarge" : @YES
@@ -3031,20 +3031,20 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
             success = NO;
             break;
         }
-        uint32_t crc = SlockFeedbackDiagnosticsCRC32(data);
-        SlockFeedbackDiagnosticsWriteU32(stream, 0x04034b50U);
-        SlockFeedbackDiagnosticsWriteU16(stream, 20); // version needed
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // flags
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // store method
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // mtime
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);  // mdate
-        SlockFeedbackDiagnosticsWriteU32(stream, crc);
-        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)data.length);
-        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)data.length);
-        SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entryNameData.length);
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);
-        if (!SlockFeedbackDiagnosticsWriteBytes(stream, entryNameData) ||
-            !SlockFeedbackDiagnosticsWriteBytes(stream, data)) { success = NO; break; }
+        uint32_t crc = RaftFeedbackDiagnosticsCRC32(data);
+        RaftFeedbackDiagnosticsWriteU32(stream, 0x04034b50U);
+        RaftFeedbackDiagnosticsWriteU16(stream, 20); // version needed
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);  // flags
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);  // store method
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);  // mtime
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);  // mdate
+        RaftFeedbackDiagnosticsWriteU32(stream, crc);
+        RaftFeedbackDiagnosticsWriteU32(stream, (uint32_t)data.length);
+        RaftFeedbackDiagnosticsWriteU32(stream, (uint32_t)data.length);
+        RaftFeedbackDiagnosticsWriteU16(stream, (uint16_t)entryNameData.length);
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);
+        if (!RaftFeedbackDiagnosticsWriteBytes(stream, entryNameData) ||
+            !RaftFeedbackDiagnosticsWriteBytes(stream, data)) { success = NO; break; }
         [entries addObject:@{ @"name" : entryNameData, @"crc" : @(crc), @"size" : @((uint32_t)data.length), @"offset" : @(offset) }];
         offset += 30ULL + entryNameData.length + data.length;
     }
@@ -3052,35 +3052,35 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         unsigned long long centralOffset = offset;
         for (NSDictionary *entry in entries) {
             NSData *entryNameData = entry[@"name"];
-            SlockFeedbackDiagnosticsWriteU32(stream, 0x02014b50U);
-            SlockFeedbackDiagnosticsWriteU16(stream, 20);
-            SlockFeedbackDiagnosticsWriteU16(stream, 20);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"crc"] unsignedIntValue]);
-            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"size"] unsignedIntValue]);
-            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"size"] unsignedIntValue]);
-            SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entryNameData.length);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU16(stream, 0);
-            SlockFeedbackDiagnosticsWriteU32(stream, 0);
-            SlockFeedbackDiagnosticsWriteU32(stream, [entry[@"offset"] unsignedIntValue]);
-            SlockFeedbackDiagnosticsWriteBytes(stream, entryNameData);
+            RaftFeedbackDiagnosticsWriteU32(stream, 0x02014b50U);
+            RaftFeedbackDiagnosticsWriteU16(stream, 20);
+            RaftFeedbackDiagnosticsWriteU16(stream, 20);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU32(stream, [entry[@"crc"] unsignedIntValue]);
+            RaftFeedbackDiagnosticsWriteU32(stream, [entry[@"size"] unsignedIntValue]);
+            RaftFeedbackDiagnosticsWriteU32(stream, [entry[@"size"] unsignedIntValue]);
+            RaftFeedbackDiagnosticsWriteU16(stream, (uint16_t)entryNameData.length);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU16(stream, 0);
+            RaftFeedbackDiagnosticsWriteU32(stream, 0);
+            RaftFeedbackDiagnosticsWriteU32(stream, [entry[@"offset"] unsignedIntValue]);
+            RaftFeedbackDiagnosticsWriteBytes(stream, entryNameData);
             offset += 46ULL + entryNameData.length;
         }
         unsigned long long centralSize = offset - centralOffset;
-        SlockFeedbackDiagnosticsWriteU32(stream, 0x06054b50U);
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);
-        SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entries.count);
-        SlockFeedbackDiagnosticsWriteU16(stream, (uint16_t)entries.count);
-        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)centralSize);
-        SlockFeedbackDiagnosticsWriteU32(stream, (uint32_t)centralOffset);
-        SlockFeedbackDiagnosticsWriteU16(stream, 0);
+        RaftFeedbackDiagnosticsWriteU32(stream, 0x06054b50U);
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);
+        RaftFeedbackDiagnosticsWriteU16(stream, (uint16_t)entries.count);
+        RaftFeedbackDiagnosticsWriteU16(stream, (uint16_t)entries.count);
+        RaftFeedbackDiagnosticsWriteU32(stream, (uint32_t)centralSize);
+        RaftFeedbackDiagnosticsWriteU32(stream, (uint32_t)centralOffset);
+        RaftFeedbackDiagnosticsWriteU16(stream, 0);
     }
     [stream close];
     if (!success || ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
@@ -3089,7 +3089,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         return nil;
     }
     unsigned long long size = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil][NSFileSize] unsignedLongLongValue];
-    if (size == 0 || size > SlockFeedbackDiagnosticsMaxBytes) {
+    if (size == 0 || size > RaftFeedbackDiagnosticsMaxBytes) {
         [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
         if (error) *error = [NSError errorWithDomain:@"raft.feedback.diagnostics" code:3 userInfo:@{ @"tooLarge" : @YES }];
         return nil;
@@ -3097,7 +3097,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     return @{ @"path" : path, @"fileName" : name, @"size" : @(size) };
 }
 
-@interface SlockFeedbackDiagnosticsUploadOperation : NSObject <NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
+@interface RaftFeedbackDiagnosticsUploadOperation : NSObject <NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
 @property(nonatomic, copy) NSString *requestId;
 @property(nonatomic, copy) NSString *accountId;
 @property(nonatomic) long long sessionGeneration;
@@ -3113,14 +3113,14 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 @property(nonatomic, strong) NSRecursiveLock *lock;
 @property(nonatomic) BOOL cancelled;
 @property(nonatomic) BOOL terminal;
-@property(nonatomic, copy) void (^onTerminal)(SlockFeedbackDiagnosticsUploadOperation *operation);
+@property(nonatomic, copy) void (^onTerminal)(RaftFeedbackDiagnosticsUploadOperation *operation);
 - (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(RaftBridgeCallback)callback;
 - (void)start;
 - (void)cancel;
 @end
 
 
-@implementation SlockFeedbackDiagnosticsUploadOperation {
+@implementation RaftFeedbackDiagnosticsUploadOperation {
     NSMutableData *_presignData;
     NSInteger _presignStatus;
     NSInteger _uploadStatus;
@@ -3129,7 +3129,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 - (instancetype)initWithRequestId:(NSString *)requestId binding:(NSDictionary *)binding callback:(RaftBridgeCallback)callback {
     if (self = [super init]) {
         _requestId = [requestId copy];
-        _accountId = [SlockBridgeString(binding[@"accountId"]) copy];
+        _accountId = [RaftBridgeString(binding[@"accountId"]) copy];
         _sessionGeneration = [binding[@"sessionGeneration"] longLongValue];
         _webViewGeneration = [binding[@"webViewGeneration"] longLongValue];
         _callback = [callback copy];
@@ -3150,7 +3150,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     if (self.cancelled || self.terminal) { [self.lock unlock]; return; }
     if (terminal) self.terminal = YES;
     RaftBridgeCallback callback = self.callback;
-    void (^onTerminal)(SlockFeedbackDiagnosticsUploadOperation *) = terminal ? self.onTerminal : nil;
+    void (^onTerminal)(RaftFeedbackDiagnosticsUploadOperation *) = terminal ? self.onTerminal : nil;
     [self.lock unlock];
     if (onTerminal) onTerminal(self);
     NSMutableDictionary *event = [payload mutableCopy];
@@ -3161,9 +3161,9 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
     __weak typeof(self) weakSelf = self;
     // A generation failure can finish before NSURLSession has retained its delegate. Keep the
     // operation alive until the queued terminal callback runs, while progress remains weak.
-    SlockFeedbackDiagnosticsUploadOperation *terminalOwner = terminal ? self : nil;
-    SlockBridgeRunOnMain(^{
-        SlockFeedbackDiagnosticsUploadOperation *owner = terminalOwner ?: weakSelf;
+    RaftFeedbackDiagnosticsUploadOperation *terminalOwner = terminal ? self : nil;
+    RaftBridgeRunOnMain(^{
+        RaftFeedbackDiagnosticsUploadOperation *owner = terminalOwner ?: weakSelf;
         if (!owner) return;
         [owner.lock lock];
         BOOL invalidated = owner.cancelled;
@@ -3182,7 +3182,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 - (void)start {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NSError *archiveError = nil;
-        NSDictionary *archive = SlockFeedbackDiagnosticsWriteArchive(^{
+        NSDictionary *archive = RaftFeedbackDiagnosticsWriteArchive(^{
             [self.lock lock];
             BOOL cancelled = self.cancelled;
             [self.lock unlock];
@@ -3198,14 +3198,14 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         self.fileName = archive[@"fileName"];
         self.fileSize = [archive[@"size"] unsignedLongLongValue];
         [self.lock unlock];
-        NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/public/v2/apps/%@/feedback/presign", SlockHandsFeedbackBaseURL, SlockHandsFeedbackAppSlug]];
+        NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"%@/public/v2/apps/%@/feedback/presign", RaftHandsFeedbackBaseURL, RaftHandsFeedbackAppSlug]];
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
         request.HTTPMethod = @"POST";
         [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
         [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-        [request setValue:SlockHandsFeedbackClientKey forHTTPHeaderField:@"X-Hands-Client-Key"];
+        [request setValue:RaftHandsFeedbackClientKey forHTTPHeaderField:@"X-Hands-Client-Key"];
         NSDictionary *body = @{ @"files" : @[ @{ @"filename" : self.fileName ?: @"diagnostics.zip",
-                                                 @"content_type" : SlockFeedbackDiagnosticsContentType,
+                                                 @"content_type" : RaftFeedbackDiagnosticsContentType,
                                                  @"size" : @(self.fileSize) } ] };
         request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
         NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration ephemeralSessionConfiguration];
@@ -3261,12 +3261,12 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:_presignData options:0 error:nil];
         NSArray *uploads = [json isKindOfClass:NSDictionary.class] && [json[@"uploads"] isKindOfClass:NSArray.class] ? json[@"uploads"] : @[];
         NSDictionary *upload = uploads.count == 1 && [uploads.firstObject isKindOfClass:NSDictionary.class] ? uploads.firstObject : nil;
-        NSString *attachmentId = SlockBridgeString(upload[@"attachment_id"]);
-        NSString *uploadURL = SlockBridgeString(upload[@"upload_url"]);
-        self.r2Key = SlockBridgeString(upload[@"r2_key"]);
+        NSString *attachmentId = RaftBridgeString(upload[@"attachment_id"]);
+        NSString *uploadURL = RaftBridgeString(upload[@"upload_url"]);
+        self.r2Key = RaftBridgeString(upload[@"r2_key"]);
         long long expiresAt = [upload[@"expires_at"] longLongValue];
         if (attachmentId.length == 0 || uploadURL.length == 0 ||
-            self.r2Key.length == 0 || self.r2Key.length > SlockFeedbackDiagnosticsMaxR2KeyLength ||
+            self.r2Key.length == 0 || self.r2Key.length > RaftFeedbackDiagnosticsMaxR2KeyLength ||
             [self.r2Key rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound ||
             expiresAt <= 0) {
             [self emitFailure:@"upload_failed"];
@@ -3282,7 +3282,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
         }
         NSMutableURLRequest *put = [NSMutableURLRequest requestWithURL:uploadURLValue];
         put.HTTPMethod = @"PUT";
-        [put setValue:SlockFeedbackDiagnosticsContentType forHTTPHeaderField:@"Content-Type"];
+        [put setValue:RaftFeedbackDiagnosticsContentType forHTTPHeaderField:@"Content-Type"];
         [self.lock lock];
         if (self.cancelled || self.session != session) {
             [self.lock unlock];
@@ -3299,7 +3299,7 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
             [self emitFailure:@"upload_failed"];
         } else {
             [self emit:@{ @"type" : @"done", @"ref" : @{ @"r2_key" : self.r2Key ?: @"",
-                @"filename" : self.fileName ?: @"diagnostics.zip", @"content_type" : SlockFeedbackDiagnosticsContentType,
+                @"filename" : self.fileName ?: @"diagnostics.zip", @"content_type" : RaftFeedbackDiagnosticsContentType,
                 @"size" : @(self.fileSize) } } terminal:YES];
         }
         [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
@@ -3317,58 +3317,58 @@ static NSDictionary *SlockFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(vo
 
 @interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, SharedAttachmentDownloadObserver>
 
-@property(nonatomic, copy, nullable) RaftBridgeCallback slock_attachmentExportCallback;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportDownloadId;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportOperationId;
-@property(nonatomic, strong, nullable) NSURL *slock_attachmentExportURL;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportFileName;
-@property(nonatomic, strong, nullable) NSNumber *slock_attachmentExportSizeBytes;
-@property(nonatomic) BOOL slock_attachmentExportTrackProgress;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportDestination;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportMimeType;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentExportPermissionStatus;
-@property(nonatomic, weak, nullable) UIViewController *slock_sharePresenterController;
-@property(nonatomic, copy, nullable) RaftBridgeCallback slock_attachmentPickerCallback;
-@property(nonatomic, copy, nullable) NSString *slock_attachmentPickerChannelId;
-@property(nonatomic) BOOL slock_attachmentPickerCompressImages;
-@property(nonatomic, strong) NSMutableDictionary<NSString *, SlockThreadImageCompressionOperation *> *slock_threadImageCompressionOperations;
-@property(nonatomic, strong) NSRecursiveLock *slock_threadImageCompressionOperationsLock;
-@property(nonatomic) BOOL slock_threadImageCompressionDestroyed;
-@property(nonatomic, strong) NSMutableDictionary<NSString *, SlockFeedbackDiagnosticsUploadOperation *> *slock_feedbackDiagnosticsOperations;
-@property(nonatomic, strong) NSRecursiveLock *slock_feedbackDiagnosticsOperationsLock;
-@property(nonatomic) BOOL slock_feedbackDiagnosticsDestroyed;
+@property(nonatomic, copy, nullable) RaftBridgeCallback raft_attachmentExportCallback;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportRequestId;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportDownloadId;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportOperationId;
+@property(nonatomic, strong, nullable) NSURL *raft_attachmentExportURL;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportFileName;
+@property(nonatomic, strong, nullable) NSNumber *raft_attachmentExportSizeBytes;
+@property(nonatomic) BOOL raft_attachmentExportTrackProgress;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportDestination;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportMimeType;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportPermissionStatus;
+@property(nonatomic, weak, nullable) UIViewController *raft_sharePresenterController;
+@property(nonatomic, copy, nullable) RaftBridgeCallback raft_attachmentPickerCallback;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentPickerChannelId;
+@property(nonatomic) BOOL raft_attachmentPickerCompressImages;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, RaftThreadImageCompressionOperation *> *raft_threadImageCompressionOperations;
+@property(nonatomic, strong) NSRecursiveLock *raft_threadImageCompressionOperationsLock;
+@property(nonatomic) BOOL raft_threadImageCompressionDestroyed;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, RaftFeedbackDiagnosticsUploadOperation *> *raft_feedbackDiagnosticsOperations;
+@property(nonatomic, strong) NSRecursiveLock *raft_feedbackDiagnosticsOperationsLock;
+@property(nonatomic) BOOL raft_feedbackDiagnosticsDestroyed;
 
-- (void)slock_finishAttachmentExport:(NSDictionary *)result;
-- (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination;
-- (void)slock_beginAttachmentExportDownloadWithParams:(NSDictionary *)params;
-- (void)slock_saveAttachmentExportToPhotos;
-- (void)slock_finishAttachmentPicker:(NSDictionary *)result;
-- (void)slock_presentPhotoPicker;
-- (void)slock_requestAndPresentCamera;
-- (void)slock_presentCamera;
-- (void)slock_presentDocumentPicker;
-- (void)slock_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results;
-- (void)slock_processDocumentPickerURLs:(NSArray<NSURL *> *)urls;
-- (void)slock_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
+- (void)raft_finishAttachmentExport:(NSDictionary *)result;
+- (void)raft_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination;
+- (void)raft_beginAttachmentExportDownloadWithParams:(NSDictionary *)params;
+- (void)raft_saveAttachmentExportToPhotos;
+- (void)raft_finishAttachmentPicker:(NSDictionary *)result;
+- (void)raft_presentPhotoPicker;
+- (void)raft_requestAndPresentCamera;
+- (void)raft_presentCamera;
+- (void)raft_presentDocumentPicker;
+- (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results;
+- (void)raft_processDocumentPickerURLs:(NSArray<NSURL *> *)urls;
+- (void)raft_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
                                     errors:(NSArray<NSDictionary *> *)errors;
-- (nullable NSDictionary *)slock_cachePickedAttachmentURL:(NSURL *)sourceURL
+- (nullable NSDictionary *)raft_cachePickedAttachmentURL:(NSURL *)sourceURL
                                             suggestedName:(nullable NSString *)suggestedName
                                                  mimeType:(nullable NSString *)mimeType
                                         compressImages:(BOOL)compressImages
                                                     error:(NSError * _Nullable * _Nullable)error;
 - (void)compressThreadImage:(NSDictionary *)args;
 - (void)cancelCompressThreadImage:(NSDictionary *)args;
-- (BOOL)slock_finishThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation
+- (BOOL)raft_finishThreadImageCompressionOperation:(RaftThreadImageCompressionOperation *)operation
                                              payload:(NSDictionary *)payload;
-- (void)slock_removeThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
-- (BOOL)slock_isThreadImageCompressionDestroyed;
-- (BOOL)slock_isCurrentThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation;
-- (void)slock_dispatchThreadImageCompressionFailure:(RaftBridgeCallback)callback;
-- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback;
-- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback;
-- (void)slock_cancelAllFeedbackDiagnosticsUploads;
-- (void)slock_destroyFeedbackDiagnosticsUploads;
+- (void)raft_removeThreadImageCompressionOperation:(RaftThreadImageCompressionOperation *)operation;
+- (BOOL)raft_isThreadImageCompressionDestroyed;
+- (BOOL)raft_isCurrentThreadImageCompressionOperation:(RaftThreadImageCompressionOperation *)operation;
+- (void)raft_dispatchThreadImageCompressionFailure:(RaftBridgeCallback)callback;
+- (void)raft_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback;
+- (void)raft_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback;
+- (void)raft_cancelAllFeedbackDiagnosticsUploads;
+- (void)raft_destroyFeedbackDiagnosticsUploads;
 
 @end
 
@@ -3379,11 +3379,11 @@ typedef struct {
     unsigned long long imageCache;
     unsigned long long attachmentDownloads;
     unsigned long long temporaryAndLogs;
-} SlockStorageUsage;
+} RaftStorageUsage;
 
-static SlockStorageUsage SlockStorageMeasure(void);
-static NSDictionary *SlockStoragePayload(SlockStorageUsage usage, NSString *feedback);
-static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDictionary *result));
+static RaftStorageUsage RaftStorageMeasure(void);
+static NSDictionary *RaftStoragePayload(RaftStorageUsage usage, NSString *feedback);
+static void RaftStorageClearTarget(NSString *target, void (^completion)(NSDictionary *result));
 
 // 扩展桥接接口
 /*
@@ -3407,76 +3407,76 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _slock_threadImageCompressionOperations = [NSMutableDictionary dictionary];
-        _slock_threadImageCompressionOperationsLock = [[NSRecursiveLock alloc] init];
-        _slock_threadImageCompressionDestroyed = NO;
-        _slock_feedbackDiagnosticsOperations = [NSMutableDictionary dictionary];
-        _slock_feedbackDiagnosticsOperationsLock = [[NSRecursiveLock alloc] init];
-        _slock_feedbackDiagnosticsDestroyed = NO;
+        _raft_threadImageCompressionOperations = [NSMutableDictionary dictionary];
+        _raft_threadImageCompressionOperationsLock = [[NSRecursiveLock alloc] init];
+        _raft_threadImageCompressionDestroyed = NO;
+        _raft_feedbackDiagnosticsOperations = [NSMutableDictionary dictionary];
+        _raft_feedbackDiagnosticsOperationsLock = [[NSRecursiveLock alloc] init];
+        _raft_feedbackDiagnosticsDestroyed = NO;
     }
     return self;
 }
 
 - (void)copyToPasteboard:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *content = SlockBridgeString(params[@"content"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *content = RaftBridgeString(params[@"content"]);
     if (content.length == 0) {
         return;
     }
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
         pasteboard.string = content;
     });
 }
 
 - (void)log:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *content = SlockBridgeRawString(params[@"content"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *content = RaftBridgeRawString(params[@"content"]);
     if (content.length == 0) {
         return;
     }
-    NSString *level = SlockBridgeRawString(params[@"level"]);
+    NSString *level = RaftBridgeRawString(params[@"level"]);
     if (level.length == 0) {
         level = @"info";
     }
-    NSString *tag = SlockBridgeRawString(params[@"tag"]);
+    NSString *tag = RaftBridgeRawString(params[@"tag"]);
     if (tag.length == 0) {
-        tag = SlockBridgeDefaultLogTag;
+        tag = RaftBridgeDefaultLogTag;
     }
-    SlockDiagnosticsRecordWithContext(level, tag, content, 0, YES, NO);
+    RaftDiagnosticsRecordWithContext(level, tag, content, 0, YES, NO);
 }
 
 - (void)openPage:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *pageName = SlockBridgeString(params[@"pageName"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *pageName = RaftBridgeString(params[@"pageName"]);
     if (pageName.length == 0) {
-        pageName = SlockBridgeString(params[@"url"]);
+        pageName = RaftBridgeString(params[@"url"]);
     }
     if (pageName.length == 0) {
-        NSLog(@"[%@][warn] openPage ignored missing pageName", SlockBridgeDefaultLogTag);
+        NSLog(@"[%@][warn] openPage ignored missing pageName", RaftBridgeDefaultLogTag);
         return;
     }
     NSDictionary *pageData =
-        SlockBridgeDictionaryFromValue(params[@"pageData"]).count > 0
-            ? SlockBridgeDictionaryFromValue(params[@"pageData"])
-            : SlockBridgeDictionaryFromValue(params[@"userData"]);
-    NSMutableDictionary *nextPageData = [SlockBridgeIdentityPageData(pageData) mutableCopy];
+        RaftBridgeDictionaryFromValue(params[@"pageData"]).count > 0
+            ? RaftBridgeDictionaryFromValue(params[@"pageData"])
+            : RaftBridgeDictionaryFromValue(params[@"userData"]);
+    NSMutableDictionary *nextPageData = [RaftBridgeIdentityPageData(pageData) mutableCopy];
     if (nextPageData[@"pageName"] == nil) {
         nextPageData[@"pageName"] = pageName;
     }
     BOOL replaceCurrent =
-        SlockBridgeBool(params[SlockBridgeReplaceCurrentPageKey]) ||
-        SlockBridgeBool(params[@"closeCurPage"]);
+        RaftBridgeBool(params[RaftBridgeReplaceCurrentPageKey]) ||
+        RaftBridgeBool(params[@"closeCurPage"]);
     if (replaceCurrent) {
-        nextPageData[SlockBridgeReplaceCurrentPageKey] = @YES;
+        nextPageData[RaftBridgeReplaceCurrentPageKey] = @YES;
     }
-    [self slock_openPageWithName:pageName pageData:nextPageData replaceCurrent:replaceCurrent];
+    [self raft_openPageWithName:pageName pageData:nextPageData replaceCurrent:replaceCurrent];
 }
 
 - (void)closePage:(NSDictionary *)args {
-    [self slock_cancelAllFeedbackDiagnosticsUploads];
-    UIViewController *controller = [self slock_currentViewController];
-    SlockBridgeRunOnMain(^{
+    [self raft_cancelAllFeedbackDiagnosticsUploads];
+    UIViewController *controller = [self raft_currentViewController];
+    RaftBridgeRunOnMain(^{
         UINavigationController *navigationController = controller.navigationController;
         if (navigationController && navigationController.viewControllers.count > 1) {
             [navigationController popViewControllerAnimated:YES];
@@ -3486,76 +3486,76 @@ NSString *const RaftBridgeCallbackKey = @"callback";
             [controller dismissViewControllerAnimated:YES completion:nil];
             return;
         }
-        NSLog(@"[%@][warn] closePage no-op: missing navigation stack", SlockBridgeDefaultLogTag);
+        NSLog(@"[%@][warn] closePage no-op: missing navigation stack", RaftBridgeDefaultLogTag);
     });
 }
 
 - (void)adaptiveNavigation:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         // Only this module's own page may run the transaction; never the key window's top page.
-        UIViewController *controller = self.slockHostController;
+        UIViewController *controller = self.raftHostController;
         NSDictionary *result;
         if ([controller isKindOfClass:RaftPageViewController.class]) {
-            result = [(RaftPageViewController *)controller slockAdaptiveNavigation:params];
+            result = [(RaftPageViewController *)controller raftAdaptiveNavigation:params];
         } else {
-            result = @{ @"requestId": SlockBridgeString(params[@"requestId"]),
+            result = @{ @"requestId": RaftBridgeString(params[@"requestId"]),
                         @"status": @"rejected", @"reason": @"unsupported_source" };
         }
         // Even a failed stack readback may follow removal. Commit never calls a source callback.
         // Shared receives the target event, or retains state on timeout if no target survived.
-        if (callback && ![SlockBridgeString(params[@"action"]) isEqual:@"commit"]) callback(result);
+        if (callback && ![RaftBridgeString(params[@"action"]) isEqual:@"commit"]) callback(result);
     });
 }
 
 - (void)conversationForwardGesture:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    BOOL enabled = SlockBridgeBool(params[@"enabled"]);
-    SlockBridgeRunOnMain(^{
+    NSDictionary *params = RaftBridgeParams(args);
+    BOOL enabled = RaftBridgeBool(params[@"enabled"]);
+    RaftBridgeRunOnMain(^{
         // This module belongs to the AppShell page. Do not follow a presented modal to decide
         // ownership; modal presence is a separate gesture-admission veto.
-        UIViewController *controller = self.slockHostController;
+        UIViewController *controller = self.raftHostController;
         if ([controller isKindOfClass:RaftPageViewController.class]) {
             RaftPageViewController *page = (RaftPageViewController *)controller;
-            if (page.slockIsAppShellPage) {
-                page.slockConversationForwardGestureEnabled = enabled;
+            if (page.raftIsAppShellPage) {
+                page.raftConversationForwardGestureEnabled = enabled;
             }
         }
     });
 }
 
 - (void)openUrl:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *urlText = SlockBridgeString(params[@"url"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *urlText = RaftBridgeString(params[@"url"]);
     if (urlText.length == 0) {
-        NSLog(@"[%@][warn] openUrl ignored missing url", SlockBridgeDefaultLogTag);
+        NSLog(@"[%@][warn] openUrl ignored missing url", RaftBridgeDefaultLogTag);
         return;
     }
     NSURL *url = [NSURL URLWithString:urlText];
     if (!url || url.scheme.length == 0) {
-        NSLog(@"[%@][warn] openUrl ignored invalid url", SlockBridgeDefaultLogTag);
+        NSLog(@"[%@][warn] openUrl ignored invalid url", RaftBridgeDefaultLogTag);
         return;
     }
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         [[UIApplication sharedApplication] openURL:url
                                            options:@{}
                                  completionHandler:^(BOOL success) {
             if (!success) {
-                NSLog(@"[%@][warn] openUrl failed", SlockBridgeDefaultLogTag);
+                NSLog(@"[%@][warn] openUrl failed", RaftBridgeDefaultLogTag);
             }
         }];
     });
 }
 
 - (void)toast:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *content = SlockBridgeString(params[@"content"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *content = RaftBridgeString(params[@"content"]);
     if (content.length == 0) {
         return;
     }
-    SlockBridgeRunOnMain(^{
-        [self slock_showToast:content];
+    RaftBridgeRunOnMain(^{
+        [self raft_showToast:content];
     });
 }
 
@@ -3564,34 +3564,34 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     if (!callback) {
         return;
     }
-    NSDictionary *params = SlockBridgeParams(args);
-    SlockBridgeRunOnMain(^{
-        NSString *fragmentValue = SlockBridgeRawString(params[@"fragments"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    RaftBridgeRunOnMain(^{
+        NSString *fragmentValue = RaftBridgeRawString(params[@"fragments"]);
         NSMutableArray<NSString *> *fragmentPaths = [NSMutableArray array];
         for (NSString *line in [fragmentValue componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
-            NSString *path = SlockBridgeString(line);
+            NSString *path = RaftBridgeString(line);
             if (path.length > 0) {
                 [fragmentPaths addObject:path];
             }
         }
         UIImage *image = nil;
-        BOOL frame = params[@"frame"] == nil || SlockBridgeBool(params[@"frame"]);
+        BOOL frame = params[@"frame"] == nil || RaftBridgeBool(params[@"frame"]);
         if (fragmentPaths.count > 0) {
-            image = SlockThreadShareStitchFragments(fragmentPaths);
+            image = RaftThreadShareStitchFragments(fragmentPaths);
             frame = YES;
         } else {
-            image = SlockThreadShareCaptureView(self.slockHostController.viewIfLoaded, params);
+            image = RaftThreadShareCaptureView(self.raftHostController.viewIfLoaded, params);
         }
         if (!image) {
-            callback(SlockThreadShareImageFailure(@"Unable to capture image"));
+            callback(RaftThreadShareImageFailure(@"Unable to capture image"));
             return;
         }
-        UIImage *output = frame ? SlockThreadShareFrameImage(image) : image;
+        UIImage *output = frame ? RaftThreadShareFrameImage(image) : image;
         if (!output) {
-            callback(SlockThreadShareImageFailure(@"Unable to frame image"));
+            callback(RaftThreadShareImageFailure(@"Unable to frame image"));
             return;
         }
-        callback(SlockThreadShareWriteImage(output, frame));
+        callback(RaftThreadShareWriteImage(output, frame));
     });
 }
 
@@ -3610,14 +3610,14 @@ NSString *const RaftBridgeCallbackKey = @"callback";
     if (!callback) {
         return;
     }
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *path = SlockBridgeString(params[@"path"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *path = RaftBridgeString(params[@"path"]);
     BOOL isDirectory = NO;
     if (path.length == 0 ||
         ![NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&isDirectory] ||
         isDirectory ||
         [[NSFileManager.defaultManager attributesOfItemAtPath:path error:nil][NSFileSize] unsignedLongLongValue] == 0) {
-        callback(SlockThreadShareImageFailure(@"Image file unavailable"));
+        callback(RaftThreadShareImageFailure(@"Image file unavailable"));
         return;
     }
     NSURL *fileURL = [NSURL fileURLWithPath:path];
@@ -3625,11 +3625,11 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
             [PHAssetChangeRequest creationRequestForAssetFromImageAtFileURL:fileURL];
         } completionHandler:^(BOOL success, NSError *error) {
-            SlockBridgeRunOnMain(^{
+            RaftBridgeRunOnMain(^{
                 if (success) {
                     callback(@{ @"status" : @"ok", @"uri" : fileURL.absoluteString ?: @"" });
                 } else {
-                    callback(SlockThreadShareImageFailure(error.localizedDescription ?: @"Unable to save image"));
+                    callback(RaftThreadShareImageFailure(error.localizedDescription ?: @"Unable to save image"));
                 }
             });
         }];
@@ -3640,16 +3640,16 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         return;
     }
     if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
-        callback(SlockThreadShareImageFailure(@"Photos access is unavailable"));
+        callback(RaftThreadShareImageFailure(@"Photos access is unavailable"));
         return;
     }
     [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus authorizationStatus) {
-        SlockBridgeRunOnMain(^{
+        RaftBridgeRunOnMain(^{
             if (authorizationStatus == PHAuthorizationStatusAuthorized ||
                 authorizationStatus == PHAuthorizationStatusLimited) {
                 saveImage();
             } else {
-                callback(SlockThreadShareImageFailure(@"Photos access is unavailable"));
+                callback(RaftThreadShareImageFailure(@"Photos access is unavailable"));
             }
         });
     }];
@@ -3670,8 +3670,8 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 // Synchronous (see +isSynchronousMethod:). Form encoding, matching the Android host
 // (java.net.URLEncoder / URLDecoder, UTF-8): unreserved [A-Za-z0-9.*_-], space as '+'.
 - (id)urlEncode:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *value = SlockBridgeRawString(params[@"string"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *value = RaftBridgeRawString(params[@"string"]);
     static NSCharacterSet *allowed;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -3683,14 +3683,14 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 }
 
 - (id)urlDecode:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *value = [SlockBridgeRawString(params[@"string"]) stringByReplacingOccurrencesOfString:@"+" withString:@" "];
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *value = [RaftBridgeRawString(params[@"string"]) stringByReplacingOccurrencesOfString:@"+" withString:@" "];
     return [value stringByRemovingPercentEncoding] ?: value;
 }
 
 - (id)dateFormatter:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *format = SlockBridgeString(params[@"format"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *format = RaftBridgeString(params[@"format"]);
     if (format.length == 0) {
         format = @"yyyy-MM-dd HH:mm:ss";
     }
@@ -3706,12 +3706,12 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 }
 
 - (void)performanceScene:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *sceneName = SlockBridgeString(params[@"sceneName"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *sceneName = RaftBridgeString(params[@"sceneName"]);
     if (sceneName.length == 0) {
         return;
     }
-    NSString *action = SlockBridgeString(params[@"action"]);
+    NSString *action = RaftBridgeString(params[@"action"]);
     if (action.length == 0) {
         action = @"enter";
     }
@@ -3719,15 +3719,15 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 }
 
 - (void)performanceMarker:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *routeName = SlockBridgeString(params[@"routeName"]);
-    NSString *phase = SlockBridgeString(params[@"phase"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *routeName = RaftBridgeString(params[@"routeName"]);
+    NSString *phase = RaftBridgeString(params[@"phase"]);
     if (routeName.length == 0 && phase.length == 0) {
         return;
     }
-    NSString *sceneId = SlockBridgeString(params[@"sceneId"]);
-    NSString *event = SlockBridgeString(params[@"event"]);
-    NSString *threadHash = SlockBridgeString(params[@"threadHash"]);
+    NSString *sceneId = RaftBridgeString(params[@"sceneId"]);
+    NSString *event = RaftBridgeString(params[@"event"]);
+    NSString *threadHash = RaftBridgeString(params[@"threadHash"]);
     NSString *duration = params[@"durationMs"] ? [NSString stringWithFormat:@" durationMs=%@", params[@"durationMs"]] : @"";
     NSLog(@"[SlockPerfMarker] sceneId=%@ route=%@ phase=%@ event=%@ threadHash=%@%@",
           sceneId.length > 0 ? sceneId : @"unknown",
@@ -3739,36 +3739,36 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 }
 
 - (void)kuiklyPerformanceSnapshot:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *summary = SlockBridgeString(params[@"summary"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *summary = RaftBridgeString(params[@"summary"]);
     if (summary.length > 0) {
-        NSLog(@"[SlockKuiklyPerfSnapshot] %@", SlockBridgeSanitizedLogString(summary));
+        NSLog(@"[SlockKuiklyPerfSnapshot] %@", RaftBridgeSanitizedLogString(summary));
     }
 }
 
 - (void)appBadge:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     NSInteger count = MAX(0, [params[@"count"] respondsToSelector:@selector(integerValue)] ? [params[@"count"] integerValue] : 0);
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
         [UIApplication sharedApplication].applicationIconBadgeNumber = count;
 #pragma clang diagnostic pop
         NSLog(@"[%@][info] appBadge count=%ld source=%@ stale=%@",
-              SlockBridgeDefaultLogTag,
+              RaftBridgeDefaultLogTag,
               (long)count,
-              SlockBridgeString(params[@"source"]),
-              SlockBridgeBool(params[@"isStale"]) ? @"true" : @"false");
+              RaftBridgeString(params[@"source"]),
+              RaftBridgeBool(params[@"isStale"]) ? @"true" : @"false");
     });
 }
 
 - (void)syncDesktopShortcuts:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *rawShortcuts = SlockBridgeString(params[@"shortcuts"]);
-    SlockBridgeRunOnMain(^{
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *rawShortcuts = RaftBridgeString(params[@"shortcuts"]);
+    RaftBridgeRunOnMain(^{
         if (rawShortcuts.length == 0) {
             [UIApplication sharedApplication].shortcutItems = @[];
-            NSLog(@"[%@][info] syncDesktopShortcuts cleared", SlockBridgeDefaultLogTag);
+            NSLog(@"[%@][info] syncDesktopShortcuts cleared", RaftBridgeDefaultLogTag);
             return;
         }
         NSData *data = [rawShortcuts dataUsingEncoding:NSUTF8StringEncoding];
@@ -3778,7 +3778,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         NSError *error = nil;
         id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
         if (error || ![json isKindOfClass:[NSArray class]]) {
-            NSLog(@"[%@][warn] syncDesktopShortcuts JSON parse failed: %@", SlockBridgeDefaultLogTag, error);
+            NSLog(@"[%@][warn] syncDesktopShortcuts JSON parse failed: %@", RaftBridgeDefaultLogTag, error);
             return;
         }
         NSArray *items = (NSArray *)json;
@@ -3786,12 +3786,12 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         for (id rawItem in items) {
             if (![rawItem isKindOfClass:[NSDictionary class]]) continue;
             NSDictionary *item = (NSDictionary *)rawItem;
-            NSString *type = SlockBridgeString(item[@"id"]);
-            NSString *title = SlockBridgeString(item[@"title"]);
-            NSString *subtitle = SlockBridgeString(item[@"subtitle"]);
-            NSString *serverId = SlockBridgeString(item[@"serverId"]);
-            NSString *targetId = SlockBridgeString(item[@"targetId"]);
-            NSString *targetKind = SlockBridgeString(item[@"targetKind"]);
+            NSString *type = RaftBridgeString(item[@"id"]);
+            NSString *title = RaftBridgeString(item[@"title"]);
+            NSString *subtitle = RaftBridgeString(item[@"subtitle"]);
+            NSString *serverId = RaftBridgeString(item[@"serverId"]);
+            NSString *targetId = RaftBridgeString(item[@"targetId"]);
+            NSString *targetKind = RaftBridgeString(item[@"targetKind"]);
 
             if (type.length == 0 || title.length == 0 || targetId.length == 0 || serverId.length == 0) {
                 continue;
@@ -3817,60 +3817,60 @@ NSString *const RaftBridgeCallbackKey = @"callback";
             }
         }
         [UIApplication sharedApplication].shortcutItems = shortcutItems;
-        NSLog(@"[%@][info] syncDesktopShortcuts updated count=%lu", SlockBridgeDefaultLogTag, (unsigned long)shortcutItems.count);
+        NSLog(@"[%@][info] syncDesktopShortcuts updated count=%lu", RaftBridgeDefaultLogTag, (unsigned long)shortcutItems.count);
     });
 }
 
 - (void)avatarCacheCapability:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) return;
-    [[SlockIosAvatarCacheHost shared] handleLegacyCommand:params completion:^(NSDictionary<NSString *, id> *result) {
+    [[RaftIosAvatarCacheHost shared] handleLegacyCommand:params completion:^(NSDictionary<NSString *, id> *result) {
         callback(result);
     }];
 }
 
 - (void)settingsCapability:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
-    NSString *action = SlockBridgeString(params[@"action"]);
+    NSString *action = RaftBridgeString(params[@"action"]);
     if ([action isEqualToString:@"feedbackDiagnosticsStart"]) {
-        [self slock_startFeedbackDiagnosticsUpload:params callback:callback];
+        [self raft_startFeedbackDiagnosticsUpload:params callback:callback];
         return;
     }
     if ([action isEqualToString:@"feedbackDiagnosticsCancel"]) {
-        [self slock_cancelFeedbackDiagnosticsUpload:params callback:callback];
+        [self raft_cancelFeedbackDiagnosticsUpload:params callback:callback];
         return;
     }
     if ([action isEqualToString:@"getNotificationPermissionStatus"]) {
-        [self slock_getNotificationPermissionStatusWithCallback:callback];
+        [self raft_getNotificationPermissionStatusWithCallback:callback];
         return;
     }
     if ([action isEqualToString:@"requestNotificationPermission"]) {
-        [self slock_requestNotificationPermissionWithCallback:callback];
+        [self raft_requestNotificationPermissionWithCallback:callback];
         return;
     }
     if ([action isEqualToString:@"openNotificationSettings"]) {
-        [self slock_openNotificationSettingsWithCallback:callback];
+        [self raft_openNotificationSettingsWithCallback:callback];
         return;
     }
     if ([action isEqualToString:@"appLoginPrepare"]) {
-        callback([[SlockIosMobileOAuthHost shared] prepareAppLogin]);
+        callback([[RaftIosMobileOAuthHost shared] prepareAppLogin]);
         return;
     }
     if ([action isEqualToString:@"appLoginOpen"]) {
-        [[SlockIosMobileOAuthHost shared] openAppLoginWithUrl:SlockBridgeString(params[@"authorizationUrl"])
+        [[RaftIosMobileOAuthHost shared] openAppLoginWithUrl:RaftBridgeString(params[@"authorizationUrl"])
                                                    completion:^(NSDictionary *result) {
             callback(result);
         }];
         return;
     }
     if ([action isEqualToString:@"mobileOAuthLink"]) {
-        NSString *provider = SlockBridgeString(params[@"providerId"]);
-        [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+        NSString *provider = RaftBridgeString(params[@"providerId"]);
+        [[RaftIosMobileOAuthHost shared] startWithProvider:provider
                                                       mode:@"link"
                                                 completion:^(NSDictionary *result) {
             callback(result);
@@ -3881,35 +3881,35 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         [action isEqualToString:@"discardFeedbackDraftAttachments"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             NSDictionary *result = [action isEqualToString:@"promoteFeedbackDraftAttachments"]
-                ? [self slock_promoteFeedbackDraftAttachments:params]
-                : [self slock_discardFeedbackDraftAttachments:params];
-            SlockBridgeRunOnMain(^{ callback(result); });
+                ? [self raft_promoteFeedbackDraftAttachments:params]
+                : [self raft_discardFeedbackDraftAttachments:params];
+            RaftBridgeRunOnMain(^{ callback(result); });
         });
         return;
     }
     if ([action isEqualToString:@"loadStorage"] || [action isEqualToString:@"clearStorage"]) {
         // Storage rows walk app directories; never measure or delete on the main thread.
-        NSString *target = SlockBridgeString(params[@"target"]);
+        NSString *target = RaftBridgeString(params[@"target"]);
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             void (^deliver)(NSDictionary *) = ^(NSDictionary *result) {
-                SlockBridgeRunOnMain(^{ callback(result); });
+                RaftBridgeRunOnMain(^{ callback(result); });
             };
             if ([action isEqualToString:@"loadStorage"]) {
-                deliver(SlockStoragePayload(SlockStorageMeasure(), @""));
+                deliver(RaftStoragePayload(RaftStorageMeasure(), @""));
             } else {
-                SlockStorageClearTarget(target, deliver);
+                RaftStorageClearTarget(target, deliver);
             }
         });
         return;
     }
-    callback([self slock_settingsCapabilityResultForAction:action params:params]);
+    callback([self raft_settingsCapabilityResultForAction:action params:params]);
 }
 
-static BOOL SlockFeedbackDiagnosticsValidRequest(NSString *requestId, NSDictionary *binding) {
+static BOOL RaftFeedbackDiagnosticsValidRequest(NSString *requestId, NSDictionary *binding) {
     NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-"];
     if (requestId.length == 0 || requestId.length > 128 ||
         [requestId rangeOfCharacterFromSet:allowed.invertedSet].location != NSNotFound) return NO;
-    NSString *account = SlockBridgeString(binding[@"accountId"]);
+    NSString *account = RaftBridgeString(binding[@"accountId"]);
     long long sessionGeneration = [binding[@"sessionGeneration"] longLongValue];
     long long webViewGeneration = [binding[@"webViewGeneration"] longLongValue];
     NSCharacterSet *accountControlCharacters = NSCharacterSet.controlCharacterSet;
@@ -3918,84 +3918,84 @@ static BOOL SlockFeedbackDiagnosticsValidRequest(NSString *requestId, NSDictiona
         sessionGeneration >= 0 && webViewGeneration >= 0;
 }
 
-static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *binding) {
-    return @{ @"accountId" : SlockBridgeString(binding[@"accountId"]),
+static NSDictionary *RaftFeedbackDiagnosticsBindingPayload(NSDictionary *binding) {
+    return @{ @"accountId" : RaftBridgeString(binding[@"accountId"]),
               @"sessionGeneration" : @([binding[@"sessionGeneration"] longLongValue]),
               @"webViewGeneration" : @([binding[@"webViewGeneration"] longLongValue]) };
 }
 
-- (void)slock_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
-    NSString *requestId = SlockBridgeString(params[@"requestId"]);
+- (void)raft_startFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
+    NSString *requestId = RaftBridgeString(params[@"requestId"]);
     NSDictionary *binding = [params isKindOfClass:NSDictionary.class] && [params[@"binding"] isKindOfClass:NSDictionary.class]
         ? params[@"binding"] : params;
-    if (!callback || !SlockFeedbackDiagnosticsValidRequest(requestId, binding)) return;
-    [self.slock_feedbackDiagnosticsOperationsLock lock];
-    if (self.slock_feedbackDiagnosticsDestroyed || self.slock_feedbackDiagnosticsOperations[requestId] != nil) {
-        [self.slock_feedbackDiagnosticsOperationsLock unlock];
-        callback(@{ @"status" : @"ok", @"requestId" : requestId, @"binding" : SlockFeedbackDiagnosticsBindingPayload(binding),
+    if (!callback || !RaftFeedbackDiagnosticsValidRequest(requestId, binding)) return;
+    [self.raft_feedbackDiagnosticsOperationsLock lock];
+    if (self.raft_feedbackDiagnosticsDestroyed || self.raft_feedbackDiagnosticsOperations[requestId] != nil) {
+        [self.raft_feedbackDiagnosticsOperationsLock unlock];
+        callback(@{ @"status" : @"ok", @"requestId" : requestId, @"binding" : RaftFeedbackDiagnosticsBindingPayload(binding),
                     @"type" : @"failed", @"reason" : @"generate_failed", @"terminal" : @YES });
         return;
     }
     // A page replacement can start a new request before the old WebView's cancellation message
     // arrives.  Retire every older native operation first; only one upload may own this bridge.
-    NSArray<SlockFeedbackDiagnosticsUploadOperation *> *staleOperations =
-        self.slock_feedbackDiagnosticsOperations.allValues.copy;
-    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
-    SlockFeedbackDiagnosticsUploadOperation *operation =
-        [[SlockFeedbackDiagnosticsUploadOperation alloc] initWithRequestId:requestId binding:binding callback:callback];
+    NSArray<RaftFeedbackDiagnosticsUploadOperation *> *staleOperations =
+        self.raft_feedbackDiagnosticsOperations.allValues.copy;
+    [self.raft_feedbackDiagnosticsOperations removeAllObjects];
+    RaftFeedbackDiagnosticsUploadOperation *operation =
+        [[RaftFeedbackDiagnosticsUploadOperation alloc] initWithRequestId:requestId binding:binding callback:callback];
     __weak typeof(self) weakSelf = self;
-    operation.onTerminal = ^(SlockFeedbackDiagnosticsUploadOperation *finished) {
+    operation.onTerminal = ^(RaftFeedbackDiagnosticsUploadOperation *finished) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
-        [self.slock_feedbackDiagnosticsOperationsLock lock];
-        if (self.slock_feedbackDiagnosticsOperations[finished.requestId] == finished) {
-            [self.slock_feedbackDiagnosticsOperations removeObjectForKey:finished.requestId];
+        [self.raft_feedbackDiagnosticsOperationsLock lock];
+        if (self.raft_feedbackDiagnosticsOperations[finished.requestId] == finished) {
+            [self.raft_feedbackDiagnosticsOperations removeObjectForKey:finished.requestId];
         }
-        [self.slock_feedbackDiagnosticsOperationsLock unlock];
+        [self.raft_feedbackDiagnosticsOperationsLock unlock];
     };
-    self.slock_feedbackDiagnosticsOperations[requestId] = operation;
-    [self.slock_feedbackDiagnosticsOperationsLock unlock];
-    for (SlockFeedbackDiagnosticsUploadOperation *stale in staleOperations) [stale cancel];
+    self.raft_feedbackDiagnosticsOperations[requestId] = operation;
+    [self.raft_feedbackDiagnosticsOperationsLock unlock];
+    for (RaftFeedbackDiagnosticsUploadOperation *stale in staleOperations) [stale cancel];
     [operation start];
 }
 
-- (void)slock_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
-    NSString *requestId = SlockBridgeString(params[@"requestId"]);
+- (void)raft_cancelFeedbackDiagnosticsUpload:(NSDictionary *)params callback:(RaftBridgeCallback)callback {
+    NSString *requestId = RaftBridgeString(params[@"requestId"]);
     NSDictionary *binding = [params isKindOfClass:NSDictionary.class] && [params[@"binding"] isKindOfClass:NSDictionary.class]
         ? params[@"binding"] : params;
-    [self.slock_feedbackDiagnosticsOperationsLock lock];
-    SlockFeedbackDiagnosticsUploadOperation *operation = self.slock_feedbackDiagnosticsOperations[requestId];
-    BOOL matches = operation != nil && [operation.accountId isEqualToString:SlockBridgeString(binding[@"accountId"])] &&
+    [self.raft_feedbackDiagnosticsOperationsLock lock];
+    RaftFeedbackDiagnosticsUploadOperation *operation = self.raft_feedbackDiagnosticsOperations[requestId];
+    BOOL matches = operation != nil && [operation.accountId isEqualToString:RaftBridgeString(binding[@"accountId"])] &&
         operation.sessionGeneration == [binding[@"sessionGeneration"] longLongValue] &&
         operation.webViewGeneration == [binding[@"webViewGeneration"] longLongValue];
-    if (matches) [self.slock_feedbackDiagnosticsOperations removeObjectForKey:requestId];
-    [self.slock_feedbackDiagnosticsOperationsLock unlock];
+    if (matches) [self.raft_feedbackDiagnosticsOperations removeObjectForKey:requestId];
+    [self.raft_feedbackDiagnosticsOperationsLock unlock];
     if (matches) [operation cancel];
     if (callback) callback(@{ @"status" : matches ? @"ok" : @"ignored", @"requestId" : requestId,
-                              @"binding" : SlockFeedbackDiagnosticsBindingPayload(binding ?: @{}),
+                              @"binding" : RaftFeedbackDiagnosticsBindingPayload(binding ?: @{}),
                               @"cancelled" : @(matches), @"terminal" : @YES });
 }
 
-- (void)slock_cancelAllFeedbackDiagnosticsUploads {
-    [self.slock_feedbackDiagnosticsOperationsLock lock];
-    NSArray *operations = self.slock_feedbackDiagnosticsOperations.allValues.copy;
-    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
-    [self.slock_feedbackDiagnosticsOperationsLock unlock];
-    for (SlockFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
+- (void)raft_cancelAllFeedbackDiagnosticsUploads {
+    [self.raft_feedbackDiagnosticsOperationsLock lock];
+    NSArray *operations = self.raft_feedbackDiagnosticsOperations.allValues.copy;
+    [self.raft_feedbackDiagnosticsOperations removeAllObjects];
+    [self.raft_feedbackDiagnosticsOperationsLock unlock];
+    for (RaftFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
 }
 
-- (void)slock_destroyFeedbackDiagnosticsUploads {
-    [self.slock_feedbackDiagnosticsOperationsLock lock];
-    self.slock_feedbackDiagnosticsDestroyed = YES;
-    NSArray *operations = self.slock_feedbackDiagnosticsOperations.allValues.copy;
-    [self.slock_feedbackDiagnosticsOperations removeAllObjects];
-    [self.slock_feedbackDiagnosticsOperationsLock unlock];
-    for (SlockFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
+- (void)raft_destroyFeedbackDiagnosticsUploads {
+    [self.raft_feedbackDiagnosticsOperationsLock lock];
+    self.raft_feedbackDiagnosticsDestroyed = YES;
+    NSArray *operations = self.raft_feedbackDiagnosticsOperations.allValues.copy;
+    [self.raft_feedbackDiagnosticsOperations removeAllObjects];
+    [self.raft_feedbackDiagnosticsOperationsLock unlock];
+    for (RaftFeedbackDiagnosticsUploadOperation *operation in operations) [operation cancel];
 }
 
-- (NSDictionary *)slock_promoteFeedbackDraftAttachments:(NSDictionary *)params {
+- (NSDictionary *)raft_promoteFeedbackDraftAttachments:(NSDictionary *)params {
     NSArray *files = [params[@"files"] isKindOfClass:NSArray.class] ? params[@"files"] : @[];
-    NSString *groupId = SlockBridgeString(params[@"groupId"]);
+    NSString *groupId = RaftBridgeString(params[@"groupId"]);
     unsigned long long maxBytes = [params[@"maxBytes"] respondsToSelector:@selector(unsignedLongLongValue)]
         ? [params[@"maxBytes"] unsignedLongLongValue]
         : 0;
@@ -4009,7 +4009,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     if (!applicationSupport) {
         return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed" };
     }
-    NSString *accountSegment = SlockFeedbackDraftAccountSegment(SlockBridgeString(params[@"accountId"]));
+    NSString *accountSegment = RaftFeedbackDraftAccountSegment(RaftBridgeString(params[@"accountId"]));
     NSCharacterSet *unsafe = [[NSCharacterSet characterSetWithCharactersInString:
         @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"] invertedSet];
     NSString *safeGroup = [[groupId componentsSeparatedByCharactersInSet:unsafe] componentsJoinedByString:@"_"];
@@ -4026,7 +4026,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     }
     NSURL *finalDirectory = [root URLByAppendingPathComponent:safeGroup isDirectory:YES];
     NSArray<NSDictionary *> *existing =
-        SlockFeedbackDraftFilesAtDirectory(finalDirectory, files, maxBytes, fileManager);
+        RaftFeedbackDraftFilesAtDirectory(finalDirectory, files, maxBytes, fileManager);
     if (existing) {
         return @{ @"status" : @"ok", @"files" : existing };
     }
@@ -4040,7 +4040,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     NSString *failureCode = nil;
     for (NSUInteger index = 0; index < files.count; index++) {
         NSDictionary *file = [files[index] isKindOfClass:NSDictionary.class] ? files[index] : @{};
-        NSString *fileRef = SlockBridgeString(file[@"fileRef"]);
+        NSString *fileRef = RaftBridgeString(file[@"fileRef"]);
         NSURL *sourceURL = [NSURL URLWithString:fileRef];
         if (!sourceURL.isFileURL) {
             failureCode = @"settings_feedback_attachment_promotion_failed";
@@ -4054,7 +4054,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                 : @"settings_feedback_attachment_promotion_failed";
             break;
         }
-        NSString *targetName = SlockFeedbackDraftTargetName(index, file);
+        NSString *targetName = RaftFeedbackDraftTargetName(index, file);
         NSURL *targetURL = [stagingDirectory URLByAppendingPathComponent:targetName isDirectory:NO];
         if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:&error]) {
             failureCode = @"settings_feedback_attachment_promotion_failed";
@@ -4083,7 +4083,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     }
 
     NSArray<NSDictionary *> *promoted =
-        SlockFeedbackDraftFilesAtDirectory(finalDirectory, files, maxBytes, fileManager);
+        RaftFeedbackDraftFilesAtDirectory(finalDirectory, files, maxBytes, fileManager);
     if (!promoted) {
         [fileManager removeItemAtURL:finalDirectory error:nil];
         return @{ @"status" : @"error", @"code" : @"settings_feedback_attachment_promotion_failed",
@@ -4092,7 +4092,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     return @{ @"status" : @"ok", @"files" : promoted };
 }
 
-- (NSDictionary *)slock_discardFeedbackDraftAttachments:(NSDictionary *)params {
+- (NSDictionary *)raft_discardFeedbackDraftAttachments:(NSDictionary *)params {
     NSArray *fileRefs = [params[@"fileRefs"] isKindOfClass:NSArray.class] ? params[@"fileRefs"] : @[];
     NSFileManager *fileManager = NSFileManager.defaultManager;
     NSURL *applicationSupport = [fileManager URLsForDirectory:NSApplicationSupportDirectory
@@ -4100,13 +4100,13 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     if (!applicationSupport) {
         return @{ @"status" : @"ok" };
     }
-    NSString *accountSegment = SlockFeedbackDraftAccountSegment(SlockBridgeString(params[@"accountId"]));
+    NSString *accountSegment = RaftFeedbackDraftAccountSegment(RaftBridgeString(params[@"accountId"]));
     NSString *ownedRoot = [[[[[applicationSupport URLByAppendingPathComponent:@"Raft" isDirectory:YES]
         URLByAppendingPathComponent:@"SettingsHandsFeedbackDrafts" isDirectory:YES]
         URLByAppendingPathComponent:accountSegment isDirectory:YES] path] stringByStandardizingPath];
     NSString *ownedPrefix = [ownedRoot stringByAppendingString:@"/"];
     for (id value in fileRefs) {
-        NSURL *url = [NSURL URLWithString:SlockBridgeString(value)];
+        NSURL *url = [NSURL URLWithString:RaftBridgeString(value)];
         NSString *path = url.isFileURL ? url.path.stringByStandardizingPath : @"";
         if (path.length > 0 && [path hasPrefix:ownedPrefix]) {
             [fileManager removeItemAtPath:path error:nil];
@@ -4121,12 +4121,12 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 }
 
 - (void)threadAttachmentUpload:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
-    if (self.slock_attachmentPickerCallback || self.slock_attachmentExportCallback) {
+    if (self.raft_attachmentPickerCallback || self.raft_attachmentExportCallback) {
         callback(@{
             @"code" : @409,
             @"bodyText" : @"",
@@ -4135,35 +4135,35 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
         });
         return;
     }
-    self.slock_attachmentPickerCallback = callback;
-    self.slock_attachmentPickerChannelId = SlockBridgeString(params[@"channelId"]);
-    BOOL imageOnly = SlockBridgeBool(params[@"imageOnly"]);
-    BOOL capture = SlockBridgeBool(params[@"capture"]);
-    self.slock_attachmentPickerCompressImages = SlockBridgeBool(params[@"compressImages"]);
-    SlockDiagnosticsRecord(
+    self.raft_attachmentPickerCallback = callback;
+    self.raft_attachmentPickerChannelId = RaftBridgeString(params[@"channelId"]);
+    BOOL imageOnly = RaftBridgeBool(params[@"imageOnly"]);
+    BOOL capture = RaftBridgeBool(params[@"capture"]);
+    self.raft_attachmentPickerCompressImages = RaftBridgeBool(params[@"compressImages"]);
+    RaftDiagnosticsRecord(
         @"info",
         @"SlockKuiklyAttachment",
         [NSString stringWithFormat:@"picker_start imageOnly=%@ capture=%@ channelIdPresent=%@",
                                    imageOnly ? @"true" : @"false",
                                    capture ? @"true" : @"false",
-                                   self.slock_attachmentPickerChannelId.length > 0 ? @"true" : @"false"]
+                                   self.raft_attachmentPickerChannelId.length > 0 ? @"true" : @"false"]
     );
     if (capture) {
-        [self slock_requestAndPresentCamera];
+        [self raft_requestAndPresentCamera];
         return;
     }
     if (!imageOnly) {
-        [self slock_presentDocumentPicker];
+        [self raft_presentDocumentPicker];
         return;
     }
 
     PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelReadWrite];
     if (status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited) {
-        [self slock_presentPhotoPicker];
+        [self raft_presentPhotoPicker];
         return;
     }
     if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
-        [self slock_finishAttachmentPicker:@{
+        [self raft_finishAttachmentPicker:@{
             @"code" : @403,
             @"bodyText" : @"",
             @"errorCode" : @"attachment_permission_denied",
@@ -4173,15 +4173,15 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     }
     __weak typeof(self) weakSelf = self;
     [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelReadWrite handler:^(PHAuthorizationStatus authorizationStatus) {
-        SlockBridgeRunOnMain(^{
+        RaftBridgeRunOnMain(^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf || !strongSelf.slock_attachmentPickerCallback) {
+            if (!strongSelf || !strongSelf.raft_attachmentPickerCallback) {
                 return;
             }
             if (authorizationStatus == PHAuthorizationStatusAuthorized || authorizationStatus == PHAuthorizationStatusLimited) {
-                [strongSelf slock_presentPhotoPicker];
+                [strongSelf raft_presentPhotoPicker];
             } else {
-                [strongSelf slock_finishAttachmentPicker:@{
+                [strongSelf raft_finishAttachmentPicker:@{
                     @"code" : @403,
                     @"bodyText" : @"",
                     @"errorCode" : @"attachment_permission_denied",
@@ -4197,24 +4197,24 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     if (!callback) {
         return;
     }
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *requestId = SlockBridgeString(params[@"requestId"]);
-    NSString *fileName = SlockBridgeString(params[@"fileName"]);
-    NSString *mimeType = SlockThreadImageCompressionMimeType(SlockBridgeString(params[@"mimeType"]));
-    NSString *fileRef = SlockBridgeRawString(params[@"fileRef"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *requestId = RaftBridgeString(params[@"requestId"]);
+    NSString *fileName = RaftBridgeString(params[@"fileName"]);
+    NSString *mimeType = RaftThreadImageCompressionMimeType(RaftBridgeString(params[@"mimeType"]));
+    NSString *fileRef = RaftBridgeRawString(params[@"fileRef"]);
     BOOL validRequest = requestId.length > 0 &&
-        requestId.length <= SlockThreadImageCompressionMaxRequestIdLength &&
+        requestId.length <= RaftThreadImageCompressionMaxRequestIdLength &&
         [requestId rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound &&
-        SlockThreadImageCompressionSafeName(fileName) &&
+        RaftThreadImageCompressionSafeName(fileName) &&
         mimeType.length > 0 && [mimeType hasPrefix:@"image/"] &&
         fileRef.length > 0 &&
         [fileRef rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound;
     if (!validRequest) {
-        [self slock_dispatchThreadImageCompressionFailure:callback];
+        [self raft_dispatchThreadImageCompressionFailure:callback];
         return;
     }
 
-    SlockThreadImageCompressionOperation *operation = [[SlockThreadImageCompressionOperation alloc] init];
+    RaftThreadImageCompressionOperation *operation = [[RaftThreadImageCompressionOperation alloc] init];
     operation.requestId = requestId;
     operation.callback = callback;
     NSArray<NSURL *> *roots = @[
@@ -4226,29 +4226,29 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
         NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     NSURL *cacheDirectory = cacheRootPath.length > 0
         ? [[[NSURL fileURLWithPath:cacheRootPath isDirectory:YES]
-            URLByAppendingPathComponent:SlockPickedAttachmentParentDirectoryName isDirectory:YES]
-            URLByAppendingPathComponent:SlockThreadImageCompressionDirectoryName isDirectory:YES]
+            URLByAppendingPathComponent:RaftPickedAttachmentParentDirectoryName isDirectory:YES]
+            URLByAppendingPathComponent:RaftThreadImageCompressionDirectoryName isDirectory:YES]
         : nil;
     if (!cacheDirectory) {
         [operation markCancelled];
-        [self slock_dispatchThreadImageCompressionFailure:callback];
+        [self raft_dispatchThreadImageCompressionFailure:callback];
         return;
     }
     NSString *outputName = [NSString stringWithFormat:@"composer-image-%@.jpg", NSUUID.UUID.UUIDString];
     operation.outputURL = [cacheDirectory URLByAppendingPathComponent:outputName isDirectory:NO];
     operation.partURL = [operation.outputURL URLByAppendingPathExtension:@"part"];
 
-    [self.slock_threadImageCompressionOperationsLock lock];
-    SlockThreadImageCompressionOperation *existing =
-        self.slock_threadImageCompressionOperations[requestId];
-    BOOL destroyed = self.slock_threadImageCompressionDestroyed;
+    [self.raft_threadImageCompressionOperationsLock lock];
+    RaftThreadImageCompressionOperation *existing =
+        self.raft_threadImageCompressionOperations[requestId];
+    BOOL destroyed = self.raft_threadImageCompressionDestroyed;
     if (!existing && !destroyed) {
-        self.slock_threadImageCompressionOperations[requestId] = operation;
+        self.raft_threadImageCompressionOperations[requestId] = operation;
     }
-    [self.slock_threadImageCompressionOperationsLock unlock];
+    [self.raft_threadImageCompressionOperationsLock unlock];
     if (existing || destroyed) {
         [operation markCancelled];
-        [self slock_dispatchThreadImageCompressionFailure:callback];
+        [self raft_dispatchThreadImageCompressionFailure:callback];
         return;
     }
 
@@ -4260,7 +4260,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
             NSError *error = nil;
             @try {
                 if ([operation isCancelled] || !weakSelf ||
-                    ![weakSelf slock_isCurrentThreadImageCompressionOperation:operation]) {
+                    ![weakSelf raft_isCurrentThreadImageCompressionOperation:operation]) {
                     [operation markCancelledForce:YES];
                     return;
                 }
@@ -4272,14 +4272,14 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                                                  error:&error] ||
                     ![fileManager fileExistsAtPath:cacheDirectory.path isDirectory:&isDirectory] ||
                     !isDirectory) {
-                    error = SlockThreadAttachmentImageCompressionError(@"Attachment cache unavailable");
+                    error = RaftThreadAttachmentImageCompressionError(@"Attachment cache unavailable");
                     return;
                 }
-                NSURL *sourceURL = SlockThreadImageCompressionSourceURL(fileRef, roots);
-                if (!sourceURL || !SlockThreadImageCompressionInputIsImage(fileName, mimeType, sourceURL) ||
+                NSURL *sourceURL = RaftThreadImageCompressionSourceURL(fileRef, roots);
+                if (!sourceURL || !RaftThreadImageCompressionInputIsImage(fileName, mimeType, sourceURL) ||
                     [operation isCancelled] || !weakSelf ||
-                    ![weakSelf slock_isCurrentThreadImageCompressionOperation:operation]) {
-                    error = SlockThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
+                    ![weakSelf raft_isCurrentThreadImageCompressionOperation:operation]) {
+                    error = RaftThreadAttachmentImageCompressionError(@"Unable to decode image attachment");
                     return;
                 }
                 // Serialize the complete part-write → rename → size-validation transaction with
@@ -4290,7 +4290,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                 BOOL encoded = NO;
                 [operation.outputLock lock];
                 @try {
-                    encoded = SlockWriteCompressedPickedImage(sourceURL, operation.outputURL, &error);
+                    encoded = RaftWriteCompressedPickedImage(sourceURL, operation.outputURL, &error);
                     if (encoded) {
                         attributes = [fileManager attributesOfItemAtPath:operation.outputURL.path error:&error];
                     }
@@ -4300,24 +4300,24 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                 if (!encoded ||
                     ![attributes[NSFileType] isEqualToString:NSFileTypeRegular] ||
                     [attributes[NSFileSize] unsignedLongLongValue] == 0 || [operation isCancelled] ||
-                    !weakSelf || ![weakSelf slock_isCurrentThreadImageCompressionOperation:operation]) {
-                    error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+                    !weakSelf || ![weakSelf raft_isCurrentThreadImageCompressionOperation:operation]) {
+                    error = RaftThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
                     return;
                 }
                 NSString *outputRef = operation.outputURL.absoluteString ?: @"";
                 NSDictionary *file = @{
                     @"fileRef" : outputRef,
-                    @"fileName" : SlockThreadImageCompressionOutputName(fileName),
+                    @"fileName" : RaftThreadImageCompressionOutputName(fileName),
                     @"mimeType" : @"image/jpeg",
                     @"previewUri" : outputRef,
                     @"sizeBytes" : attributes[NSFileSize] ?: @0,
-                    @"source" : SlockThreadImageCompressionSource
+                    @"source" : RaftThreadImageCompressionSource
                 };
                 NSData *bodyData = [NSJSONSerialization dataWithJSONObject:@{ @"files" : @[ file ] }
                                                                options:0
                                                                  error:&error];
                 if (!bodyData) {
-                    error = SlockThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
+                    error = RaftThreadAttachmentImageCompressionError(@"Unable to encode image attachment");
                     return;
                 }
                 NSString *bodyText = [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding];
@@ -4326,7 +4326,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                 }
                 terminalPayload = @{ @"code" : @200, @"bodyText" : bodyText };
             } @catch (__unused NSException *exception) {
-                error = SlockThreadAttachmentImageCompressionError(@"Unable to compress image attachment");
+                error = RaftThreadAttachmentImageCompressionError(@"Unable to compress image attachment");
             } @finally {
                 if (![operation isCancelled]) {
                     @try {
@@ -4335,9 +4335,9 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                             // An exception after the JPEG was encoded but before the success
                             // payload was complete must still fail closed instead of leaving the
                             // shared coroutine waiting forever.
-                            responseAccepted = [weakSelf slock_finishThreadImageCompressionOperation:
+                            responseAccepted = [weakSelf raft_finishThreadImageCompressionOperation:
                                 operation
-                                payload:terminalPayload ?: SlockThreadImageCompressionFailurePayload()];
+                                payload:terminalPayload ?: RaftThreadImageCompressionFailurePayload()];
                         } else {
                             [operation markCancelledForce:YES];
                         }
@@ -4358,7 +4358,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
                 }
                 if (!terminalOwned || [operation isCancelled]) {
                     if (weakSelf) {
-                        [weakSelf slock_removeThreadImageCompressionOperation:operation];
+                        [weakSelf raft_removeThreadImageCompressionOperation:operation];
                     }
                 }
             }
@@ -4367,88 +4367,88 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 }
 
 - (void)cancelCompressThreadImage:(NSDictionary *)args {
-    NSString *requestId = SlockBridgeString(SlockBridgeParams(args)[@"requestId"]);
+    NSString *requestId = RaftBridgeString(RaftBridgeParams(args)[@"requestId"]);
     if (requestId.length == 0) {
         return;
     }
-    [self.slock_threadImageCompressionOperationsLock lock];
-    SlockThreadImageCompressionOperation *operation = self.slock_threadImageCompressionOperations[requestId];
-    [self.slock_threadImageCompressionOperationsLock unlock];
+    [self.raft_threadImageCompressionOperationsLock lock];
+    RaftThreadImageCompressionOperation *operation = self.raft_threadImageCompressionOperations[requestId];
+    [self.raft_threadImageCompressionOperationsLock unlock];
     if (!operation || ![operation markCancelled]) {
         // In particular, an already-delivered response belongs to the consumer.  Do not remove
         // its map entry or generated JPEG on an ordinary cancel; the delivery fence retires the
         // entry after the callback returns.
         return;
     }
-    [self.slock_threadImageCompressionOperationsLock lock];
-    if (self.slock_threadImageCompressionOperations[requestId] == operation) {
-        [self.slock_threadImageCompressionOperations removeObjectForKey:requestId];
+    [self.raft_threadImageCompressionOperationsLock lock];
+    if (self.raft_threadImageCompressionOperations[requestId] == operation) {
+        [self.raft_threadImageCompressionOperations removeObjectForKey:requestId];
     }
-    [self.slock_threadImageCompressionOperationsLock unlock];
+    [self.raft_threadImageCompressionOperationsLock unlock];
     [operation removeOutputs];
 }
 
-- (void)slock_removeThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation {
+- (void)raft_removeThreadImageCompressionOperation:(RaftThreadImageCompressionOperation *)operation {
     if (!operation) return;
-    [self.slock_threadImageCompressionOperationsLock lock];
-    if (self.slock_threadImageCompressionOperations[operation.requestId] == operation) {
-        [self.slock_threadImageCompressionOperations removeObjectForKey:operation.requestId];
+    [self.raft_threadImageCompressionOperationsLock lock];
+    if (self.raft_threadImageCompressionOperations[operation.requestId] == operation) {
+        [self.raft_threadImageCompressionOperations removeObjectForKey:operation.requestId];
     }
-    [self.slock_threadImageCompressionOperationsLock unlock];
+    [self.raft_threadImageCompressionOperationsLock unlock];
 }
 
-- (BOOL)slock_isThreadImageCompressionDestroyed {
-    [self.slock_threadImageCompressionOperationsLock lock];
-    BOOL destroyed = self.slock_threadImageCompressionDestroyed;
-    [self.slock_threadImageCompressionOperationsLock unlock];
+- (BOOL)raft_isThreadImageCompressionDestroyed {
+    [self.raft_threadImageCompressionOperationsLock lock];
+    BOOL destroyed = self.raft_threadImageCompressionDestroyed;
+    [self.raft_threadImageCompressionOperationsLock unlock];
     return destroyed;
 }
 
-- (BOOL)slock_isCurrentThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation {
+- (BOOL)raft_isCurrentThreadImageCompressionOperation:(RaftThreadImageCompressionOperation *)operation {
     if (!operation) return NO;
-    [self.slock_threadImageCompressionOperationsLock lock];
-    BOOL current = !self.slock_threadImageCompressionDestroyed &&
-        self.slock_threadImageCompressionOperations[operation.requestId] == operation;
-    [self.slock_threadImageCompressionOperationsLock unlock];
+    [self.raft_threadImageCompressionOperationsLock lock];
+    BOOL current = !self.raft_threadImageCompressionDestroyed &&
+        self.raft_threadImageCompressionOperations[operation.requestId] == operation;
+    [self.raft_threadImageCompressionOperationsLock unlock];
     return current;
 }
 
-- (void)slock_dispatchThreadImageCompressionFailure:(RaftBridgeCallback)callback {
+- (void)raft_dispatchThreadImageCompressionFailure:(RaftBridgeCallback)callback {
     if (!callback) return;
     __weak typeof(self) weakSelf = self;
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         HRBridgeModule *strongSelf = weakSelf;
         if (!strongSelf) {
             return;
         }
-        [strongSelf.slock_threadImageCompressionOperationsLock lock];
-        if (!strongSelf.slock_threadImageCompressionDestroyed) {
+        [strongSelf.raft_threadImageCompressionOperationsLock lock];
+        if (!strongSelf.raft_threadImageCompressionDestroyed) {
             @try {
-                callback(SlockThreadImageCompressionFailurePayload());
+                callback(RaftThreadImageCompressionFailurePayload());
             } @catch (__unused NSException *exception) {
                 // Renderer callback removal during teardown is terminal and must not escape the
                 // native dispatch turn.
             }
         }
-        [strongSelf.slock_threadImageCompressionOperationsLock unlock];
+        [strongSelf.raft_threadImageCompressionOperationsLock unlock];
     });
 }
 
-- (BOOL)slock_finishThreadImageCompressionOperation:(SlockThreadImageCompressionOperation *)operation
+- (BOOL)raft_finishThreadImageCompressionOperation:(RaftThreadImageCompressionOperation *)operation
                                              payload:(NSDictionary *)payload {
     if (!operation) return NO;
 
     // Reserve ACTIVE -> PENDING while the map and operation locks are held together.  Keeping
     // this lock order (map first, operation second) matches cancel and dealloc, so teardown
     // cannot pass the identity check between reservation and the main-thread callback fence.
-    [self.slock_threadImageCompressionOperationsLock lock];
+    [self.raft_threadImageCompressionOperationsLock lock];
     [operation.lock lock];
-    BOOL admitted = !self.slock_threadImageCompressionDestroyed &&
-        self.slock_threadImageCompressionOperations[operation.requestId] == operation &&
-        operation.state == SlockThreadImageCompressionOperationStateActive;
-    if (admitted) operation.state = SlockThreadImageCompressionOperationStatePending;
+    BOOL admitted = !self.raft_threadImageCompressionDestroyed &&
+        self.raft_threadImageCompressionOperations[operation.requestId] == operation &&
+        operation.state == RaftThreadImageCompressionOperationStateActive;
+    if (admitted) operation.state = RaftThreadImageCompressionOperationStatePending;
     [operation.lock unlock];
-    [self.slock_threadImageCompressionOperationsLock unlock];
+    [self.raft_threadImageCompressionOperationsLock unlock];
     if (!admitted) {
         if (![operation isDelivered]) {
             [operation markCancelledForce:YES];
@@ -4458,7 +4458,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
     }
 
     __weak typeof(self) weakSelf = self;
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         HRBridgeModule *strongSelf = weakSelf;
         if (!strongSelf) {
             [operation markCancelledForce:YES];
@@ -4468,42 +4468,42 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 
         BOOL callbackInvoked = NO;
         BOOL callbackFailed = NO;
-        [strongSelf.slock_threadImageCompressionOperationsLock lock];
+        [strongSelf.raft_threadImageCompressionOperationsLock lock];
         [operation.lock lock];
-        BOOL current = !strongSelf.slock_threadImageCompressionDestroyed &&
-            strongSelf.slock_threadImageCompressionOperations[operation.requestId] == operation &&
-            operation.state == SlockThreadImageCompressionOperationStatePending;
+        BOOL current = !strongSelf.raft_threadImageCompressionDestroyed &&
+            strongSelf.raft_threadImageCompressionOperations[operation.requestId] == operation &&
+            operation.state == RaftThreadImageCompressionOperationStatePending;
         if (current) {
             // Hold both lifecycle locks across callback invocation.  A re-entrant ordinary cancel
             // observes DELIVERED and is a no-op; another thread waits until the callback has
             // returned before it can cancel or force-clean this operation.
-            operation.state = SlockThreadImageCompressionOperationStateDelivered;
+            operation.state = RaftThreadImageCompressionOperationStateDelivered;
             RaftBridgeCallback callback = operation.callback;
             if (callback) {
                 callbackInvoked = YES;
                 @try {
-                    callback(payload ?: SlockThreadImageCompressionFailurePayload());
+                    callback(payload ?: RaftThreadImageCompressionFailurePayload());
                 } @catch (__unused NSException *exception) {
                     callbackFailed = YES;
-                    operation.state = SlockThreadImageCompressionOperationStateCancelled;
+                    operation.state = RaftThreadImageCompressionOperationStateCancelled;
                 }
             } else {
-                operation.state = SlockThreadImageCompressionOperationStateCancelled;
+                operation.state = RaftThreadImageCompressionOperationStateCancelled;
             }
-        } else if (strongSelf.slock_threadImageCompressionOperations[operation.requestId] == operation) {
+        } else if (strongSelf.raft_threadImageCompressionOperations[operation.requestId] == operation) {
             // The operation became stale or teardown started after worker admission.  Fence it
             // before releasing the locks so no later callback can observe a pending identity.
-            operation.state = SlockThreadImageCompressionOperationStateCancelled;
-            [strongSelf.slock_threadImageCompressionOperations removeObjectForKey:operation.requestId];
+            operation.state = RaftThreadImageCompressionOperationStateCancelled;
+            [strongSelf.raft_threadImageCompressionOperations removeObjectForKey:operation.requestId];
         }
         [operation.lock unlock];
-        [strongSelf.slock_threadImageCompressionOperationsLock unlock];
+        [strongSelf.raft_threadImageCompressionOperationsLock unlock];
 
         // Keep a DELIVERED operation in the map until this callback turn has finished.  This
         // gives module destruction a chance to force-clean a still-tracked output, while a normal
         // cancel that re-enters from the callback observes DELIVERED and leaves ownership alone.
         if (current) {
-            [strongSelf slock_removeThreadImageCompressionOperation:operation];
+            [strongSelf raft_removeThreadImageCompressionOperation:operation];
         }
         if (!current || callbackFailed || !callbackInvoked) {
             [operation removeOutputs];
@@ -4513,13 +4513,13 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 }
 
 - (void)socialAuth:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
-    NSString *provider = SlockBridgeString(params[@"provider"]);
-    [[SlockIosMobileOAuthHost shared] startWithProvider:provider
+    NSString *provider = RaftBridgeString(params[@"provider"]);
+    [[RaftIosMobileOAuthHost shared] startWithProvider:provider
                                                   mode:@"login"
                                             completion:^(NSDictionary *result) {
         callback(result);
@@ -4534,7 +4534,7 @@ static NSDictionary *SlockFeedbackDiagnosticsBindingPayload(NSDictionary *bindin
 // launches; "Open with" can then share the local file directly instead of
 // re-downloading to a throwaway temp dir each tap.
 
-static NSString *SlockAttachmentStoreRoot() {
+static NSString *RaftAttachmentStoreRoot() {
     NSArray<NSString *> *urls = NSSearchPathForDirectoriesInDomains(
         NSApplicationSupportDirectory, NSUserDomainMask, YES);
     NSString *base = urls.firstObject ?: NSTemporaryDirectory();
@@ -4547,36 +4547,36 @@ static NSString *SlockAttachmentStoreRoot() {
 }
 
 // Throwaway download staging for Save to Files / Photos exports (one subdirectory per request).
-static NSString *SlockAttachmentExportRootPath(void) {
-    return [NSTemporaryDirectory() stringByAppendingPathComponent:SlockAttachmentExportDirectoryName];
+static NSString *RaftAttachmentExportRootPath(void) {
+    return [NSTemporaryDirectory() stringByAppendingPathComponent:RaftAttachmentExportDirectoryName];
 }
 
 #pragma mark - Settings storage
 
-static NSString *SlockStorageDatabaseDirectoryPath(void) {
+static NSString *RaftStorageDatabaseDirectoryPath(void) {
     NSString *base = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
-    return base.length > 0 ? [base stringByAppendingPathComponent:SlockSqlDatabaseDirectoryRelativePath] : @"";
+    return base.length > 0 ? [base stringByAppendingPathComponent:RaftSqlDatabaseDirectoryRelativePath] : @"";
 }
 
-static NSString *SlockStoragePickedAttachmentDirectoryPath(void) {
+static NSString *RaftStoragePickedAttachmentDirectoryPath(void) {
     NSString *caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     if (caches.length == 0) return @"";
-    return [[caches stringByAppendingPathComponent:SlockPickedAttachmentParentDirectoryName]
-        stringByAppendingPathComponent:SlockThreadImageCompressionDirectoryName];
+    return [[caches stringByAppendingPathComponent:RaftPickedAttachmentParentDirectoryName]
+        stringByAppendingPathComponent:RaftThreadImageCompressionDirectoryName];
 }
 
-static BOOL SlockStorageIsFeedbackDiagnosticsArchiveName(NSString *name) {
-    return [name hasPrefix:SlockFeedbackDiagnosticsArchivePrefix] &&
-        [name.pathExtension isEqualToString:SlockFeedbackDiagnosticsArchiveExtension];
+static BOOL RaftStorageIsFeedbackDiagnosticsArchiveName(NSString *name) {
+    return [name hasPrefix:RaftFeedbackDiagnosticsArchivePrefix] &&
+        [name.pathExtension isEqualToString:RaftFeedbackDiagnosticsArchiveExtension];
 }
 
-static BOOL SlockStorageIsCameraCaptureName(NSString *name) {
-    return [name.pathExtension isEqualToString:SlockCameraCaptureFileExtension] &&
+static BOOL RaftStorageIsCameraCaptureName(NSString *name) {
+    return [name.pathExtension isEqualToString:RaftCameraCaptureFileExtension] &&
         [[NSUUID alloc] initWithUUIDString:name.stringByDeletingPathExtension] != nil;
 }
 
 /// Logical byte size (same measure as Android File.length()) of a file or directory tree.
-static unsigned long long SlockStorageTreeBytes(NSString *path) {
+static unsigned long long RaftStorageTreeBytes(NSString *path) {
     if (path.length == 0) return 0;
     NSFileManager *fileManager = NSFileManager.defaultManager;
     BOOL isDirectory = NO;
@@ -4602,7 +4602,7 @@ static unsigned long long SlockStorageTreeBytes(NSString *path) {
 
 /// Regular files directly inside NSTemporaryDirectory() whose name matches. Only app-owned
 /// name patterns are passed in; the rest of tmp is never counted or touched.
-static unsigned long long SlockStorageTemporaryFileBytes(BOOL (*matches)(NSString *name)) {
+static unsigned long long RaftStorageTemporaryFileBytes(BOOL (*matches)(NSString *name)) {
     NSFileManager *fileManager = NSFileManager.defaultManager;
     NSString *temporaryDirectory = NSTemporaryDirectory();
     unsigned long long total = 0;
@@ -4616,7 +4616,7 @@ static unsigned long long SlockStorageTemporaryFileBytes(BOOL (*matches)(NSStrin
 }
 
 /// Deletes the children of `path`, keeping the directory itself (Android deleteContents()).
-static BOOL SlockStorageRemoveDirectoryContents(NSString *path) {
+static BOOL RaftStorageRemoveDirectoryContents(NSString *path) {
     if (path.length == 0) return YES;
     NSFileManager *fileManager = NSFileManager.defaultManager;
     BOOL isDirectory = NO;
@@ -4635,7 +4635,7 @@ static BOOL SlockStorageRemoveDirectoryContents(NSString *path) {
 /// Clears a directory that AttachmentDownloadCoordinator writes into. The directory reservation
 /// rejects new downloads under the prefix; active ones are cancelled and their sink cleanup is
 /// awaited before any file is removed (same fence as Android clearDirectAttachmentStaging).
-static BOOL SlockStorageClearDownloadDirectory(NSString *directory) {
+static BOOL RaftStorageClearDownloadDirectory(NSString *directory) {
     if (directory.length == 0) return YES;
     NSString *prefix = [directory hasSuffix:@"/"] ? directory : [directory stringByAppendingString:@"/"];
     SharedAttachmentDownloadCoordinator *coordinator = SharedAttachmentDownloadCoordinator.shared;
@@ -4653,7 +4653,7 @@ static BOOL SlockStorageClearDownloadDirectory(NSString *directory) {
             fenced = NO;
         }
     }
-    BOOL cleared = fenced && SlockStorageRemoveDirectoryContents(directory);
+    BOOL cleared = fenced && RaftStorageRemoveDirectoryContents(directory);
     [targetTokens enumerateKeysAndObjectsUsingBlock:^(NSString *targetKey, NSString *token, BOOL *stop) {
         [coordinator finishTargetCleanupTargetKey:targetKey token:token];
     }];
@@ -4661,43 +4661,43 @@ static BOOL SlockStorageClearDownloadDirectory(NSString *directory) {
     return cleared;
 }
 
-static void SlockStorageRemoveStaleFeedbackDiagnosticsArchives(void) {
+static void RaftStorageRemoveStaleFeedbackDiagnosticsArchives(void) {
     // An upload operation owns and deletes its archive; only leftovers past the feedback prune
     // age (orphans from a killed upload) are removed so an in-flight upload keeps its file.
     NSFileManager *fileManager = NSFileManager.defaultManager;
     NSString *temporaryDirectory = NSTemporaryDirectory();
     NSDate *now = NSDate.date;
     for (NSString *name in [fileManager contentsOfDirectoryAtPath:temporaryDirectory error:nil] ?: @[]) {
-        if (!SlockStorageIsFeedbackDiagnosticsArchiveName(name)) continue;
+        if (!RaftStorageIsFeedbackDiagnosticsArchiveName(name)) continue;
         NSString *path = [temporaryDirectory stringByAppendingPathComponent:name];
         NSDate *modifiedAt = [[fileManager attributesOfItemAtPath:path error:nil] fileModificationDate] ?: NSDate.distantPast;
-        if ([now timeIntervalSinceDate:modifiedAt] >= SlockDiagnosticsFeedbackPruneMinimumAgeSeconds) {
+        if ([now timeIntervalSinceDate:modifiedAt] >= RaftDiagnosticsFeedbackPruneMinimumAgeSeconds) {
             [fileManager removeItemAtPath:path error:nil];
         }
     }
 }
 
-static SlockStorageUsage SlockStorageMeasure(void) {
-    SlockStorageUsage usage;
-    usage.database = SlockStorageTreeBytes(SlockStorageDatabaseDirectoryPath());
+static RaftStorageUsage RaftStorageMeasure(void) {
+    RaftStorageUsage usage;
+    usage.database = RaftStorageTreeBytes(RaftStorageDatabaseDirectoryPath());
     // Avatars are counted here but cleared only by the shared avatar runtime (store.clearAll),
     // which SharedSettingsDataSource.clearStorage runs before this host's imageCache clear.
     usage.imageCache = (unsigned long long)[SDImageCache.sharedImageCache totalDiskSize] +
-        SlockStorageTreeBytes(SlockIosAvatarCacheHost.shared.rootPath);
-    usage.attachmentDownloads = SlockStorageTreeBytes(SlockAttachmentStoreRoot()) +
-        SlockStorageTreeBytes(SlockAttachmentExportRootPath());
+        RaftStorageTreeBytes(RaftIosAvatarCacheHost.shared.rootPath);
+    usage.attachmentDownloads = RaftStorageTreeBytes(RaftAttachmentStoreRoot()) +
+        RaftStorageTreeBytes(RaftAttachmentExportRootPath());
     // Picked attachments and camera captures belong to composer drafts (retired through
-    // SlockIosRetireThreadComposerTemporaryFileRefs); they are counted but never cleared here.
-    usage.temporaryAndLogs = SlockStorageTreeBytes(SlockDiagnosticsDirectoryPath()) +
-        SlockStorageTreeBytes(SlockThreadShareImageDirectoryPath()) +
-        SlockStorageTemporaryFileBytes(SlockStorageIsFeedbackDiagnosticsArchiveName) +
-        SlockStorageTemporaryFileBytes(SlockStorageIsCameraCaptureName) +
-        SlockStorageTreeBytes(SlockStoragePickedAttachmentDirectoryPath());
+    // RaftIosRetireThreadComposerTemporaryFileRefs); they are counted but never cleared here.
+    usage.temporaryAndLogs = RaftStorageTreeBytes(RaftDiagnosticsDirectoryPath()) +
+        RaftStorageTreeBytes(RaftThreadShareImageDirectoryPath()) +
+        RaftStorageTemporaryFileBytes(RaftStorageIsFeedbackDiagnosticsArchiveName) +
+        RaftStorageTemporaryFileBytes(RaftStorageIsCameraCaptureName) +
+        RaftStorageTreeBytes(RaftStoragePickedAttachmentDirectoryPath());
     return usage;
 }
 
 /// Mirrors Android formatStorageSizeLabel: 1024-based B/KB/MB/GB, integer bytes, one decimal otherwise.
-static NSString *SlockStorageSizeLabel(unsigned long long bytes) {
+static NSString *RaftStorageSizeLabel(unsigned long long bytes) {
     if (bytes == 0) return @"0 B";
     NSArray<NSString *> *units = @[ @"B", @"KB", @"MB", @"GB" ];
     double value = (double)bytes;
@@ -4716,35 +4716,35 @@ static NSString *SlockStorageSizeLabel(unsigned long long bytes) {
     return [NSString stringWithFormat:@"%@ %@", number, units[index]];
 }
 
-static NSDictionary *SlockStorageRow(NSString *target, NSString *title, NSString *detail,
+static NSDictionary *RaftStorageRow(NSString *target, NSString *title, NSString *detail,
                                      unsigned long long bytes, BOOL clearEnabled) {
     return @{
         @"target" : target,
         @"title" : title,
         @"detail" : detail,
-        @"sizeLabel" : SlockStorageSizeLabel(bytes),
+        @"sizeLabel" : RaftStorageSizeLabel(bytes),
         @"clearEnabled" : @(clearEnabled)
     };
 }
 
-static NSDictionary *SlockStoragePayload(SlockStorageUsage usage, NSString *feedback) {
+static NSDictionary *RaftStoragePayload(RaftStorageUsage usage, NSString *feedback) {
     unsigned long long total =
         usage.database + usage.imageCache + usage.attachmentDownloads + usage.temporaryAndLogs;
     return @{
         @"status" : @"ok",
-        @"totalSizeLabel" : SlockStorageSizeLabel(total),
+        @"totalSizeLabel" : RaftStorageSizeLabel(total),
         @"feedback" : feedback ?: @"",
         @"rows" : @[
-            SlockStorageRow(@"database", @"Local database",
+            RaftStorageRow(@"database", @"Local database",
                             @"Messages, task metadata, and server snapshots stored on this device.",
                             usage.database, NO),
-            SlockStorageRow(@"imageCache", @"Image cache",
+            RaftStorageRow(@"imageCache", @"Image cache",
                             @"Downloaded image previews kept for faster viewing.",
                             usage.imageCache, YES),
-            SlockStorageRow(@"attachmentDownloads", @"Attachment cache",
+            RaftStorageRow(@"attachmentDownloads", @"Attachment cache",
                             @"Private copies kept for opening or installing files. Public exports are not removed.",
                             usage.attachmentDownloads, YES),
-            SlockStorageRow(@"temporaryAndLogs", @"Temporary files and logs",
+            RaftStorageRow(@"temporaryAndLogs", @"Temporary files and logs",
                             @"Debug logs and temporary files generated by the app.",
                             usage.temporaryAndLogs, YES)
         ]
@@ -4752,72 +4752,72 @@ static NSDictionary *SlockStoragePayload(SlockStorageUsage usage, NSString *feed
 }
 
 /// Runs on a background queue; `completion` may be called on any queue.
-static void SlockStorageClearTarget(NSString *target, void (^completion)(NSDictionary *result)) {
+static void RaftStorageClearTarget(NSString *target, void (^completion)(NSDictionary *result)) {
     if ([target isEqualToString:@"imageCache"]) {
         SDImageCache *cache = SDImageCache.sharedImageCache;
         [cache clearMemory];
         [cache clearDiskOnCompletion:^{
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-                SlockDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=imageCache");
-                completion(SlockStoragePayload(SlockStorageMeasure(), @"Image cache cleared."));
+                RaftDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=imageCache");
+                completion(RaftStoragePayload(RaftStorageMeasure(), @"Image cache cleared."));
             });
         }];
         return;
     }
     if ([target isEqualToString:@"attachmentDownloads"]) {
-        BOOL storeCleared = SlockStorageClearDownloadDirectory(SlockAttachmentStoreRoot());
-        BOOL exportsCleared = SlockStorageClearDownloadDirectory(SlockAttachmentExportRootPath());
+        BOOL storeCleared = RaftStorageClearDownloadDirectory(RaftAttachmentStoreRoot());
+        BOOL exportsCleared = RaftStorageClearDownloadDirectory(RaftAttachmentExportRootPath());
         if (!storeCleared || !exportsCleared) {
-            SlockDiagnosticsRecord(@"warn", @"SlockStorage", @"shared_clear target=attachmentDownloads result=failure");
+            RaftDiagnosticsRecord(@"warn", @"SlockStorage", @"shared_clear target=attachmentDownloads result=failure");
             completion(@{ @"status" : @"error", @"code" : @"settings_storage_clear_failed" });
             return;
         }
-        SlockDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=attachmentDownloads");
-        completion(SlockStoragePayload(SlockStorageMeasure(), @"Attachment cache cleared. Public exports were not removed."));
+        RaftDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=attachmentDownloads");
+        completion(RaftStoragePayload(RaftStorageMeasure(), @"Attachment cache cleared. Public exports were not removed."));
         return;
     }
     if ([target isEqualToString:@"temporaryAndLogs"]) {
-        SlockStorageRemoveDirectoryContents(SlockThreadShareImageDirectoryPath());
-        SlockStorageRemoveStaleFeedbackDiagnosticsArchives();
-        SlockDiagnosticsClear();
-        SlockDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=temporaryAndLogs");
-        completion(SlockStoragePayload(SlockStorageMeasure(), @"Temporary files and diagnostics logs cleared."));
+        RaftStorageRemoveDirectoryContents(RaftThreadShareImageDirectoryPath());
+        RaftStorageRemoveStaleFeedbackDiagnosticsArchives();
+        RaftDiagnosticsClear();
+        RaftDiagnosticsRecord(@"info", @"SlockStorage", @"shared_clear target=temporaryAndLogs");
+        completion(RaftStoragePayload(RaftStorageMeasure(), @"Temporary files and diagnostics logs cleared."));
         return;
     }
     completion(@{ @"status" : @"error", @"code" : @"settings_storage_clear_unsupported" });
 }
 
-NSString *SlockAttachmentSafeComponent(NSString *raw) {
+NSString *RaftAttachmentSafeComponent(NSString *raw) {
     if (raw.length == 0) return @"";
     NSMutableCharacterSet *allowed = [NSMutableCharacterSet alphanumericCharacterSet];
     [allowed addCharactersInString:@"-_."];
     return [[raw componentsSeparatedByCharactersInSet:[allowed invertedSet]] componentsJoinedByString:@"_"];
 }
 
-NSString *SlockAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId) {
-    NSString *owner = SlockAttachmentSafeComponent(ownerKey ?: @"");
-    NSString *attachment = SlockAttachmentSafeComponent(attachmentId ?: @"");
+NSString *RaftAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId) {
+    NSString *owner = RaftAttachmentSafeComponent(ownerKey ?: @"");
+    NSString *attachment = RaftAttachmentSafeComponent(attachmentId ?: @"");
     if (attachment.length == 0) return @"";
     return owner.length ? [owner stringByAppendingFormat:@"-%@", attachment] : attachment;
 }
 
 // OHOS key scheme: directory keyed by <ownerKey>-<safe(attachmentId)>, the file lives
 // inside it; lookups only need the directory, never the filename.
-static NSString *SlockAttachmentCacheDirectory(NSString *ownerKey, NSString *attachmentId) {
-    NSString *key = SlockAttachmentCacheKey(ownerKey, attachmentId);
+static NSString *RaftAttachmentCacheDirectory(NSString *ownerKey, NSString *attachmentId) {
+    NSString *key = RaftAttachmentCacheKey(ownerKey, attachmentId);
     if (key.length == 0) return nil;
-    return [SlockAttachmentStoreRoot() stringByAppendingFormat:@"/%@", key];
+    return [RaftAttachmentStoreRoot() stringByAppendingFormat:@"/%@", key];
 }
 
-static NSString *SlockAttachmentCachedFilePath(NSString *ownerKey, NSString *attachmentId, NSString *fileName) {
-    NSString *dir = SlockAttachmentCacheDirectory(ownerKey, attachmentId);
+static NSString *RaftAttachmentCachedFilePath(NSString *ownerKey, NSString *attachmentId, NSString *fileName) {
+    NSString *dir = RaftAttachmentCacheDirectory(ownerKey, attachmentId);
     if (!dir) return nil;
-    NSString *leaf = SlockAttachmentSafeComponent(fileName ?: @"attachment");
+    NSString *leaf = RaftAttachmentSafeComponent(fileName ?: @"attachment");
     if (leaf.length == 0) leaf = @"attachment";
     return [dir stringByAppendingFormat:@"/%@", leaf];
 }
 
-static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
+static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
     if (files.count == 0) {
@@ -4847,31 +4847,31 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     if (!callback) {
         return;
     }
-    if (self.slock_attachmentExportCallback) {
+    if (self.raft_attachmentExportCallback) {
         callback(@{ @"status" : @"failed", @"reason" : @"busy",
                     @"message" : @"Another file operation is already active" });
         return;
     }
 
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *ownerKey = SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
-    NSString *attachmentId = SlockBridgeString(params[@"attachmentId"]);
-    NSString *fileName = SlockBridgeString(params[@"fileName"]) ?: @"attachment";
-    NSString *downloadId = SlockBridgeString(params[@"downloadId"]) ?: attachmentId;
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *ownerKey = RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
+    NSString *attachmentId = RaftBridgeString(params[@"attachmentId"]);
+    NSString *fileName = RaftBridgeString(params[@"fileName"]) ?: @"attachment";
+    NSString *downloadId = RaftBridgeString(params[@"downloadId"]) ?: attachmentId;
     BOOL requirePublicDownload = [params[@"requirePublicDownload"] boolValue];
 
     // Capture the presenter at tap time while the page is certainly alive (weak),
     // then prefer it with a frontmost fallback — Signal AttachmentSharing L117.
-    self.slock_sharePresenterController = [self slock_currentViewController];
+    self.raft_sharePresenterController = [self raft_currentViewController];
 
-    NSString *cachedDir = SlockAttachmentCacheDirectory(ownerKey, attachmentId);
-    NSString *cachedPath = SlockAttachmentCachedFilePath(ownerKey, attachmentId, fileName);
+    NSString *cachedDir = RaftAttachmentCacheDirectory(ownerKey, attachmentId);
+    NSString *cachedPath = RaftAttachmentCachedFilePath(ownerKey, attachmentId, fileName);
     NSDictionary *status = cachedPath
-        ? SlockAttachmentCacheStatusDict(cachedDir)
+        ? RaftAttachmentCacheStatusDict(cachedDir)
         : @{ @"status" : @"missing" };
 
     if ([status[@"cached"] boolValue]) {
-        [self slock_presentShareItems:@[ [NSURL fileURLWithPath:cachedPath] ] attempt:1];
+        [self raft_presentShareItems:@[ [NSURL fileURLWithPath:cachedPath] ] attempt:1];
         callback(@{ @"status" : @"opened", @"cached" : @YES, @"uri" : status[@"uri"] ?: @"" });
         return;
     }
@@ -4887,17 +4887,17 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         callback(@{ @"status" : @"failed", @"reason" : @"no_cache_path" });
         return;
     }
-    NSString *urlText = SlockBridgeString(params[@"url"]);
+    NSString *urlText = RaftBridgeString(params[@"url"]);
     if (urlText.length == 0) {
         callback(@{ @"status" : @"failed", @"reason" : @"missing_url" });
         return;
     }
-    self.slock_attachmentExportDownloadId = downloadId;
-    self.slock_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
-    self.slock_attachmentExportDestination = SlockAttachmentExportDestinationOpen;
-    self.slock_attachmentExportFileName = fileName;
-    self.slock_attachmentExportMimeType = SlockBridgeString(params[@"mimeType"]);
-    self.slock_attachmentExportCallback = callback;
+    self.raft_attachmentExportDownloadId = downloadId;
+    self.raft_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
+    self.raft_attachmentExportDestination = RaftAttachmentExportDestinationOpen;
+    self.raft_attachmentExportFileName = fileName;
+    self.raft_attachmentExportMimeType = RaftBridgeString(params[@"mimeType"]);
+    self.raft_attachmentExportCallback = callback;
     __weak HRBridgeModule *weakSelf = self;
     NSString *attemptToken =
         [SharedAttachmentDownloadCoordinator.shared startDownloadId:downloadId
@@ -4908,11 +4908,11 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     if (attemptToken.length == 0) {
         callback(@{ @"status" : @"failed", @"reason" : @"download_start_failed",
                     @"message" : @"Unable to start attachment download" });
-        self.slock_attachmentExportCallback = nil;
-        self.slock_attachmentExportURL = nil;
+        self.raft_attachmentExportCallback = nil;
+        self.raft_attachmentExportURL = nil;
         return;
     }
-    self.slock_attachmentExportRequestId = attemptToken;
+    self.raft_attachmentExportRequestId = attemptToken;
 }
 
 - (void)attachmentCacheStatus:(NSDictionary *)args {
@@ -4920,22 +4920,22 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     if (!callback) {
         return;
     }
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *cachedDir = SlockAttachmentCacheDirectory(
-        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
-        SlockBridgeString(params[@"attachmentId"]));
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *cachedDir = RaftAttachmentCacheDirectory(
+        RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
+        RaftBridgeString(params[@"attachmentId"]));
     NSDictionary *status = cachedDir
-        ? SlockAttachmentCacheStatusDict(cachedDir)
+        ? RaftAttachmentCacheStatusDict(cachedDir)
         : @{ @"status" : @"missing" };
     callback(status);
 }
 
 - (void)deleteAttachmentCache:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *cachedDir = SlockAttachmentCacheDirectory(
-        SlockBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
-        SlockBridgeString(params[@"attachmentId"]));
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *cachedDir = RaftAttachmentCacheDirectory(
+        RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]),
+        RaftBridgeString(params[@"attachmentId"]));
     BOOL removed = cachedDir &&
         [NSFileManager.defaultManager removeItemAtPath:cachedDir error:nil];
     if (callback) {
@@ -4944,49 +4944,49 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)saveAttachment:(NSDictionary *)args {
-    [self slock_startAttachmentExport:args destination:SlockAttachmentExportDestinationFiles];
+    [self raft_startAttachmentExport:args destination:RaftAttachmentExportDestinationFiles];
 }
 
 - (void)saveImageToPhotos:(NSDictionary *)args {
-    [self slock_startAttachmentExport:args destination:SlockAttachmentExportDestinationPhotos];
+    [self raft_startAttachmentExport:args destination:RaftAttachmentExportDestinationPhotos];
 }
 
 - (void)cancelAttachmentExport:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
-    NSString *operationId = SlockBridgeString(params[@"operationId"]);
-    if (!self.slock_attachmentExportCallback || downloadId.length == 0 ||
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *downloadId = RaftBridgeString(params[@"downloadId"]);
+    NSString *operationId = RaftBridgeString(params[@"operationId"]);
+    if (!self.raft_attachmentExportCallback || downloadId.length == 0 ||
         operationId.length == 0 ||
-        ![self.slock_attachmentExportDownloadId isEqualToString:downloadId] ||
-        ![self.slock_attachmentExportOperationId isEqualToString:operationId]) {
+        ![self.raft_attachmentExportDownloadId isEqualToString:downloadId] ||
+        ![self.raft_attachmentExportOperationId isEqualToString:operationId]) {
         return;
     }
-    NSString *expectedAttemptToken = SlockBridgeString(params[@"attemptToken"]);
+    NSString *expectedAttemptToken = RaftBridgeString(params[@"attemptToken"]);
     NSString *attemptToken = expectedAttemptToken.length > 0
         ? expectedAttemptToken
-        : ([self.slock_attachmentExportRequestId isEqualToString:@"pending"]
+        : ([self.raft_attachmentExportRequestId isEqualToString:@"pending"]
             ? @""
-            : (self.slock_attachmentExportRequestId ?: @""));
+            : (self.raft_attachmentExportRequestId ?: @""));
     [SharedAttachmentDownloadCoordinator.shared controlExistingDownloadId:downloadId
                                                       expectedAttemptToken:attemptToken
                                                                     action:@"cancel"];
-    [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
+    [self raft_finishAttachmentExport:@{ @"status" : @"cancelled" }];
 }
 
-- (void)slock_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination {
+- (void)raft_startAttachmentExport:(NSDictionary *)args destination:(NSString *)destination {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
     }
-    if (self.slock_attachmentExportCallback) {
+    if (self.raft_attachmentExportCallback) {
         callback(@{
             @"status" : @"failed",
             @"message" : @"Another file save is already active"
         });
         return;
     }
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *urlText = SlockBridgeString(params[@"url"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *urlText = RaftBridgeString(params[@"url"]);
     NSURL *url = [NSURL URLWithString:urlText];
     if (!url || url.scheme.length == 0) {
         callback(@{
@@ -4995,12 +4995,12 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         });
         return;
     }
-    NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
-    NSString *mimeType = [[[[SlockBridgeString(params[@"mimeType"])
+    NSString *fileName = RaftAttachmentExportFileName(RaftBridgeString(params[@"fileName"]));
+    NSString *mimeType = [[[[RaftBridgeString(params[@"mimeType"])
         componentsSeparatedByString:@";"] firstObject]
         stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
         lowercaseString];
-    NSString *operationId = SlockBridgeString(params[@"operationId"]);
+    NSString *operationId = RaftBridgeString(params[@"operationId"]);
     if (operationId.length == 0) {
         callback(@{
             @"status" : @"failed",
@@ -5010,7 +5010,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     }
     BOOL genericBinaryMime =
         [mimeType isEqualToString:@"application/octet-stream"] || [mimeType isEqualToString:@"binary/octet-stream"];
-    BOOL savesToPhotos = [destination isEqualToString:SlockAttachmentExportDestinationPhotos];
+    BOOL savesToPhotos = [destination isEqualToString:RaftAttachmentExportDestinationPhotos];
     if (savesToPhotos && mimeType.length > 0 && ![mimeType hasPrefix:@"image/"]) {
         callback(@{
             @"status" : @"unsupported_image",
@@ -5041,28 +5041,28 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             return;
         }
     }
-    self.slock_attachmentExportCallback = callback;
-    self.slock_attachmentExportDownloadId = SlockBridgeString(params[@"downloadId"]);
-    self.slock_attachmentExportOperationId = operationId;
-    self.slock_attachmentExportDestination = destination;
-    self.slock_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
-    self.slock_attachmentExportFileName = fileName;
-    self.slock_attachmentExportTrackProgress = SlockBridgeBool(params[@"trackProgress"]);
+    self.raft_attachmentExportCallback = callback;
+    self.raft_attachmentExportDownloadId = RaftBridgeString(params[@"downloadId"]);
+    self.raft_attachmentExportOperationId = operationId;
+    self.raft_attachmentExportDestination = destination;
+    self.raft_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
+    self.raft_attachmentExportFileName = fileName;
+    self.raft_attachmentExportTrackProgress = RaftBridgeBool(params[@"trackProgress"]);
 
     if (!savesToPhotos) {
-        [self slock_beginAttachmentExportDownloadWithParams:params];
+        [self raft_beginAttachmentExportDownloadWithParams:params];
         return;
     }
 
     PHAuthorizationStatus status = [PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
     if (status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited) {
-        self.slock_attachmentExportPermissionStatus =
+        self.raft_attachmentExportPermissionStatus =
             status == PHAuthorizationStatusLimited ? @"limited" : @"authorized";
-        [self slock_beginAttachmentExportDownloadWithParams:params];
+        [self raft_beginAttachmentExportDownloadWithParams:params];
         return;
     }
     if (status == PHAuthorizationStatusDenied || status == PHAuthorizationStatusRestricted) {
-        [self slock_finishAttachmentExport:@{
+        [self raft_finishAttachmentExport:@{
             @"status" : status == PHAuthorizationStatusRestricted ? @"permission_restricted" : @"permission_denied",
             @"permissionStatus" : status == PHAuthorizationStatusRestricted ? @"restricted" : @"denied",
             @"message" : status == PHAuthorizationStatusRestricted
@@ -5075,25 +5075,25 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 
     __weak typeof(self) weakSelf = self;
     NSDictionary *capturedParams = [params copy];
-    NSString *capturedDownloadId = self.slock_attachmentExportDownloadId ?: @"";
-    NSString *capturedOperationId = self.slock_attachmentExportOperationId ?: @"";
+    NSString *capturedDownloadId = self.raft_attachmentExportDownloadId ?: @"";
+    NSString *capturedOperationId = self.raft_attachmentExportOperationId ?: @"";
     [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus authorizationStatus) {
-        SlockBridgeRunOnMain(^{
+        RaftBridgeRunOnMain(^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
-                ![strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos] ||
-                ![strongSelf.slock_attachmentExportDownloadId isEqualToString:capturedDownloadId] ||
-                ![strongSelf.slock_attachmentExportOperationId isEqualToString:capturedOperationId]) {
+            if (!strongSelf || !strongSelf.raft_attachmentExportCallback ||
+                ![strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationPhotos] ||
+                ![strongSelf.raft_attachmentExportDownloadId isEqualToString:capturedDownloadId] ||
+                ![strongSelf.raft_attachmentExportOperationId isEqualToString:capturedOperationId]) {
                 return;
             }
             if (authorizationStatus == PHAuthorizationStatusAuthorized || authorizationStatus == PHAuthorizationStatusLimited) {
-                strongSelf.slock_attachmentExportPermissionStatus =
+                strongSelf.raft_attachmentExportPermissionStatus =
                     authorizationStatus == PHAuthorizationStatusLimited ? @"limited" : @"authorized";
-                [strongSelf slock_beginAttachmentExportDownloadWithParams:capturedParams];
+                [strongSelf raft_beginAttachmentExportDownloadWithParams:capturedParams];
                 return;
             }
             BOOL restricted = authorizationStatus == PHAuthorizationStatusRestricted;
-            [strongSelf slock_finishAttachmentExport:@{
+            [strongSelf raft_finishAttachmentExport:@{
                 @"status" : restricted ? @"permission_restricted" : @"permission_denied",
                 @"permissionStatus" : restricted ? @"restricted" : @"denied",
                 @"message" : restricted
@@ -5105,37 +5105,37 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     }];
 }
 
-- (void)slock_beginAttachmentExportDownloadWithParams:(NSDictionary *)params {
-    NSString *urlText = SlockBridgeString(params[@"url"]);
-    NSString *fileName = self.slock_attachmentExportFileName ?: @"attachment";
+- (void)raft_beginAttachmentExportDownloadWithParams:(NSDictionary *)params {
+    NSString *urlText = RaftBridgeString(params[@"url"]);
+    NSString *fileName = self.raft_attachmentExportFileName ?: @"attachment";
     NSString *requestId = NSUUID.UUID.UUIDString;
-    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    NSString *downloadId = RaftBridgeString(params[@"downloadId"]);
     if (downloadId.length == 0) downloadId = requestId;
-    self.slock_attachmentExportRequestId = @"pending";
+    self.raft_attachmentExportRequestId = @"pending";
     NSFileManager *fileManager = NSFileManager.defaultManager;
-    NSURL *root = [NSURL fileURLWithPath:SlockAttachmentExportRootPath() isDirectory:YES];
+    NSURL *root = [NSURL fileURLWithPath:RaftAttachmentExportRootPath() isDirectory:YES];
     NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
     NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
     NSError *fileError = nil;
     [fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&fileError];
     if (fileError) {
-        [self slock_finishAttachmentExport:@{
+        [self raft_finishAttachmentExport:@{
             @"status" : @"storage_failed",
             @"message" : @"Unable to prepare attachment for export"
         }];
         return;
     }
-    self.slock_attachmentExportURL = targetURL;
+    self.raft_attachmentExportURL = targetURL;
     NSString *attemptToken =
         [SharedAttachmentDownloadCoordinator.shared startDownloadId:downloadId
                                                           targetKey:targetURL.path
                                                                 url:urlText
                                                          targetPath:targetURL.path
                                                            observer:self];
-    if (self.slock_attachmentExportCallback) {
-        self.slock_attachmentExportRequestId = attemptToken;
+    if (self.raft_attachmentExportCallback) {
+        self.raft_attachmentExportRequestId = attemptToken;
         if (attemptToken.length == 0) {
-            [self slock_finishAttachmentExport:@{
+            [self raft_finishAttachmentExport:@{
                 @"status" : @"failed",
                 @"message" : @"Unable to start attachment download"
             }];
@@ -5145,12 +5145,12 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 
 - (void)onProgressProgress:(SharedAttachmentDownloadProgress *)progress {
     __weak typeof(self) weakSelf = self;
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf.slock_attachmentExportTrackProgress || !strongSelf.slock_attachmentExportCallback ||
-            (strongSelf.slock_attachmentExportRequestId.length > 0 &&
-             ![strongSelf.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
-             ![strongSelf.slock_attachmentExportRequestId isEqualToString:progress.attemptToken])) {
+        if (!strongSelf.raft_attachmentExportTrackProgress || !strongSelf.raft_attachmentExportCallback ||
+            (strongSelf.raft_attachmentExportRequestId.length > 0 &&
+             ![strongSelf.raft_attachmentExportRequestId isEqualToString:@"pending"] &&
+             ![strongSelf.raft_attachmentExportRequestId isEqualToString:progress.attemptToken])) {
             return;
         }
         NSMutableDictionary *payload = [@{
@@ -5164,18 +5164,18 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         if (progress.totalBytes) payload[@"totalBytes"] = progress.totalBytes;
         if (progress.percent) payload[@"percent"] = progress.percent;
         if (progress.bytesPerSecond) payload[@"bytesPerSecond"] = progress.bytesPerSecond;
-        strongSelf.slock_attachmentExportCallback(payload);
+        strongSelf.raft_attachmentExportCallback(payload);
     });
 }
 
 - (void)onCompleteResult:(SharedAttachmentDownloadResult *)result {
     __weak typeof(self) weakSelf = self;
-    SlockBridgeRunOnMain(^{
+    RaftBridgeRunOnMain(^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
-            (strongSelf.slock_attachmentExportRequestId.length > 0 &&
-             ![strongSelf.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
-             ![strongSelf.slock_attachmentExportRequestId isEqualToString:result.attemptToken])) {
+        if (!strongSelf || !strongSelf.raft_attachmentExportCallback ||
+            (strongSelf.raft_attachmentExportRequestId.length > 0 &&
+             ![strongSelf.raft_attachmentExportRequestId isEqualToString:@"pending"] &&
+             ![strongSelf.raft_attachmentExportRequestId isEqualToString:result.attemptToken])) {
             return;
         }
         if (![result.status isEqualToString:@"complete"]) {
@@ -5187,36 +5187,36 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             NSString *status = [result.status isEqualToString:@"cancelled"]
                 ? @"cancelled"
                 : (storageFailure ? @"storage_failed" : @"download_failed");
-            [strongSelf slock_finishAttachmentExport:@{
+            [strongSelf raft_finishAttachmentExport:@{
                 @"status" : status,
                 @"message" : result.message ?: @"Unable to download attachment",
                 @"errorKind" : errorKind
             }];
             return;
         }
-        NSURL *targetURL = strongSelf.slock_attachmentExportURL;
+        NSURL *targetURL = strongSelf.raft_attachmentExportURL;
         if (!targetURL) {
-            [strongSelf slock_finishAttachmentExport:@{
+            [strongSelf raft_finishAttachmentExport:@{
                 @"status" : @"storage_failed",
                 @"message" : @"Unable to prepare attachment for export"
             }];
             return;
         }
-        strongSelf.slock_attachmentExportSizeBytes = @(result.downloadedBytes);
-        if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationOpen]) {
+        strongSelf.raft_attachmentExportSizeBytes = @(result.downloadedBytes);
+        if ([strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationOpen]) {
             // Open-with: the file is a persistent local copy — present the share sheet on it,
-            // do NOT call slock_finishAttachmentExport (it deletes the parent dir) or the
+            // do NOT call raft_finishAttachmentExport (it deletes the parent dir) or the
             // save-to-files picker. Clear state and report success, keeping the file.
-            RaftBridgeCallback openCallback = strongSelf.slock_attachmentExportCallback;
-            [strongSelf slock_presentShareItems:@[ targetURL ] attempt:1];
-            strongSelf.slock_attachmentExportCallback = nil;
-            strongSelf.slock_attachmentExportRequestId = nil;
-            strongSelf.slock_attachmentExportDownloadId = nil;
-            strongSelf.slock_attachmentExportURL = nil;
-            strongSelf.slock_attachmentExportFileName = nil;
-            strongSelf.slock_attachmentExportSizeBytes = nil;
-            strongSelf.slock_attachmentExportDestination = nil;
-            strongSelf.slock_attachmentExportMimeType = nil;
+            RaftBridgeCallback openCallback = strongSelf.raft_attachmentExportCallback;
+            [strongSelf raft_presentShareItems:@[ targetURL ] attempt:1];
+            strongSelf.raft_attachmentExportCallback = nil;
+            strongSelf.raft_attachmentExportRequestId = nil;
+            strongSelf.raft_attachmentExportDownloadId = nil;
+            strongSelf.raft_attachmentExportURL = nil;
+            strongSelf.raft_attachmentExportFileName = nil;
+            strongSelf.raft_attachmentExportSizeBytes = nil;
+            strongSelf.raft_attachmentExportDestination = nil;
+            strongSelf.raft_attachmentExportMimeType = nil;
             if (openCallback) {
                 openCallback(@{
                     @"status" : @"opened",
@@ -5226,13 +5226,13 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             }
             return;
         }
-        if ([strongSelf.slock_attachmentExportDestination isEqualToString:SlockAttachmentExportDestinationPhotos]) {
-            [strongSelf slock_saveAttachmentExportToPhotos];
+        if ([strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationPhotos]) {
+            [strongSelf raft_saveAttachmentExportToPhotos];
             return;
         }
-        UIViewController *controller = [strongSelf slock_currentViewController];
+        UIViewController *controller = [strongSelf raft_currentViewController];
         if (!controller) {
-            [strongSelf slock_finishAttachmentExport:@{
+            [strongSelf raft_finishAttachmentExport:@{
                 @"status" : @"storage_failed",
                 @"message" : @"Unable to open Files"
             }];
@@ -5245,10 +5245,10 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     });
 }
 
-- (void)slock_saveAttachmentExportToPhotos {
-    NSURL *targetURL = self.slock_attachmentExportURL;
+- (void)raft_saveAttachmentExportToPhotos {
+    NSURL *targetURL = self.raft_attachmentExportURL;
     if (!targetURL) {
-        [self slock_finishAttachmentExport:@{
+        [self raft_finishAttachmentExport:@{
             @"status" : @"storage_failed",
             @"message" : @"Unable to prepare image for Photos.",
             @"retryable" : @YES
@@ -5259,7 +5259,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)targetURL, NULL);
     if (!source || CGImageSourceGetCount(source) == 0) {
         if (source) CFRelease(source);
-        [self slock_finishAttachmentExport:@{
+        [self raft_finishAttachmentExport:@{
             @"status" : @"unsupported_image",
             @"message" : @"This attachment is not a supported image.",
             @"retryable" : @NO
@@ -5279,7 +5279,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     BOOL validDimensions = pixelWidth.longLongValue > 0 && pixelHeight.longLongValue > 0;
     BOOL validOrientation = !orientation || (orientation.integerValue >= 1 && orientation.integerValue <= 8);
     if (!actualType || ![actualType conformsToType:UTTypeImage] || !validDimensions || !validOrientation) {
-        [self slock_finishAttachmentExport:@{
+        [self raft_finishAttachmentExport:@{
             @"status" : @"unsupported_image",
             @"message" : @"This attachment is not a supported image.",
             @"retryable" : @NO
@@ -5287,9 +5287,9 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         return;
     }
 
-    NSString *expectedMimeType = self.slock_attachmentExportMimeType ?: @"";
+    NSString *expectedMimeType = self.raft_attachmentExportMimeType ?: @"";
     BOOL hasMimeClaim = expectedMimeType.length > 0;
-    NSString *claimedExtension = self.slock_attachmentExportFileName.pathExtension ?: @"";
+    NSString *claimedExtension = self.raft_attachmentExportFileName.pathExtension ?: @"";
     BOOL hasExtensionClaim = claimedExtension.length > 0;
     UTType *mimeType = hasMimeClaim ? [UTType typeWithMIMEType:expectedMimeType] : nil;
     UTType *extensionType = hasExtensionClaim
@@ -5302,7 +5302,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         (extensionType && [extensionType conformsToType:UTTypeImage] &&
          ([actualType conformsToType:extensionType] || [extensionType conformsToType:actualType]));
     if (!mimeMatches || !extensionMatches) {
-        [self slock_finishAttachmentExport:@{
+        [self raft_finishAttachmentExport:@{
             @"status" : @"unsupported_image",
             @"message" : @"The downloaded image does not match its attachment type.",
             @"retryable" : @NO
@@ -5310,12 +5310,12 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
         return;
     }
 
-    NSString *fileName = self.slock_attachmentExportFileName ?: @"image";
+    NSString *fileName = self.raft_attachmentExportFileName ?: @"image";
     NSURL *photoResourceURL = targetURL;
     if (fileName.pathExtension.length == 0) {
         NSString *preferredExtension = actualType.preferredFilenameExtension ?: @"";
         if (preferredExtension.length == 0) {
-            [self slock_finishAttachmentExport:@{
+            [self raft_finishAttachmentExport:@{
                 @"status" : @"unsupported_image",
                 @"message" : @"This image type cannot be saved to Photos.",
                 @"retryable" : @NO
@@ -5327,7 +5327,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             URLByAppendingPathComponent:fileName isDirectory:NO];
         NSError *stagingError = nil;
         if (![NSFileManager.defaultManager copyItemAtURL:targetURL toURL:photoResourceURL error:&stagingError]) {
-            [self slock_finishAttachmentExport:@{
+            [self raft_finishAttachmentExport:@{
                 @"status" : @"storage_failed",
                 @"message" : @"Unable to prepare image for Photos.",
                 @"retryable" : @YES
@@ -5335,9 +5335,9 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             return;
         }
     }
-    NSString *permissionStatus = self.slock_attachmentExportPermissionStatus ?: @"authorized";
+    NSString *permissionStatus = self.raft_attachmentExportPermissionStatus ?: @"authorized";
     NSString *actualMimeType = actualType.preferredMIMEType ?: @"";
-    NSNumber *sizeBytes = self.slock_attachmentExportSizeBytes ?: @0;
+    NSNumber *sizeBytes = self.raft_attachmentExportSizeBytes ?: @0;
     __block NSString *assetIdentifier = @"";
     __weak typeof(self) weakSelf = self;
     [[PHPhotoLibrary sharedPhotoLibrary]
@@ -5349,14 +5349,14 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
             assetIdentifier = creationRequest.placeholderForCreatedAsset.localIdentifier ?: @"";
         }
         completionHandler:^(BOOL success, NSError *error) {
-            SlockBridgeRunOnMain(^{
+            RaftBridgeRunOnMain(^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
-                if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
-                    ![strongSelf.slock_attachmentExportURL isEqual:targetURL]) {
+                if (!strongSelf || !strongSelf.raft_attachmentExportCallback ||
+                    ![strongSelf.raft_attachmentExportURL isEqual:targetURL]) {
                     return;
                 }
                 if (!success || error) {
-                    [strongSelf slock_finishAttachmentExport:@{
+                    [strongSelf raft_finishAttachmentExport:@{
                         @"status" : @"photos_failed",
                         @"message" : @"Couldn’t save this image to Photos. Try again.",
                         @"permissionStatus" : permissionStatus,
@@ -5364,7 +5364,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
                     }];
                     return;
                 }
-                [strongSelf slock_finishAttachmentExport:@{
+                [strongSelf raft_finishAttachmentExport:@{
                     @"status" : @"saved",
                     @"message" : @"Saved to Photos",
                     @"permissionStatus" : permissionStatus,
@@ -5382,34 +5382,34 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    if (self.slock_attachmentPickerCallback) {
-        [self slock_processDocumentPickerURLs:urls];
+    if (self.raft_attachmentPickerCallback) {
+        [self raft_processDocumentPickerURLs:urls];
         return;
     }
     NSURL *savedURL = urls.firstObject;
-    [self slock_finishAttachmentExport:@{
+    [self raft_finishAttachmentExport:@{
         @"status" : @"saved",
         @"message" : @"Saved to Files",
         @"uri" : savedURL.absoluteString ?: @"",
-        @"fileName" : self.slock_attachmentExportFileName ?: @"attachment",
+        @"fileName" : self.raft_attachmentExportFileName ?: @"attachment",
         @"cached" : @NO,
-        @"sizeBytes" : self.slock_attachmentExportSizeBytes ?: @0
+        @"sizeBytes" : self.raft_attachmentExportSizeBytes ?: @0
     }];
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
-    if (self.slock_attachmentPickerCallback) {
-        [self slock_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+    if (self.raft_attachmentPickerCallback) {
+        [self raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
         return;
     }
-    [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
+    [self raft_finishAttachmentExport:@{ @"status" : @"cancelled" }];
 }
 
-- (void)slock_presentPhotoPicker {
-    SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
+- (void)raft_presentPhotoPicker {
+    RaftBridgeRunOnMain(^{
+        UIViewController *controller = [self raft_currentViewController];
         if (!controller) {
-            [self slock_finishAttachmentPicker:@{
+            [self raft_finishAttachmentPicker:@{
                 @"code" : @0,
                 @"bodyText" : @"",
                 @"errorCode" : @"attachment_picker_unavailable",
@@ -5431,9 +5431,9 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     });
 }
 
-- (void)slock_requestAndPresentCamera {
+- (void)raft_requestAndPresentCamera {
     if (![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
-        [self slock_finishAttachmentPicker:@{
+        [self raft_finishAttachmentPicker:@{
             @"code" : @503,
             @"bodyText" : @"",
             @"errorCode" : @"attachment_camera_unavailable",
@@ -5443,11 +5443,11 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     }
     AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
     if (status == AVAuthorizationStatusAuthorized) {
-        [self slock_presentCamera];
+        [self raft_presentCamera];
         return;
     }
     if (status == AVAuthorizationStatusDenied || status == AVAuthorizationStatusRestricted) {
-        [self slock_finishAttachmentPicker:@{
+        [self raft_finishAttachmentPicker:@{
             @"code" : @403,
             @"bodyText" : @"",
             @"errorCode" : @"attachment_camera_permission_denied",
@@ -5457,15 +5457,15 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     }
     __weak typeof(self) weakSelf = self;
     [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
-        SlockBridgeRunOnMain(^{
+        RaftBridgeRunOnMain(^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf || !strongSelf.slock_attachmentPickerCallback) {
+            if (!strongSelf || !strongSelf.raft_attachmentPickerCallback) {
                 return;
             }
             if (granted) {
-                [strongSelf slock_presentCamera];
+                [strongSelf raft_presentCamera];
             } else {
-                [strongSelf slock_finishAttachmentPicker:@{
+                [strongSelf raft_finishAttachmentPicker:@{
                     @"code" : @403,
                     @"bodyText" : @"",
                     @"errorCode" : @"attachment_camera_permission_denied",
@@ -5476,11 +5476,11 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
     }];
 }
 
-- (void)slock_presentCamera {
-    SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
+- (void)raft_presentCamera {
+    RaftBridgeRunOnMain(^{
+        UIViewController *controller = [self raft_currentViewController];
         if (!controller || ![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
-            [self slock_finishAttachmentPicker:@{
+            [self raft_finishAttachmentPicker:@{
                 @"code" : @503,
                 @"bodyText" : @"",
                 @"errorCode" : @"attachment_camera_unavailable",
@@ -5499,7 +5499,7 @@ static NSDictionary *SlockAttachmentCacheStatusDict(NSString *directoryPath) {
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
     [picker dismissViewControllerAnimated:YES completion:nil];
-    [self slock_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+    [self raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
 }
 
 - (void)imagePickerController:(UIImagePickerController *)picker
@@ -5507,7 +5507,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     UIImage *image = info[UIImagePickerControllerOriginalImage];
     [picker dismissViewControllerAnimated:YES completion:nil];
     if (!image) {
-        [self slock_finishAttachmentPicker:@{
+        [self raft_finishAttachmentPicker:@{
             @"code" : @400,
             @"bodyText" : @"",
             @"errorCode" : @"attachment_read_failed",
@@ -5515,20 +5515,20 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }];
         return;
     }
-    BOOL compressImages = self.slock_attachmentPickerCompressImages;
+    BOOL compressImages = self.raft_attachmentPickerCompressImages;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSURL *temporaryURL = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
-            URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:SlockCameraCaptureFileExtension]
+            URLByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:RaftCameraCaptureFileExtension]
                          isDirectory:NO];
         NSError *error = nil;
         BOOL encoded = compressImages
-            ? SlockWriteCompressedCameraImage(image, temporaryURL, &error)
+            ? RaftWriteCompressedCameraImage(image, temporaryURL, &error)
             : [UIImageJPEGRepresentation(image, 0.92) writeToURL:temporaryURL
                                                           options:NSDataWritingAtomic
                                                             error:&error];
         if (!encoded) {
             [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
-            [self slock_finishAttachmentPicker:@{
+            [self raft_finishAttachmentPicker:@{
                 @"code" : @400,
                 @"bodyText" : @"",
                 @"errorCode" : compressImages
@@ -5538,18 +5538,18 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             return;
         }
         NSDictionary *file = nil;
-        file = [self slock_cachePickedAttachmentURL:temporaryURL
+        file = [self raft_cachePickedAttachmentURL:temporaryURL
                                       suggestedName:@"camera.jpg"
                                            mimeType:@"image/jpeg"
                                       compressImages:NO
                                                error:&error];
         [NSFileManager.defaultManager removeItemAtURL:temporaryURL error:nil];
         if (!file) {
-            [self slock_finishAttachmentPicker:@{
+            [self raft_finishAttachmentPicker:@{
                 @"code" : @400,
                 @"bodyText" : @"",
                 @"errorCode" : compressImages &&
-                    SlockIsThreadAttachmentImageCompressionError(error)
+                    RaftIsThreadAttachmentImageCompressionError(error)
                     ? @"attachment_image_compression_failed" : @"attachment_read_failed",
                 @"errorBodyText" : error.localizedDescription ?: @"Captured image could not be cached"
             }];
@@ -5557,15 +5557,15 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }
         NSMutableDictionary *capturedFile = [file mutableCopy];
         capturedFile[@"source"] = @"platform_camera";
-        [self slock_finishAttachmentPickerFiles:@[ capturedFile ] errors:@[]];
+        [self raft_finishAttachmentPickerFiles:@[ capturedFile ] errors:@[]];
     });
 }
 
-- (void)slock_presentDocumentPicker {
-    SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
+- (void)raft_presentDocumentPicker {
+    RaftBridgeRunOnMain(^{
+        UIViewController *controller = [self raft_currentViewController];
         if (!controller) {
-            [self slock_finishAttachmentPicker:@{
+            [self raft_finishAttachmentPicker:@{
                 @"code" : @0,
                 @"bodyText" : @"",
                 @"errorCode" : @"attachment_picker_unavailable",
@@ -5584,14 +5584,14 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
     [picker dismissViewControllerAnimated:YES completion:nil];
     if (results.count == 0) {
-        [self slock_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+        [self raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
         return;
     }
-    [self slock_processPhotoPickerResults:results];
+    [self raft_processPhotoPickerResults:results];
 }
 
-- (void)slock_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results {
-    BOOL compressImages = self.slock_attachmentPickerCompressImages;
+- (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results {
+    BOOL compressImages = self.raft_attachmentPickerCompressImages;
     dispatch_queue_t worker = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
     dispatch_group_t group = dispatch_group_create();
     NSMutableArray *orderedFiles = [NSMutableArray arrayWithCapacity:results.count];
@@ -5601,7 +5601,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }
     [results enumerateObjectsUsingBlock:^(PHPickerResult *result, NSUInteger index, BOOL *stop) {
         NSItemProvider *provider = result.itemProvider;
-        UTType *mediaType = SlockPreferredPickedMediaType(provider);
+        UTType *mediaType = RaftPreferredPickedMediaType(provider);
         NSString *typeIdentifier = mediaType.identifier;
         if (mediaType == nil || ![provider hasItemConformingToTypeIdentifier:typeIdentifier]) {
             @synchronized (errors) {
@@ -5618,7 +5618,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             NSError *cacheError = loadError;
             NSDictionary *file = nil;
             if (url && !cacheError) {
-                file = [self slock_cachePickedAttachmentURL:url
+                file = [self raft_cachePickedAttachmentURL:url
                                              suggestedName:provider.suggestedName
                                                   mimeType:mediaType.preferredMIMEType
                                              compressImages:compressImages &&
@@ -5631,7 +5631,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }
             } else {
                 NSString *errorCode =
-                    SlockIsThreadAttachmentImageCompressionError(cacheError)
+                    RaftIsThreadAttachmentImageCompressionError(cacheError)
                         ? @"attachment_image_compression_failed"
                         : @"attachment_read_failed";
                 @synchronized (errors) {
@@ -5654,23 +5654,23 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }
             }
         }
-        [self slock_finishAttachmentPickerFiles:files errors:errors];
+        [self raft_finishAttachmentPickerFiles:files errors:errors];
     });
 }
 
-- (void)slock_processDocumentPickerURLs:(NSArray<NSURL *> *)urls {
-    BOOL compressImages = self.slock_attachmentPickerCompressImages;
+- (void)raft_processDocumentPickerURLs:(NSArray<NSURL *> *)urls {
+    BOOL compressImages = self.raft_attachmentPickerCompressImages;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSMutableArray<NSDictionary *> *files = [NSMutableArray array];
         NSMutableArray<NSDictionary *> *errors = [NSMutableArray array];
         [urls enumerateObjectsUsingBlock:^(NSURL *url, NSUInteger index, BOOL *stop) {
             BOOL securityScoped = [url startAccessingSecurityScopedResource];
             NSError *error = nil;
-            NSDictionary *file = [self slock_cachePickedAttachmentURL:url
+            NSDictionary *file = [self raft_cachePickedAttachmentURL:url
                                                         suggestedName:url.lastPathComponent
                                                              mimeType:nil
                                                         compressImages:compressImages &&
-                                                            SlockAttachmentIsImage(url.lastPathComponent, nil, url)
+                                                            RaftAttachmentIsImage(url.lastPathComponent, nil, url)
                                                                 error:&error];
             if (securityScoped) {
                 [url stopAccessingSecurityScopedResource];
@@ -5679,7 +5679,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 [files addObject:file];
             } else {
                 NSString *errorCode =
-                    SlockIsThreadAttachmentImageCompressionError(error)
+                    RaftIsThreadAttachmentImageCompressionError(error)
                         ? @"attachment_image_compression_failed"
                         : @"attachment_read_failed";
                 [errors addObject:@{
@@ -5689,11 +5689,11 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }];
             }
         }];
-        [self slock_finishAttachmentPickerFiles:files errors:errors];
+        [self raft_finishAttachmentPickerFiles:files errors:errors];
     });
 }
 
-- (void)slock_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
+- (void)raft_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
                                     errors:(NSArray<NSDictionary *> *)errors {
     if (files.count == 0) {
         BOOL compressionFailed = NO;
@@ -5703,7 +5703,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 break;
             }
         }
-        [self slock_finishAttachmentPicker:@{
+        [self raft_finishAttachmentPicker:@{
             @"code" : @400,
             @"bodyText" : @"",
             @"errorCode" : compressionFailed ? @"attachment_image_compression_failed" : @"attachment_read_failed",
@@ -5736,10 +5736,10 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         result[@"errorCode"] = compressionFailed ? @"attachment_image_compression_failed" : @"attachment_read_partial";
         result[@"errorBodyText"] = [NSString stringWithFormat:@"%lu attachment(s) could not be read", (unsigned long)errors.count];
     }
-    [self slock_finishAttachmentPicker:result];
+    [self raft_finishAttachmentPicker:result];
 }
 
-- (NSDictionary *)slock_cachePickedAttachmentURL:(NSURL *)sourceURL
+- (NSDictionary *)raft_cachePickedAttachmentURL:(NSURL *)sourceURL
                                     suggestedName:(NSString *)suggestedName
                                          mimeType:(NSString *)mimeType
                                     compressImages:(BOOL)compressImages
@@ -5749,25 +5749,25 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     if (!cacheRoot) {
         return nil;
     }
-    NSURL *directory = [[cacheRoot URLByAppendingPathComponent:SlockPickedAttachmentParentDirectoryName isDirectory:YES]
-        URLByAppendingPathComponent:SlockThreadImageCompressionDirectoryName isDirectory:YES];
+    NSURL *directory = [[cacheRoot URLByAppendingPathComponent:RaftPickedAttachmentParentDirectoryName isDirectory:YES]
+        URLByAppendingPathComponent:RaftThreadImageCompressionDirectoryName isDirectory:YES];
     if (![fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:error]) {
         return nil;
     }
-    NSString *displayName = SlockPickedAttachmentDisplayName(suggestedName, sourceURL, mimeType);
+    NSString *displayName = RaftPickedAttachmentDisplayName(suggestedName, sourceURL, mimeType);
     NSString *extension = displayName.pathExtension;
     NSString *cacheName = NSUUID.UUID.UUIDString;
     if (extension.length > 0) {
         cacheName = [cacheName stringByAppendingPathExtension:extension];
     }
     NSURL *targetURL = [directory URLByAppendingPathComponent:cacheName isDirectory:NO];
-    BOOL isImage = SlockAttachmentIsImage(displayName, mimeType, sourceURL);
+    BOOL isImage = RaftAttachmentIsImage(displayName, mimeType, sourceURL);
     if (compressImages && isImage) {
-        NSString *compressedName = SlockCompressedAttachmentFileName(displayName);
+        NSString *compressedName = RaftCompressedAttachmentFileName(displayName);
         targetURL = [directory URLByAppendingPathComponent:
             [NSString stringWithFormat:@"%@-%@", NSUUID.UUID.UUIDString, compressedName]
                                                    isDirectory:NO];
-        if (!SlockWriteCompressedPickedImage(sourceURL, targetURL, error)) {
+        if (!RaftWriteCompressedPickedImage(sourceURL, targetURL, error)) {
             [fileManager removeItemAtURL:targetURL error:nil];
             return nil;
         }
@@ -5795,14 +5795,14 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     };
 }
 
-- (void)slock_finishAttachmentPicker:(NSDictionary *)result {
-    RaftBridgeCallback callback = self.slock_attachmentPickerCallback;
-    NSString *channelId = self.slock_attachmentPickerChannelId;
+- (void)raft_finishAttachmentPicker:(NSDictionary *)result {
+    RaftBridgeCallback callback = self.raft_attachmentPickerCallback;
+    NSString *channelId = self.raft_attachmentPickerChannelId;
     NSArray *files = [result[@"files"] isKindOfClass:NSArray.class] ? result[@"files"] : @[];
-    self.slock_attachmentPickerCallback = nil;
-    self.slock_attachmentPickerChannelId = nil;
-    self.slock_attachmentPickerCompressImages = NO;
-    SlockDiagnosticsRecord(
+    self.raft_attachmentPickerCallback = nil;
+    self.raft_attachmentPickerChannelId = nil;
+    self.raft_attachmentPickerCompressImages = NO;
+    RaftDiagnosticsRecord(
         @"info",
         @"SlockKuiklyAttachment",
         [NSString stringWithFormat:@"picker_finish code=%@ files=%lu channelIdPresent=%@",
@@ -5811,24 +5811,24 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                                    channelId.length > 0 ? @"true" : @"false"]
     );
     if (callback) {
-        SlockBridgeRunOnMain(^{ callback(result ?: @{}); });
+        RaftBridgeRunOnMain(^{ callback(result ?: @{}); });
     }
 }
 
-- (void)slock_finishAttachmentExport:(NSDictionary *)result {
-    RaftBridgeCallback callback = self.slock_attachmentExportCallback;
-    NSURL *exportURL = self.slock_attachmentExportURL;
-    self.slock_attachmentExportCallback = nil;
-    self.slock_attachmentExportRequestId = nil;
-    self.slock_attachmentExportDownloadId = nil;
-    self.slock_attachmentExportOperationId = nil;
-    self.slock_attachmentExportURL = nil;
-    self.slock_attachmentExportFileName = nil;
-    self.slock_attachmentExportSizeBytes = nil;
-    self.slock_attachmentExportTrackProgress = NO;
-    self.slock_attachmentExportDestination = nil;
-    self.slock_attachmentExportMimeType = nil;
-    self.slock_attachmentExportPermissionStatus = nil;
+- (void)raft_finishAttachmentExport:(NSDictionary *)result {
+    RaftBridgeCallback callback = self.raft_attachmentExportCallback;
+    NSURL *exportURL = self.raft_attachmentExportURL;
+    self.raft_attachmentExportCallback = nil;
+    self.raft_attachmentExportRequestId = nil;
+    self.raft_attachmentExportDownloadId = nil;
+    self.raft_attachmentExportOperationId = nil;
+    self.raft_attachmentExportURL = nil;
+    self.raft_attachmentExportFileName = nil;
+    self.raft_attachmentExportSizeBytes = nil;
+    self.raft_attachmentExportTrackProgress = NO;
+    self.raft_attachmentExportDestination = nil;
+    self.raft_attachmentExportMimeType = nil;
+    self.raft_attachmentExportPermissionStatus = nil;
     if (exportURL) {
         [NSFileManager.defaultManager removeItemAtURL:[exportURL URLByDeletingLastPathComponent] error:nil];
     }
@@ -5838,8 +5838,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (NSString *)retireFilePreviewTemporaryFiles:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *sessionId = SlockBridgeString(params[@"sessionId"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *sessionId = RaftBridgeString(params[@"sessionId"]);
     NSArray *rawRefs = [params[@"fileRefs"] isKindOfClass:NSArray.class] ? params[@"fileRefs"] : @[];
     NSMutableSet<NSString *> *refs = [NSMutableSet set];
     for (id rawRef in rawRefs) {
@@ -5849,8 +5849,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         if (ref.length > 0) [refs addObject:ref];
     }
     SharedThreadComposerTemporaryFileRetirementResult *result =
-        SlockIosRetireThreadComposerTemporaryFileRefs(sessionId, refs);
-    SlockIosDiagnosticsRecord(
+        RaftIosRetireThreadComposerTemporaryFileRefs(sessionId, refs);
+    RaftIosDiagnosticsRecord(
         @"info",
         @"SlockFilePreviewCleanup",
         [NSString stringWithFormat:@"session=%@ requested=%d admitted=%d quarantined=%d rejected=%d failed=%d",
@@ -5877,10 +5877,10 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (void)attachmentDownloadControl:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) return;
-    NSDictionary *params = SlockBridgeParams(args);
-    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
-    NSString *attemptToken = SlockBridgeString(params[@"attemptToken"]);
-    NSString *action = SlockBridgeString(params[@"action"]);
+    NSDictionary *params = RaftBridgeParams(args);
+    NSString *downloadId = RaftBridgeString(params[@"downloadId"]);
+    NSString *attemptToken = RaftBridgeString(params[@"attemptToken"]);
+    NSString *action = RaftBridgeString(params[@"action"]);
     if (downloadId.length == 0 || action.length == 0) {
         callback(@{ @"status" : @"failed", @"message" : @"Missing download control field" });
         return;
@@ -5899,7 +5899,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (void)relationalStore:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"relational_store_unavailable"
+        callback([self raft_unsupportedResultWithCode:@"relational_store_unavailable"
                                                message:@"Relational store is out of scope for iOS P0 host bridge"]);
     }
 }
@@ -5907,15 +5907,15 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 - (void)motionCapability:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"motion_capability_unavailable"
+        callback([self raft_unsupportedResultWithCode:@"motion_capability_unavailable"
                                                message:@"Motion capability is out of scope for iOS P0 host bridge"]);
     }
 }
 
 - (void)reportRealTime:(NSDictionary *)args {
-    NSDictionary *params = SlockBridgeParams(args);
+    NSDictionary *params = RaftBridgeParams(args);
     NSMutableDictionary *command = [params isKindOfClass:NSDictionary.class] ? [params mutableCopy] : [NSMutableDictionary dictionary];
-    [[SlockIosRealtimeHost shared] handleCommand:command];
+    [[RaftIosRealtimeHost shared] handleCommand:command];
 }
 
 - (void)reportRealtime:(NSDictionary *)args {
@@ -5924,7 +5924,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 
 #pragma mark - Private
 
-- (NSDictionary *)slock_unsupportedResultWithCode:(NSString *)code message:(NSString *)message {
+- (NSDictionary *)raft_unsupportedResultWithCode:(NSString *)code message:(NSString *)message {
     return @{
         @"status" : @"error",
         @"code" : code ?: @"unsupported",
@@ -5932,7 +5932,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     };
 }
 
-- (NSDictionary *)slock_developerCapabilityResultWithFeedback:(NSString *)feedback {
+- (NSDictionary *)raft_developerCapabilityResultWithFeedback:(NSString *)feedback {
     return @{
         @"status" : @"ok",
         @"environmentKey" : @"default",
@@ -5942,7 +5942,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     };
 }
 
-- (NSDictionary *)slock_notificationPermissionResultForSettings:(UNNotificationSettings *)settings {
+- (NSDictionary *)raft_notificationPermissionResultForSettings:(UNNotificationSettings *)settings {
     switch (settings.authorizationStatus) {
         case UNAuthorizationStatusAuthorized:
             return @{
@@ -5988,23 +5988,23 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     };
 }
 
-- (void)slock_getNotificationPermissionStatusWithCallback:(RaftBridgeCallback)callback {
+- (void)raft_getNotificationPermissionStatusWithCallback:(RaftBridgeCallback)callback {
     [[UNUserNotificationCenter currentNotificationCenter]
         getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
-            NSDictionary *result = [self slock_notificationPermissionResultForSettings:settings];
-            SlockBridgeRunOnMain(^{
+            NSDictionary *result = [self raft_notificationPermissionResultForSettings:settings];
+            RaftBridgeRunOnMain(^{
                 callback(result);
             });
         }];
 }
 
-- (void)slock_requestNotificationPermissionWithCallback:(RaftBridgeCallback)callback {
+- (void)raft_requestNotificationPermissionWithCallback:(RaftBridgeCallback)callback {
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
     [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
         if (settings.authorizationStatus != UNAuthorizationStatusNotDetermined &&
             settings.authorizationStatus != UNAuthorizationStatusProvisional) {
-            NSDictionary *result = [self slock_notificationPermissionResultForSettings:settings];
-            SlockBridgeRunOnMain(^{
+            NSDictionary *result = [self raft_notificationPermissionResultForSettings:settings];
+            RaftBridgeRunOnMain(^{
                 callback(result);
             });
             return;
@@ -6013,8 +6013,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         [center requestAuthorizationWithOptions:options
                               completionHandler:^(BOOL granted, NSError *error) {
             if (error) {
-                SlockDiagnosticsRecord(@"warn", @"SlockIosPush", @"notification_permission_request_failed source=settings");
-                SlockBridgeRunOnMain(^{
+                RaftDiagnosticsRecord(@"warn", @"SlockIosPush", @"notification_permission_request_failed source=settings");
+                RaftBridgeRunOnMain(^{
                     callback(@{
                         @"status" : @"error",
                         @"code" : @"permission_request_failed",
@@ -6023,18 +6023,18 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 });
                 return;
             }
-            SlockDiagnosticsRecord(
+            RaftDiagnosticsRecord(
                 @"info",
                 @"SlockIosPush",
                 [NSString stringWithFormat:@"notification_permission_request_finished source=settings granted=%@", granted ? @"true" : @"false"]
             );
-            [self slock_getNotificationPermissionStatusWithCallback:callback];
+            [self raft_getNotificationPermissionStatusWithCallback:callback];
         }];
     }];
 }
 
-- (void)slock_openNotificationSettingsWithCallback:(RaftBridgeCallback)callback {
-    SlockBridgeRunOnMain(^{
+- (void)raft_openNotificationSettingsWithCallback:(RaftBridgeCallback)callback {
+    RaftBridgeRunOnMain(^{
         NSString *settingsUrlString = UIApplicationOpenSettingsURLString;
         if (@available(iOS 16.0, *)) {
             settingsUrlString = UIApplicationOpenNotificationSettingsURLString;
@@ -6067,21 +6067,21 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     });
 }
 
-- (NSDictionary *)slock_settingsCapabilityResultForAction:(NSString *)action params:(NSDictionary *)params {
+- (NSDictionary *)raft_settingsCapabilityResultForAction:(NSString *)action params:(NSDictionary *)params {
     if (action.length == 0) {
-        return [self slock_unsupportedResultWithCode:@"settings_capability_unknown"
+        return [self raft_unsupportedResultWithCode:@"settings_capability_unknown"
                                              message:@"Missing settings capability action"];
     }
     if ([action isEqualToString:@"loadAbout"]) {
-        NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+        NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
         about[@"status"] = @"ok";
         return about;
     }
     if ([action isEqualToString:@"loadDeveloper"]) {
-        return [self slock_developerCapabilityResultWithFeedback:nil];
+        return [self raft_developerCapabilityResultWithFeedback:nil];
     }
     if ([action isEqualToString:@"loadDiagnostics"]) {
-        NSString *recentText = SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars);
+        NSString *recentText = RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars);
         return @{
             @"status" : @"ok",
             @"entries" : @[
@@ -6094,35 +6094,35 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         };
     }
     if ([action isEqualToString:@"copyDiagnostics"]) {
-        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
-        SlockBridgeRunOnMain(^{
+        NSString *exportText = RaftDiagnosticsBuildExportText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
+        RaftBridgeRunOnMain(^{
             UIPasteboard.generalPasteboard.string = exportText;
         });
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
+        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"shareDiagnostics"]) {
-        NSString *exportText = SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
-        [self slock_shareItems:@[ exportText ]];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
+        NSString *exportText = RaftDiagnosticsBuildExportText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES);
+        [self raft_shareItems:@[ exportText ]];
+        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"clearDiagnostics"]) {
-        SlockDiagnosticsClear();
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
+        RaftDiagnosticsClear();
+        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
         // Self-host login: the socket still points at the previous server. Close every connection now, as the
         // Android and HarmonyOS hosts do; the cleared session reconnects to the new environment after login.
-        [[SlockIosRealtimeHost shared] handleCommand:@{
+        [[RaftIosRealtimeHost shared] handleCommand:@{
             @"action" : @"disconnect",
             @"reason" : @"api_environment_changed",
         }];
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"setApiEnvironment"]) {
-        return [self slock_unsupportedResultWithCode:@"settings_developer_environment_unsupported"
+        return [self raft_unsupportedResultWithCode:@"settings_developer_environment_unsupported"
                                              message:@"API environment switching is not wired on iOS P0"];
     }
     if ([action isEqualToString:@"sendTestNotification"] ||
@@ -6136,49 +6136,49 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         };
     }
     if ([action isEqualToString:@"prepareDiagnosticsFeedback"]) {
-        return [self slock_prepareDiagnosticsFeedbackDraft];
+        return [self raft_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
-        [self slock_promptAndSubmitHandsFeedback];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_prompt_opened");
+        [self raft_promptAndSubmitHandsFeedback];
+        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_prompt_opened");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"submitFeedback"]) {
-        NSString *description = [SlockBridgeString(params[@"message"])
+        NSString *description = [RaftBridgeString(params[@"message"])
             stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (description.length == 0) {
-            return [self slock_unsupportedResultWithCode:@"settings_feedback_message_required"
+            return [self raft_unsupportedResultWithCode:@"settings_feedback_message_required"
                                                  message:@"Feedback message is required"];
         }
-        [self slock_submitHandsFeedbackWithDescription:description];
-        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_submit_started");
+        [self raft_submitHandsFeedbackWithDescription:description];
+        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"hands_feedback_submit_started");
         return @{ @"status" : @"ok", @"ticketId" : @"", @"shareText" : @"" };
     }
-    return [self slock_unsupportedResultWithCode:@"settings_capability_unknown"
+    return [self raft_unsupportedResultWithCode:@"settings_capability_unknown"
                                          message:[NSString stringWithFormat:@"Unsupported settings capability action: %@", action]];
 }
 
-- (void)slock_openPageWithName:(NSString *)pageName pageData:(NSDictionary *)pageData replaceCurrent:(BOOL)replaceCurrent {
-    SlockBridgeRunOnMain(^{
+- (void)raft_openPageWithName:(NSString *)pageName pageData:(NSDictionary *)pageData replaceCurrent:(BOOL)replaceCurrent {
+    RaftBridgeRunOnMain(^{
         // task #473: a server switch marked `slockDocumentShell` targets a shell
         // window keyed by the route owner triple instead of a page in this
         // scene. On iPad this activates/reuses the matching scene; on a
         // single-scene surface (iPhone) the activation resolves to the current
         // scene, and the shared side then opens the target page via the normal
         // render path once the (re)activated shell loads.
-        if (SlockBridgeBool(pageData[@"slockDocumentShell"]) &&
-            [RaftIosShellWindowBridge activateShellWithEnvironmentId:SlockBridgeString(pageData[@"slockRouteEnvironmentId"])
-                                                         accountId:SlockBridgeString(pageData[@"slockRouteAccountId"])
-                                                          serverId:SlockBridgeString(pageData[@"slockRouteServerId"])
+        if (RaftBridgeBool(pageData[@"slockDocumentShell"]) &&
+            [RaftIosShellWindowBridge activateShellWithEnvironmentId:RaftBridgeString(pageData[@"slockRouteEnvironmentId"])
+                                                         accountId:RaftBridgeString(pageData[@"slockRouteAccountId"])
+                                                          serverId:RaftBridgeString(pageData[@"slockRouteServerId"])
                                                             source:@"server_switch"]) {
             return;
         }
-        if (SlockBridgeBool(pageData[@"slockDocumentShell"])) {
-            SlockDiagnosticsRecord(@"warn", @"RaftIosShellWindow", @"document_shell_fallback source=server_switch");
+        if (RaftBridgeBool(pageData[@"slockDocumentShell"])) {
+            RaftDiagnosticsRecord(@"warn", @"RaftIosShellWindow", @"document_shell_fallback source=server_switch");
         }
-        UIViewController *controller = [self slock_currentViewController];
+        UIViewController *controller = [self raft_currentViewController];
         UIViewController *renderViewController =
-            [SlockPageControllerFactory controllerForPageName:pageName pageData:pageData ?: @{}];
+            [RaftPageControllerFactory controllerForPageName:pageName pageData:pageData ?: @{}];
         UINavigationController *navigationController = controller.navigationController;
         if (navigationController) {
             if (replaceCurrent && navigationController.viewControllers.count > 0) {
@@ -6201,24 +6201,24 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 /// description, submit a kind=bug ticket with the diagnostics export
 /// attached, then copy a shareable "Hands feedback <id>" reference to the
 /// clipboard so the user can paste it in the community.
-- (void)slock_promptAndSubmitHandsFeedback {
-    SlockBridgeRunOnMain(^{
-        UIViewController *controller = [self slock_currentViewController];
+- (void)raft_promptAndSubmitHandsFeedback {
+    RaftBridgeRunOnMain(^{
+        UIViewController *controller = [self raft_currentViewController];
         if (!controller) {
             return;
         }
         UIAlertController *prompt =
-            [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackPromptTitle
-                                                message:SharedSlockHostStrings.shared.feedbackPromptMessage
+            [UIAlertController alertControllerWithTitle:SharedRaftHostStrings.shared.feedbackPromptTitle
+                                                message:SharedRaftHostStrings.shared.feedbackPromptMessage
                                          preferredStyle:UIAlertControllerStyleAlert];
         [prompt addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-            textField.placeholder = SharedSlockHostStrings.shared.feedbackPromptPlaceholder;
+            textField.placeholder = SharedRaftHostStrings.shared.feedbackPromptPlaceholder;
         }];
-        [prompt addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.feedbackCancel
+        [prompt addAction:[UIAlertAction actionWithTitle:SharedRaftHostStrings.shared.feedbackCancel
                                                    style:UIAlertActionStyleCancel
                                                  handler:nil]];
         __weak UIAlertController *weakPrompt = prompt;
-        [prompt addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.feedbackSend
+        [prompt addAction:[UIAlertAction actionWithTitle:SharedRaftHostStrings.shared.feedbackSend
                                                    style:UIAlertActionStyleDefault
                                                  handler:^(UIAlertAction *action) {
             NSString *description = [weakPrompt.textFields.firstObject.text
@@ -6226,41 +6226,41 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             if (description.length == 0) {
                 return;
             }
-            [self slock_submitHandsFeedbackWithDescription:description];
+            [self raft_submitHandsFeedbackWithDescription:description];
         }]];
         [controller presentViewController:prompt animated:YES completion:nil];
     });
 }
 
-- (void)slock_submitHandsFeedbackWithDescription:(NSString *)description {
+- (void)raft_submitHandsFeedbackWithDescription:(NSString *)description {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
+        NSDictionary *draft = [self raft_prepareDiagnosticsFeedbackDraft];
         NSArray *draftPaths = [draft[@"attachmentPaths"] isKindOfClass:NSArray.class] ? draft[@"attachmentPaths"] : @[];
-        NSString *path = SlockBridgeString(draft[@"filePath"]);
+        NSString *path = RaftBridgeString(draft[@"filePath"]);
         NSArray<NSString *> *attachments = draftPaths.count > 0 ? draftPaths : (path.length > 0 ? @[ path ] : @[]);
         [Hands submitFeedback:description
                            kind:@"bug"
                 attachmentPaths:attachments
                          extras:nil
                      completion:^(NSString *ticketId, NSError *error) {
-            SlockBridgeRunOnMain(^{
-                UIViewController *controller = [self slock_currentViewController];
+            RaftBridgeRunOnMain(^{
+                UIViewController *controller = [self raft_currentViewController];
                 if (error || ticketId.length == 0) {
-                    SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics",
+                    RaftDiagnosticsRecord(@"warn", @"SlockDiagnostics",
                         [NSString stringWithFormat:@"hands_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
                     UIAlertController *failed =
-                        [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackFailedTitle
-                                                            message:error.localizedDescription ?: SharedSlockHostStrings.shared.feedbackErrorUnknown
+                        [UIAlertController alertControllerWithTitle:SharedRaftHostStrings.shared.feedbackFailedTitle
+                                                            message:error.localizedDescription ?: SharedRaftHostStrings.shared.feedbackErrorUnknown
                                                      preferredStyle:UIAlertControllerStyleAlert];
-                    [failed addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
+                    [failed addAction:[UIAlertAction actionWithTitle:SharedRaftHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
                     [controller presentViewController:failed animated:YES completion:nil];
                     return;
                 }
                 NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
-                NSString *environment = SlockDiagnosticsEnvironmentSectionFromExportText(
-                    SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES)
+                NSString *environment = RaftDiagnosticsEnvironmentSectionFromExportText(
+                    RaftDiagnosticsBuildExportText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}], YES)
                 );
-                NSString *attachmentBlock = SlockHandsFeedbackAttachmentBlock(attachments);
+                NSString *attachmentBlock = RaftHandsFeedbackAttachmentBlock(attachments);
                 NSString *attachmentSection = attachmentBlock.length > 0
                     ? [NSString stringWithFormat:@"\n%@", attachmentBlock]
                     : @"";
@@ -6271,68 +6271,68 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                     environment.length > 0 ? environment : @"--",
                     description];
                 UIPasteboard.generalPasteboard.string = shareText;
-                SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics",
                     [NSString stringWithFormat:@"hands_feedback_submitted ticket=%@", shortId]);
                 UIAlertController *done =
-                    [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackSentTitle
-                                                        message:SharedSlockHostStrings.shared.feedbackCopiedMessage
+                    [UIAlertController alertControllerWithTitle:SharedRaftHostStrings.shared.feedbackSentTitle
+                                                        message:SharedRaftHostStrings.shared.feedbackCopiedMessage
                                                  preferredStyle:UIAlertControllerStyleAlert];
-                [done addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
+                [done addAction:[UIAlertAction actionWithTitle:SharedRaftHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
                 [controller presentViewController:done animated:YES completion:nil];
             });
         }];
     });
 }
 
-- (NSDictionary *)slock_prepareDiagnosticsFeedbackDraft {
-    NSDictionary *about = [self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
-    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
-    if (![SlockBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
+- (NSDictionary *)raft_prepareDiagnosticsFeedbackDraft {
+    NSDictionary *about = [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
+    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
+    if (![RaftBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
         return attachments;
     }
-    NSString *fileName = SlockBridgeString(attachments[@"fileName"]);
+    NSString *fileName = RaftBridgeString(attachments[@"fileName"]);
     NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
     return @{
         @"status" : @"ok",
         @"message" : message,
         @"fileName" : fileName,
-        @"mimeType" : SlockBridgeString(attachments[@"mimeType"]),
+        @"mimeType" : RaftBridgeString(attachments[@"mimeType"]),
         @"sizeBytes" : attachments[@"sizeBytes"] ?: @0,
-        @"bodyBase64" : SlockBridgeString(attachments[@"bodyBase64"]),
-        @"filePath" : SlockBridgeString(attachments[@"filePath"]),
+        @"bodyBase64" : RaftBridgeString(attachments[@"bodyBase64"]),
+        @"filePath" : RaftBridgeString(attachments[@"filePath"]),
         @"attachmentPaths" : attachments[@"attachmentPaths"] ?: @[]
     };
 }
 
-- (void)slock_shareItems:(NSArray *)items {
+- (void)raft_shareItems:(NSArray *)items {
     if (items.count == 0) {
         return;
     }
-    SlockBridgeRunOnMain(^{
-        [self slock_presentShareItems:items attempt:1];
+    RaftBridgeRunOnMain(^{
+        [self raft_presentShareItems:items attempt:1];
     });
 }
 
-- (void)slock_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
-    UIViewController *controller = SlockSharePresenterController(
-        self.slock_sharePresenterController, [self slock_currentViewController]);
+- (void)raft_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
+    UIViewController *controller = RaftSharePresenterController(
+        self.raft_sharePresenterController, [self raft_currentViewController]);
     if (!controller) {
-        NSString *reason = [self slock_shareControllerFailureReason];
+        NSString *reason = [self raft_shareControllerFailureReason];
         if (attempt < 2) {
-            SlockDiagnosticsRecord(
+            RaftDiagnosticsRecord(
                 @"warn", @"SlockShare",
                 [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=%@",
                  (long)attempt, reason]);
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self slock_presentShareItems:items attempt:attempt + 1];
+                [self raft_presentShareItems:items attempt:attempt + 1];
             });
             return;
         }
-        SlockDiagnosticsRecord(
+        RaftDiagnosticsRecord(
             @"error", @"SlockShare",
             [NSString stringWithFormat:@"share_present_failed attempt=%ld reason=%@",
              (long)attempt, reason]);
-        [self slock_showToast:SharedSlockHostStrings.shared.shareOpenFailed];
+        [self raft_showToast:SharedRaftHostStrings.shared.shareOpenFailed];
         return;
     }
     UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
@@ -6345,12 +6345,12 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     [controller presentViewController:activityController animated:YES completion:nil];
 }
 
-UIViewController *SlockSharePresenterController(UIViewController *capturedPresenter,
+UIViewController *RaftSharePresenterController(UIViewController *capturedPresenter,
                                                 UIViewController *frontmostPresenter) {
     return capturedPresenter ?: frontmostPresenter;
 }
 
-- (NSString *)slock_shareControllerFailureReason {
+- (NSString *)raft_shareControllerFailureReason {
     BOOL hasForegroundActiveScene = YES;
     if (@available(iOS 13.0, *)) {
         hasForegroundActiveScene = NO;
@@ -6362,11 +6362,11 @@ UIViewController *SlockSharePresenterController(UIViewController *capturedPresen
             }
         }
     }
-    return SlockShareControllerFailureReason(
-        self.slockHostController.viewIfLoaded.window != nil, hasForegroundActiveScene);
+    return RaftShareControllerFailureReason(
+        self.raftHostController.viewIfLoaded.window != nil, hasForegroundActiveScene);
 }
 
-NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
+NSString *RaftShareControllerFailureReason(BOOL hasRootViewWindow,
                                             BOOL hasForegroundActiveScene) {
     if (!hasRootViewWindow) {
         return @"detached_root";
@@ -6377,29 +6377,29 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
     return @"no_controller";
 }
 
-- (UIViewController *)slock_currentViewController {
-    UIViewController *controller = self.slockHostController;
+- (UIViewController *)raft_currentViewController {
+    UIViewController *controller = self.raftHostController;
     if (!controller) {
-        controller = [self slock_keyWindow].rootViewController;
+        controller = [self raft_keyWindow].rootViewController;
     }
-    return [self slock_topViewControllerFrom:controller] ?: controller;
+    return [self raft_topViewControllerFrom:controller] ?: controller;
 }
 
-- (UIViewController *)slock_topViewControllerFrom:(UIViewController *)controller {
+- (UIViewController *)raft_topViewControllerFrom:(UIViewController *)controller {
     if ([controller isKindOfClass:UINavigationController.class]) {
-        return [self slock_topViewControllerFrom:((UINavigationController *)controller).topViewController];
+        return [self raft_topViewControllerFrom:((UINavigationController *)controller).topViewController];
     }
     if ([controller isKindOfClass:UITabBarController.class]) {
-        return [self slock_topViewControllerFrom:((UITabBarController *)controller).selectedViewController];
+        return [self raft_topViewControllerFrom:((UITabBarController *)controller).selectedViewController];
     }
     if (controller.presentedViewController) {
-        return [self slock_topViewControllerFrom:controller.presentedViewController];
+        return [self raft_topViewControllerFrom:controller.presentedViewController];
     }
     return controller;
 }
 
-- (UIWindow *)slock_keyWindow {
-    UIWindow *hostWindow = self.slockHostController.viewIfLoaded.window;
+- (UIWindow *)raft_keyWindow {
+    UIWindow *hostWindow = self.raftHostController.viewIfLoaded.window;
     if (hostWindow) {
         return hostWindow;
     }
@@ -6422,11 +6422,11 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
 #pragma clang diagnostic pop
 }
 
-- (void)slock_showToast:(NSString *)content {
-    UIViewController *controller = [self slock_currentViewController];
-    UIView *hostView = controller.view ?: [self slock_keyWindow];
+- (void)raft_showToast:(NSString *)content {
+    UIViewController *controller = [self raft_currentViewController];
+    UIView *hostView = controller.view ?: [self raft_keyWindow];
     if (!hostView) {
-        NSLog(@"[%@][info] toast: %@", SlockBridgeDefaultLogTag, content);
+        NSLog(@"[%@][info] toast: %@", RaftBridgeDefaultLogTag, content);
         return;
     }
     UILabel *label = [[UILabel alloc] init];
@@ -6462,19 +6462,19 @@ NSString *SlockShareControllerFailureReason(BOOL hasRootViewWindow,
 }
 
 - (void)dealloc {
-    [self slock_destroyFeedbackDiagnosticsUploads];
-    NSArray<SlockThreadImageCompressionOperation *> *operations = @[];
-    if (_slock_threadImageCompressionOperationsLock) {
-        [_slock_threadImageCompressionOperationsLock lock];
+    [self raft_destroyFeedbackDiagnosticsUploads];
+    NSArray<RaftThreadImageCompressionOperation *> *operations = @[];
+    if (_raft_threadImageCompressionOperationsLock) {
+        [_raft_threadImageCompressionOperationsLock lock];
         // Publish the terminal lifecycle fence before dropping the map.  Any worker/main block
         // that still owns a weak reference will observe this bit and must not invoke a renderer
         // callback after the module starts teardown.
-        _slock_threadImageCompressionDestroyed = YES;
-        operations = [_slock_threadImageCompressionOperations.allValues copy];
-        [_slock_threadImageCompressionOperations removeAllObjects];
-        [_slock_threadImageCompressionOperationsLock unlock];
+        _raft_threadImageCompressionDestroyed = YES;
+        operations = [_raft_threadImageCompressionOperations.allValues copy];
+        [_raft_threadImageCompressionOperations removeAllObjects];
+        [_raft_threadImageCompressionOperationsLock unlock];
     }
-    for (SlockThreadImageCompressionOperation *operation in operations) {
+    for (RaftThreadImageCompressionOperation *operation in operations) {
         // Destruction is the sole force-cancel path: even a DELIVERED operation may still own a
         // tracked output until its callback turn has returned, so teardown must remove it.
         [operation markCancelledForce:YES];

@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -152,7 +152,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         // A channel route is still offered as a top-level window (no parent).
         assertTrue(
             dataSource.extendDurableWindowIfCurrent(
-                replyRoute().copy(surfaceKind = KuiklyThreadSurfaceKind.Channel, sourceThreadId = "channel-1", streamChannelId = null, parentChannelId = null, parentMessageId = null, originParentMessageId = null)
+                replyRoute().copy(surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "channel-1", streamChannelId = null, parentChannelId = null, parentMessageId = null, originParentMessageId = null)
                     .resolveThreadRouteIdentity(),
                 context,
                 ThreadDurablePageDirection.Older,
@@ -234,7 +234,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
-            sessionStore = InMemorySlockAuthSessionStore(ownerA.session),
+            sessionStore = InMemoryRaftAuthSessionStore(ownerA.session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { ownerA },
             durableLastKnownReader = reader,
@@ -306,11 +306,11 @@ class SharedThreadStoreReplyThreadDurableTest {
             selectionGeneration = 1L,
         )
 
-    private fun replyRoute(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun replyRoute(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-thread-1",
             title = "Thread",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "thread-1",
             streamChannelId = "thread-1",
             parentChannelId = "channel-1",

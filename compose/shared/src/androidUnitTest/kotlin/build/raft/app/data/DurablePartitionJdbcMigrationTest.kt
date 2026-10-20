@@ -4,7 +4,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.shared.data.local.SlockDatabase
+import build.raft.app.shared.data.local.RaftDatabase
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -43,7 +43,7 @@ class DurablePartitionJdbcMigrationTest {
             val before = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactBaselineRows(before)
             val nonCoreBefore = before.masterDefinitions().filterNot { it.isCoreDefinition() }
-            migrateInOneTransaction(before, SlockDatabase.Schema, oldVersion = 1L, newVersion = 9L)
+            migrateInOneTransaction(before, RaftDatabase.Schema, oldVersion = 1L, newVersion = 9L)
 
             assertEquals(expectedOutbox, before.outboxRow())
             assertEquals(nonCoreBefore, before.masterDefinitions().filterNot { it.isCoreDefinition() })
@@ -53,7 +53,7 @@ class DurablePartitionJdbcMigrationTest {
 
             val freshV9 = JdbcSqliteDriver(url(freshV9Path))
             try {
-                SlockDatabase.Schema.create(freshV9).value
+                RaftDatabase.Schema.create(freshV9).value
                 assertEquals(
                     freshV9.masterDefinitions().map { it.canonicalSchema() },
                     before.masterDefinitions().map { it.canonicalSchema() },
@@ -77,7 +77,7 @@ class DurablePartitionJdbcMigrationTest {
             val migrated = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactV2Rows(migrated)
             val nonCoreBefore = migrated.masterDefinitions().filterNot { it.isCoreDefinition() }
-            migrateInOneTransaction(migrated, SlockDatabase.Schema, oldVersion = 2L, newVersion = 9L)
+            migrateInOneTransaction(migrated, RaftDatabase.Schema, oldVersion = 2L, newVersion = 9L)
 
             assertV9Core(migrated)
             assertEquals(0L, migrated.scalarLong("SELECT COUNT(*) FROM messageEntity"))
@@ -87,7 +87,7 @@ class DurablePartitionJdbcMigrationTest {
 
             val freshV9 = JdbcSqliteDriver(url(freshV9Path))
             try {
-                SlockDatabase.Schema.create(freshV9).value
+                RaftDatabase.Schema.create(freshV9).value
                 assertEquals(
                     freshV9.masterDefinitions().map { it.canonicalSchema() },
                     migrated.masterDefinitions().map { it.canonicalSchema() },
@@ -108,7 +108,7 @@ class DurablePartitionJdbcMigrationTest {
         val path = copyDatabaseResource("3.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 3L, newVersion = 9L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 3L, newVersion = 9L)
             assertV9Core(driver)
             assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM syncReadStateFactEntity"))
             driver.close()
@@ -125,10 +125,10 @@ class DurablePartitionJdbcMigrationTest {
             // This is the upgrade shape for an installed build that predates the pending-send
             // journal: the legacy outbox exists, but no threadPendingSendEntity can exist yet.
             val expectedOutbox = seedExactBaselineRows(driver)
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 7L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 1L, newVersion = 7L)
             assertFalse(driver.hasMasterObject("table", "threadPendingSendEntity"))
 
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 7L, newVersion = 9L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 7L, newVersion = 9L)
 
             assertV9Core(driver)
             assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM threadPendingSendEntity"))
@@ -148,10 +148,10 @@ class DurablePartitionJdbcMigrationTest {
         val path = copyDatabaseResource("1.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 6L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 1L, newVersion = 6L)
             seedLegacyAvatarMetadata(driver)
 
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 6L, newVersion = 9L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 6L, newVersion = 9L)
 
             assertV9Core(driver)
             assertEquals("legacy-etag", driver.scalarString("SELECT eTag FROM avatarCacheMetadataEntity"))
@@ -174,14 +174,14 @@ class DurablePartitionJdbcMigrationTest {
             val path = copyDatabaseResource("1.db")
             try {
                 val driver = JdbcSqliteDriver(url(path))
-                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 6L)
+                migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 1L, newVersion = 6L)
                 seedLegacyAvatarMetadata(driver)
                 val masterBefore = driver.masterDefinitions()
 
                 assertFailsWith<InjectedMigrationFailure> {
                     migrateInOneTransaction(
                         driver,
-                        FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt),
+                        FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt),
                         oldVersion = 6L,
                         newVersion = 7L
                     )
@@ -217,7 +217,7 @@ class DurablePartitionJdbcMigrationTest {
                 val failure = assertFailsWith<InjectedMigrationFailure>("v3->v9 fail-at-$failAt must abort") {
                     migrateInOneTransaction(
                         driver,
-                        FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt),
+                        FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt),
                         oldVersion = 3L,
                         newVersion = 9L,
                     )
@@ -228,7 +228,7 @@ class DurablePartitionJdbcMigrationTest {
                 assertFalse(driver.hasMasterObject("table", "avatarCacheMetadataEntity"))
                 assertFalse(driver.hasMasterObject("table", "avatarCacheFailureEntity"))
 
-                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 3L, newVersion = 9L)
+                migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 3L, newVersion = 9L)
                 assertV9Core(driver)
                 driver.close()
             } finally {
@@ -249,7 +249,7 @@ class DurablePartitionJdbcMigrationTest {
                 val failure = assertFailsWith<InjectedMigrationFailure>("fail-at-$failAt must abort") {
                     migrateInOneTransaction(
                         driver,
-                        FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt),
+                        FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt),
                         oldVersion = 1L,
                         newVersion = 9L,
                     )
@@ -262,7 +262,7 @@ class DurablePartitionJdbcMigrationTest {
                 assertTrue(driver.hasMasterObject("index", "messageEntity_channelSeqId"))
                 assertFalse(driver.hasMasterObject("index", "messageEntity_partitionChannelSeqId"))
 
-                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 9L)
+                migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 1L, newVersion = 9L)
                 assertV9Core(driver)
                 assertEquals(expectedOutbox, driver.outboxRow(), "fail-at-$failAt retry must preserve outbox bytes")
                 driver.close()
@@ -284,7 +284,7 @@ class DurablePartitionJdbcMigrationTest {
                 val failure = assertFailsWith<InjectedMigrationFailure>("v2->v9 fail-at-$failAt must abort") {
                     migrateInOneTransaction(
                         driver,
-                        FailAtMigrationStatementSchema(SlockDatabase.Schema, failAt),
+                        FailAtMigrationStatementSchema(RaftDatabase.Schema, failAt),
                         oldVersion = 2L,
                         newVersion = 9L,
                     )
@@ -295,7 +295,7 @@ class DurablePartitionJdbcMigrationTest {
                 assertFalse(driver.hasMasterObject("table", "messageViewerOverlayEntity"))
                 assertFalse(driver.hasMasterObject("table", "syncReadStateFactEntity"))
 
-                migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 2L, newVersion = 9L)
+                migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 2L, newVersion = 9L)
                 assertV9Core(driver)
                 assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity"))
                 assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"))
@@ -317,7 +317,7 @@ class DurablePartitionJdbcMigrationTest {
         val path = copyDatabaseResource("1.db")
         try {
             val driver = JdbcSqliteDriver(url(path))
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 1L, newVersion = 8L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 1L, newVersion = 8L)
             driver.execute(
                 null,
                 "INSERT INTO messageEntity(" +
@@ -333,7 +333,7 @@ class DurablePartitionJdbcMigrationTest {
             val failure = assertFailsWith<InjectedMigrationFailure> {
                 migrateInOneTransaction(
                     driver,
-                    FailAtMigrationStatementSchema(SlockDatabase.Schema, 1),
+                    FailAtMigrationStatementSchema(RaftDatabase.Schema, 1),
                     oldVersion = 8L,
                     newVersion = 9L,
                 )
@@ -342,7 +342,7 @@ class DurablePartitionJdbcMigrationTest {
             assertEquals(v8Master, driver.masterDefinitions(), "v8->v9 failure must roll back sqlite_master")
             assertEquals(v8Columns, driver.tableColumns("messageEntity"))
 
-            migrateInOneTransaction(driver, SlockDatabase.Schema, oldVersion = 8L, newVersion = 9L)
+            migrateInOneTransaction(driver, RaftDatabase.Schema, oldVersion = 8L, newVersion = 9L)
             assertV9Core(driver)
             assertEquals(
                 1L,
@@ -363,7 +363,7 @@ class DurablePartitionJdbcMigrationTest {
         oldVersion: Long,
         newVersion: Long,
     ) {
-        SlockDatabase(driver).transaction {
+        RaftDatabase(driver).transaction {
             schema.migrate(driver, oldVersion = oldVersion, newVersion = newVersion).value
         }
     }

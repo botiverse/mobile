@@ -1,8 +1,8 @@
 package build.raft.app.cmp.host
 
 import build.raft.app.host.HostCapabilities
-import build.raft.app.parseSlockJsonObjectOrNull
-import build.raft.app.toSlockJsonString
+import build.raft.app.parseRaftJsonObjectOrNull
+import build.raft.app.toRaftJsonString
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.JsonArray
@@ -35,7 +35,7 @@ fun interface HostBridgeTransport {
  * [HostCapabilities] for CMP pages that reuses the native implementations behind the Kuikly bridge.
  *
  * Every capability is encoded exactly as the Kuikly `BridgeModule` encodes it (method names, param
- * keys and order, Kuikly-compatible JSON text via [toSlockJsonString]), so the bridge module sees
+ * keys and order, Kuikly-compatible JSON text via [toRaftJsonString]), so the bridge module sees
  * the same calls from a CMP page as from a Kuikly page. Keep the two in step until `BridgeModule`
  * is deleted.
  *
@@ -64,7 +64,7 @@ class BridgeWireHostCapabilities(
         onEvent: (JsonObject?) -> Unit,
     ): () -> Unit {
         val active = atomic(true)
-        transport.call("settingsCapability", command.toSlockJsonString()) { result ->
+        transport.call("settingsCapability", command.toRaftJsonString()) { result ->
             if (!active.value) return@call
             val payload = parseResult(result)
             if (payload?.get("terminal")?.let { (it as? JsonPrimitive)?.booleanOrNull } == true) {
@@ -110,7 +110,7 @@ class BridgeWireHostCapabilities(
                     "fileRef" to fileRef,
                     "fileName" to fileName,
                     "mimeType" to mimeType,
-                ).toSlockJsonString(),
+                ).toRaftJsonString(),
             ) { result ->
                 if (terminal.compareAndSet(false, true) && continuation.isActive) {
                     continuation.resume(parseResult(result))
@@ -233,20 +233,20 @@ class BridgeWireHostCapabilities(
         send("syncDesktopShortcuts", params("shortcuts" to shortcutsJson))
 
     private fun send(method: String, params: JsonObject) {
-        transport.call(method, params.toSlockJsonString(), null)
+        transport.call(method, params.toRaftJsonString(), null)
     }
 
     private suspend fun request(method: String, params: JsonObject): JsonObject? =
         suspendCancellableCoroutine { continuation ->
             val delivered = atomic(false)
-            transport.call(method, params.toSlockJsonString()) { result ->
+            transport.call(method, params.toRaftJsonString()) { result ->
                 if (delivered.compareAndSet(false, true) && continuation.isActive) {
                     continuation.resume(parseResult(result))
                 }
             }
         }
 
-    private fun parseResult(result: String?): JsonObject? = parseSlockJsonObjectOrNull(result)
+    private fun parseResult(result: String?): JsonObject? = parseRaftJsonObjectOrNull(result)
 
     private companion object {
         const val REPORT_REALTIME = "reportRealTime"

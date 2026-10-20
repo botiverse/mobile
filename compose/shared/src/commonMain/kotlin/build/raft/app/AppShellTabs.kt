@@ -5,16 +5,16 @@ package build.raft.app
  * Per-key bottom-tab icon for both legacy and Slack-aligned tab sets. Slack-aligned icons
  * mirror the #94 preview fixture: Home=house, DMs=message circle, Activity=bell, More=ellipsis.
  */
-internal fun appShellTabIcon(key: String): SlockLucideIconName =
+internal fun appShellTabIcon(key: String): RaftLucideIconName =
     when (key) {
-        "home" -> SlockLucideIconName.House
-        "dms" -> SlockLucideIconName.MessageCircle
-        "activity" -> SlockLucideIconName.Bell
-        "more" -> SlockLucideIconName.Ellipsis
-        "tasks" -> SlockLucideIconName.SquareCheckBig
-        "members" -> SlockLucideIconName.Users
-        "settings" -> SlockLucideIconName.Settings
-        else -> SlockLucideIconName.Circle
+        "home" -> RaftLucideIconName.House
+        "dms" -> RaftLucideIconName.MessageCircle
+        "activity" -> RaftLucideIconName.Bell
+        "more" -> RaftLucideIconName.Ellipsis
+        "tasks" -> RaftLucideIconName.SquareCheckBig
+        "members" -> RaftLucideIconName.Users
+        "settings" -> RaftLucideIconName.Settings
+        else -> RaftLucideIconName.Circle
     }
 
 /**

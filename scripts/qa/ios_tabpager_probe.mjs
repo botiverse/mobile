@@ -343,7 +343,7 @@ try {
   // recorded, so where it actually touched is readable from the evidence rather
   // than inferred from the case name.
   const pt = drv.screenSizePt();
-  // ⚠️ NOT 24. The iOS start inset IS 24dp (slockPlatformTabPagerStartEdgeInsetDp)
+  // ⚠️ NOT 24. The iOS start inset IS 24dp (raftPlatformTabPagerStartEdgeInsetDp)
   // and EdgeGuard renders it as Box(Modifier.width(24.dp)) — a region of [0,24),
   // i.e. pixels 0..71 at 3x. Touching at exactly 24pt lands on pixel 72, the first
   // pixel OUTSIDE the guard, so run 33369432716's groups 6/7 proved only that a

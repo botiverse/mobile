@@ -20,7 +20,7 @@ class AgentsApiTest {
     @Test
     fun createAgentPreservesRuntimeFormRejectionCodeForRecovery() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentBody =
@@ -36,7 +36,7 @@ class AgentsApiTest {
     @Test
     fun createAgentKeepsUnknownConflictGeneric() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentBody =
@@ -50,13 +50,13 @@ class AgentsApiTest {
     }
 
     // task #186: the production transport delivers non-2xx bodies as
-    // `bodyText = null, errorBodyText = <envelope>` (NetworkKmmSlockHttpExecutor),
+    // `bodyText = null, errorBodyText = <envelope>` (NetworkKmmRaftHttpExecutor),
     // which is the shape the on-device 409 actually arrives in. The recovery
     // code must map it — reading only bodyText left recovery dead on device.
     @Test
     fun createAgentMapsRuntimeFormRejectionFromRealTransportErrorBody() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentErrorBody =
@@ -72,7 +72,7 @@ class AgentsApiTest {
     @Test
     fun createAgentKeepsGenericConflictWhenErrorBodyIsNotAJsonEnvelope() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentErrorBody = "Runtime form definition is stale or invalid"
@@ -87,14 +87,14 @@ class AgentsApiTest {
     @Test
     fun createAgentMapsNameConflictTextToHumaneCode() = runPortableCoroutineTest {
         val taken =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentErrorBody = """{"error":"Agent name \"Nova\" is already taken"}"""
                 )
             ).createAgent("{}")
         val exists =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentErrorBody = """{"error":"Cindy agent already exists in this server"}"""
@@ -108,14 +108,14 @@ class AgentsApiTest {
     @Test
     fun agentsErrorsCarryRawServerTextForHonestFallback() = runPortableCoroutineTest {
         val unmappedConflict =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentErrorBody = """{"error":"No machine assigned. Please assign a machine to this agent first.","code":"machine_unassigned"}"""
                 )
             ).createAgent("{}")
         val serverError =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 503,
                     createAgentErrorBody = """{"error":"Scheduled maintenance in progress"}"""
@@ -138,7 +138,7 @@ class AgentsApiTest {
         listOf(401, 403).forEach { status ->
             val exactReason = "  route-$status human reason / 理由  "
             val exact =
-                SlockAgentsApiClient(
+                RaftAgentsApiClient(
                     RecordingAgentsApi(
                         createAgentCode = status,
                         createAgentErrorBody = """{"error":"$exactReason"}"""
@@ -151,7 +151,7 @@ class AgentsApiTest {
             )
 
             val aliasOnly =
-                SlockAgentsApiClient(
+                RaftAgentsApiClient(
                     RecordingAgentsApi(
                         createAgentCode = status,
                         createAgentErrorBody = """{"message":"must not be guessed"}"""
@@ -173,7 +173,7 @@ class AgentsApiTest {
     @Test
     fun createAgentKeepsNonAllowlistedErrorBodyConflictGeneric() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     createAgentCode = 409,
                     createAgentErrorBody =
@@ -189,7 +189,7 @@ class AgentsApiTest {
     @Test
     fun typedAgentsApiAcceptsCanonicalUpstreamShapes() = runPortableCoroutineTest {
         val transport = RecordingAgentsApi()
-        val client = SlockAgentsApiClient(transport)
+        val client = RaftAgentsApiClient(transport)
         val agentId = MemberId("agent-1")
 
         assertEquals(1, assertIs<DataResult.Content<AgentsPage>>(client.agents()).data.agentCount)
@@ -273,7 +273,7 @@ class AgentsApiTest {
         val transport = RecordingAgentsApi()
         val detail =
             assertIs<DataResult.Content<AgentDetailSnapshot>>(
-                SlockAgentsApiClient(transport).publicAgentDetail(MemberId("agent-1"))
+                RaftAgentsApiClient(transport).publicAgentDetail(MemberId("agent-1"))
             ).data
 
         assertEquals("agent-1", detail.agentId.value)
@@ -395,7 +395,7 @@ class AgentsApiTest {
     @Test
     fun repeatedAgentReadsNeverRetainRuntimeProviderSecrets() = runPortableCoroutineTest {
         val sentinel = "sentinel-provider-secret"
-        val client = SlockAgentsApiClient(
+        val client = RaftAgentsApiClient(
             RecordingAgentsApi(
                 agentBody =
                     """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"builtin","provider":{"kind":"preset","providerId":"deepseek","apiKey":"$sentinel"},"model":{"kind":"preset","id":"deepseek/deepseek-v4-pro"},"mode":{"kind":"default"},"hostUserState":"forbidden"}}"""
@@ -414,7 +414,7 @@ class AgentsApiTest {
     @Test
     fun typedAgentsApiPreservesCustomRuntimeModelKind() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     agentBody =
                         """{"id":"agent-1","name":"Agent One","model":"legacy-flat","runtime":"claude","runtimeConfig":{"version":1,"runtime":"claude","provider":{"kind":"custom","apiUrl":"https://example.invalid","apiKey":"secret"},"model":{"kind":"custom","name":"vendor/private-model"},"mode":{"kind":"default"}}}"""
@@ -431,7 +431,7 @@ class AgentsApiTest {
     @Test
     fun typedAgentsApiPreservesPiProviderConfiguration() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     agentBody =
                         """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"pi","provider":{"kind":"pi-builtin","providerId":"deepseek","apiKey":"pi-key"},"model":{"kind":"preset","id":"deepseek/deepseek-v4-pro"},"mode":{"kind":"default"}}}"""
@@ -448,7 +448,7 @@ class AgentsApiTest {
     @Test
     fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     agentsBody = """{"agents":[{"id":"agent-1"}]}""",
                     agentBody = """{"agent":{"id":"agent-1","name":"Noel"}}""",
@@ -481,9 +481,9 @@ class AgentsApiTest {
     @Test
     fun agentArchiveMapsEnvelopeAndFields() = runPortableCoroutineTest {
         val api = RecordingAgentsApi()
-        val client = SlockAgentsApiClient(api)
+        val client = RaftAgentsApiClient(api)
 
-        val archive = assertIs<DataResult.Content<SlockAgentArchive?>>(
+        val archive = assertIs<DataResult.Content<RaftAgentArchive?>>(
             client.agentArchive(MemberId("agent-1"))
         ).data
 
@@ -500,11 +500,11 @@ class AgentsApiTest {
 
     @Test
     fun agentArchiveNullEnvelopeMeansNoArchiveRecord() = runPortableCoroutineTest {
-        val client = SlockAgentsApiClient(
+        val client = RaftAgentsApiClient(
             RecordingAgentsApi(archiveBody = """{"archive":null}""")
         )
 
-        val result = assertIs<DataResult.Content<SlockAgentArchive?>>(
+        val result = assertIs<DataResult.Content<RaftAgentArchive?>>(
             client.agentArchive(MemberId("agent-1"))
         )
 
@@ -513,13 +513,13 @@ class AgentsApiTest {
 
     @Test
     fun agentArchiveUnknownWorkspaceStateCollapsesToUnknown() = runPortableCoroutineTest {
-        val client = SlockAgentsApiClient(
+        val client = RaftAgentsApiClient(
             RecordingAgentsApi(
                 archiveBody = """{"archive":{"agentId":"agent-1","workspaceState":"migrating"}}"""
             )
         )
 
-        val archive = assertIs<DataResult.Content<SlockAgentArchive?>>(
+        val archive = assertIs<DataResult.Content<RaftAgentArchive?>>(
             client.agentArchive(MemberId("agent-1"))
         ).data
 
@@ -529,9 +529,9 @@ class AgentsApiTest {
     @Test
     fun deleteAgentArchiveWorkspacePostsDeleteAndMapsUpdatedView() = runPortableCoroutineTest {
         val api = RecordingAgentsApi()
-        val client = SlockAgentsApiClient(api)
+        val client = RaftAgentsApiClient(api)
 
-        val archive = assertIs<DataResult.Content<SlockAgentArchive>>(
+        val archive = assertIs<DataResult.Content<RaftAgentArchive>>(
             client.deleteAgentArchiveWorkspace(MemberId("agent-1"))
         ).data
 
@@ -545,7 +545,7 @@ class AgentsApiTest {
 
     @Test
     fun deleteAgentArchiveWorkspaceSurfacesServerRefusalCode() = runPortableCoroutineTest {
-        val client = SlockAgentsApiClient(
+        val client = RaftAgentsApiClient(
             RecordingAgentsApi(
                 archiveDeleteCode = 409,
                 archiveDeleteErrorBody =
@@ -585,7 +585,7 @@ class AgentsApiTest {
         private val archiveDeleteBody: String = """{"archive":{"agentId":"agent-1","archivedAt":"2026-10-18T12:00:00.000Z","archivedByUserId":"user-9","machineId":"machine-1","machineName":"Mini M4","workspaceState":"on_computer","pendingOp":"delete","waitingForComputer":true,"lastErrorCode":null,"lastErrorAt":null}}""",
         private val archiveDeleteCode: Int = 200,
         private val archiveDeleteErrorBody: String? = null
-    ) : SlockAgentsApi {
+    ) : RaftAgentsApi {
         val calls = mutableListOf<String>()
 
         override suspend fun agents(): HomeNetworkResponse {
@@ -722,7 +722,7 @@ class AgentsApiTest {
                 externalStatusBody =
                     """{"setupState":"connected","credentialLastUsedAt":"2026-09-03T05:00:00.000Z","lastActivityAt":"2026-09-03T06:00:00.000Z"}"""
             )
-        val client = SlockAgentsApiClient(transport)
+        val client = RaftAgentsApiClient(transport)
 
         val status = assertIs<DataResult.Content<ExternalAgentStatusSnapshot>>(client.agentExternalStatus(MemberId("agent-1"))).data
 
@@ -734,7 +734,7 @@ class AgentsApiTest {
 
     @Test
     fun agentExternalStatusWaitingForLoginWithNullTimestamps() = runPortableCoroutineTest {
-        val client = SlockAgentsApiClient(RecordingAgentsApi())
+        val client = RaftAgentsApiClient(RecordingAgentsApi())
 
         val status = assertIs<DataResult.Content<ExternalAgentStatusSnapshot>>(client.agentExternalStatus(MemberId("agent-1"))).data
 
@@ -748,7 +748,7 @@ class AgentsApiTest {
     @Test
     fun agentExternalStatusForbiddenIsNoPermissionNotAStatus() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(
                     externalStatusCode = 403,
                     externalStatusErrorBody = """{"error":"The `editAgents` capability or human creator authority is required to view external setup status"}"""
@@ -763,7 +763,7 @@ class AgentsApiTest {
     @Test
     fun agentExternalStatusNonExternalIsError() = runPortableCoroutineTest {
         val client =
-            SlockAgentsApiClient(
+            RaftAgentsApiClient(
                 RecordingAgentsApi(externalStatusCode = 400, externalStatusErrorBody = """{"error":"Agent is not external"}""")
             )
 
@@ -774,11 +774,11 @@ class AgentsApiTest {
     @Test
     fun agentSummaryCarriesExternalFromBooleanOrRuntime() = runPortableCoroutineTest {
         val byBoolean =
-            SlockAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"bridge","status":"active","runtime":"claude","external":true}"""))
+            RaftAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"bridge","status":"active","runtime":"claude","external":true}"""))
         val byRuntime =
-            SlockAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"bridge","status":"active","runtime":"external"}"""))
+            RaftAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"bridge","status":"active","runtime":"external"}"""))
         val managed =
-            SlockAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"claude","status":"active","runtime":"claude"}"""))
+            RaftAgentsApiClient(RecordingAgentsApi(agentBody = """{"id":"agent-1","name":"claude","status":"active","runtime":"claude"}"""))
 
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byBoolean.agent(MemberId("agent-1"))).data.isExternal)
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.isExternal)

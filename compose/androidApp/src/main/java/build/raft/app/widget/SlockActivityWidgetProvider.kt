@@ -6,14 +6,14 @@ import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVActivityUnreadKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVApiEnvironmentKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockAppLog
-import build.raft.app.core.data.network.RealSlockNetworkClientFactory
+import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.core.data.network.RealRaftNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxFilter
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.ProcessActivityUnreadProjectionCache
 import build.raft.app.data.RealChannelRepository
@@ -52,8 +52,8 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        val cache = SlockWidgetCache(context)
-        val config = SlockWidgetServerConfigStore(context)
+        val cache = RaftWidgetCache(context)
+        val config = RaftWidgetServerConfigStore(context)
         appWidgetIds.forEach { appWidgetId ->
             cache.clear(appWidgetId)
             config.clear(appWidgetId)
@@ -108,7 +108,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         ) {
             if (appWidgetIds.isEmpty()) return
             scope.launch {
-                val cache = SlockWidgetCache(context)
+                val cache = RaftWidgetCache(context)
                 appWidgetIds.forEach { appWidgetId ->
                     val state = loadWidgetState(context, appWidgetId, cache.read(appWidgetId))
                     cache.write(appWidgetId, state)
@@ -122,13 +122,13 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private suspend fun loadWidgetState(
             context: Context,
             appWidgetId: Int,
-            previous: SlockWidgetState
-        ): SlockWidgetState {
+            previous: RaftWidgetState
+        ): RaftWidgetState {
             val storedSessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context))
             val session = storedSessionStore.readSession()
-                ?: return SlockWidgetState.SignedOut
-            val selectedServer = SlockWidgetServerConfigStore(context).resolveServer(appWidgetId, session)
-                ?: return SlockWidgetState.Error(
+                ?: return RaftWidgetState.SignedOut
+            val selectedServer = RaftWidgetServerConfigStore(context).resolveServer(appWidgetId, session)
+                ?: return RaftWidgetState.Error(
                     title = "Choose a server",
                     detail = "Tap and hold the widget, then edit it to select a server.",
                     lastUpdatedAtMillis = previous.lastUpdatedAtMillis
@@ -146,13 +146,13 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                     accountId = session.user.id,
                     serverId = selectedServer.id
                 )
-            val sessionStore = InMemorySlockAuthSessionStore(scopedSession)
+            val sessionStore = InMemoryRaftAuthSessionStore(scopedSession)
             val serverId = ServerId(selectedServer.id)
             val networkClient =
-                RealSlockNetworkClientFactory.create(sessionStore, baseUrl = AndroidAuthApiFactory.currentBaseUrl(context))
+                RealRaftNetworkClientFactory.create(sessionStore, baseUrl = AndroidAuthApiFactory.currentBaseUrl(context))
             suspend fun fetchHome(): DataResult<HomeSnapshot>? =
                 runCatching { RealChannelRepository(sessionStore, networkClient).getHome(serverId) }
-                    .onFailure { throwable -> SlockAppLog.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}") }
+                    .onFailure { throwable -> RaftAppLog.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}") }
                     .getOrNull()
             var homeResult = fetchHome() ?: return previous.asStale("Could not refresh")
             var attempt = 1
@@ -161,7 +161,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 if (!isWidgetTransientCancel(errorCode)) break
                 // The first refresh after the configure screen closes races the app's background edge, which
                 // retires in-flight reads (status 0, "lifecycle_retired"); a read is safe to repeat.
-                SlockAppLog.d(TAG, "home refresh cancelled code=$errorCode attempt=$attempt; retrying")
+                RaftAppLog.d(TAG, "home refresh cancelled code=$errorCode attempt=$attempt; retrying")
                 delay(WIDGET_HOME_RETRY_DELAY_MS)
                 attempt++
                 homeResult = fetchHome() ?: return previous.asStale("Could not refresh")
@@ -196,7 +196,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                     else -> emptyList()
                 }
             val membersById = memberProfiles.associateBy { it.id.value }
-            return SlockWidgetState.Content(
+            return RaftWidgetState.Content(
                 serverName = home.server.name,
                 unreadCount = home.unreadTotal,
                 activityUnreadCount = inboxUnread,
@@ -213,7 +213,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             appWidgetIds: IntArray,
             refreshing: Boolean = false
         ) {
-            val cache = SlockWidgetCache(context)
+            val cache = RaftWidgetCache(context)
             appWidgetIds.forEach { widgetId ->
                 appWidgetManager.updateAppWidget(
                     widgetId,
@@ -222,22 +222,22 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private fun buildRemoteViews(context: Context, appWidgetId: Int, state: SlockWidgetState): RemoteViews {
-            val views = RemoteViews(context.packageName, R.layout.slock_activity_widget)
-            views.setOnClickPendingIntent(R.id.slock_widget_root, launchAppIntent(context))
-            views.setOnClickPendingIntent(R.id.slock_widget_refresh, refreshIntent(context, appWidgetId))
-            views.setTextViewText(R.id.slock_widget_title, state.title)
-            views.setTextViewText(R.id.slock_widget_detail, state.detail)
-            views.setTextViewText(R.id.slock_widget_updated, state.updatedLabel(context))
-            views.setTextViewText(R.id.slock_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
-            val showStats = state is SlockWidgetState.Content
-            views.setViewVisibility(R.id.slock_widget_stats, if (showStats) View.VISIBLE else View.GONE)
-            views.setViewVisibility(R.id.slock_widget_rows, if (showStats) View.VISIBLE else View.GONE)
-            if (state is SlockWidgetState.Content) {
-                views.setTextViewText(R.id.slock_widget_activity_value, state.activityUnreadCount.displayCount())
-                views.setTextViewText(R.id.slock_widget_saved_value, state.savedCount.displayCount())
+        private fun buildRemoteViews(context: Context, appWidgetId: Int, state: RaftWidgetState): RemoteViews {
+            val views = RemoteViews(context.packageName, R.layout.raft_activity_widget)
+            views.setOnClickPendingIntent(R.id.raft_widget_root, launchAppIntent(context))
+            views.setOnClickPendingIntent(R.id.raft_widget_refresh, refreshIntent(context, appWidgetId))
+            views.setTextViewText(R.id.raft_widget_title, state.title)
+            views.setTextViewText(R.id.raft_widget_detail, state.detail)
+            views.setTextViewText(R.id.raft_widget_updated, state.updatedLabel(context))
+            views.setTextViewText(R.id.raft_widget_refresh, if (state.refreshing) "Refreshing" else "Refresh")
+            val showStats = state is RaftWidgetState.Content
+            views.setViewVisibility(R.id.raft_widget_stats, if (showStats) View.VISIBLE else View.GONE)
+            views.setViewVisibility(R.id.raft_widget_rows, if (showStats) View.VISIBLE else View.GONE)
+            if (state is RaftWidgetState.Content) {
+                views.setTextViewText(R.id.raft_widget_activity_value, state.activityUnreadCount.displayCount())
+                views.setTextViewText(R.id.raft_widget_saved_value, state.savedCount.displayCount())
                 views.setTextViewText(
-                    R.id.slock_widget_detail,
+                    R.id.raft_widget_detail,
                     if (state.rows.isEmpty()) "No unread rows" else "Rows with messages"
                 )
                 bindHomeRows(views, state.rows)
@@ -245,42 +245,42 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             return views
         }
 
-        private fun bindHomeRows(views: RemoteViews, rows: List<SlockWidgetHomeRow>) {
+        private fun bindHomeRows(views: RemoteViews, rows: List<RaftWidgetHomeRow>) {
             val rowIds =
                 intArrayOf(
-                    R.id.slock_widget_row_1,
-                    R.id.slock_widget_row_2,
-                    R.id.slock_widget_row_3
+                    R.id.raft_widget_row_1,
+                    R.id.raft_widget_row_2,
+                    R.id.raft_widget_row_3
                 )
             val avatarTextIds =
                 intArrayOf(
-                    R.id.slock_widget_row_1_avatar,
-                    R.id.slock_widget_row_2_avatar,
-                    R.id.slock_widget_row_3_avatar
+                    R.id.raft_widget_row_1_avatar,
+                    R.id.raft_widget_row_2_avatar,
+                    R.id.raft_widget_row_3_avatar
                 )
             val avatarImageIds =
                 intArrayOf(
-                    R.id.slock_widget_row_1_avatar_image,
-                    R.id.slock_widget_row_2_avatar_image,
-                    R.id.slock_widget_row_3_avatar_image
+                    R.id.raft_widget_row_1_avatar_image,
+                    R.id.raft_widget_row_2_avatar_image,
+                    R.id.raft_widget_row_3_avatar_image
                 )
             val titleIds =
                 intArrayOf(
-                    R.id.slock_widget_row_1_title,
-                    R.id.slock_widget_row_2_title,
-                    R.id.slock_widget_row_3_title
+                    R.id.raft_widget_row_1_title,
+                    R.id.raft_widget_row_2_title,
+                    R.id.raft_widget_row_3_title
                 )
             val detailIds =
                 intArrayOf(
-                    R.id.slock_widget_row_1_detail,
-                    R.id.slock_widget_row_2_detail,
-                    R.id.slock_widget_row_3_detail
+                    R.id.raft_widget_row_1_detail,
+                    R.id.raft_widget_row_2_detail,
+                    R.id.raft_widget_row_3_detail
                 )
             val countIds =
                 intArrayOf(
-                    R.id.slock_widget_row_1_count,
-                    R.id.slock_widget_row_2_count,
-                    R.id.slock_widget_row_3_count
+                    R.id.raft_widget_row_1_count,
+                    R.id.raft_widget_row_2_count,
+                    R.id.raft_widget_row_3_count
                 )
             rowIds.indices.forEach { index ->
                 val row = rows.getOrNull(index)
@@ -346,7 +346,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private suspend fun build.raft.app.data.HomeSnapshot.toWidgetRows(
             context: Context,
             membersById: Map<String, MemberProfile>
-        ): List<SlockWidgetHomeRow> =
+        ): List<RaftWidgetHomeRow> =
             (channels + directMessages)
                 .filter { it.unreadCount > 0 || it.mentionCount > 0 }
                 .sortedWith(
@@ -362,7 +362,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                     )
                 }
 
-        private suspend fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): SlockWidgetHomeRow {
+        private suspend fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): RaftWidgetHomeRow {
             val title = name.ifBlank { "Conversation" }
             val detail =
                 lastMessagePreview?.takeIf { it.isNotBlank() }
@@ -374,8 +374,8 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                         else -> "Channel"
                     }
             val avatarWireValue = member?.avatarWireValueForRenderedAvatar()
-            val imagePath = avatarWireValue?.let { context.cacheSlockWidgetAvatarPath(it) }
-            return SlockWidgetHomeRow(
+            val imagePath = avatarWireValue?.let { context.cacheRaftWidgetAvatarPath(it) }
+            return RaftWidgetHomeRow(
                 title = title,
                 detail = detail,
                 avatarLabel =
@@ -386,11 +386,11 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private fun SlockWidgetState.updatedLabel(context: Context): String {
+        private fun RaftWidgetState.updatedLabel(context: Context): String {
             if (refreshing) return "Updating..."
             if (lastUpdatedAtMillis <= 0L) return "Open Raft to start"
             val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(lastUpdatedAtMillis))
-            return if (this is SlockWidgetState.Content && staleReason != null) {
+            return if (this is RaftWidgetState.Content && staleReason != null) {
                 "Stale at $time"
             } else {
                 context.getString(R.string.slock_status_widget_updated, time)

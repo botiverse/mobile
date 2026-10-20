@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.toSlockJsonString
+import build.raft.app.toRaftJsonString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -17,7 +17,7 @@ class BridgeSettingsSnapshotParserTest {
             buildJsonObject {
                 put("status", "ok")
                 put("totalSizeLabel", "1.2 GB")
-                put("rowsJson", storageRowsJson(target = "imageCache").toSlockJsonString())
+                put("rowsJson", storageRowsJson(target = "imageCache").toRaftJsonString())
             }
 
         val snapshot = response.toStorageSnapshot()
@@ -36,7 +36,7 @@ class BridgeSettingsSnapshotParserTest {
             buildJsonObject {
                 put("status", "ok")
                 put("rows", storageRowsJson(target = "structured"))
-                put("rowsJson", storageRowsJson(target = "fallback").toSlockJsonString())
+                put("rowsJson", storageRowsJson(target = "fallback").toRaftJsonString())
             }
 
         val snapshot = response.toStorageSnapshot()
@@ -60,7 +60,7 @@ class BridgeSettingsSnapshotParserTest {
             buildJsonObject {
                 put("status", "ok")
                 put("environmentKey", "staging")
-                put("optionsJson", environmentOptionsJson(key = "staging").toSlockJsonString())
+                put("optionsJson", environmentOptionsJson(key = "staging").toRaftJsonString())
             }
 
         val snapshot = response.toDeveloperSnapshot()
@@ -77,7 +77,7 @@ class BridgeSettingsSnapshotParserTest {
             buildJsonObject {
                 put("status", "ok")
                 put("options", environmentOptionsJson(key = "structured"))
-                put("optionsJson", environmentOptionsJson(key = "fallback").toSlockJsonString())
+                put("optionsJson", environmentOptionsJson(key = "fallback").toRaftJsonString())
             }
 
         val snapshot = response.toDeveloperSnapshot()

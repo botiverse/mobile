@@ -1,9 +1,9 @@
 package build.raft.app.components
 
-import build.raft.app.Button as SlockButton
-import build.raft.app.SlockColor
-import build.raft.app.SlockStroke
-import build.raft.app.SlockType
+import build.raft.app.Button as RaftAppButton
+import build.raft.app.RaftColor
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftType
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun SlockBrutalListRow(
+internal fun RaftBrutalListRow(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
@@ -30,14 +30,14 @@ internal fun SlockBrutalListRow(
     enabled: Boolean = true
 ) {
     Box(modifier = modifier.fillMaxWidth().height(62.dp).padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-        SlockButton(
+        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(RaftColor.ShadowBlack))
+        RaftAppButton(
             onClick = if (enabled) onClick else ({}),
             enabled = enabled,
             modifier = Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(RaftColor.SurfaceWhite)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Column(
@@ -47,15 +47,15 @@ internal fun SlockBrutalListRow(
             ) {
                 Text(
                     text = title,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = subtitle,
-                    style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
-                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    style = RaftType.Caption.copy(color = RaftColor.TextBlack.copy(alpha = 0.4f)),
+                    color = RaftColor.TextBlack.copy(alpha = 0.4f),
                     maxLines = 1
                 )
             }

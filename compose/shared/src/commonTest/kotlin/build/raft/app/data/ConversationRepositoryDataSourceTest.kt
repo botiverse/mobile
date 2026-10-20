@@ -1323,8 +1323,8 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(listOf("limit" to "200"), request.query)
     }
 
-    private fun sampleStore(): SlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun sampleStore(): RaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user =
                     StoredAuthUser(
@@ -1346,8 +1346,8 @@ class ConversationRepositoryDataSourceTest {
             )
         )
 
-    private fun routeScopedAuthStore(): InMemorySlockAuthSessionStore =
-        InMemorySlockAuthSessionStore(
+    private fun routeScopedAuthStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
             StoredAuthSession(
                 user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
                 accessToken = "token-a",
@@ -1362,7 +1362,7 @@ class ConversationRepositoryDataSourceTest {
         )
 
     private fun routeScopedRepository(
-        authStore: InMemorySlockAuthSessionStore,
+        authStore: InMemoryRaftAuthSessionStore,
         network: FakeConversationNetworkClient,
     ): RealConversationRepository =
         RealConversationRepository(
@@ -1379,7 +1379,7 @@ class ConversationRepositoryDataSourceTest {
         private val requestStarted: Map<String, CompletableDeferred<Unit>> = emptyMap(),
         private val requestRelease: Map<String, CompletableDeferred<Unit>> = emptyMap(),
         private val responseForRequest: (RecordedConversationRequest) -> String? = { null },
-    ) : SlockNetworkClient {
+    ) : RaftNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
         val serverOverrides = mutableListOf<String?>()
         val bodies = mutableListOf<String>()

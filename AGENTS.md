@@ -8,6 +8,21 @@
   changes, enable visible touches/pointer overlay and follow
   `docs/android-review-recording.md` before attaching evidence to a task thread.
 
+## Code Naming: Raft, not Slock
+
+- The product is Raft. New types, files and functions use the `Raft` prefix;
+  never introduce `Slock*` (or Kuikly-era `Kuikly*` model) names in code.
+- `scripts/rename_slock_to_raft.py` performs the Slock -> Raft identifier and
+  file rename. After a rebase that brings in old names, run it with `--apply`;
+  `--check` exits non-zero while anything is left to rename.
+- Persisted / contract strings intentionally keep their old spelling: storage
+  keys, MMKV namespaces, SharedPreferences names, wire fields, log tags used by
+  scripts, page/route names, `slock*` pageData keys, env vars and the
+  `slockVisualFixtures` Gradle property. The manifest keeps the old activity
+  component names as `<activity-alias>` entries, and the AppWidget provider
+  classes (`SlockActivityWidgetProvider`, `SlockAgentStatusWidgetProvider`)
+  keep their names because placed widgets persist the provider component.
+
 ## Slock server/source contract
 
 - The TypeScript server and React source are maintained in the separate private
@@ -82,7 +97,7 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
 - Request bodies that represent server API contracts must likewise use named
   shared DTOs/builders. Avoid drifting ad hoc maps in app code for API shapes.
 - Shared repositories should own reusable API orchestration and consume the
-  shared `SlockNetworkClient` request boundary. Do not duplicate real
+  shared `RaftNetworkClient` request boundary. Do not duplicate real
   repositories per platform, and do not add feature-specific platform transport
   ports such as `SlockXxxApi` when a path/query/body request through the shared
   network client is enough.
@@ -139,17 +154,17 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
 - For Slock Kuikly Compose floating overlays, dropdowns, context menus, and
   anchored popovers, keep anchor and overlay geometry in pixels. Do not convert
   `positionInRoot()` or `coords.size` through `LocalDensity`, `toDp()`, `.dp`,
-  or `toSlockDpOffset()` before passing an anchor to `SlockAnchoredPopover`.
+  or `toSlockDpOffset()` before passing an anchor to `RaftAnchoredPopover`.
 - Use dp only for visual dimensions and spacing passed into Compose layout
   modifiers or parameters explicitly named `*Dp`.
 - See `docs/kuikly-overlay-coordinate-contract.md` before changing
-  `SlockAnchoredPopover`, `SlockFloatingOverlayLayout`, or trigger components
-  such as `SlockAnchoredToolbarChip`.
+  `RaftAnchoredPopover`, `RaftFloatingOverlayLayout`, or trigger components
+  such as `RaftAnchoredToolbarChip`.
 
 ## Kuikly Back Handling Rule
 
 - Any cancelable transient UI state in shared Kuikly Compose must register
-  `SlockBackHandler(enabled = stateIsActive, label = "...")` while active.
+  `RaftBackHandler(enabled = stateIsActive, label = "...")` while active.
   Examples include non-modal selection modes, inline search bars, full-screen
   previews, custom panels, and popovers that are not already wrapped by the
   shared overlay/dialog primitives.
@@ -157,10 +172,10 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   enabled handler owns system Back first, and disposal automatically removes it
   from the stack. Do not hand-roll per-page native back dispatch or platform
   key-event interception for ordinary cancelable UI states.
-- Prefer existing primitives when possible. `SlockFloatingOverlayHost`,
-  `SlockAnchoredPopover`, `SlockUnifiedDialog`, and `Modal(onWillDismiss = ...)`
+- Prefer existing primitives when possible. `RaftFloatingOverlayHost`,
+  `RaftAnchoredPopover`, `RaftUnifiedDialog`, and `Modal(onWillDismiss = ...)`
   already participate in Back dismissal; page code should add a local
-  `SlockBackHandler` only for transient states outside those primitives.
+  `RaftBackHandler` only for transient states outside those primitives.
 - When multiple transient states can overlap, keep Back priority explicit:
   modal/popover first, then nested temporary state, then page navigation.
   Add a focused policy test when that priority is not obvious from structure.
@@ -392,7 +407,7 @@ A mock whose only purpose is to make a happy-path test pass is a contract drift
 waiting to happen: the real server returns a different shape, and the field
 that was guessed silently decodes to `null` (or default) at runtime, with no
 test failure. This is exactly how the
-`SlockAgentsApi.AgentActivityWireDto(val id: String)` drift (D1 of #50) was
+`RaftAgentsApi.AgentActivityWireDto(val id: String)` drift (D1 of #50) was
 introduced — the mock used `[{"id":"a1",...}]` instead of the upstream
 `[{timestamp, entry: {kind, activity, detail}}]`.
 
@@ -518,8 +533,8 @@ or helper scripts as a workaround for branch protection.
 ## Shared UI Component Discipline
 
 - Product/page code must prefer the existing shared brutal components for
-  common controls: `SlockBrutalActionButton`, `SlockBrutalIconButton`,
-  `SlockBrutalTextField`, `SlockBrutalSearchField`, section labels, chips, and
+  common controls: `RaftBrutalActionButton`, `RaftBrutalIconButton`,
+  `RaftBrutalTextField`, `RaftBrutalSearchField`, section labels, chips, and
   modal/action helpers. Do not hand-roll local back buttons, icon buttons,
   primary/secondary buttons, text fields, or search controls with ad hoc
   `Box`/`Row`/`clickable` styling when a shared component already covers the
@@ -579,7 +594,7 @@ or helper scripts as a workaround for branch protection.
   platform preference file names.
 - Platform hosts only adapt the bottom store: Android provides
   `AndroidSharedPreferencesKeyValueStore` using the shared
-  `SlockLocalPreferenceStore.AndroidPreferencesName`; Kuikly hosts provide
+  `RaftLocalPreferenceStore.AndroidPreferencesName`; Kuikly hosts provide
   `KuiklySharedPreferencesKeyValueStore` through `kuiklySharedPreferenceStore(...)`.
   Business repositories for locale, chat layout, notifications, tasks view mode,
   and future local settings stay in shared.
@@ -622,12 +637,12 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 ## Network Priority Workflow
 
 - Every Android request that reaches `build.raft.app.network.SlockApiClient`
-  must run inside `withSlockRequestPriority(...)`; missing priority is a bug.
+  must run inside `withRaftRequestPriority(...)`; missing priority is a bug.
 - New product API routes live in `compose/shared` behind shared
-  `@Serializable` request/response DTOs and `SlockNetworkClient`. Do not add
+  `@Serializable` request/response DTOs and `RaftNetworkClient`. Do not add
   parallel Android endpoint facades, app-local JSON parsers, `mapOf` request
   bodies, ad hoc `JsonObject`, or route-local anonymous body shapes.
-- Shared `SlockNetworkClient` APIs must require explicit `DataRequestPriority`
+- Shared `RaftNetworkClient` APIs must require explicit `DataRequestPriority`
   with no no-priority overloads/defaults, so new API/fake call sites fail to
   compile until they choose `Foreground`, `Visible`, or `Background`.
 - Priority choice: `Foreground` is only for user-blocking opens/mutations;

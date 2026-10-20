@@ -241,7 +241,7 @@ class SharedComputersStoreTest {
             )
         val store =
             SharedComputersStore(
-                computersApiClient = SlockComputersApiClient(api),
+                computersApiClient = RaftComputersApiClient(api),
                 scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
                 ownerProvider = { sharedComputersOwner(session, "https://api.example.test/", generation.current()) }
             )
@@ -278,7 +278,7 @@ class SharedComputersStoreTest {
         val responseB = api.enqueuePending()
         val store =
             SharedComputersStore(
-                computersApiClient = SlockComputersApiClient(api),
+                computersApiClient = RaftComputersApiClient(api),
                 scope = this@runBlocking,
                 ownerProvider = { owner }
             )
@@ -316,7 +316,7 @@ class SharedComputersStoreTest {
         val responseA = api.enqueuePending()
         val store =
             SharedComputersStore(
-                computersApiClient = SlockComputersApiClient(api),
+                computersApiClient = RaftComputersApiClient(api),
                 scope = this@runBlocking,
                 ownerProvider = { owner }
             )
@@ -335,7 +335,7 @@ class SharedComputersStoreTest {
 
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
-            computersApiClient = SlockComputersApiClient(api),
+            computersApiClient = RaftComputersApiClient(api),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         )
 
@@ -344,11 +344,11 @@ class SharedComputersStoreTest {
         scope: CoroutineScope
     ): SharedComputersStore =
         SharedComputersStore(
-            computersApiClient = SlockComputersApiClient(api),
+            computersApiClient = RaftComputersApiClient(api),
             scope = scope
         )
 
-    private class RecordingComputersApi : SlockComputersApi {
+    private class RecordingComputersApi : RaftComputersApi {
         val calls: MutableList<String> = mutableListOf()
         var callCount: Int = 0
         var respond: (Int) -> HomeNetworkResponse = { HomeNetworkResponse(code = 200, bodyText = machinesBody) }
@@ -368,7 +368,7 @@ class SharedComputersStoreTest {
         override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
     }
 
-    private class ControlledComputersApi : SlockComputersApi {
+    private class ControlledComputersApi : RaftComputersApi {
         val serverIds = mutableListOf<String>()
         val priorities = mutableListOf<DataRequestPriority>()
         private val responses = ArrayDeque<CompletableDeferred<HomeNetworkResponse>>()

@@ -5,8 +5,8 @@ import build.raft.app.data.AddChannelMembersBatchRequest
 import build.raft.app.data.AddChannelMembersBatchResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SelectedServerStore
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.AgentActivitySnapshot
 import build.raft.app.data.AgentDetailSnapshot
@@ -51,7 +51,7 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InMemoryComposeLocalDataStore
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
 import build.raft.app.data.OpenDirectMessageResult
 import build.raft.app.data.PermissionBlocker
@@ -68,12 +68,12 @@ import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedThreadNetworkApi
-import build.raft.app.data.SlockAgentsApi
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockComputersApi
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockIntegrationsActionsPushApi
-import build.raft.app.data.SlockIntegrationsActionsPushApiClient
+import build.raft.app.data.RaftAgentsApi
+import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.RaftComputersApi
+import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.RaftIntegrationsActionsPushApi
+import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -207,7 +207,7 @@ class SharedThreadStoreTest {
                 replyCount = 8, unreadReplyCount = 4)))))
         val dataSource = testSharedThreadDataSource(
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -247,7 +247,7 @@ class SharedThreadStoreTest {
                 replyCount = 8).copy(firstUnreadReplyMessageId = MessageId("reply-old"))))))
         val dataSource = testSharedThreadDataSource(
             networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId }, conversationRepository = repository)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -313,8 +313,8 @@ class SharedThreadStoreTest {
         val gatedPayload =
             basePayload().copy(
                 canAddMembers = true,
-                members = listOf(KuiklyThreadMemberItem(id = "u2", displayName = "Member", canRemove = true)),
-                settingsActions = listOf(KuiklyThreadSettingsAction(id = "archive")),
+                members = listOf(RaftThreadMemberItem(id = "u2", displayName = "Member", canRemove = true)),
+                settingsActions = listOf(RaftThreadSettingsAction(id = "archive")),
                 showSettingsAction = true,
                 showMessageSaveAction = true,
                 showReactionActions = true,
@@ -343,13 +343,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         var writeActionsEnabled = true
         val mountedDialog =
             ThreadAttachmentCommentsDialogState(
-                attachment = KuiklyThreadAttachmentItem(id = "attachment-1", name = "notes.txt"),
+                attachment = RaftThreadAttachmentItem(id = "attachment-1", name = "notes.txt"),
                 status = "loaded",
                 draft = TextFieldValue("comment")
             )
@@ -414,7 +414,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = published::add
@@ -453,7 +453,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository
             )
@@ -489,7 +489,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository
             )
@@ -530,7 +530,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = published::add
@@ -575,7 +575,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = {
@@ -630,7 +630,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = { error("projection unavailable") }
@@ -677,7 +677,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = repository,
                 channelProfileUpdateSink = published::add
@@ -960,11 +960,11 @@ class SharedThreadStoreTest {
         val unresolved = unresolvedReplyPayload(parentMessageId = "m1").resolveThreadRouteIdentity()
         val resolved = replyPayload(parentMessageId = "m1", threadId = "thread-m1").resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, unresolved.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, unresolved.surfaceKind)
         assertEquals("reply-parent:channel-1:m1", unresolved.instanceKey)
         assertNull(unresolved.timelineKey)
         assertFalse(unresolved.canRenderTimelineCandidates)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
         assertEquals("reply-stream:thread-m1", resolved.instanceKey)
         assertEquals("thread-m1", resolved.timelineKey)
         assertTrue(resolved.canRenderTimelineCandidates)
@@ -987,21 +987,21 @@ class SharedThreadStoreTest {
             basePayload().copy(
                 sourceThreadId = "same-stream",
                 streamChannelId = "same-stream",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel
+                surfaceKind = RaftThreadSurfaceKind.Channel
             ).resolveThreadRouteIdentity()
         val dm =
             basePayload().copy(
                 sourceThreadId = "same-stream",
                 streamChannelId = "same-stream",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage
             ).resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, channel.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, channel.surfaceKind)
         assertEquals("channel:same-stream", channel.instanceKey)
         assertEquals("same-stream", channel.timelineKey)
         assertEquals("channel", channel.channelKind)
         assertEquals("channel", channel.routeKind)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, dm.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, dm.surfaceKind)
         assertEquals("dm:same-stream", dm.instanceKey)
         assertEquals("same-stream", dm.timelineKey)
         assertEquals(null, dm.channelKind)
@@ -1019,7 +1019,7 @@ class SharedThreadStoreTest {
                 name = "partner"
             ).resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, identity.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, identity.surfaceKind)
         assertEquals("joint", identity.channelKind)
         assertEquals("joint", identity.routeKind)
         assertEquals("joint:joint-1", identity.instanceKey)
@@ -1037,7 +1037,7 @@ class SharedThreadStoreTest {
                 name = "partner"
             ).resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, identity.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, identity.surfaceKind)
         assertEquals("joint", identity.channelKind)
         assertEquals("joint", identity.routeKind)
         assertEquals("joint:joint-1", identity.instanceKey)
@@ -1059,7 +1059,7 @@ class SharedThreadStoreTest {
                 name = "Thread"
             ).resolveThreadRouteIdentity()
 
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, identity.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, identity.surfaceKind)
         assertEquals("reply-stream:reply-thread-1", identity.instanceKey)
         assertEquals("reply-thread-1", identity.timelineKey)
         assertTrue(identity.canRenderTimelineCandidates)
@@ -1070,7 +1070,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val unresolved =
@@ -1264,7 +1264,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -1304,7 +1304,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -1343,7 +1343,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -1388,7 +1388,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -1461,12 +1461,12 @@ class SharedThreadStoreTest {
         assertEquals(1, ownerBFetches)
         assertEquals(
             "owner-b body",
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(ownerBResult).data.messages.single().body
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(ownerBResult).data.messages.single().body
         )
         releaseOwnerA.complete(Unit)
         assertEquals(
             "owner-a body",
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(ownerAPrewarm.await()).data.messages.single().body
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(ownerAPrewarm.await()).data.messages.single().body
         )
         appScope.cancel()
     }
@@ -1479,7 +1479,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -1647,10 +1647,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-test", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-test", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -1700,10 +1700,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-success", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-success", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -1772,12 +1772,12 @@ class SharedThreadStoreTest {
         freshStarted.await()
 
         releaseFresh.complete(Unit)
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(freshPrewarm.await())
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(freshPrewarm.await())
         releaseStale.complete(Unit)
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(stalePrewarm.await())
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(stalePrewarm.await())
 
         val consumed =
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
                 payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", TestThreadOwnerScopeId)
             )
         assertEquals("fresh generation", consumed.data.messages.single().body)
@@ -1810,7 +1810,7 @@ class SharedThreadStoreTest {
 
         payloadStore.freshnessLedger.advance("server-1", "thread-m1", TestThreadOwnerScopeId)
         release.complete(Unit)
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(prewarm.await())
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(prewarm.await())
 
         assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", TestThreadOwnerScopeId))
         assertEquals(null, payloadStore.get("server-1", "thread-m1", TestThreadEnvironmentId, TestThreadPrincipalId, TestThreadOwnerScopeId))
@@ -1830,7 +1830,7 @@ class SharedThreadStoreTest {
                 channelId = "thread-m1"
             )
         payloadStore.put("server-1", "thread-m1", cached, TestThreadOwnerScopeId)
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
             payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) { DataResult.Content(cached) }
         )
 
@@ -1861,10 +1861,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("canonical-generation", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("canonical-generation", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -1881,7 +1881,7 @@ class SharedThreadStoreTest {
 
         payloadStore.freshnessLedger.advance("server-1", "channel-1", ownerScopeId)
         release.complete(Unit)
-        val result = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(request.await())
+        val result = assertIs<DataResult.Content<RaftThreadScreenPayload>>(request.await())
 
         assertEquals("current fresh", result.data.messages.single().body)
         assertEquals(
@@ -1903,9 +1903,9 @@ class SharedThreadStoreTest {
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val result = testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create(shellId, "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -1932,9 +1932,9 @@ class SharedThreadStoreTest {
 
         payloadStore.freshnessLedger.advance("server-1", "channel-1", ownerScopeId)
         release.complete(Unit)
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(stalePrewarm.await())
-        val firstResult = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(firstVisible.await())
-        val secondResult = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(secondVisible.await())
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(stalePrewarm.await())
+        val firstResult = assertIs<DataResult.Content<RaftThreadScreenPayload>>(firstVisible.await())
+        val secondResult = assertIs<DataResult.Content<RaftThreadScreenPayload>>(secondVisible.await())
 
         assertEquals("current after join", firstResult.data.messages.single().body)
         assertEquals("current after join", secondResult.data.messages.single().body)
@@ -1962,9 +1962,9 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("takeover-current", "server-1")),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("takeover-current", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -1977,7 +1977,7 @@ class SharedThreadStoreTest {
 
         payloadStore.freshnessLedger.advance("server-1", "channel-1", ownerScopeId)
         release.complete(Unit)
-        val result = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(visible.await())
+        val result = assertIs<DataResult.Content<RaftThreadScreenPayload>>(visible.await())
 
         assertEquals("current takeover", result.data.messages.single().body)
         assertEquals(2, repository.getThreadRequests.size)
@@ -1996,13 +1996,13 @@ class SharedThreadStoreTest {
         val release = CompletableDeferred<Unit>()
         repository.getThreadStarted = started
         repository.releaseGetThread = release
-        val authStore = InMemorySlockAuthSessionStore(sampleSession())
+        val authStore = InMemoryRaftAuthSessionStore(sampleSession())
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = authStore,
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("retired-takeover", "server-1")),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("retired-takeover", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -2051,14 +2051,14 @@ class SharedThreadStoreTest {
                 id = "fresh-after-remove",
                 channelId = "thread-m1"
             )
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
             payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) { DataResult.Content(stale) }
         )
         payloadStore.remove("server-1", "thread-m1", TestThreadOwnerScopeId)
         var freshFetches = 0
 
         val result =
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
                 payloadStore.prewarm("server-1", "thread-m1", TestThreadOwnerScopeId) {
                     freshFetches += 1
                     DataResult.Content(fresh)
@@ -2102,9 +2102,9 @@ class SharedThreadStoreTest {
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val dataSource = testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create(shellId, "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -2124,8 +2124,8 @@ class SharedThreadStoreTest {
 
         assertEquals(1, repository.getReplyThreadRequests.size)
         releaseTakeover.complete(Unit)
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(first.await())
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(second.await())
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(first.await())
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(second.await())
         assertEquals(1, repository.getReplyThreadRequests.size)
         appScope.cancel()
     }
@@ -2179,9 +2179,9 @@ class SharedThreadStoreTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = FakeThreadApi(),
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                    selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                    selectedServerStore = SelectedServerStore(RaftShellStoreScope.create(shellId, "server-1")),
                     conversationRepository = repository,
                     payloadStore = payloadStore
                 )
@@ -2191,7 +2191,7 @@ class SharedThreadStoreTest {
         val firstDataSource = dataSource("v2-takeover-first")
         val secondDataSource = dataSource("v2-takeover-second")
         val ownerScopeId = firstDataSource.threadPayloadOwnerScopeIdForTest()
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
             payloadStore.prewarm("server-1", "thread-m1", ownerScopeId) {
                 DataResult.Content(stale)
             }
@@ -2208,8 +2208,8 @@ class SharedThreadStoreTest {
 
         assertEquals(1, repository.getReplyThreadRequests.size)
         releaseTakeover.complete(Unit)
-        val firstPayload = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(first.await()).data
-        val secondPayload = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(second.await()).data
+        val firstPayload = assertIs<DataResult.Content<RaftThreadScreenPayload>>(first.await()).data
+        val secondPayload = assertIs<DataResult.Content<RaftThreadScreenPayload>>(second.await()).data
         assertEquals("fresh takeover", firstPayload.messages.single().body)
         assertEquals("fresh takeover", secondPayload.messages.single().body)
         assertEquals(1, repository.getReplyThreadRequests.size)
@@ -2228,9 +2228,9 @@ class SharedThreadStoreTest {
         suspend fun dataSource(shellId: String): SharedThreadDataSource {
             val dataSource = testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create(shellId, "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -2273,7 +2273,7 @@ class SharedThreadStoreTest {
         // Under a named environment the failed access flight is remembered per identity, so a
         // manual retry must say so (the Store passes explicitRetry here); a blank environment
         // used to skip that memory entirely and made this test pass without it.
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
             dataSource("failed-prewarm-manual-retry").fetchThreadPayload(
                 basePayload = route,
                 persistResult = false,
@@ -2283,7 +2283,7 @@ class SharedThreadStoreTest {
         )
         assertEquals(2, repository.getReplyThreadRequests.size)
 
-        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+        assertIs<DataResult.Content<RaftThreadScreenPayload>>(
             dataSource("failed-prewarm-reopen").fetchThreadPayload(
                 basePayload = route,
                 persistResult = false,
@@ -2366,10 +2366,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-marker", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-marker", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -2442,10 +2442,10 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-owner-transition", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-owner-transition", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore,
                 replyCacheIdentityAuthority = { identity }
@@ -2527,10 +2527,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-version", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-version", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -2576,7 +2576,7 @@ class SharedThreadStoreTest {
             )
         )
         val visible =
-            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
                 dataSource.fetchThreadPayload(
                     basePayload = replyPayload(parentMessageId = "m1", threadId = "thread-m1"),
                     reusePrewarm = true
@@ -2594,7 +2594,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val routePayload =
@@ -2625,7 +2625,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
@@ -2645,7 +2645,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(unresolvedReplyPayload(parentMessageId = "m1")))
 
         val payload = store.state.value.payload
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("m1", payload.parentMessageId)
         assertTrue(payload.messages.isEmpty())
@@ -2662,7 +2662,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -2692,7 +2692,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -2734,12 +2734,12 @@ class SharedThreadStoreTest {
                 authGeneration = 1L,
                 selectionGeneration = 1L
             )
-        val loadingStateApplied = CompletableDeferred<KuiklyThreadScreenPayload>()
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
         val releaseLoadingState = CompletableDeferred<Unit>()
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
@@ -2827,7 +2827,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
@@ -2928,7 +2928,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
@@ -3024,7 +3024,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
@@ -3097,7 +3097,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val route = basePayload()
@@ -3124,7 +3124,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
@@ -3145,7 +3145,7 @@ class SharedThreadStoreTest {
         store.dispatch(SharedThreadIntent.Start(route))
 
         val firstFrame = store.state.value.payload
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, firstFrame.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, firstFrame.surfaceKind)
         assertEquals("loading", firstFrame.status)
         assertEquals("loaded", firstFrame.originStatus)
         assertEquals("stored parent body", firstFrame.originMessage?.body)
@@ -3164,7 +3164,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
@@ -3230,17 +3230,17 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val routePayload =
             contentPayload("stale route body").copy(
                 status = "content",
-                members = listOf(KuiklyThreadMemberItem(id = "route-member", displayName = "Route member")),
-                settingsActions = listOf(KuiklyThreadSettingsAction(id = "route-action"))
+                members = listOf(RaftThreadMemberItem(id = "route-member", displayName = "Route member")),
+                settingsActions = listOf(RaftThreadSettingsAction(id = "route-action"))
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observedPayloads = mutableListOf<RaftThreadScreenPayload>()
         val observer = scope.launch {
             store.state.collect { state -> observedPayloads += state.payload }
         }
@@ -3269,7 +3269,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store =
@@ -3301,7 +3301,7 @@ class SharedThreadStoreTest {
             assertEquals("loading", afterStart.originStatus)
 
             val originCandidate =
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "m1",
                     authorId = "route-author",
                     authorName = "Route",
@@ -3317,7 +3317,7 @@ class SharedThreadStoreTest {
                         originStatus = "loaded",
                         messages =
                             listOf(
-                                KuiklyThreadMessageItem(
+                                RaftThreadMessageItem(
                                     id = "route-message",
                                     authorId = "route-author",
                                     authorName = "Route",
@@ -3360,7 +3360,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -3393,7 +3393,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = api,
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                     ),
                 scope = scope,
@@ -3447,7 +3447,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(
@@ -3482,7 +3482,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -3507,7 +3507,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -3522,7 +3522,7 @@ class SharedThreadStoreTest {
         assertEquals("This conversation has no messages yet.", payload.emptyDetail)
         assertEquals("dm-1", payload.sourceThreadId)
         assertEquals("dm-1", payload.streamChannelId)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
         assertTrue(store.state.value.canonicalAccessResolved)
         assertEquals(1, api.channelMessageCalls)
@@ -3543,7 +3543,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -3607,7 +3607,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = conversationRepository,
                 channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
@@ -3667,7 +3667,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -3702,7 +3702,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -3750,7 +3750,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -3769,7 +3769,7 @@ class SharedThreadStoreTest {
         }
 
         val failed = store.state.value
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, failed.payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, failed.payload.surfaceKind)
         assertEquals("empty", failed.payload.status)
         assertTrue(failed.canonicalAccessResolved)
         assertTrue(failed.initialHomeAccessLookupComplete)
@@ -3788,7 +3788,7 @@ class SharedThreadStoreTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = FakeThreadApi(failChannelMessages = true),
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     conversationRepository = FakeConversationRepository(threadResult = result),
                     channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
@@ -3843,7 +3843,7 @@ class SharedThreadStoreTest {
         repeat(25) { iteration ->
             val scopeJob = SupervisorJob()
             val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
-            val loadingStateApplied = CompletableDeferred<KuiklyThreadScreenPayload>()
+            val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
             val releaseLoadingState = CompletableDeferred<Unit>()
             val networkStarted = CompletableDeferred<Unit>()
             val releaseNetwork = CompletableDeferred<Unit>()
@@ -3855,7 +3855,7 @@ class SharedThreadStoreTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = api,
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                 )
             dataSource.cachePayloadForTest(contentPayload("cached body $iteration"))
@@ -3938,7 +3938,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4022,7 +4022,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4122,7 +4122,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4168,7 +4168,7 @@ class SharedThreadStoreTest {
 
         val resolvedFrame = store.state.value
         assertEquals(ThreadAccessResolution.Resolved, resolvedFrame.accessResolution)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolvedFrame.payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, resolvedFrame.payload.surfaceKind)
         assertTrue(resolvedFrame.payload.joined)
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
@@ -4220,7 +4220,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4320,7 +4320,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4349,7 +4349,7 @@ class SharedThreadStoreTest {
         }
 
         val resolvedFrame = store.state.value
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolvedFrame.payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, resolvedFrame.payload.surfaceKind)
         assertFalse(resolvedFrame.payload.joined)
         assertFalse(resolvedFrame.payload.canSend)
         assertFalse(resolvedFrame.payload.composer.enabled)
@@ -4400,7 +4400,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4485,7 +4485,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4507,7 +4507,7 @@ class SharedThreadStoreTest {
         }
 
         val resolvedFrame = store.state.value
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolvedFrame.payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolvedFrame.payload.parentSurfaceKind)
         assertTrue(resolvedFrame.payload.joined)
         assertTrue(resolvedFrame.payload.canSend)
         assertTrue(resolvedFrame.payload.composer.enabled)
@@ -4540,7 +4540,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository,
@@ -4557,8 +4557,8 @@ class SharedThreadStoreTest {
 
         assertEquals(0, channelRepository.homeCalls)
         assertEquals(1, repository.getReplyThreadRequests.size)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, store.state.value.payload.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, store.state.value.payload.parentChannelKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, store.state.value.payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, store.state.value.payload.parentChannelKind)
         assertTrue(store.state.value.payload.joined)
         assertTrue(store.state.value.payload.composer.enabled)
         scope.cancel()
@@ -4598,7 +4598,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4613,7 +4613,7 @@ class SharedThreadStoreTest {
         }
 
         val resolvedFrame = store.state.value
-        assertEquals(KuiklyThreadSurfaceKind.Channel, resolvedFrame.payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, resolvedFrame.payload.parentSurfaceKind)
         assertEquals(JointChannelKindWireValue, resolvedFrame.payload.parentChannelKind)
         assertEquals(ConversationKind.Joint, resolvedFrame.payload.resolveThreadRouteIdentity().parentConversationKind)
         assertTrue(resolvedFrame.payload.joined)
@@ -4652,7 +4652,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4760,7 +4760,7 @@ class SharedThreadStoreTest {
                     dataSource =
                         testSharedThreadDataSource(
                             networkApi = FakeThreadApi(failChannelMessages = true),
-                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                             conversationRepository = repository,
                             channelRepository = channelRepository
@@ -4877,7 +4877,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -4957,7 +4957,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
@@ -5034,7 +5034,7 @@ class SharedThreadStoreTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = FakeThreadApi(failChannelMessages = true),
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     conversationRepository = repository,
                     channelRepository = channelRepository
@@ -5119,7 +5119,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -5173,7 +5173,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 channelRepository = channelRepository
@@ -5232,7 +5232,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -5275,7 +5275,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = FakeConversationRepository(),
                 channelRepository = channelRepository
@@ -5361,7 +5361,7 @@ class SharedThreadStoreTest {
                     instanceId = "shared-shell-thread-thread-m1",
                     messages =
                         listOf(
-                            KuiklyThreadMessageItem(
+                            RaftThreadMessageItem(
                                 id = "reply-1",
                                 authorId = "u1",
                                 authorName = "Artin",
@@ -5393,7 +5393,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "cached-1",
                             authorId = "u2",
                             authorName = "Stdrc",
@@ -5404,7 +5404,7 @@ class SharedThreadStoreTest {
         val networkPatch =
             contentPayload("network body").copy(
                 title = "Direct Message",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
                 dmPeerName = null,
@@ -5439,7 +5439,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(
@@ -5477,7 +5477,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "cached-1",
                             authorId = "agent-1",
                             authorName = "Product UX",
@@ -5492,7 +5492,7 @@ class SharedThreadStoreTest {
         val networkPatch =
             contentPayload("network body").copy(
                 title = "Product-UX-Designer",
-                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
                 sourceThreadId = "dm-agent-1",
                 streamChannelId = "dm-agent-1",
                 dmPeerName = "Product-UX-Designer",
@@ -5530,7 +5530,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val replyRoute = replyPayload(parentMessageId = "parent-a", threadId = "thread-a")
@@ -5593,8 +5593,8 @@ class SharedThreadStoreTest {
 
     @Test
     fun contentSliceKeepsLoadedMembersWhenNetworkPayloadOmitsMembers() {
-        val loadedMember = KuiklyThreadMemberItem(id = "u1", displayName = "Artin")
-        val loadedCandidate = KuiklyThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
+        val loadedMember = RaftThreadMemberItem(id = "u1", displayName = "Artin")
+        val loadedCandidate = RaftThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
         val current =
             contentPayload("cached body").copy(
                 membersCount = 2,
@@ -5621,10 +5621,10 @@ class SharedThreadStoreTest {
 
     @Test
     fun contentSliceDoesNotOwnMembersWhenNetworkPayloadIncludesMembers() {
-        val loadedMember = KuiklyThreadMemberItem(id = "u1", displayName = "Artin")
-        val loadedCandidate = KuiklyThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
-        val networkMember = KuiklyThreadMemberItem(id = "u2", displayName = "Network User")
-        val networkCandidate = KuiklyThreadMemberItem(id = "agent-2", displayName = "Network Agent", kind = "agent")
+        val loadedMember = RaftThreadMemberItem(id = "u1", displayName = "Artin")
+        val loadedCandidate = RaftThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
+        val networkMember = RaftThreadMemberItem(id = "u2", displayName = "Network User")
+        val networkCandidate = RaftThreadMemberItem(id = "agent-2", displayName = "Network Agent", kind = "agent")
         val current =
             contentPayload("cached body").copy(
                 membersCount = 2,
@@ -5671,7 +5671,7 @@ class SharedThreadStoreTest {
                 selectedTab = "tasks",
                 showModeTabs = false,
                 showReplyActions = false,
-                settingsActions = listOf(KuiklyThreadSettingsAction(id = "current-action")),
+                settingsActions = listOf(RaftThreadSettingsAction(id = "current-action")),
                 showMembersAction = false,
                 showSettingsAction = false,
                 showOpenInChannelAction = false,
@@ -5685,7 +5685,7 @@ class SharedThreadStoreTest {
                 selectedTab = "chat",
                 showModeTabs = true,
                 showReplyActions = true,
-                settingsActions = listOf(KuiklyThreadSettingsAction(id = "network-action")),
+                settingsActions = listOf(RaftThreadSettingsAction(id = "network-action")),
                 showMembersAction = true,
                 showSettingsAction = true,
                 showOpenInChannelAction = true,
@@ -5719,7 +5719,7 @@ class SharedThreadStoreTest {
                 joined = false,
                 canSend = false,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         enabled = false,
                         placeholder = "Current composer",
                         seedText = "draft"
@@ -5731,7 +5731,7 @@ class SharedThreadStoreTest {
                 joined = true,
                 canSend = true,
                 composer =
-                    KuiklyThreadComposerPayload(
+                    RaftThreadComposerPayload(
                         enabled = true,
                         placeholder = "Network composer",
                         seedText = ""
@@ -5752,14 +5752,14 @@ class SharedThreadStoreTest {
     @Test
     fun threadContentProjectionAppliesTasksOutsideContentSlice() {
         val currentTask =
-            KuiklyThreadTaskItem(
+            RaftThreadTaskItem(
                 id = "current-task",
                 title = "Current task",
                 status = "Todo",
                 taskNumber = 1
             )
         val networkTask =
-            KuiklyThreadTaskItem(
+            RaftThreadTaskItem(
                 id = "network-task",
                 title = "Network task",
                 status = "InReview",
@@ -5805,7 +5805,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5841,7 +5841,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = channelRepository
             )
@@ -5868,7 +5868,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5889,7 +5889,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -5902,7 +5902,7 @@ class SharedThreadStoreTest {
         val patched = store.state.value
         assertTrue(before !== patched)
         assertEquals(before.highlightedMentions, patched.highlightedMentions)
-        assertEquals(listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true)), patched.payload.messages.single().reactions)
+        assertEquals(listOf(RaftThreadReactionItem("🔥", count = 1, selected = true)), patched.payload.messages.single().reactions)
 
         store.accept(SharedThreadIntent.ApplyMessageReactionSelection("m1", "🔥", selected = true))
         assertTrue(patched === store.state.value)
@@ -5911,8 +5911,8 @@ class SharedThreadStoreTest {
 
     @Test
     fun reactionToggleTargetPrefersSelectedDuplicateForRemoval() {
-        val selectedReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
-        val staleReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = false))
+        val selectedReactions = listOf(RaftThreadReactionItem("🔥", count = 1, selected = true))
+        val staleReactions = listOf(RaftThreadReactionItem("🔥", count = 1, selected = false))
         val baseMessage = contentPayload("reactable body").messages.single()
         val payload =
             contentPayload("reactable body").copy(
@@ -5934,7 +5934,7 @@ class SharedThreadStoreTest {
                 messages =
                     listOf(
                         baseMessage.copy(
-                            reactions = listOf(KuiklyThreadReactionItem("🎉", count = 1, selected = true))
+                            reactions = listOf(RaftThreadReactionItem("🎉", count = 1, selected = true))
                         )
                     )
             )
@@ -5946,7 +5946,7 @@ class SharedThreadStoreTest {
         val preserved = staleRefresh.preserveStableTimelineFrom(current)
 
         assertEquals(
-            listOf(KuiklyThreadReactionItem("🎉", count = 1, selected = true)),
+            listOf(RaftThreadReactionItem("🎉", count = 1, selected = true)),
             preserved.messages.single().reactions
         )
     }
@@ -5959,7 +5959,7 @@ class SharedThreadStoreTest {
                 messages =
                     listOf(
                         baseMessage.copy(
-                            reactions = listOf(KuiklyThreadReactionItem("🎉", count = 1, selected = true))
+                            reactions = listOf(RaftThreadReactionItem("🎉", count = 1, selected = true))
                         )
                     )
             )
@@ -5982,14 +5982,14 @@ class SharedThreadStoreTest {
         val parentMessageId = "parent-1"
         val threadChannelId = "thread-1"
         val pendingReply =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "local-send-thread-1-1",
                 authorId = "user-1",
                 authorName = "Artin",
                 body = "pending reply",
                 deliveryState = ThreadMessageDeliverySending,
                 pendingSendContext =
-                    KuiklyThreadPendingSendContext(
+                    RaftThreadPendingSendContext(
                         channelId = "channel-1",
                         body = "pending reply",
                         asTask = false,
@@ -5999,17 +5999,17 @@ class SharedThreadStoreTest {
                     )
             )
         val current =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "shared-shell-thread-pending-$parentMessageId",
                 sourceThreadId = threadChannelId,
                 streamChannelId = threadChannelId,
                 parentChannelId = "channel-1",
                 parentMessageId = parentMessageId,
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 status = "content",
                 messages = listOf(pendingReply),
                 originMessage =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = parentMessageId,
                         authorId = "user-1",
                         authorName = "Artin",
@@ -6166,7 +6166,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -6208,7 +6208,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6281,7 +6281,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6346,7 +6346,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -6406,7 +6406,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6431,7 +6431,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6476,7 +6476,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 replyCacheIdentityAuthority = { identity },
                 payloadStore = payloadStore
@@ -6592,7 +6592,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = FakeConversationRepository(),
                 replyCacheIdentityAuthority = { identity },
@@ -6724,7 +6724,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -6751,11 +6751,11 @@ class SharedThreadStoreTest {
             replyPayload(parentMessageId = "m1", threadId = "thread-m1")
                 .copy(
                     status = "empty",
-                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    parentSurfaceKind = RaftThreadSurfaceKind.Channel,
                     parentChannelKind = "channel",
                     originStatus = "loaded",
                     originMessage =
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u2",
                             authorName = "Cindy",
@@ -6790,7 +6790,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val payload =
@@ -6817,12 +6817,12 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val route =
             basePayload().copy(
-                title = threadHeaderFallbackTitle(KuiklyThreadSurfaceKind.Channel),
+                title = threadHeaderFallbackTitle(RaftThreadSurfaceKind.Channel),
                 sourceThreadId = "joint-1",
                 streamChannelId = "joint-1",
                 channelKind = "joint"
@@ -6843,7 +6843,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val freshPayload = contentPayload("fresh memory body")
@@ -6860,7 +6860,7 @@ class SharedThreadStoreTest {
     fun shorterInitialWindowDoesNotShrinkExpandedVisibleTimeline() {
         val expandedMessages =
             (1..72).map { index ->
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "m$index",
                     authorId = "u1",
                     authorName = "Artin",
@@ -6902,7 +6902,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val payload =
@@ -6911,7 +6911,7 @@ class SharedThreadStoreTest {
                     status = "content",
                     subtitle = "#general",
                     originMessage =
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "parent-1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -6920,7 +6920,7 @@ class SharedThreadStoreTest {
                         ),
                     messages =
                         listOf(
-                            KuiklyThreadMessageItem(
+                            RaftThreadMessageItem(
                                 id = "reply-1",
                                 authorId = "u2",
                                 authorName = "Cindy",
@@ -6933,7 +6933,7 @@ class SharedThreadStoreTest {
 
         assertNull(localStore.readThread(ThreadId("thread-parent-1")))
         val cached = dataSource.cachedPayload("thread-parent-1")
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, cached?.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, cached?.surfaceKind)
         assertEquals("#general", cached?.subtitle)
     }
 
@@ -6944,7 +6944,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -6980,7 +6980,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7012,13 +7012,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val basePayload =
             basePayload().copy(
                 status = "content",
-                messages = listOf(KuiklyThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
+                messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
             )
         val localMessage = localPendingMessage("local-send-channel-1-1", "retry body")
 
@@ -7042,13 +7042,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val basePayload =
             basePayload().copy(
                 status = "content",
-                messages = listOf(KuiklyThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
+                messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u1", authorName = "Artin", body = "existing"))
             )
         val localMessage = localPendingMessage("local-send-channel-1-1", "sent body")
 
@@ -7071,7 +7071,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7096,7 +7096,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7120,7 +7120,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7145,7 +7145,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7177,7 +7177,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7215,7 +7215,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7237,7 +7237,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7309,7 +7309,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore
@@ -7362,7 +7362,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = flakyMemberRepository
             )
@@ -7409,7 +7409,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
@@ -7429,7 +7429,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = memberStore
@@ -7437,7 +7437,7 @@ class SharedThreadStoreTest {
         val uploadedAvatar =
             "https://cdn.raft.build/avatars/agents/deadbeefdeadbeefdeadbeefdeadbeef.webp"
         val fullHistoryRow =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "history-message",
                 authorId = "agent-1",
                 authorName = "Argus",
@@ -7504,7 +7504,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 serverMembersStore = memberStore,
                 payloadStore = payloadStore
@@ -7560,7 +7560,7 @@ class SharedThreadStoreTest {
                 val dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(failChannelMessages = true),
-                        sessionStore = InMemorySlockAuthSessionStore(session),
+                        sessionStore = InMemoryRaftAuthSessionStore(session),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         serverMembersStore = memberStore,
                         payloadStore = payloadStore
@@ -7661,7 +7661,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        val resolver = slockMemberAvatarResolver(memberStore, "server-1")
+        val resolver = raftMemberAvatarResolver(memberStore, "server-1")
         assertEquals(acceptedAvatar, resolver.current("agent-live"))
 
         store.accept(
@@ -7728,7 +7728,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
@@ -7751,10 +7751,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 channelRepository = channelRepository,
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -7800,10 +7800,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                agentsApiClient = SlockAgentsApiClient(agentsApi),
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                agentsApiClient = RaftAgentsApiClient(agentsApi),
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -7826,13 +7826,13 @@ class SharedThreadStoreTest {
     fun threadDataSourceRetainsCreateAgentCoordinatorForRouteInjection() {
         val coordinator =
             SharedCreateAgentCoordinator(
-                agentsApiClient = SlockAgentsApiClient(RecordingAgentsApi()),
-                computersApiClient = SlockComputersApiClient(RecordingComputersApi())
+                agentsApiClient = RaftAgentsApiClient(RecordingAgentsApi()),
+                computersApiClient = RaftComputersApiClient(RecordingComputersApi())
             )
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 createAgentCoordinator = coordinator
             )
@@ -7847,10 +7847,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                agentsApiClient = SlockAgentsApiClient(agentsApi),
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                agentsApiClient = RaftAgentsApiClient(agentsApi),
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -7890,10 +7890,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                agentsApiClient = SlockAgentsApiClient(agentsApi),
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                agentsApiClient = RaftAgentsApiClient(agentsApi),
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card = ThreadActionCard(type = "agent:create", name = "Noel")
 
@@ -7912,10 +7912,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -7969,10 +7969,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -8007,9 +8007,9 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -8075,9 +8075,9 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
         val card =
             ThreadActionCard(
@@ -8112,9 +8112,9 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
             )
 
         val result =
@@ -8147,7 +8147,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore
@@ -8183,7 +8183,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore
@@ -8223,7 +8223,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
@@ -8270,7 +8270,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -8315,7 +8315,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -8357,7 +8357,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -8414,7 +8414,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -8432,7 +8432,7 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertEquals("error", payload.status)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
         assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerAvatarUrl)
         assertEquals(emptyList(), payload.messages.map { it.body })
@@ -8452,7 +8452,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -8473,7 +8473,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
 
@@ -8501,7 +8501,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
         )
@@ -8578,7 +8578,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
 
@@ -8610,7 +8610,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository
             )
@@ -8643,7 +8643,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 memberRepository = memberRepository,
             )
@@ -8715,7 +8715,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 memberRepository = memberRepository
@@ -8728,7 +8728,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -8789,7 +8789,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -8801,7 +8801,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -8823,7 +8823,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
@@ -8839,7 +8839,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(),
+                sessionStore = InMemoryRaftAuthSessionStore(),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
@@ -8860,7 +8860,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(),
+                sessionStore = InMemoryRaftAuthSessionStore(),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -8916,7 +8916,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -8932,7 +8932,7 @@ class SharedThreadStoreTest {
         val payload = (dataSource.openMessageContext("parent-1", parentRoute) as DataResult.Content).data
 
         assertEquals(listOf(MessageId("parent-1")), repository.getMessageContextRequests)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("dm-1", payload.sourceThreadId)
         assertEquals("dm-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
@@ -8957,7 +8957,7 @@ class SharedThreadStoreTest {
         assertEquals("reply-thread-1", payload.messages.single().threadChannelId)
         assertEquals(3, payload.messages.single().replyCount)
         assertEquals(1, payload.messages.single().unreadReplyCount)
-        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.resolveThreadComposer().surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.resolveThreadComposer().surfaceKind)
     }
 
     @Test
@@ -8969,7 +8969,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -9037,7 +9037,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -9122,7 +9122,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -9193,7 +9193,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository,
                     ),
@@ -9243,7 +9243,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository,
                     ),
@@ -9283,7 +9283,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -9327,7 +9327,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository,
                     ),
@@ -9368,7 +9368,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository,
                     ),
@@ -9399,7 +9399,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -9481,10 +9481,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-promote", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-promote", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -9568,10 +9568,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 selectedServerStore =
-                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-visible-start", "server-1")),
+                    SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-visible-start", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore,
                 replyOriginHydrationGraceMillis = 0L
@@ -9671,7 +9671,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -9687,7 +9687,7 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ThreadId("joint-1")), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("joint", payload.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
         assertEquals("repository body", payload.messages.single().body)
     }
 
@@ -9715,7 +9715,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -9731,7 +9731,7 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ThreadId("joint-1")), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("joint", payload.channelKind)
-        assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
+        assertEquals(RaftLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
         assertEquals("repository body", payload.messages.single().body)
     }
 
@@ -9775,7 +9775,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 memberRepository = memberRepository
@@ -9812,7 +9812,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -9866,13 +9866,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val route =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "joint-thread-local",
                 streamChannelId = "joint-thread-local",
                 parentChannelId = "joint-parent-local",
@@ -9942,13 +9942,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val route =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-parent-1",
                 streamChannelId = "thread-parent-1",
                 parentChannelId = "parent-channel-1",
@@ -10013,7 +10013,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
@@ -10079,7 +10079,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository
                     ),
@@ -10110,7 +10110,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val initial = basePayload().copy(focusedMessageId = null, focusedMessageRequestNonce = 0)
@@ -10226,7 +10226,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = repository
                     ),
@@ -10276,7 +10276,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -10328,7 +10328,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -10374,16 +10374,16 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                parentChannelKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelKind = RaftThreadSurfaceKind.Channel,
                 originParentMessageId = "m1",
                 originMessage = contentPayload("parent body").messages.single(),
                 composer =
                     buildThreadSurfaceComposerPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         displayName = ThreadReplyPageTitle,
                         fallbackId = "m1",
                         enabled = true,
@@ -10395,7 +10395,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -10409,8 +10409,8 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentChannelKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, payload.parentChannelKind)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("thread-m1", payload.composer.streamChannelId)
         assertEquals("reply body", payload.messages.single().body)
@@ -10424,7 +10424,7 @@ class SharedThreadStoreTest {
         val seedDataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
@@ -10475,7 +10475,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
@@ -10485,7 +10485,7 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
                 parentChannelId = "channel-1",
@@ -10513,7 +10513,7 @@ class SharedThreadStoreTest {
         val accountOneDataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1")),
+                sessionStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1")),
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { environmentId },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
@@ -10562,7 +10562,7 @@ class SharedThreadStoreTest {
         val accountTwoDataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-2")),
+                sessionStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-2")),
                 conversationRepository = accountTwoRepository,
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { environmentId },
@@ -10590,7 +10590,7 @@ class SharedThreadStoreTest {
     @Test
     fun replyParentCandidateRejectsStaleProducerAfterIdentityPublication() = runBlocking {
         val environmentId = "https://prod.example.test"
-        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val authStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1"))
         val messageStore = SharedThreadMessageStore()
         val dataSource =
             SharedThreadDataSource(
@@ -10677,7 +10677,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
@@ -10705,10 +10705,10 @@ class SharedThreadStoreTest {
         val parent = contentPayload("parent body").messages.single()
         val base = contentPayload("parent body")
         var environmentId = " https://prod.example.test/ "
-        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val authStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1"))
         val selectedServerStore =
             SelectedServerStore(
-                SlockShellStoreScope.create(
+                RaftShellStoreScope.create(
                     shellInstanceId = "reply-resolution-namespace",
                     initialServerId = "server-a"
                 )
@@ -10808,10 +10808,10 @@ class SharedThreadStoreTest {
 
     @Test
     fun replyThreadResolutionRejectsOwnerChangedWhileCreateOrOpenSuspends() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore(replyResolutionSession("account-1"))
+        val authStore = InMemoryRaftAuthSessionStore(replyResolutionSession("account-1"))
         val selectedServerStore =
             SelectedServerStore(
-                SlockShellStoreScope.create(
+                RaftShellStoreScope.create(
                     shellInstanceId = "reply-resolution-in-flight-identity",
                     initialServerId = "server-a"
                 )
@@ -10901,7 +10901,7 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1"
@@ -10909,7 +10909,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -10952,7 +10952,7 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "channel-1",
                 parentMessageId = null,
                 originParentMessageId = "m1"
@@ -10960,7 +10960,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11043,7 +11043,7 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "wrong-thread",
                 streamChannelId = "wrong-thread",
                 parentChannelId = "channel-1",
@@ -11053,7 +11053,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11118,7 +11118,7 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "wrong-thread",
                 streamChannelId = "wrong-thread",
                 parentChannelId = "channel-1",
@@ -11129,7 +11129,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11187,7 +11187,7 @@ class SharedThreadStoreTest {
             )
         val base =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
                 parentChannelId = "channel-1",
@@ -11198,7 +11198,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11224,13 +11224,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         dataSource.cachePayloadForTest(wrongReplyCachedPayload())
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observedPayloads = mutableListOf<RaftThreadScreenPayload>()
         val observer = scope.launch {
             store.state.collect { state -> observedPayloads += state.payload }
         }
@@ -11265,12 +11265,12 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observedPayloads = mutableListOf<RaftThreadScreenPayload>()
         val observer = scope.launch {
             store.state.collect { state -> observedPayloads += state.payload }
         }
@@ -11309,13 +11309,13 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         dataSource.cachePayloadForTest(wrongReplyCachedPayload())
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observedPayloads = mutableListOf<RaftThreadScreenPayload>()
         val observer = scope.launch {
             store.state.collect { state -> observedPayloads += state.payload }
         }
@@ -11376,7 +11376,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11402,7 +11402,7 @@ class SharedThreadStoreTest {
                     title = "stale launch title",
                     subtitle = "#stale",
                     originMessage =
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "stale-user",
                             authorName = "Stale",
@@ -11420,7 +11420,7 @@ class SharedThreadStoreTest {
         assertEquals(emptyList(), repository.createOrOpenRequests)
         assertEquals(emptyList(), repository.getThreadRequests)
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
         assertEquals("thread-m1", payload.composer.streamChannelId)
@@ -11454,7 +11454,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11462,7 +11462,7 @@ class SharedThreadStoreTest {
         val initialPayload =
             basePayload().copy(
                 instanceId = "shared-shell-thread-pending-m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = null,
                 streamChannelId = null,
                 parentChannelId = "channel-1",
@@ -11475,7 +11475,7 @@ class SharedThreadStoreTest {
                 messages = emptyList(),
                 composer =
                     buildThreadSurfaceComposerPayload(
-                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                         displayName = ThreadReplyPageTitle,
                         fallbackId = "m1",
                         enabled = true,
@@ -11528,7 +11528,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 diagnosticsLogger = diagnostics::add
@@ -11590,7 +11590,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11628,7 +11628,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11677,7 +11677,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11727,7 +11727,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -11778,7 +11778,7 @@ class SharedThreadStoreTest {
                             seq = 44
                         )
                 ),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -11804,7 +11804,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -11847,7 +11847,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(channelMessagesResponseCode = 403),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -11868,7 +11868,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -11905,7 +11905,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -11942,7 +11942,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -11975,7 +11975,7 @@ class SharedThreadStoreTest {
                     FakeThreadApi(
                         bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
                     ),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -12019,7 +12019,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -12154,7 +12154,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -12192,7 +12192,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -12230,14 +12230,14 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        val payloadEvents = mutableListOf<KuiklyThreadScreenPayload>()
+        val payloadEvents = mutableListOf<RaftThreadScreenPayload>()
         val job = launch(Dispatchers.Unconfined) {
             store.payloadFlow().collect { payload -> payloadEvents += payload }
         }
@@ -12259,7 +12259,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -12276,8 +12276,8 @@ class SharedThreadStoreTest {
         store.accept(
             SharedThreadIntent.ApplyMembersPatch(
                 membersCount = 1,
-                members = listOf(KuiklyThreadMemberItem(id = "u2", displayName = "Member 2")),
-                memberCandidates = listOf(KuiklyThreadMemberItem(id = "u3", displayName = "Candidate 3")),
+                members = listOf(RaftThreadMemberItem(id = "u2", displayName = "Member 2")),
+                memberCandidates = listOf(RaftThreadMemberItem(id = "u3", displayName = "Candidate 3")),
                 canAddMembers = true
             )
         )
@@ -12295,7 +12295,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -12480,7 +12480,7 @@ class SharedThreadStoreTest {
         val route =
             basePayload().copy(
                 instanceId = "shared-shell-thread-thread-m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
                 parentChannelId = "channel-1",
@@ -12493,7 +12493,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "reply-1",
                             authorId = "u2",
                             authorName = "Cindy",
@@ -12501,7 +12501,7 @@ class SharedThreadStoreTest {
                         )
                     ),
                 originMessage =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "m1",
                         authorId = "u1",
                         authorName = "Artin",
@@ -12591,20 +12591,20 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
         val route =
             basePayload().copy(
                 instanceId = "shared-shell-thread-thread-m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-m1",
                 streamChannelId = "thread-m1",
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                parentChannelKind = KuiklyThreadSurfaceKind.Channel,
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelKind = RaftThreadSurfaceKind.Channel,
                 originParentMessageId = "m1",
                 showModeTabs = false
             )
@@ -12612,7 +12612,7 @@ class SharedThreadStoreTest {
             route.copy(
                 status = "content",
                 messages = listOf(
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "reply-4",
                         authorId = "u2",
                         authorName = "Cindy",
@@ -12621,7 +12621,7 @@ class SharedThreadStoreTest {
                     )
                 ),
                 originMessage =
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "m1",
                         authorId = "u1",
                         authorName = "Artin",
@@ -12693,7 +12693,7 @@ class SharedThreadStoreTest {
 
         assertEquals(
             listOf(
-                KuiklyThreadReactionItem(
+                RaftThreadReactionItem(
                     "👀",
                     count = 1,
                     selected = true,
@@ -12769,7 +12769,7 @@ class SharedThreadStoreTest {
         val shieldedMessage = store.state.value.payload.messages.single()
         assertEquals("server body edited", shieldedMessage.body)
         assertEquals(
-            listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true, reactorIds = listOf("u1"), reactorNames = listOf("Artin"))),
+            listOf(RaftThreadReactionItem("🔥", count = 1, selected = true, reactorIds = listOf("u1"), reactorNames = listOf("Artin"))),
             shieldedMessage.reactions
         )
 
@@ -12803,8 +12803,8 @@ class SharedThreadStoreTest {
             contentPayload("cached body").messages.single().copy(
                 reactions =
                     listOf(
-                        KuiklyThreadReactionItem("👍", count = 1, selected = true),
-                        KuiklyThreadReactionItem("🔥", count = 1, selected = false)
+                        RaftThreadReactionItem("👍", count = 1, selected = true),
+                        RaftThreadReactionItem("🔥", count = 1, selected = false)
                     )
             )
         dataSource.cachePayloadForTest(contentPayload("cached body").copy(messages = listOf(initialMessage)))
@@ -12864,7 +12864,7 @@ class SharedThreadStoreTest {
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "task-1",
                             title = "Old task",
                             status = "Todo",
@@ -12957,7 +12957,7 @@ class SharedThreadStoreTest {
                     ),
                 tasks =
                     listOf(
-                        KuiklyThreadTaskItem(
+                        RaftThreadTaskItem(
                             id = "local-stale-task",
                             title = "Cached task",
                             status = "Todo",
@@ -13039,7 +13039,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 payloadStore = payloadStore
             )
@@ -13077,7 +13077,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -13109,7 +13109,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -13138,7 +13138,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("cached body"))
@@ -13180,7 +13180,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -13207,7 +13207,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -13235,7 +13235,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
 
@@ -13253,7 +13253,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -13293,7 +13293,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val initial =
@@ -13301,7 +13301,7 @@ class SharedThreadStoreTest {
                 status = "content",
                 messages =
                     listOf(
-                        KuiklyThreadMessageItem(
+                        RaftThreadMessageItem(
                             id = "m1",
                             authorId = "u1",
                             authorName = "Artin",
@@ -13333,7 +13333,7 @@ class SharedThreadStoreTest {
     @Test
     fun replyThreadLoadingPayloadCarriesFirstUnreadFocus() {
         val parent =
-            KuiklyThreadMessageItem(
+            RaftThreadMessageItem(
                 id = "m1",
                 authorId = "u1",
                 authorName = "Artin",
@@ -13366,7 +13366,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository =
                     FakeConversationRepository(
@@ -13425,7 +13425,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
@@ -13447,7 +13447,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
@@ -13462,7 +13462,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
@@ -13477,7 +13477,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 savedStatusRepository = savedStatusRepository
             )
@@ -13501,7 +13501,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 savedStatusRepository = savedStatusRepository
             )
@@ -13530,7 +13530,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 savedStatusRepository = savedStatusRepository
             )
@@ -13554,7 +13554,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 savedStatusRepository = savedStatusRepository
             )
@@ -13596,7 +13596,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 savedStatusRepository = savedStatusRepository
@@ -13643,7 +13643,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("saveable body"))
@@ -13668,7 +13668,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body"))
@@ -13689,7 +13689,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body"))
@@ -13713,7 +13713,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body"))
@@ -13760,12 +13760,12 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val message =
             contentPayload("reactable body").messages.single().copy(
-                reactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
+                reactions = listOf(RaftThreadReactionItem("🔥", count = 1, selected = true))
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body").copy(messages = listOf(message)))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -13790,15 +13790,15 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val message =
             contentPayload("reactable body").messages.single().copy(
                 reactions =
                     listOf(
-                        KuiklyThreadReactionItem("👍", count = 1, selected = true),
-                        KuiklyThreadReactionItem("🔥", count = 1, selected = false)
+                        RaftThreadReactionItem("👍", count = 1, selected = true),
+                        RaftThreadReactionItem("🔥", count = 1, selected = false)
                     )
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body").copy(messages = listOf(message)))
@@ -13844,8 +13844,8 @@ class SharedThreadStoreTest {
             contentPayload("reactable body").messages.single().copy(
                 reactions =
                     listOf(
-                        KuiklyThreadReactionItem("👍", count = 1, selected = true),
-                        KuiklyThreadReactionItem("🔥", count = 1, selected = false)
+                        RaftThreadReactionItem("👍", count = 1, selected = true),
+                        RaftThreadReactionItem("🔥", count = 1, selected = false)
                     )
             )
         dataSource.cachePayloadForTest(contentPayload("reactable body").copy(messages = listOf(initialMessage)))
@@ -13856,14 +13856,14 @@ class SharedThreadStoreTest {
             SharedThreadIntent.ApplyMessageReactions(
                 "m1",
                 listOf(
-                    KuiklyThreadReactionItem(
+                    RaftThreadReactionItem(
                         "🔥",
                         count = 2,
                         selected = true,
                         reactorIds = listOf("u2", "u3"),
                         reactorNames = listOf("Cindy", "Artin")
                     ),
-                    KuiklyThreadReactionItem(
+                    RaftThreadReactionItem(
                         "👍",
                         count = 1,
                         selected = true,
@@ -13887,7 +13887,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
 
@@ -13905,10 +13905,10 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
-        val originalReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
+        val originalReactions = listOf(RaftThreadReactionItem("🔥", count = 1, selected = true))
         val message = contentPayload("reactable body").messages.single()
         dataSource.cachePayloadForTest(
             contentPayload("reactable body").copy(
@@ -13931,7 +13931,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val base = contentPayload("parent body")
@@ -13956,7 +13956,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val base = contentPayload("parent body")
@@ -14010,7 +14010,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
@@ -14061,7 +14061,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -14072,7 +14072,7 @@ class SharedThreadStoreTest {
                 streamChannelId = "thread-m1",
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originMessage = parent,
                 originParentMessageId = "m1",
@@ -14122,7 +14122,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -14134,7 +14134,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -14193,7 +14193,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -14205,7 +14205,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -14255,7 +14255,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository
             )
@@ -14267,7 +14267,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -14322,7 +14322,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
@@ -14338,7 +14338,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -14395,7 +14395,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(ownerASession),
+                sessionStore = InMemoryRaftAuthSessionStore(ownerASession),
                 conversationRepository = repository,
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
@@ -14479,7 +14479,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" },
@@ -14501,7 +14501,7 @@ class SharedThreadStoreTest {
                 parentChannelId = "channel-1",
                 parentMessageId = "m1",
                 originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 showModeTabs = false,
                 originStatus = "loading"
             )
@@ -14553,7 +14553,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
                 cacheEnvironmentIdProvider = { "https://prod.example.test" }
             )
@@ -14590,7 +14590,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -14620,7 +14620,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 threadPageSizeProvider = { remotePageSize }
             )
@@ -14642,7 +14642,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 threadPageSizeProvider = { remotePageSize }
@@ -14693,7 +14693,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 durablePageExtender = extender
@@ -14733,7 +14733,7 @@ class SharedThreadStoreTest {
                 dataSource =
                     testSharedThreadDataSource(
                         networkApi = FakeThreadApi(),
-                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                         conversationRepository = FakeConversationRepository(),
                         durablePageExtender = extender
@@ -14753,14 +14753,14 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 durablePageExtender = extender
             )
         val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
         val replyRoute =
             basePayload().copy(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 sourceThreadId = "thread-parent-1",
                 streamChannelId = "thread-parent-1",
                 parentChannelId = "channel-1",
@@ -14788,7 +14788,7 @@ class SharedThreadStoreTest {
     fun replyRouteOpenedBeforeItsStreamIsKnownRequestsTheThreadSnapshotOnceResolved() = runBlocking {
         // Task #168 step 3: `start()` cannot name the thread scope of an unresolved reply route; the
         // enter snapshot is requested once the first refresh resolved the stream.
-        suspend fun replyLoadsFor(route: KuiklyThreadScreenPayload): List<Pair<String, ThreadDurableReplyParent>> {
+        suspend fun replyLoadsFor(route: RaftThreadScreenPayload): List<Pair<String, ThreadDurableReplyParent>> {
             val scopeJob = SupervisorJob()
             val scope = CoroutineScope(coroutineContext + scopeJob)
             val loads = mutableListOf<Pair<String, ThreadDurableReplyParent>>()
@@ -14834,7 +14834,7 @@ class SharedThreadStoreTest {
                     dataSource =
                         testSharedThreadDataSource(
                             networkApi = FakeThreadApi(),
-                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                             conversationRepository = repository,
                             enteredScopeSnapshotLoader = loader
@@ -14952,7 +14952,7 @@ class SharedThreadStoreTest {
     // launched jobs interleave only at suspension points, as on production's Main confinement.
 
     private class GapCatchUpOutcome(
-        val payload: KuiklyThreadScreenPayload,
+        val payload: RaftThreadScreenPayload,
         val logs: List<String>,
         val requestLimits: List<Int>,
     )
@@ -14973,7 +14973,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -15066,7 +15066,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -15099,7 +15099,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = FakeThreadApi(),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
                 durablePageExtender = extender
@@ -15136,7 +15136,7 @@ class SharedThreadStoreTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = FakeThreadApi(),
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     conversationRepository = repository,
                     durablePageExtender = extender
@@ -15186,7 +15186,7 @@ class SharedThreadStoreTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = FakeThreadApi(),
-                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                     conversationRepository = repository,
                     durablePageExtender = extender
@@ -15280,7 +15280,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15311,7 +15311,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15343,7 +15343,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15367,7 +15367,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15392,7 +15392,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15438,7 +15438,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15465,7 +15465,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15493,7 +15493,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15526,7 +15526,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15593,7 +15593,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15637,7 +15637,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15761,7 +15761,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15822,7 +15822,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15904,7 +15904,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -15979,7 +15979,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16027,7 +16027,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16073,7 +16073,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16104,7 +16104,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16146,7 +16146,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -16181,7 +16181,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16202,7 +16202,7 @@ class SharedThreadStoreTest {
     @Test
     fun noPermissionRecoveryResponseTerminatesWithoutWritingRetiredOwnerCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val auth = InMemorySlockAuthSessionStore(sampleSession())
+        val auth = InMemoryRaftAuthSessionStore(sampleSession())
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
@@ -16257,7 +16257,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(canLoadMoreAfter = false)
@@ -16301,7 +16301,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16328,7 +16328,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -16369,7 +16369,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -16455,7 +16455,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -16564,7 +16564,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -16664,7 +16664,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -16734,7 +16734,7 @@ class SharedThreadStoreTest {
         val dataSource =
             testSharedThreadDataSource(
                 networkApi = api,
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
                 conversationRepository = repository,
             )
@@ -16968,8 +16968,8 @@ class SharedThreadStoreTest {
 
     private class ParkableReadSessionStore(
         initialSession: StoredAuthSession,
-    ) : SlockAuthSessionStore {
-        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+    ) : RaftAuthSessionStore {
+        private val delegate = InMemoryRaftAuthSessionStore(initialSession)
         private var parkRead = false
         var nextReadStarted = CompletableDeferred<Unit>()
             private set
@@ -17017,7 +17017,7 @@ class SharedThreadStoreTest {
         }
     }
 
-    private class RecordingAgentsApi : SlockAgentsApi {
+    private class RecordingAgentsApi : RaftAgentsApi {
         val createBodies: MutableList<String> = mutableListOf()
 
         override suspend fun agents(): HomeNetworkResponse = error("unused")
@@ -17048,7 +17048,7 @@ class SharedThreadStoreTest {
         override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     }
 
-    private class RecordingComputersApi : SlockComputersApi {
+    private class RecordingComputersApi : RaftComputersApi {
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
         override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
         override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
@@ -17092,7 +17092,7 @@ class SharedThreadStoreTest {
                     }
                     """.trimIndent()
             )
-    ) : SlockIntegrationsActionsPushApi {
+    ) : RaftIntegrationsActionsPushApi {
         val calls: MutableList<String> = mutableListOf()
 
         override suspend fun integrationsOverview(): HomeNetworkResponse = error("unused")
@@ -17625,7 +17625,7 @@ class SharedThreadStoreTest {
 
     private fun SharedThreadStore.startLocalSendForCurrentOwner(
         dataSource: SharedThreadDataSource,
-        message: KuiklyThreadMessageItem,
+        message: RaftThreadMessageItem,
         composerSeed: ThreadLocalSendComposerSeed? = null
     ) {
         val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
@@ -17677,8 +17677,8 @@ class SharedThreadStoreTest {
         )
     }
 
-    private fun basePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun basePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-channel-1",
             title = "general",
             sourceThreadId = "channel-1",
@@ -17686,9 +17686,9 @@ class SharedThreadStoreTest {
             canSend = true
         )
 
-    private fun focusedReplyRoute(): KuiklyThreadScreenPayload =
+    private fun focusedReplyRoute(): RaftThreadScreenPayload =
         basePayload().copy(
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "thread-parent-1",
             streamChannelId = "thread-parent-1",
             parentChannelId = "parent-channel-1",
@@ -17698,11 +17698,11 @@ class SharedThreadStoreTest {
             focusedMessageId = "reply-focus-1"
         )
 
-    private fun directMessagePayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun directMessagePayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-dm-1",
             title = "artin",
-            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
             sourceThreadId = "dm-1",
             streamChannelId = "dm-1",
             status = "loading",
@@ -17712,10 +17712,10 @@ class SharedThreadStoreTest {
             dmPeerAvatarLabel = "AR",
         )
 
-    private fun replyRouteWithWrongHint(): KuiklyThreadScreenPayload =
+    private fun replyRouteWithWrongHint(): RaftThreadScreenPayload =
         basePayload().copy(
             instanceId = "shared-shell-thread-wrong-thread",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "wrong-thread",
             streamChannelId = "wrong-thread",
             parentChannelId = "channel-1",
@@ -17726,10 +17726,10 @@ class SharedThreadStoreTest {
             showModeTabs = false
         )
 
-    private fun replyPayload(parentMessageId: String, threadId: String): KuiklyThreadScreenPayload =
+    private fun replyPayload(parentMessageId: String, threadId: String): RaftThreadScreenPayload =
         basePayload().copy(
             instanceId = "shared-shell-thread-$threadId",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = threadId,
             streamChannelId = threadId,
             parentChannelId = "channel-1",
@@ -17746,7 +17746,7 @@ class SharedThreadStoreTest {
         parentChannelId: String,
         parentMessageId: String,
         threadId: String
-    ): KuiklyThreadScreenPayload {
+    ): RaftThreadScreenPayload {
         val request =
             InboxItem(
                 key = "thread:$parentMessageId",
@@ -17795,10 +17795,10 @@ class SharedThreadStoreTest {
                 )
         )
 
-    private fun unresolvedReplyPayload(parentMessageId: String): KuiklyThreadScreenPayload =
+    private fun unresolvedReplyPayload(parentMessageId: String): RaftThreadScreenPayload =
         basePayload().copy(
             instanceId = "shared-shell-thread-pending-$parentMessageId",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = null,
             streamChannelId = null,
             parentChannelId = "channel-1",
@@ -17810,15 +17810,15 @@ class SharedThreadStoreTest {
             showReplyActions = false
         )
 
-    private fun contentPayload(body: String, id: String = "m1"): KuiklyThreadScreenPayload =
+    private fun contentPayload(body: String, id: String = "m1"): RaftThreadScreenPayload =
         contentPayloadForRoute(basePayload(), body, id = id)
 
     private fun contentPayloadForRoute(
-        base: KuiklyThreadScreenPayload,
+        base: RaftThreadScreenPayload,
         body: String,
         id: String = "m1",
         channelId: String = base.sourceThreadId ?: "channel-1"
-    ): KuiklyThreadScreenPayload =
+    ): RaftThreadScreenPayload =
         buildSharedThreadPayloadFromMessagesPage(
             basePayload = base,
             page =
@@ -17844,7 +17844,7 @@ class SharedThreadStoreTest {
     private fun canonicalThreadDataSource(): SharedThreadDataSource =
         testSharedThreadDataSource(
             networkApi = FakeThreadApi(failChannelMessages = true),
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
         )
 
@@ -18020,8 +18020,8 @@ class SharedThreadStoreTest {
         attachmentIds: List<String> = emptyList(),
         streamChannelId: String = "channel-1",
         randomId: String? = null
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "u1",
             authorName = "Artin",
@@ -18030,7 +18030,7 @@ class SharedThreadStoreTest {
             threadChannelId = streamChannelId,
             attachments =
                 attachmentIds.map { attachmentId ->
-                    KuiklyThreadAttachmentItem(
+                    RaftThreadAttachmentItem(
                         id = attachmentId,
                         name = "$attachmentId.txt",
                         mimeType = "text/plain",
@@ -18039,14 +18039,14 @@ class SharedThreadStoreTest {
                 },
             deliveryState = ThreadMessageDeliverySending,
             pendingSendContext =
-                KuiklyThreadPendingSendContext(
+                RaftThreadPendingSendContext(
                     channelId = "channel-1",
                     body = body,
                     asTask = asTask,
                     attachmentIds = attachmentIds,
                     attachments =
                         attachmentIds.map { attachmentId ->
-                            KuiklyPendingAttachmentItem(
+                            RaftPendingAttachmentItem(
                                 id = attachmentId,
                                 fileName = "$attachmentId.txt",
                                 sizeLabel = "1 KB",
@@ -18061,10 +18061,10 @@ class SharedThreadStoreTest {
                 )
         )
 
-    private fun wrongReplyCachedPayload(): KuiklyThreadScreenPayload =
-        KuiklyThreadScreenPayload(
+    private fun wrongReplyCachedPayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
             instanceId = "shared-shell-thread-wrong-thread",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
             sourceThreadId = "wrong-thread",
             streamChannelId = "wrong-thread",
             parentChannelId = "other-channel",
@@ -18075,7 +18075,7 @@ class SharedThreadStoreTest {
             status = "content",
             messages =
                 listOf(
-                    KuiklyThreadMessageItem(
+                    RaftThreadMessageItem(
                         id = "wrong-reply",
                         authorId = "u1",
                         authorName = "Artin",
@@ -18083,7 +18083,7 @@ class SharedThreadStoreTest {
                     )
                 ),
             originMessage =
-                KuiklyThreadMessageItem(
+                RaftThreadMessageItem(
                     id = "other-message",
                     authorId = "u1",
                     authorName = "Artin",
@@ -18158,13 +18158,13 @@ class SharedThreadStoreTest {
             createThreadResult = createThreadResult
         )
 
-    private fun KuiklyThreadScreenPayload.containsWrongReplyCacheContent(): Boolean =
+    private fun RaftThreadScreenPayload.containsWrongReplyCacheContent(): Boolean =
         title == "wrong" ||
             subtitle == "#wrong" ||
             originMessage?.body == "wrong parent" ||
             messages.any { message -> message.body == "wrong cached body" }
 
-    private fun taskPayload(): KuiklyThreadScreenPayload {
+    private fun taskPayload(): RaftThreadScreenPayload {
         val message =
             contentPayload("task body").messages.single().copy(
                 taskId = "task-1",
@@ -18174,7 +18174,7 @@ class SharedThreadStoreTest {
             messages = listOf(message),
             tasks =
                 listOf(
-                    KuiklyThreadTaskItem(
+                    RaftThreadTaskItem(
                         id = "task-1",
                         title = "#44 Task",
                         status = "Todo",
@@ -18184,13 +18184,13 @@ class SharedThreadStoreTest {
         )
     }
 
-    private fun taskPayloadWithMessageReferenceOnly(): KuiklyThreadScreenPayload {
+    private fun taskPayloadWithMessageReferenceOnly(): RaftThreadScreenPayload {
         val message = contentPayload("task body").messages.single()
         return contentPayload("task body").copy(
             messages = listOf(message),
             tasks =
                 listOf(
-                    KuiklyThreadTaskItem(
+                    RaftThreadTaskItem(
                         id = "task-1",
                         title = "#44 Task",
                         status = "Todo",
@@ -18202,7 +18202,7 @@ class SharedThreadStoreTest {
     }
 
     private fun SharedThreadDataSource.cachePayloadForTest(
-        payload: KuiklyThreadScreenPayload
+        payload: RaftThreadScreenPayload
     ): Boolean {
         runBlocking { readSession() }
         return cachePayload(payload, serverId = "server-1")
@@ -18566,8 +18566,8 @@ class SharedThreadStoreTest {
                 avatarUrl = externalAvatar
             ),
             authorKind: String = "external",
-        ): KuiklyThreadMessageItem =
-            KuiklyThreadMessageItem(
+        ): RaftThreadMessageItem =
+            RaftThreadMessageItem(
                 id = id,
                 authorId = "unknown",
                 authorName = externalName,
@@ -18602,7 +18602,7 @@ class SharedThreadStoreTest {
         assertEquals("Alice in Slack", convertedMessage.externalAuthor?.displayName)
         assertEquals("https://slack.example.com/alice.png", convertedMessage.externalAuthor?.avatarUrl)
 
-        val roundTripItem = convertedMessage.toKuiklyThreadMessageItem("my-user-id")
+        val roundTripItem = convertedMessage.toRaftThreadMessageItem("my-user-id")
         assertEquals("slack-root-1", roundTripItem.id)
         assertEquals("external", roundTripItem.authorKind)
         assertEquals("Alice in Slack", roundTripItem.authorName)
@@ -18636,7 +18636,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { environmentId },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
@@ -18677,7 +18677,7 @@ class SharedThreadStoreTest {
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 messageStore = messageStore,
                 cacheEnvironmentIdProvider = { environmentId },
                 replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(

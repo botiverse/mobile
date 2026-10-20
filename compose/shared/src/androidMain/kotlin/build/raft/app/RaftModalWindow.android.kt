@@ -25,7 +25,7 @@ internal actual fun RaftModalDialogWindowEffect() {
     DisposableEffect(view) {
         val window = (view.parent as? DialogWindowProvider)?.window
         if (window != null) {
-            // Slock draws its own veil (SlockModalDismissBarrier); the theme's dim doubled it.
+            // Slock draws its own veil (RaftModalDismissBarrier); the theme's dim doubled it.
             window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             // No dialog-owned bar backgrounds: they painted a gray strip over the navigation bar.
             window.statusBarColor = Color.TRANSPARENT
@@ -34,7 +34,7 @@ internal actual fun RaftModalDialogWindowEffect() {
                 window.isStatusBarContrastEnforced = false
                 window.isNavigationBarContrastEnforced = false
             }
-            // Same light bar appearance as the host activity (SlockCmpActivity.applyLightSystemBarsAppearance).
+            // Same light bar appearance as the host activity (RaftCmpActivity.applyLightSystemBarsAppearance).
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = true
                 isAppearanceLightNavigationBars = true

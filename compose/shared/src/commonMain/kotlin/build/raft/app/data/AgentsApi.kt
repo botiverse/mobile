@@ -79,7 +79,7 @@ internal enum class AgentArchivePendingOp {
     }
 }
 
-internal data class SlockAgentArchive(
+internal data class RaftAgentArchive(
     val agentId: String,
     val archivedAt: String?,
     val archivedByUserId: String?,
@@ -110,9 +110,9 @@ internal data class AgentArchiveWireDto(
     val lastErrorCode: String? = null,
     val lastErrorAt: String? = null
 ) {
-    fun toAgentArchive(): SlockAgentArchive? {
+    fun toAgentArchive(): RaftAgentArchive? {
         val id = agentId?.takeIf { it.isNotBlank() } ?: return null
-        return SlockAgentArchive(
+        return RaftAgentArchive(
             agentId = id,
             archivedAt = archivedAt?.takeIf { it.isNotBlank() },
             archivedByUserId = archivedByUserId?.takeIf { it.isNotBlank() },
@@ -132,7 +132,7 @@ internal data class AgentArchiveWorkspaceActionDto(
     val action: String = "delete"
 )
 
-internal interface SlockAgentsApi {
+internal interface RaftAgentsApi {
     suspend fun agents(): HomeNetworkResponse
     suspend fun agent(agentId: MemberId): HomeNetworkResponse
     suspend fun createAgent(body: String): HomeNetworkResponse
@@ -185,10 +185,10 @@ internal interface SlockAgentsApi {
         error("agentRuntimeFormV2 is not implemented")
 }
 
-internal class SlockAgentsNetworkApi(
-    private val networkClient: SlockNetworkClient,
+internal class RaftAgentsNetworkApi(
+    private val networkClient: RaftNetworkClient,
     private val runtimeFormLanguageTag: () -> String? = { runtimeFormRequestLanguageTag() }
-) : SlockAgentsApi {
+) : RaftAgentsApi {
     override suspend fun agents(): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
@@ -355,8 +355,8 @@ internal class SlockAgentsNetworkApi(
         )
 }
 
-internal class SlockAgentsApiClient(
-    private val transport: SlockAgentsApi,
+internal class RaftAgentsApiClient(
+    private val transport: RaftAgentsApi,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     suspend fun agents(): DataResult<AgentsPage> =
@@ -416,7 +416,7 @@ internal class SlockAgentsApiClient(
      * `Content(null)` = the agent has no archive record; non-archived agents
      * are expected to land here.
      */
-    suspend fun agentArchive(agentId: MemberId): DataResult<SlockAgentArchive?> {
+    suspend fun agentArchive(agentId: MemberId): DataResult<RaftAgentArchive?> {
         val response = transport.agentArchive(agentId)
         if (!response.isSuccessful) return response.toAgentsDataError()
         val body = response.bodyText?.takeIf { it.isNotBlank() }
@@ -444,13 +444,13 @@ internal class SlockAgentsApiClient(
      * etc.) on the `ScreenError` so the UI can pick a localized reason instead
      * of raw server text.
      */
-    suspend fun deleteAgentArchiveWorkspace(agentId: MemberId): DataResult<SlockAgentArchive> {
+    suspend fun deleteAgentArchiveWorkspace(agentId: MemberId): DataResult<RaftAgentArchive> {
         val response = transport.deleteAgentArchiveWorkspace(
             agentId,
             agentsApiJson.encodeToString(AgentArchiveWorkspaceActionDto.serializer(), AgentArchiveWorkspaceActionDto())
         )
         val serverCode = response.serverErrorCodeOrNull()
-        val mapped = response.mapAgentsBody<AgentArchiveEnvelopeDto, SlockAgentArchive>(
+        val mapped = response.mapAgentsBody<AgentArchiveEnvelopeDto, RaftAgentArchive>(
             "agent_archive_workspace_delete_contract_mismatch",
             AgentArchiveEnvelopeDto.serializer(),
             diagnosticsLogger = diagnosticsLogger
@@ -748,7 +748,7 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> {
 
 private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
     if (code != 409) return null
-    // task #186: the production transport (NetworkKmmSlockHttpExecutor) delivers
+    // task #186: the production transport (NetworkKmmRaftHttpExecutor) delivers
     // every non-2xx body in errorBodyText and leaves bodyText null, so the 409
     // issues envelope must be read from both fields or the runtime-form
     // recovery never triggers on device.

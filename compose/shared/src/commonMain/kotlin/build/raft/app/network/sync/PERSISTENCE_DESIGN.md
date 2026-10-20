@@ -9,7 +9,7 @@
 
 **Rev 3** — folds two review rounds. Rev 1's parallel `sync_fact`/`sync_timeline`
 tables are withdrawn (double-truth). Rev 3 reuses the existing SQLDelight
-`SlockDatabase` and pins the constraints that table-reuse exposed (composite key,
+`RaftDatabase` and pins the constraints that table-reuse exposed (composite key,
 projector completeness, poisoned-core barrier, FK-safe snapshot). Passed and frozen
 by prior rounds: per-ingest-call transaction scope, fail-stop, SQLDelight reuse,
 canonical server orderKey.
@@ -50,7 +50,7 @@ callers ─▶ wrapper.ingestX(input) {
 ## 2. Backend split — crash-atomicity (§10.1), on EXISTING tables
 
 Anything crash-consistent with message facts shares their backend and transaction.
-The messages backend already exists (cross-platform SQLDelight `SlockDatabase`); we
+The messages backend already exists (cross-platform SQLDelight `RaftDatabase`); we
 reuse it, never a parallel store.
 
 | Datum | Storage (existing unless noted) | Same txn as facts? |
@@ -100,7 +100,7 @@ blocker is cleared.
 
 ## 4. Atomic apply — one ingest call = one transaction
 
-| Ingest call | The single `SlockDatabase.transaction { }` contains |
+| Ingest call | The single `RaftDatabase.transaction { }` contains |
 |---|---|
 | `ingestFrame` (1 event) | 1 `messageEntity` upsert + cursor(`latestSeq`,`epoch`) |
 | `ingestDifference` (N events) | **N** projected upserts/tombstones + **one** cursor advance to `toSeq` |
@@ -145,7 +145,7 @@ Per scope: read `syncCursorEntity` → `{latestSeq, epoch}` and the folded state
 `SyncSnapshot(scopeId, watermark=latestSeq, epoch, state)` via the **existing**
 `ingestSnapshot`. Then request difference since `latestSeq`; gap-over-threshold →
 `Snapshot`. Cold full-fetch becomes incremental resume. Corrupt DB / epoch mismatch /
-`snapshotRequired` → existing `Snapshot` route. Deleting `SlockDatabase` is a defined
+`snapshotRequired` → existing `Snapshot` route. Deleting `RaftDatabase` is a defined
 state (cold hydrate), never silent hole-skip (T7).
 
 ## 6. §9.9 acceptance gates → canonical fixture line (#541) (P3, task #493)

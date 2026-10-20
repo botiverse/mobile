@@ -3,9 +3,9 @@ package build.raft.app.shared
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.SLOCK_ROUTE_ACCOUNT_ID
-import build.raft.app.SLOCK_ROUTE_ENVIRONMENT_ID
-import build.raft.app.SLOCK_ROUTE_SERVER_ID
+import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
+import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
+import build.raft.app.RAFT_ROUTE_SERVER_ID
 import build.raft.app.data.KeyValueAuthSessionStore
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
@@ -17,10 +17,10 @@ internal const val ANDROID_SHELL_SERVER_ID_KEY = "serverId"
 internal const val ANDROID_DOCUMENT_SHELL_KEY = "slockDocumentShell"
 
 // Route-owner keys are the shared public `SLOCK_ROUTE_*` consts in
-// shared/SlockShellStoreLaunch.kt (made public so androidApp reads them).
-private const val ANDROID_ROUTE_ENVIRONMENT_ID_KEY = SLOCK_ROUTE_ENVIRONMENT_ID
-private const val ANDROID_ROUTE_ACCOUNT_ID_KEY = SLOCK_ROUTE_ACCOUNT_ID
-private const val ANDROID_ROUTE_SERVER_ID_KEY = SLOCK_ROUTE_SERVER_ID
+// shared/RaftShellStoreLaunch.kt (made public so androidApp reads them).
+private const val ANDROID_ROUTE_ENVIRONMENT_ID_KEY = RAFT_ROUTE_ENVIRONMENT_ID
+private const val ANDROID_ROUTE_ACCOUNT_ID_KEY = RAFT_ROUTE_ACCOUNT_ID
+private const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
 
 /**
  * Canonical document-shell identity: the authenticated route owner the shell
@@ -110,7 +110,7 @@ internal fun resolveAndroidShellLaunchTarget(
 ): AndroidShellLaunchTarget {
     val serverId =
         pageData.optString(ANDROID_SHELL_SERVER_ID_KEY).trim().takeIf { it.isNotBlank() }
-            ?: pageData.optString(SlockCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID)
+            ?: pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID)
                 .trim()
                 .takeIf { it.isNotBlank() }
     val routeOwner = pageData.androidShellRouteOwnerOrNull()

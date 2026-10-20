@@ -841,19 +841,19 @@ data class AgentWorkspaceSnapshot(
 data class AgentWorkspaceTreeSnapshot(
     val agentId: MemberId,
     val rootPath: String,
-    val root: SlockWorkspaceNode
+    val root: RaftWorkspaceNode
 )
 
 data class AgentWorkspaceChildrenSnapshot(
     val agentId: MemberId,
     val dirPath: String,
-    val children: List<SlockWorkspaceNode>
+    val children: List<RaftWorkspaceNode>
 )
 
 data class AgentWorkspaceFilePreviewSnapshot(
     val agentId: MemberId,
     val path: String,
-    val preview: SlockWorkspaceFilePreview
+    val preview: RaftWorkspaceFilePreview
 )
 
 data class AgentSkillsSnapshot(
@@ -1649,7 +1649,7 @@ data class SettingsMobileSnapshot(
             statusLabel = if (DEFAULT_HOME_SERVER_AVATAR_ENABLED) "Enabled" else "Off",
             detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
         ),
-    /** Task #154: effective value (user choice, else the current server's flag); see SlockCurlSocketIoPolicy. */
+    /** Task #154: effective value (user choice, else the current server's flag); see RaftCurlSocketIoPolicy. */
     val realtimeCurlSocketIo: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,
@@ -1665,7 +1665,7 @@ data class SettingsMobileSnapshot(
             statusLabel = "Unsupported",
             detail = "The bottom-up message list is not available on this build."
         ),
-    /** Task #3: effective value (user choice, else the server-sent transport variant); see SlockHttp3Policy. */
+    /** Task #3: effective value (user choice, else the server-sent transport variant); see RaftHttp3Policy. */
     val http3: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

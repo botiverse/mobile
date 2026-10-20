@@ -1,7 +1,7 @@
 package build.raft.app.data.runtimeform.v2
 
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SlockComputersApi
+import build.raft.app.data.RaftComputersApi
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
  * tapping ↻ sent anything, because only v1's `create_agent_form_load` was logged (HuaTuo cf5e3b7d).
  */
 class RuntimeFormV2LoaderLogTest {
-    private class FormApi(private val sourceCode: Int) : SlockComputersApi {
+    private class FormApi(private val sourceCode: Int) : RaftComputersApi {
         val sourceRefreshes = mutableListOf<Pair<String, Boolean>>()
 
         override suspend fun runtimeFormV2(serverId: ServerId, machineId: String, runtimeId: String): HomeNetworkResponse =

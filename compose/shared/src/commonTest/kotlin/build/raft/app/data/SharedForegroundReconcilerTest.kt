@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TestTimeSource
 
-private class ReconcilerFakeAuthStore(private var session: StoredAuthSession?) : SlockAuthSessionStore {
+private class ReconcilerFakeAuthStore(private var session: StoredAuthSession?) : RaftAuthSessionStore {
     override suspend fun readSession(): StoredAuthSession? = session
     override suspend fun saveSession(session: StoredAuthSession) {
         this.session = session

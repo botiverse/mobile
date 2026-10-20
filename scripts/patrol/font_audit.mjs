@@ -1,20 +1,20 @@
 // patrol/font_audit.mjs — typography contract lens (artin, #proj-uiux 2026-07-15:
 // 字体问题也要巡检).
 //
-// Kuikly serializes FontFamily WITHOUT weight info (see SlockDesignTokens.kt):
+// Kuikly serializes FontFamily WITHOUT weight info (see RaftDesignTokens.kt):
 // weight must be encoded in the family name and dispatched via
-// withSlockFontWeight()/slockFontFamilyForWeight()/slockMonoFamilyForWeight().
+// withRaftFontWeight()/raftFontFamilyForWeight()/raftMonoFamilyForWeight().
 // A naked `fontWeight = FontWeight.X` on a TextStyle/SpanStyle changes NOTHING
 // on screen unless the style also swaps the family — the "bold that renders
 // regular" trap (and the reverse: copy(fontWeight = Normal) on a bold-family
 // style keeps rendering bold). The markdown pipeline auto-repairs via
-// withResolvedSlockFontFamily(); plain Text() does not.
+// withResolvedRaftFontFamily(); plain Text() does not.
 //
 // Patterns:
 //   naked-font-weight : `fontWeight = FontWeight.…` on a line with no family
 //                       dispatch (heuristic; multi-line expressions triaged in
 //                       the issue).
-//   raw-font-family   : `FontFamily(` constructed outside SlockDesignTokens.
+//   raw-font-family   : `FontFamily(` constructed outside RaftDesignTokens.
 //
 // Usage: node scripts/patrol/font_audit.mjs [--live] [--repo owner/name] [--cap N]
 import fs from "node:fs";
@@ -29,14 +29,14 @@ const REPO = arg("--repo", "botiverse/mobile");
 const CAP = Number(arg("--cap", "5"));
 
 const ROOT = "compose/shared/src/commonMain/kotlin/build/raft/app";
-const EXCLUDE_FILE = [/Test\.kt$/, /visualFixtures\//, /SlockDesignTokens\.kt$/];
-const FAMILY_DISPATCH = /withSlockFontWeight|slockFontFamilyForWeight|slockMonoFamilyForWeight|slockSpanStyleForWeight|fontFamily\s*=/;
+const EXCLUDE_FILE = [/Test\.kt$/, /visualFixtures\//, /RaftDesignTokens\.kt$/];
+const FAMILY_DISPATCH = /withRaftFontWeight|raftFontFamilyForWeight|raftMonoFamilyForWeight|raftSpanStyleForWeight|fontFamily\s*=/;
 // Multi-line style expressions put the dispatch on its own line — commonly the
-// house idiom `fontFamily = slockMonoFamilyForWeight(X), fontWeight = Normal`
+// house idiom `fontFamily = raftMonoFamilyForWeight(X), fontWeight = Normal`
 // (family carries the weight; Normal suppresses synthetic bolding). Only the
-// dispatch HELPERS count here: a plain `fontFamily = SlockMonoFamily` nearby
+// dispatch HELPERS count here: a plain `fontFamily = RaftMonoFamily` nearby
 // does NOT fix the weight and must stay flagged (the #1051 class).
-const DISPATCH_HELPERS = /withSlockFontWeight|slockFontFamilyForWeight|slockMonoFamilyForWeight|slockSpanStyleForWeight/;
+const DISPATCH_HELPERS = /withRaftFontWeight|raftFontFamilyForWeight|raftMonoFamilyForWeight|raftSpanStyleForWeight/;
 const WINDOW_BEFORE = 10, WINDOW_AFTER = 3;
 const dispatchNearby = (lines, i) => {
   for (let j = Math.max(0, i - WINDOW_BEFORE); j <= Math.min(lines.length - 1, i + WINDOW_AFTER); j++) {
@@ -85,7 +85,7 @@ const findings = [...byFile.entries()].map(([file, hits]) => {
       "### Suspect typography usages",
       ...hits.map((h) => `- L${h.line} _${h.pattern}_ \`${h.text.slice(0, 160)}\``),
       "",
-      "Kuikly encodes weight in the FONT FAMILY name — a naked `fontWeight = FontWeight.X` renders the style's original family weight, not X. Use `withSlockFontWeight(...)` / `slockFontFamilyForWeight(...)` (or `slockSpanStyleForWeight` for spans). Raw `FontFamily(...)` belongs in SlockDesignTokens only.",
+      "Kuikly encodes weight in the FONT FAMILY name — a naked `fontWeight = FontWeight.X` renders the style's original family weight, not X. Use `withRaftFontWeight(...)` / `raftFontFamilyForWeight(...)` (or `raftSpanStyleForWeight` for spans). Raw `FontFamily(...)` belongs in RaftDesignTokens only.",
       "FPs: multi-line expressions that dispatch the family nearby — close with a note.",
     ].join("\n"),
     labels: ["code-smell", "auto-triage", "severity:medium"],

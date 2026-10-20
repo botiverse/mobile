@@ -33,12 +33,12 @@ class MarkdownReferencePendingTest {
 
             val finished = started.state.finish(token)
             val terminalDocument =
-                buildSlockRichTextDocumentFromMarkdownPlan(
+                buildRaftRichTextDocumentFromMarkdownPlan(
                     source = plan.content,
                     content = plan.content,
                     tokenPlan = plan,
                     activeActionId = finished.active?.actionId,
-                    activeActionIndicator = SlockMarkdownPendingActionIndicator
+                    activeActionIndicator = RaftMarkdownPendingActionIndicator
                 )
 
             assertNull(finished.active, "terminal=$terminal must clear the pending chip")
@@ -51,29 +51,29 @@ class MarkdownReferencePendingTest {
     fun scopedActionIdentityKeepsReusedRowsIndependent() {
         val firstPlan = plan("#general #42", scope = "message-a")
         val secondPlan = plan("#general #42", scope = "message-b")
-        val firstChannelAction = document(firstPlan).actions.first { it.refKind == SlockRichTextRefKind.Channel }
-        val secondChannelAction = document(secondPlan).actions.first { it.refKind == SlockRichTextRefKind.Channel }
+        val firstChannelAction = document(firstPlan).actions.first { it.refKind == RaftRichTextRefKind.Channel }
+        val secondChannelAction = document(secondPlan).actions.first { it.refKind == RaftRichTextRefKind.Channel }
         assertNotEquals(firstChannelAction.id, secondChannelAction.id)
 
         val activeFirst =
-            buildSlockRichTextDocumentFromMarkdownPlan(
+            buildRaftRichTextDocumentFromMarkdownPlan(
                 source = firstPlan.content,
                 content = firstPlan.content,
                 tokenPlan = firstPlan,
                 activeActionId = firstChannelAction.id,
-                activeActionIndicator = SlockMarkdownPendingActionIndicator
+                activeActionIndicator = RaftMarkdownPendingActionIndicator
             )
         val inactiveSecond =
-            buildSlockRichTextDocumentFromMarkdownPlan(
+            buildRaftRichTextDocumentFromMarkdownPlan(
                 source = secondPlan.content,
                 content = secondPlan.content,
                 tokenPlan = secondPlan,
                 activeActionId = firstChannelAction.id,
-                activeActionIndicator = SlockMarkdownPendingActionIndicator
+                activeActionIndicator = RaftMarkdownPendingActionIndicator
             )
 
         assertEquals(
-            "#general$SlockMarkdownPendingActionIndicator",
+            "#general$RaftMarkdownPendingActionIndicator",
             activeFirst.inlineTokens.first { it.actionId == firstChannelAction.id }.text
         )
         assertEquals(
@@ -86,19 +86,19 @@ class MarkdownReferencePendingTest {
     fun taskAndChannelPendingIndicatorsStayOnTheirExactAction() {
         val plan = plan("Open #general then #42", scope = "message")
         val base = document(plan)
-        val channel = base.actions.first { it.refKind == SlockRichTextRefKind.Channel }
-        val task = base.actions.first { it.refKind == SlockRichTextRefKind.Task }
+        val channel = base.actions.first { it.refKind == RaftRichTextRefKind.Channel }
+        val task = base.actions.first { it.refKind == RaftRichTextRefKind.Task }
 
         val activeTask =
-            buildSlockRichTextDocumentFromMarkdownPlan(
+            buildRaftRichTextDocumentFromMarkdownPlan(
                 source = plan.content,
                 content = plan.content,
                 tokenPlan = plan,
                 activeActionId = task.id,
-                activeActionIndicator = SlockMarkdownPendingActionIndicator
+                activeActionIndicator = RaftMarkdownPendingActionIndicator
             )
 
-        assertEquals("#42$SlockMarkdownPendingActionIndicator", activeTask.inlineTokens.first { it.actionId == task.id }.text)
+        assertEquals("#42$RaftMarkdownPendingActionIndicator", activeTask.inlineTokens.first { it.actionId == task.id }.text)
         assertEquals("#general", activeTask.inlineTokens.first { it.actionId == channel.id }.text)
     }
 
@@ -108,18 +108,18 @@ class MarkdownReferencePendingTest {
         val base = document(plan)
         val channel = base.actions.single()
         val active =
-            buildSlockRichTextDocumentFromMarkdownPlan(
+            buildRaftRichTextDocumentFromMarkdownPlan(
                 source = plan.content,
                 content = plan.content,
                 tokenPlan = plan,
                 activeActionId = channel.id,
-                activeActionIndicator = SlockMarkdownPendingActionIndicator
+                activeActionIndicator = RaftMarkdownPendingActionIndicator
             )
         val token = active.inlineTokens.single { it.actionId == channel.id }
 
         assertEquals(
-            "#general-renamed$SlockMarkdownPendingActionIndicator",
-            resolveSlockRichTextTokenLabel(token, "#general-renamed")
+            "#general-renamed$RaftMarkdownPendingActionIndicator",
+            resolveRaftRichTextTokenLabel(token, "#general-renamed")
         )
     }
 
@@ -127,10 +127,10 @@ class MarkdownReferencePendingTest {
     fun pendingThreadReferenceRetainsThreadChromeKindAndSetsActiveFlag() {
         val plan = plan("Open #general:1c50c30a", scope = "message")
         val base = document(plan)
-        val threadAction = base.actions.single { it.refKind == SlockRichTextRefKind.Thread }
+        val threadAction = base.actions.single { it.refKind == RaftRichTextRefKind.Thread }
 
         val active =
-            buildSlockRichTextDocumentFromMarkdownPlan(
+            buildRaftRichTextDocumentFromMarkdownPlan(
                 source = plan.content,
                 content = plan.content,
                 tokenPlan = plan,
@@ -139,7 +139,7 @@ class MarkdownReferencePendingTest {
         val token = active.inlineTokens.single { it.actionId == threadAction.id }
 
         assertTrue(token.active)
-        assertEquals(SlockRichTextChromeKind.Thread, token.chrome)
+        assertEquals(RaftRichTextChromeKind.Thread, token.chrome)
         assertEquals("", token.trailingIndicator)
         assertEquals("#general:1c50c30a", token.text)
     }
@@ -151,30 +151,30 @@ class MarkdownReferencePendingTest {
         val channelAction = base.actions.single()
 
         val activeDocument =
-            buildSlockRichTextDocumentFromMarkdownPlan(
+            buildRaftRichTextDocumentFromMarkdownPlan(
                 source = plan.content,
                 content = plan.content,
                 tokenPlan = plan,
                 activeActionId = channelAction.id
             )
         val annotator =
-            slockMarkdownAnnotator(
+            raftMarkdownAnnotator(
                 document = activeDocument
             )
         val inlineContentMap = annotator.inlineContent?.invoke()
         assertNotNull(inlineContentMap)
-        assertTrue(inlineContentMap.containsKey(slockMarkdownActionSpinnerInlineId(channelAction.id)))
+        assertTrue(inlineContentMap.containsKey(raftMarkdownActionSpinnerInlineId(channelAction.id)))
     }
 
     private fun plan(content: String, scope: String): MarkdownInlineTokenPlan =
-        SlockMarkdownInlineTokenRegistry.plan(
+        RaftMarkdownInlineTokenRegistry.plan(
             content = content,
             isTagValid = { true },
             inlineContentScope = scope
         )
 
-    private fun document(plan: MarkdownInlineTokenPlan): SlockRichTextDocument =
-        buildSlockRichTextDocumentFromMarkdownPlan(
+    private fun document(plan: MarkdownInlineTokenPlan): RaftRichTextDocument =
+        buildRaftRichTextDocumentFromMarkdownPlan(
             source = plan.content,
             content = plan.content,
             tokenPlan = plan

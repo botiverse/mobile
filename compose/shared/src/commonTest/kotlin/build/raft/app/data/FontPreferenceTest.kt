@@ -26,7 +26,7 @@ class FontPreferenceTest {
     fun everyOptionRoundTripsThroughItsStorageKey() {
         val repository =
             PersistentFontPreferenceRepository(
-                KeyValueFontPreferenceStore(InMemorySlockKeyValueStore())
+                KeyValueFontPreferenceStore(InMemoryRaftKeyValueStore())
             )
 
         FontPreference.entries.forEach { option ->
@@ -86,7 +86,7 @@ class FontPreferenceTest {
 
     @Test
     fun aStoredChoiceSurvivesAndOverridesTheDefault() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         val first =
             PersistentFontPreferenceRepository(KeyValueFontPreferenceStore(store))
 
@@ -104,7 +104,7 @@ class FontPreferenceTest {
 
     /**
      * Task #521: the restart contract above only covers the repository. What the user sees is
-     * [build.raft.app.SlockFontFaceState], which is process-scoped and starts at the default — so a
+     * [build.raft.app.RaftFontFaceState], which is process-scoped and starts at the default — so a
      * cold start must publish the stored value BEFORE the first composition.
      *
      * This calls the real startup entry point (not a re-implementation of it), so deleting the
@@ -112,48 +112,48 @@ class FontPreferenceTest {
      */
     @Test
     fun coldStartPublishesTheStoredFaceToTheObservableState() {
-        val store = InMemorySlockKeyValueStore()
+        val store = InMemoryRaftKeyValueStore()
         runBlocking { KeyValueFontPreferenceStore(store).saveFontPreference(FontPreference.HankenGrotesk) }
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SlockLocalPreferenceStore.KuiklyNamespace) { store }
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
         try {
             // A fresh process starts at the default face.
-            build.raft.app.SlockFontFaceState.apply(FontPreference.Default)
-            assertEquals(FontPreference.Default, build.raft.app.SlockFontFaceState.preference)
+            build.raft.app.RaftFontFaceState.apply(FontPreference.Default)
+            assertEquals(FontPreference.Default, build.raft.app.RaftFontFaceState.preference)
 
-            val restored = slockRestoreStoredFontPreferenceOnColdStart()
+            val restored = raftRestoreStoredFontPreferenceOnColdStart()
 
             assertEquals(FontPreference.HankenGrotesk, restored, "the startup restore reports the stored face")
             assertEquals(
                 FontPreference.HankenGrotesk,
-                build.raft.app.SlockFontFaceState.preference,
+                build.raft.app.RaftFontFaceState.preference,
                 "the observable state is the stored face before first composition"
             )
         } finally {
-            SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
-            build.raft.app.SlockFontFaceState.apply(FontPreference.Default)
+            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+            build.raft.app.RaftFontFaceState.apply(FontPreference.Default)
         }
     }
 
     @Test
     fun coldStartRestoreReturnsNullWhenTheStoreIsUnavailable() {
         // No factory installed: the restore must not throw during Application startup.
-        SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
-        build.raft.app.SlockFontFaceState.apply(FontPreference.Default)
+        RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+        build.raft.app.RaftFontFaceState.apply(FontPreference.Default)
 
-        assertNull(slockRestoreStoredFontPreferenceOnColdStart())
-        assertEquals(FontPreference.Default, build.raft.app.SlockFontFaceState.preference)
+        assertNull(raftRestoreStoredFontPreferenceOnColdStart())
+        assertEquals(FontPreference.Default, build.raft.app.RaftFontFaceState.preference)
     }
 
     @Test
     fun restoringWhenNothingIsStoredKeepsTheDefault() {
-        val store = InMemorySlockKeyValueStore()
-        SlockSharedKeyValueStoreProvider.installAppScopeFactory(SlockLocalPreferenceStore.KuiklyNamespace) { store }
+        val store = InMemoryRaftKeyValueStore()
+        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
         try {
-            build.raft.app.SlockFontFaceState.apply(FontPreference.Default)
-            assertEquals(FontPreference.SpaceGrotesk, slockRestoreStoredFontPreferenceOnColdStart())
-            assertEquals(FontPreference.SpaceGrotesk, build.raft.app.SlockFontFaceState.preference)
+            build.raft.app.RaftFontFaceState.apply(FontPreference.Default)
+            assertEquals(FontPreference.SpaceGrotesk, raftRestoreStoredFontPreferenceOnColdStart())
+            assertEquals(FontPreference.SpaceGrotesk, build.raft.app.RaftFontFaceState.preference)
         } finally {
-            SlockSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
+            RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
         }
     }
 
@@ -161,10 +161,10 @@ class FontPreferenceTest {
     fun storeIdentityDistinguishesTwoHandlesThatShareAClass() {
         // ShenKuo: the class is invariant across handles, so it cannot discriminate them. Two empty
         // stores of the same type (equal content, equal class) must read as two instances.
-        val first = InMemorySlockKeyValueStore()
-        val second = InMemorySlockKeyValueStore()
+        val first = InMemoryRaftKeyValueStore()
+        val second = InMemoryRaftKeyValueStore()
 
-        assertEquals(slockStoreIdentity(first), slockStoreIdentity(first), "same object is stable")
-        assertNotEquals(slockStoreIdentity(first), slockStoreIdentity(second), "distinct handles differ")
+        assertEquals(raftStoreIdentity(first), raftStoreIdentity(first), "same object is stable")
+        assertNotEquals(raftStoreIdentity(first), raftStoreIdentity(second), "distinct handles differ")
     }
 }

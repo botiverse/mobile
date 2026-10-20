@@ -2,7 +2,7 @@ package build.raft.app.core.data.realtime
 
 import build.raft.app.data.StoredAuthServer as AuthServer
 import build.raft.app.data.StoredAuthSession as AuthSession
-import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
+import build.raft.app.data.RaftAuthSessionStore as AuthSessionStore
 import build.raft.app.data.StoredAuthUser as AuthUser
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthLoginResponse
@@ -11,7 +11,7 @@ import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
 import build.raft.app.data.ServerSwitcherOrderPreference
-import build.raft.app.data.SlockAuthApi
+import build.raft.app.data.RaftAuthApi
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.DataResult
@@ -2236,7 +2236,7 @@ class RealtimeRepositoryTest {
         private val refreshFailure: Throwable? = null,
         private val refreshFailureCode: Int? = null,
         private val responses: List<AuthRefreshResponse> = listOf(AuthRefreshResponse("socket-new-access", "socket-new-refresh"))
-    ) : SlockAuthApi {
+    ) : RaftAuthApi {
         private var refreshIndex = 0
         var refreshCallCount: Int = 0
             private set

@@ -45,7 +45,7 @@ private val runtimeFormApiJson = Json {
  * calls it Computers. Keep route and field names exact here; UI/repository
  * code can expose the user-facing Computer naming without guessing aliases.
  */
-interface SlockComputersApi {
+interface RaftComputersApi {
     suspend fun machines(serverId: ServerId): HomeNetworkResponse
     suspend fun machines(
         serverId: ServerId,
@@ -97,10 +97,10 @@ interface SlockComputersApi {
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
 }
 
-internal class SlockComputersNetworkApi(
-    private val networkClient: SlockNetworkClient,
+internal class RaftComputersNetworkApi(
+    private val networkClient: RaftNetworkClient,
     private val runtimeFormLanguageTag: () -> String? = { runtimeFormRequestLanguageTag() }
-) : SlockComputersApi {
+) : RaftComputersApi {
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse =
         machines(serverId, DataRequestPriority.Visible)
 
@@ -245,8 +245,8 @@ internal class SlockComputersNetworkApi(
         )
 }
 
-internal class SlockComputersApiClient(
-    private val transport: SlockComputersApi
+internal class RaftComputersApiClient(
+    private val transport: RaftComputersApi
 ) {
     suspend fun machines(
         serverId: ServerId,

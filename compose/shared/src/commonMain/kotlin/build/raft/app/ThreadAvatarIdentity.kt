@@ -13,9 +13,9 @@ import build.raft.app.network.sync.ReplyPreview
  * Converts message-author snapshots into candidates for the server-scoped member-profile SSOT.
  *
  * Message snapshots are ingest hints only. Rows never call this function and never read the
- * snapshot avatar directly; [SlockMemberAvatarResolver] is the only row avatar read edge.
+ * snapshot avatar directly; [RaftMemberAvatarResolver] is the only row avatar read edge.
  */
-internal fun KuiklyThreadMessageItem.toThreadAuthorProfileCandidate(
+internal fun RaftThreadMessageItem.toThreadAuthorProfileCandidate(
     serverId: ServerId
 ): MemberProfile? {
     val memberId = authorId.trim().takeIf { it.isNotBlank() && it != "unknown" } ?: return null
@@ -46,7 +46,7 @@ internal fun KuiklyThreadMessageItem.toThreadAuthorProfileCandidate(
 
 internal fun SharedServerMembersStore.seedThreadAuthorProfiles(
     serverId: ServerId,
-    messages: Iterable<KuiklyThreadMessageItem>,
+    messages: Iterable<RaftThreadMessageItem>,
     source: String,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
@@ -61,7 +61,7 @@ internal fun SharedServerMembersStore.seedThreadAuthorProfiles(
     if (profiles.isEmpty()) return
     seedProfileCandidates(serverId = serverId, profiles = profiles)
     diagnosticsLogger(
-        "thread_avatar_member_seed source=$source serverHash=${serverId.value.slockAvatarDiagnosticsHash()} " +
+        "thread_avatar_member_seed source=$source serverHash=${serverId.value.raftAvatarDiagnosticsHash()} " +
             "candidates=${profiles.size} authors=${profiles.map { it.id.value }.distinct().size} " +
             "urlCandidates=${profiles.count { profile -> profile.avatarUrl != null }}"
     )
@@ -80,7 +80,7 @@ internal fun SharedServerMembersStore.seedAcceptedThreadReplyAuthorProfile(
     val profile = reply.toThreadAuthorProfileCandidate(serverId) ?: return
     seedProfileCandidates(serverId = serverId, profiles = listOf(profile))
     diagnosticsLogger(
-        "thread_avatar_member_seed source=$source serverHash=${serverId.value.slockAvatarDiagnosticsHash()} " +
+        "thread_avatar_member_seed source=$source serverHash=${serverId.value.raftAvatarDiagnosticsHash()} " +
             "candidates=1 authors=1 urlCandidates=${if (profile.avatarUrl != null) 1 else 0}"
     )
 }
@@ -96,7 +96,7 @@ private fun ReplyPreview.toThreadAuthorProfileCandidate(serverId: ServerId): Mem
         senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
             ?: senderName.trim().takeIf { it.isNotBlank() }
             ?: senderId
-    return KuiklyThreadMessageItem(
+    return RaftThreadMessageItem(
         id = messageId,
         authorId = senderId,
         authorName = projectedDisplayName,
@@ -113,7 +113,7 @@ private fun ReplyPreview.toThreadAuthorProfileCandidate(serverId: ServerId): Mem
  * (`pixel:robot` for avatar-less agents); those must never reach the member
  * profile SSOT.
  */
-internal fun KuiklyThreadMessageItem.threadAuthorSeedAvatarWireValue(): String? {
+internal fun RaftThreadMessageItem.threadAuthorSeedAvatarWireValue(): String? {
     if (threadAuthorBadgeLabel() != null) return null
     val authorMemberKind = authorKind.projectedMemberKindOrNull() ?: return null
     val resolution = resolveAvatarSlot(
@@ -124,7 +124,7 @@ internal fun KuiklyThreadMessageItem.threadAuthorSeedAvatarWireValue(): String? 
     return resolution.displayAvatarWireValue
 }
 
-internal fun KuiklyThreadScreenPayload.threadAuthorProfileCandidates(): List<KuiklyThreadMessageItem> =
+internal fun RaftThreadScreenPayload.threadAuthorProfileCandidates(): List<RaftThreadMessageItem> =
     (listOfNotNull(originMessage) + messages).distinctBy { it.id }
 
 /** The sole message-row read contract: canonical member state in, render source out. */

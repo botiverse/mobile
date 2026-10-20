@@ -7,9 +7,9 @@ import kotlin.test.assertEquals
 class MessageBodyTypographyTest {
     @Test
     fun preferenceMapsAllThreeRealMessageBodySteps() {
-        val small = slockMessageBodyTextStyle("sm")
-        val medium = slockMessageBodyTextStyle("md")
-        val large = slockMessageBodyTextStyle("lg")
+        val small = raftMessageBodyTextStyle("sm")
+        val medium = raftMessageBodyTextStyle("md")
+        val large = raftMessageBodyTextStyle("lg")
 
         assertEquals(12.sp, small.fontSize)
         assertEquals(18.sp, small.lineHeight)
@@ -21,7 +21,7 @@ class MessageBodyTypographyTest {
 
     @Test
     fun unknownPreferenceFailsSafeToMedium() {
-        assertEquals(slockMessageBodyTextStyle("md"), slockMessageBodyTextStyle("unexpected"))
-        assertEquals(slockMessageBodyTextStyle("md"), slockMessageBodyTextStyle(null))
+        assertEquals(raftMessageBodyTextStyle("md"), raftMessageBodyTextStyle("unexpected"))
+        assertEquals(raftMessageBodyTextStyle("md"), raftMessageBodyTextStyle(null))
     }
 }

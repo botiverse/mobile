@@ -234,7 +234,7 @@ mkdir -p "$TEST_DIR_SKIP"
 grep -Fq "Suite verdict:   PASSED" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected PASSED verdict"
 grep -Fq "Executed:        17 (17 passed, 0 failed)" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected 17 executed"
 grep -Fq "Not run:         1 (1 conditional skipped, 0 unreached)" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "expected 1 conditional skipped"
-grep -Fq "status=not_run test=thread-newer-auto-pagination rc=- duration=- class=build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest reason=skipped:condition_not_met" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "missing manifest skipped row"
+grep -Fq "status=not_run test=thread-newer-auto-pagination rc=- duration=- class=build.raft.app.shared.RaftThreadNewerAutoPaginationConnectedTest reason=skipped:condition_not_met" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "missing manifest skipped row"
 pass "conditional skip scenario verified"
 
 # 5. Test scenario: Failure isolation (Task #465 flake in composer-session-retirement)
@@ -253,7 +253,7 @@ rc_fail=0
   export SKIP_EMULATOR_PREP=true
   export SKIP_APK_INSTALL=true
   export THREAD_NEWER_PAGINATION_GATE_REQUIRED=true
-  export MOCK_FAILING_CLASS="SlockThreadImePaintConnectedTest"
+  export MOCK_FAILING_CLASS="RaftThreadImePaintConnectedTest"
 
   mkdir -p "$TEST_DIR_FAIL/scripts_ci"
   cp "$SUITE_RUNNER" "$TEST_DIR_FAIL/scripts_ci/run-first-character-emulator-suite.sh"
@@ -356,7 +356,7 @@ rc_select=0
 test "$rc_select" -eq 0 || fail "Expected exit 0 for single selected test passing, got $rc_select"
 grep -Fq "Suite verdict:   PASSED" "$TEST_DIR_SELECT/first-character-baseline-suite-summary.txt" || fail "expected PASSED verdict for single test selection"
 grep -Fq "status=passed test=login-transition-routing" "$TEST_DIR_SELECT/first-character-baseline-suite-summary.txt" || fail "expected passed for selected test"
-grep -Fq "status=not_run test=first-character-baseline rc=- duration=- class=build.raft.app.shared.SlockComposerFirstCharacterBaselineTest reason=skipped:not_selected" "$TEST_DIR_SELECT/first-character-baseline-suite-summary.txt" || fail "expected skipped:not_selected for unselected tests"
+grep -Fq "status=not_run test=first-character-baseline rc=- duration=- class=build.raft.app.shared.RaftComposerFirstCharacterBaselineTest reason=skipped:not_selected" "$TEST_DIR_SELECT/first-character-baseline-suite-summary.txt" || fail "expected skipped:not_selected for unselected tests"
 pass "CLI test selection scenario verified"
 
 echo "=== All run-first-character-emulator-suite unit tests PASSED ==="

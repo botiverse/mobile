@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.putBoolean
 import kotlinx.coroutines.runBlocking
@@ -52,7 +52,7 @@ class ThreadNewMessageMenuTest {
 
     @Test
     fun preferenceDefaultsOffMigratesLegacyOptInAndWritesOnlyTheNewKey() = runBlocking {
-        val backingStore = InMemorySlockKeyValueStore()
+        val backingStore = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueChatLayoutPreferenceStore(backingStore)
 
         assertFalse(preferenceStore.readNewMessageMenuEnabledSync())

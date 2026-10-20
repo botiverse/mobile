@@ -1,9 +1,9 @@
 package build.raft.app.data
 
 import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
-import build.raft.app.network.SlockCurlSocketIoPolicy
+import build.raft.app.network.RaftCurlSocketIoPolicy
 import build.raft.app.network.HTTP3_PREFERENCE_KEY
-import build.raft.app.network.SlockHttp3Policy
+import build.raft.app.network.RaftHttp3Policy
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
@@ -454,7 +454,7 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, enabled)
     }
 
-    /** task #37: the saved list column width (dp), read through [slockListPanePreferredWidthDp]. */
+    /** task #37: the saved list column width (dp), read through [raftListPanePreferredWidthDp]. */
     fun readAdaptiveListPaneWidthSync(): String? = store.getString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP)
 
     fun saveAdaptiveListPaneWidth(widthDp: String) {
@@ -983,7 +983,7 @@ class KeyValueRealtimeTransportPreferenceStore(
     private val store: SharedPreferenceStore
 ) : RealtimeTransportPreferenceStore {
     override fun readCurlSocketIoUserChoiceSync(): Boolean? =
-        SlockCurlSocketIoPolicy.parseUserChoice(store.getString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY))
+        RaftCurlSocketIoPolicy.parseUserChoice(store.getString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY))
 
     override suspend fun saveCurlSocketIoUserChoice(enabled: Boolean) {
         store.putBoolean(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, enabled)
@@ -1032,15 +1032,15 @@ class KeyValueHttp3PreferenceStore(
     private val store: SharedPreferenceStore
 ) : Http3PreferenceStore {
     override fun readHttp3UserChoiceSync(): Boolean? =
-        SlockHttp3Policy.parseUserChoice(store.getString(HTTP3_PREFERENCE_KEY))
+        RaftHttp3Policy.parseUserChoice(store.getString(HTTP3_PREFERENCE_KEY))
 
     override suspend fun saveHttp3UserChoice(enabled: Boolean) {
         store.putBoolean(HTTP3_PREFERENCE_KEY, enabled)
     }
 }
 
-fun slockSharedPreferenceStore(): SharedPreferenceStore =
-    SlockSharedKeyValueStoreProvider.create(
-        namespace = SlockLocalPreferenceStore.KuiklyNamespace,
+fun raftSharedPreferenceStore(): SharedPreferenceStore =
+    RaftSharedKeyValueStoreProvider.create(
+        namespace = RaftLocalPreferenceStore.KuiklyNamespace,
         storageName = "shared preference"
     ).store

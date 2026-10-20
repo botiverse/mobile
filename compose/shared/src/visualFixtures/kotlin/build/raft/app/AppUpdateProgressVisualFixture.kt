@@ -20,7 +20,7 @@ internal class AppUpdateProgressVisualFixture : BasePager() {
 
 @Composable
 private fun UpdateProgressVisualContent() {
-    Column(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         val downloading = SharedSettingsUpdateCheckSnapshot(
             supported = true, updateAvailable = true, currentVersionLabel = "1.12.0", latestVersionLabel = "1.13.0",
             statusLabel = "Downloading", actionLabel = "Downloading"

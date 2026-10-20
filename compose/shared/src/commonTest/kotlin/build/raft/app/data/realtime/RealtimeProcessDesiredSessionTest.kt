@@ -189,13 +189,13 @@ class RealtimeProcessDesiredSessionTest {
     fun runtimeCursorAdvanceIsMonotonicServerScopedAndRejectsLateGeneration() {
         val serverA = cursorIdentity(serverId = "server-a", generation = 7L)
         val serverB = cursorIdentity(serverId = "server-b", generation = 7L)
-        val runtimeA = SlockRealtimeAppScopeEngine()
+        val runtimeA = RaftRealtimeAppScopeEngine()
         runtimeA.connectDecisionForHost(
             serverIdValue = "server-a",
             accessToken = "token-7",
             requestedLastSeq = 11L,
             forceReconnect = false,
-            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            connectionStateName = RaftRealtimeAppScopeEngine.StateDisconnected,
         )
 
         val advanceA =

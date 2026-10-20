@@ -75,8 +75,8 @@ class SettingsHandsFeedbackDraftAttachmentStorageTest {
             assertEquals(promoted.fileRef, promoted.previewUri)
             assertTrue(promoted.fileRef.startsWith("file:///"))
             assertTrue(promoted.fileRef.endsWith(".png"))
-            assertTrue(isSlockRenderableLocalImageSource(promoted.previewUri))
-            assertFalse(isSlockRenderableLocalImageSource("file:/data/user/0/build.raft.mobile/photo.png"))
+            assertTrue(isRaftRenderableLocalImageSource(promoted.previewUri))
+            assertFalse(isRaftRenderableLocalImageSource("file:/data/user/0/build.raft.mobile/photo.png"))
             assertEquals(pngBytes.toList(), file(promoted.fileRef).readBytes().toList())
         } finally {
             sandbox.deleteRecursively()

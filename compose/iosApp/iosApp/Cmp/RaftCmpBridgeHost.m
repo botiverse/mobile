@@ -1,0 +1,98 @@
+#import "RaftCmpBridgeHost.h"
+#import "HRBridgeModule.h"
+
+// A missing SharedRaftCmpIosBridge method is a crash at the first bridge call (unrecognized
+// selector), so make it a compile error rather than a warning.
+#pragma clang diagnostic error "-Wprotocol"
+
+static NSString *_Nullable RaftCmpBridgeResultJson(id _Nullable result) {
+    if (result == nil || result == NSNull.null) {
+        return nil;
+    }
+    if ([result isKindOfClass:NSString.class]) {
+        return (NSString *)result;
+    }
+    if ([result isKindOfClass:NSNumber.class]) {
+        return [(NSNumber *)result stringValue];
+    }
+    if (![NSJSONSerialization isValidJSONObject:result]) {
+        NSLog(@"[SlockCmpHost][warn] dropped non-JSON bridge result class=%@", NSStringFromClass([result class]));
+        return nil;
+    }
+    NSData *data = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
+    return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+}
+
+@implementation RaftCmpBridgeHost {
+    HRBridgeModule *_module;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _module = [[HRBridgeModule alloc] init];
+    }
+    return self;
+}
+
+- (UIViewController *)hostController {
+    return _module.raftHostController;
+}
+
+- (void)setHostController:(UIViewController *)hostController {
+    _module.raftHostController = hostController;
+}
+
+// Kotlin pins this selector with @ObjCName (RaftCmpIos.kt, RaftCmpIosBridge.call). It used to
+// be mangled to `callMethod:paramsJson:callback_:` because HostBridgeTransport.call exported the
+// same selector with another signature. RaftCmpBridgeSelectorTests asserts every required
+// selector of SharedRaftCmpIosBridge is answered here.
+- (void)callMethod:(NSString *)method
+        paramsJson:(NSString *)paramsJson
+        resultSink:(id<SharedRaftCmpIosBridgeCallback> _Nullable)callback {
+    dispatch_block_t invoke = ^{
+        SEL selector = NSSelectorFromString([method stringByAppendingString:@":"]);
+        if (![self->_module respondsToSelector:selector]) {
+            NSLog(@"[SlockCmpHost][warn] bridge method not implemented: %@", method);
+            [callback deliverJson:@"{\"code\":-1,\"message\":\"Method not implemented\"}"];
+            return;
+        }
+        NSMutableDictionary *args = [NSMutableDictionary dictionaryWithObject:paramsJson ?: @"" forKey:RaftBridgeParamKey];
+        if (callback) {
+            RaftBridgeCallback bridgeCallback = ^(id _Nullable result) {
+                [callback deliverJson:RaftCmpBridgeResultJson(result)];
+            };
+            args[RaftBridgeCallbackKey] = bridgeCallback;
+        }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        // Never read the return value here: most bridge methods return void.
+        [self->_module performSelector:selector withObject:args];
+#pragma clang diagnostic pop
+    };
+    // Async bridge methods run on the main thread (the Kuikly module contract).
+    if (NSThread.isMainThread) {
+        invoke();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), invoke);
+    }
+}
+
+- (NSString *_Nullable)callSyncMethod:(NSString *)method paramsJson:(NSString *)paramsJson {
+    if (![HRBridgeModule isSynchronousMethod:method]) {
+        return nil;
+    }
+    SEL selector = NSSelectorFromString([method stringByAppendingString:@":"]);
+    if (![_module respondsToSelector:selector]) {
+        return nil;
+    }
+    NSDictionary *args = @{ RaftBridgeParamKey: paramsJson ?: @"" };
+    // Every synchronous method returns an object (id / NSString *).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    id result = [_module performSelector:selector withObject:args];
+#pragma clang diagnostic pop
+    return RaftCmpBridgeResultJson(result) ?: @"";
+}
+
+@end

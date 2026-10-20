@@ -1129,7 +1129,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     }
 
     /** The server: per-channel messages in the real REST node shape; reads them when a page is requested. */
-    private class ServerFake : SlockNetworkClient {
+    private class ServerFake : RaftNetworkClient {
         val paths: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
         private val nodes = mutableMapOf<String, LinkedHashMap<String, Pair<Long, String>>>()
         @Volatile private var nextHold: PageHold? = null
@@ -1220,7 +1220,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
     }
 
     private inner class Rig(
-        private val database: SlockSqlDatabase,
+        private val database: RaftSqlDatabase,
         retention: CanonicalMessageV2RetentionPolicy = CanonicalMessageV2RetentionPolicy(),
     ) {
         @Volatile var clock = 100L
@@ -1478,11 +1478,11 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         const val ROSTER = """[{"emoji":"👀","count":2,"reactorIds":["user-1","user-2"],"reactorNames":["Alice","Bob"]}]"""
     }
 
-    private fun <T> withFreshDatabase(block: (SlockSqlDatabase) -> T): T {
+    private fun <T> withFreshDatabase(block: (RaftSqlDatabase) -> T): T {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            return block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            return block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

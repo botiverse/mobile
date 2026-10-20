@@ -19,8 +19,8 @@ plugins {
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
-        // :core declarations that are public only for :shared (see SlockCoreInternalApi).
-        optIn.add("build.raft.app.SlockCoreInternalApi")
+        // :core declarations that are public only for :shared (see RaftCoreInternalApi).
+        optIn.add("build.raft.app.RaftCoreInternalApi")
     }
 
     androidTarget {

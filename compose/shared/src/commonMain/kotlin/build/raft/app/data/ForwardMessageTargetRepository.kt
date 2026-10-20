@@ -216,8 +216,8 @@ interface ForwardMessageTargetRepository {
 }
 
 class RealForwardMessageTargetRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val channelRepository: ChannelRepository,
     private val memberRepository: MemberRepository,
     private val nowMillis: () -> Long = ::defaultNowMillis,

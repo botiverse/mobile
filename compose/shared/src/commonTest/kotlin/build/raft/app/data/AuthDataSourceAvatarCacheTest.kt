@@ -25,12 +25,12 @@ class AuthDataSourceAvatarCacheTest {
 
         actions.forEach { action ->
             val oldSession = oldSession()
-            val sessionStore = InMemorySlockAuthSessionStore(oldSession)
+            val sessionStore = InMemoryRaftAuthSessionStore(oldSession)
             val metadata = AuthAvatarMetadataStore()
             val native = AuthAvatarNativeCache()
             val runtime =
-                SlockAvatarCacheRuntime(
-                    coordinator = SlockAvatarCacheCoordinator(metadata) { 100L },
+                RaftAvatarCacheRuntime(
+                    coordinator = RaftAvatarCacheCoordinator(metadata) { 100L },
                     currentOwner = { null }
                 )
             val source =
@@ -45,7 +45,7 @@ class AuthDataSourceAvatarCacheTest {
 
             action(source)
 
-            val oldOwner = SlockAvatarCacheOwner("https://old.example/api", "old-account", "old-server")
+            val oldOwner = RaftAvatarCacheOwner("https://old.example/api", "old-account", "old-server")
             assertEquals(listOf(oldOwner.nativePartitionKey), native.retiredOwners)
             assertEquals(listOf(oldOwner), metadata.clearedOwners)
         }
@@ -54,7 +54,7 @@ class AuthDataSourceAvatarCacheTest {
     @Test
     fun sameAccountSessionRefreshDoesNotRetireItsOwnerPartition() = runBlocking {
         val sessionStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 oldSession().copy(user = StoredAuthUser(id = "user-1", email = "user@slock.ai"))
             )
         val metadata = AuthAvatarMetadataStore()
@@ -65,8 +65,8 @@ class AuthDataSourceAvatarCacheTest {
                 sessionStore = sessionStore
             ).withAvatarCacheRuntime(
                 runtime =
-                    SlockAvatarCacheRuntime(
-                        coordinator = SlockAvatarCacheCoordinator(metadata) { 100L },
+                    RaftAvatarCacheRuntime(
+                        coordinator = RaftAvatarCacheCoordinator(metadata) { 100L },
                         currentOwner = { null }
                     ),
                 nativeCache = native,
@@ -88,80 +88,80 @@ class AuthDataSourceAvatarCacheTest {
             servers = listOf(StoredAuthServer(id = "old-server", name = "Old"))
         )
 
-    private class AuthAvatarMetadataStore : SlockAvatarCacheMetadataStore {
-        val clearedOwners = mutableListOf<SlockAvatarCacheOwner>()
+    private class AuthAvatarMetadataStore : RaftAvatarCacheMetadataStore {
+        val clearedOwners = mutableListOf<RaftAvatarCacheOwner>()
 
         override suspend fun readCommittedForOwner(
-            owner: SlockAvatarCacheOwner,
+            owner: RaftAvatarCacheOwner,
             nowMs: Long,
             limit: Long
-        ): List<SlockAvatarCacheMetadata> = emptyList()
+        ): List<RaftAvatarCacheMetadata> = emptyList()
 
-        override suspend fun read(key: SlockAvatarCacheKey): SlockAvatarCacheStoredState =
-            SlockAvatarCacheStoredState(null, null)
+        override suspend fun read(key: RaftAvatarCacheKey): RaftAvatarCacheStoredState =
+            RaftAvatarCacheStoredState(null, null)
 
         override suspend fun commitSuccess(
-            metadata: SlockAvatarCacheMetadata,
-            guard: SlockAvatarCacheCommitGuard
-        ): SlockAvatarCacheCommitResult = SlockAvatarCacheCommitResult.Accepted
+            metadata: RaftAvatarCacheMetadata,
+            guard: RaftAvatarCacheCommitGuard
+        ): RaftAvatarCacheCommitResult = RaftAvatarCacheCommitResult.Accepted
 
         override suspend fun commitFailure(
-            failure: SlockAvatarCacheFailure,
+            failure: RaftAvatarCacheFailure,
             retireMatchingMetadata: Boolean,
-            guard: SlockAvatarCacheCommitGuard
-        ): SlockAvatarCacheCommitResult = SlockAvatarCacheCommitResult.Accepted
+            guard: RaftAvatarCacheCommitGuard
+        ): RaftAvatarCacheCommitResult = RaftAvatarCacheCommitResult.Accepted
 
         override suspend fun restoreAfterNativeFinalizeFailure(
-            key: SlockAvatarCacheKey,
-            expectedCommittedState: SlockAvatarCacheStoredState,
-            previousState: SlockAvatarCacheStoredState,
-            guard: SlockAvatarCacheCommitGuard
-        ): SlockAvatarCacheCommitResult = SlockAvatarCacheCommitResult.Accepted
+            key: RaftAvatarCacheKey,
+            expectedCommittedState: RaftAvatarCacheStoredState,
+            previousState: RaftAvatarCacheStoredState,
+            guard: RaftAvatarCacheCommitGuard
+        ): RaftAvatarCacheCommitResult = RaftAvatarCacheCommitResult.Accepted
 
-        override suspend fun clearFailure(key: SlockAvatarCacheKey) = Unit
+        override suspend fun clearFailure(key: RaftAvatarCacheKey) = Unit
 
-        override suspend fun clearTemporaryFailures(owner: SlockAvatarCacheOwner) = Unit
+        override suspend fun clearTemporaryFailures(owner: RaftAvatarCacheOwner) = Unit
 
         override suspend fun clearSubject(
-            owner: SlockAvatarCacheOwner,
-            subject: SlockAvatarCacheSubject
+            owner: RaftAvatarCacheOwner,
+            subject: RaftAvatarCacheSubject
         ) = Unit
 
-        override suspend fun clearOwner(owner: SlockAvatarCacheOwner) {
+        override suspend fun clearOwner(owner: RaftAvatarCacheOwner) {
             clearedOwners += owner
         }
 
         override suspend fun clearAll() = Unit
     }
 
-    private class AuthAvatarNativeCache : SlockAvatarNativeCache {
+    private class AuthAvatarNativeCache : RaftAvatarNativeCache {
         val retiredOwners = mutableListOf<String>()
 
         override suspend fun inspect(
             nativePartitionKey: String,
             nativeSubjectKey: String,
             nativeBytesKey: String
-        ): SlockAvatarNativeInspection = SlockAvatarNativeInspection.Unsupported
+        ): RaftAvatarNativeInspection = RaftAvatarNativeInspection.Unsupported
 
-        override suspend fun awaitResult(request: SlockAvatarNativeRequest): SlockAvatarNativeLoadResult =
-            SlockAvatarNativeLoadResult.Unsupported
+        override suspend fun awaitResult(request: RaftAvatarNativeRequest): RaftAvatarNativeLoadResult =
+            RaftAvatarNativeLoadResult.Unsupported
 
         override suspend fun finalize(
-            request: SlockAvatarNativeRequest,
-            outcome: SlockAvatarNativeFinalizeOutcome
-        ): SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
+            request: RaftAvatarNativeRequest,
+            outcome: RaftAvatarNativeFinalizeOutcome
+        ): RaftAvatarNativeMutationResult = RaftAvatarNativeMutationResult.Accepted
 
-        override suspend fun rollback(request: SlockAvatarNativeRequest): SlockAvatarNativeMutationResult =
-            SlockAvatarNativeMutationResult.Accepted
+        override suspend fun rollback(request: RaftAvatarNativeRequest): RaftAvatarNativeMutationResult =
+            RaftAvatarNativeMutationResult.Accepted
 
-        override suspend fun retireOwner(nativePartitionKey: String): SlockAvatarNativeMutationResult {
+        override suspend fun retireOwner(nativePartitionKey: String): RaftAvatarNativeMutationResult {
             retiredOwners += nativePartitionKey
-            return SlockAvatarNativeMutationResult.Accepted
+            return RaftAvatarNativeMutationResult.Accepted
         }
 
         override suspend fun retireSubject(
             nativePartitionKey: String,
             nativeSubjectKey: String
-        ): SlockAvatarNativeMutationResult = SlockAvatarNativeMutationResult.Accepted
+        ): RaftAvatarNativeMutationResult = RaftAvatarNativeMutationResult.Accepted
     }
 }

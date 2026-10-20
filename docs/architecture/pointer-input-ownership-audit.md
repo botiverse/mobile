@@ -8,11 +8,11 @@ mutable presentation state, and composition coroutine scopes.
 
 ## Required ownership contract
 
-- A lifecycle-sensitive handler captures one `SlockGestureOwner`, not composition-local authority.
+- A lifecycle-sensitive handler captures one `RaftGestureOwner`, not composition-local authority.
 - The pointer-input key contains the owner's opaque composition token. Replacing a composition with
   the same semantic value therefore cannot leave an equal element attached to the old handler.
 - Ordinary recomposition updates the owner's callback slot without cancelling an in-flight gesture.
-- DOWN (or drag start) creates one immutable `SlockGestureSession`. Callback changes apply to the
+- DOWN (or drag start) creates one immutable `RaftGestureSession`. Callback changes apply to the
   next gesture, not halfway through the current gesture.
 - A newer gesture or owner disposal invalidates the old session. Terminal callbacks and visual-state
   writes use `currentCallbacksOrNull()`, so removed rows produce neither dispatch nor stuck press UI.
@@ -44,28 +44,28 @@ same-key replacement hazard outside the repeated/lazy surfaces selected for this
 | 9 | `SettingsHomePage.kt:19374` search entity | Migrated | Repeated result captured open/menu authority and anchor. |
 | 10 | `SharedInboxPanel.kt:1593` Activity row | Migrated | Lazy row must freeze the DOWN owner while rejecting a recycled row. |
 | 11 | `SharedTasksPage.kt:1249` task card | Migrated | Lazy card captured open/menu callbacks and anchor. |
-| 12 | `SlockAppShell.kt:220` drawer-open observer | Owner-stable | Single shell-root detector; no lazy/recycled node. |
-| 13 | `SlockBrutalDropdownMenu.kt:236` dropdown row | Migrated | Indexed row replacement retained pressed state and selection callback. |
-| 14 | `SlockEnvironmentIndicator.kt:133` badge drag | Phase B | Static diagnostic overlay, but equal bounds can retain old drag state. |
-| 15 | `SlockFilePreview.kt:2304` editor draw surface | Phase B | Static editor; tool keys are complete but editor state remains composition-local. |
-| 16 | `SlockFilePreview.kt:2334` editor gesture surface | Phase B | Static editor; same-key replacement can retain history/canvas state. |
-| 17 | `SlockFilePreview.kt:2541` text annotation drag | Phase B | Annotation identity is keyed, but history/size maps remain composition-local. |
-| 18 | `SlockFilePreview.kt:4271` image gallery swipe | Phase B | Static gallery captures payload callback and drag presentation state. |
-| 19 | `SlockFilePreview.kt:4540` video seek | Owner-stable | Total time, callback, and measured width are all restart keys. |
-| 20 | `SlockFloatingOverlay.kt:220` dismiss barrier | Phase B | Static overlay captures an updated-state holder not represented by the active key. |
-| 21 | `SlockForegroundBannerHost.kt:246` banner swipe | Migrated | Lifecycle replacement retained dismiss callback and swipe state. |
-| 22 | `SlockHomeComponents.kt:3843` drawer swipe | Owner-stable | Dismiss callback itself is a restart key on one drawer instance. |
-| 23 | `SlockHomeComponents.kt:4459` server-order drag | Phase B | Dialog-level stable container, but callbacks and drag state are not all keyed. |
-| 24 | `SlockHomeComponents.kt:4806` sidebar action | Migrated | Lazy sidebar item retained pressed state and click holder. |
-| 25 | `SlockHomeComponents.kt:4949` Channel row drag | Migrated | Lazy row retained drag callbacks and presentation state. |
-| 26 | `SlockHomeComponents.kt:4964` Channel drag handle | Migrated | Same row identity as the row drag, but a separate owner for this independent behavior role. |
-| 27 | `SlockHomeComponents.kt:4982` Channel tap/long press | Migrated | Lazy row retained click/menu callbacks, press state, and live anchor. |
-| 28 | `SlockHomeComponents.kt:5003` Channel tap | Migrated | Lazy row retained click and press callbacks. |
-| 29 | `SlockHomeComponents.kt:5280` channel-order drag | Phase B | Dialog-level stable container, but callbacks and drag state are not all keyed. |
-| 30 | `SlockHomeComponents.kt:5500` DM tap/long press | Migrated | Lazy row retained click/menu callbacks, press state, and live anchor. |
-| 31 | `SlockHomeComponents.kt:5521` DM tap | Migrated | Lazy row retained click and press callbacks. |
-| 32 | `SlockModalComponents.kt:71` content barrier | Owner-stable | Pure pointer observation; captures no callback, state, anchor, or scope. |
-| 33 | `SlockModalComponents.kt:94` dismiss barrier | Phase B | Enabled is keyed, but replacement can retain an old dismiss callback. The landed keyboard helper is runtime-ineffective and is not a pattern for this phase. |
+| 12 | `RaftAppShell.kt:220` drawer-open observer | Owner-stable | Single shell-root detector; no lazy/recycled node. |
+| 13 | `RaftBrutalDropdownMenu.kt:236` dropdown row | Migrated | Indexed row replacement retained pressed state and selection callback. |
+| 14 | `RaftEnvironmentIndicator.kt:133` badge drag | Phase B | Static diagnostic overlay, but equal bounds can retain old drag state. |
+| 15 | `RaftFilePreview.kt:2304` editor draw surface | Phase B | Static editor; tool keys are complete but editor state remains composition-local. |
+| 16 | `RaftFilePreview.kt:2334` editor gesture surface | Phase B | Static editor; same-key replacement can retain history/canvas state. |
+| 17 | `RaftFilePreview.kt:2541` text annotation drag | Phase B | Annotation identity is keyed, but history/size maps remain composition-local. |
+| 18 | `RaftFilePreview.kt:4271` image gallery swipe | Phase B | Static gallery captures payload callback and drag presentation state. |
+| 19 | `RaftFilePreview.kt:4540` video seek | Owner-stable | Total time, callback, and measured width are all restart keys. |
+| 20 | `RaftFloatingOverlay.kt:220` dismiss barrier | Phase B | Static overlay captures an updated-state holder not represented by the active key. |
+| 21 | `RaftForegroundBannerHost.kt:246` banner swipe | Migrated | Lifecycle replacement retained dismiss callback and swipe state. |
+| 22 | `RaftHomeComponents.kt:3843` drawer swipe | Owner-stable | Dismiss callback itself is a restart key on one drawer instance. |
+| 23 | `RaftHomeComponents.kt:4459` server-order drag | Phase B | Dialog-level stable container, but callbacks and drag state are not all keyed. |
+| 24 | `RaftHomeComponents.kt:4806` sidebar action | Migrated | Lazy sidebar item retained pressed state and click holder. |
+| 25 | `RaftHomeComponents.kt:4949` Channel row drag | Migrated | Lazy row retained drag callbacks and presentation state. |
+| 26 | `RaftHomeComponents.kt:4964` Channel drag handle | Migrated | Same row identity as the row drag, but a separate owner for this independent behavior role. |
+| 27 | `RaftHomeComponents.kt:4982` Channel tap/long press | Migrated | Lazy row retained click/menu callbacks, press state, and live anchor. |
+| 28 | `RaftHomeComponents.kt:5003` Channel tap | Migrated | Lazy row retained click and press callbacks. |
+| 29 | `RaftHomeComponents.kt:5280` channel-order drag | Phase B | Dialog-level stable container, but callbacks and drag state are not all keyed. |
+| 30 | `RaftHomeComponents.kt:5500` DM tap/long press | Migrated | Lazy row retained click/menu callbacks, press state, and live anchor. |
+| 31 | `RaftHomeComponents.kt:5521` DM tap | Migrated | Lazy row retained click and press callbacks. |
+| 32 | `RaftModalComponents.kt:71` content barrier | Owner-stable | Pure pointer observation; captures no callback, state, anchor, or scope. |
+| 33 | `RaftModalComponents.kt:94` dismiss barrier | Phase B | Enabled is keyed, but replacement can retain an old dismiss callback. The landed keyboard helper is runtime-ineffective and is not a pattern for this phase. |
 | 34 | `ThreadPage.kt:10195` image-preview swipe | Phase B | Static viewer uses updated-state holders that can be retained by equal index/size keys. |
 | 35 | `ThreadPage.kt:20393` inline selection | Migrated | Lazy message selection captured controller, gate, anchor, logger, and message authority. |
 | 36 | `ThreadPage.kt:21765` reaction chip | Migrated | Lazy reaction captured toggle/details callbacks and anchor. |

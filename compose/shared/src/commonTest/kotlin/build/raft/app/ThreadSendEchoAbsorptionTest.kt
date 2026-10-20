@@ -15,8 +15,8 @@ class ThreadSendEchoAbsorptionTest {
         deliveryState: String = ThreadMessageDeliverySending,
         authorId: String = "user-1",
         randomId: String? = "rid-1"
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = authorId,
             authorName = "Me",
@@ -25,7 +25,7 @@ class ThreadSendEchoAbsorptionTest {
             randomId = randomId,
             deliveryState = deliveryState,
             pendingSendContext =
-                KuiklyThreadPendingSendContext(
+                RaftThreadPendingSendContext(
                     channelId = "channel-1",
                     body = body,
                     asTask = asTask,
@@ -42,8 +42,8 @@ class ThreadSendEchoAbsorptionTest {
         isOwn: Boolean = true,
         authorId: String = "user-1",
         randomId: String? = "rid-1"
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = authorId,
             authorName = "Me",
@@ -53,7 +53,7 @@ class ThreadSendEchoAbsorptionTest {
             taskId = taskId,
             attachments =
                 attachmentIds.map { attachmentId ->
-                    KuiklyThreadAttachmentItem(id = attachmentId, name = "file-$attachmentId")
+                    RaftThreadAttachmentItem(id = attachmentId, name = "file-$attachmentId")
                 }
         )
 

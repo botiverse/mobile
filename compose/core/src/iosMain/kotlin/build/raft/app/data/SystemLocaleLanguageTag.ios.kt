@@ -1,9 +1,9 @@
 package build.raft.app.data
 
-import build.raft.app.SlockCoreInternalApi
+import build.raft.app.RaftCoreInternalApi
 import platform.Foundation.NSLocale
 import platform.Foundation.preferredLanguages
 
-@SlockCoreInternalApi
+@RaftCoreInternalApi
 actual fun currentSystemLanguageTag(): String? =
     NSLocale.preferredLanguages.firstOrNull() as? String

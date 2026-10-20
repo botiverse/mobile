@@ -174,7 +174,7 @@ class ThreadComposerAggregateReceiptTest {
         val oldAdmission = requireNotNull(store.state.value.attachmentAdmissionsByLocalId[old.id])
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-b"),
+                composer = RaftThreadComposerPayload(instanceId = "composer-b"),
                 draftKey = "send=other-channel|parent=_|mention=other-channel"
             )
         )
@@ -385,7 +385,7 @@ class ThreadComposerAggregateReceiptTest {
         val store = SharedThreadComposerDraftStore()
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = instanceId),
+                composer = RaftThreadComposerPayload(instanceId = instanceId),
                 draftKey = draftKey
             )
         )

@@ -8,8 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.data.AuthSessionEvent
-import build.raft.app.data.SlockAuthSessionEventSource
-import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.RaftAuthSessionEventSource
+import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
 import kotlinx.atomicfu.atomic
@@ -76,8 +76,8 @@ internal class SettingsWebViewAuthSnapshotReducer(
 
 @Composable
 internal fun rememberSettingsWebViewAuthSnapshot(
-    shellAuthStore: SlockAuthSessionStore,
-    processAuthEvents: SlockAuthSessionEventSource,
+    shellAuthStore: RaftAuthSessionStore,
+    processAuthEvents: RaftAuthSessionEventSource,
 ): SettingsWebViewAuthSnapshot {
     var snapshot by remember(shellAuthStore, processAuthEvents) { mutableStateOf(SettingsWebViewAuthSnapshot()) }
     val reducer =
@@ -200,7 +200,7 @@ internal data class SettingsWebViewHostAuthBinding(
 @Composable
 internal fun rememberSettingsWebViewHostAuthBinding(
     snapshot: SettingsWebViewAuthSnapshot,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
 ): SettingsWebViewHostAuthBinding? {
     val session = snapshot.session ?: return null
     val accountId = session.user.id.trim()
@@ -231,7 +231,7 @@ internal fun rememberSettingsWebViewHostAuthBinding(
 internal fun SettingsWebViewAccessTokenSyncEffect(
     snapshot: SettingsWebViewAuthSnapshot,
     documentReady: Boolean,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
     binding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
     trustedDocumentUrl: String = "",

@@ -76,13 +76,13 @@ init_test_metadata() {
   TEST_OUTPUT["login-transition-routing"]="login-transition-routing-instrumentation.txt"
   TEST_CONDITION["login-transition-routing"]="always"
 
-  TEST_CLASS["local-image-sampled-decode"]="build.raft.app.shared.SlockLocalImageSampledDecodeConnectedTest"
+  TEST_CLASS["local-image-sampled-decode"]="build.raft.app.shared.RaftLocalImageSampledDecodeConnectedTest"
   TEST_RUNNER["local-image-sampled-decode"]="$RUNNER_CONNECTED"
   TEST_RETRIES["local-image-sampled-decode"]=1
   TEST_OUTPUT["local-image-sampled-decode"]="local-image-sampled-decode-instrumentation.txt"
   TEST_CONDITION["local-image-sampled-decode"]="always"
 
-  TEST_CLASS["first-character-baseline"]="build.raft.app.shared.SlockComposerFirstCharacterBaselineTest"
+  TEST_CLASS["first-character-baseline"]="build.raft.app.shared.RaftComposerFirstCharacterBaselineTest"
   TEST_RUNNER["first-character-baseline"]="$RUNNER_CONNECTED"
   TEST_RETRIES["first-character-baseline"]=1
   TEST_OUTPUT["first-character-baseline"]="first-character-baseline-instrumentation.txt"
@@ -94,7 +94,7 @@ init_test_metadata() {
   TEST_OUTPUT["ime-visibility-probe"]="ime-visibility-probe-instrumentation.txt"
   TEST_CONDITION["ime-visibility-probe"]="always"
 
-  TEST_CLASS["composer-session-retirement"]="build.raft.app.shared.SlockThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition"
+  TEST_CLASS["composer-session-retirement"]="build.raft.app.shared.RaftThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition"
   TEST_RUNNER["composer-session-retirement"]="$RUNNER_CONNECTED"
   TEST_RETRIES["composer-session-retirement"]=1
   TEST_OUTPUT["composer-session-retirement"]="composer-session-retirement-instrumentation.txt"
@@ -106,7 +106,7 @@ init_test_metadata() {
   TEST_OUTPUT["thread-composer-suggestion-interaction"]="thread-composer-suggestion-interaction-instrumentation.txt"
   TEST_CONDITION["thread-composer-suggestion-interaction"]="always"
 
-  TEST_CLASS["multiline-text-field-value"]="build.raft.app.shared.SlockMultilineTextFieldValueConnectedTest"
+  TEST_CLASS["multiline-text-field-value"]="build.raft.app.shared.RaftMultilineTextFieldValueConnectedTest"
   TEST_RUNNER["multiline-text-field-value"]="$RUNNER_CONNECTED"
   TEST_RETRIES["multiline-text-field-value"]=1
   TEST_OUTPUT["multiline-text-field-value"]="multiline-text-field-value-instrumentation.txt"
@@ -136,25 +136,25 @@ init_test_metadata() {
   TEST_OUTPUT["performance-trace-feedback"]="performance-trace-feedback-instrumentation.txt"
   TEST_CONDITION["performance-trace-feedback"]="always"
 
-  TEST_CLASS["child-page-visibility"]="build.raft.app.shared.SlockChildPageVisibilityConnectedTest"
+  TEST_CLASS["child-page-visibility"]="build.raft.app.shared.RaftChildPageVisibilityConnectedTest"
   TEST_RUNNER["child-page-visibility"]="$RUNNER_CONNECTED"
   TEST_RETRIES["child-page-visibility"]=1
   TEST_OUTPUT["child-page-visibility"]="child-page-visibility-instrumentation.txt"
   TEST_CONDITION["child-page-visibility"]="always"
 
-  TEST_CLASS["pager-scroll-probe"]="build.raft.app.shared.SlockPagerScrollProbeConnectedTest"
+  TEST_CLASS["pager-scroll-probe"]="build.raft.app.shared.RaftPagerScrollProbeConnectedTest"
   TEST_RUNNER["pager-scroll-probe"]="$RUNNER_CONNECTED"
   TEST_RETRIES["pager-scroll-probe"]=1
   TEST_OUTPUT["pager-scroll-probe"]="pager-scroll-probe-instrumentation.txt"
   TEST_CONDITION["pager-scroll-probe"]="always"
 
-  TEST_CLASS["release-notes-section-gap"]="build.raft.app.shared.SlockReleaseNotesSectionGapConnectedTest"
+  TEST_CLASS["release-notes-section-gap"]="build.raft.app.shared.RaftReleaseNotesSectionGapConnectedTest"
   TEST_RUNNER["release-notes-section-gap"]="$RUNNER_CONNECTED"
   TEST_RETRIES["release-notes-section-gap"]=1
   TEST_OUTPUT["release-notes-section-gap"]="release-notes-section-gap-instrumentation.txt"
   TEST_CONDITION["release-notes-section-gap"]="always"
 
-  TEST_CLASS["thread-align-right-bounds"]="build.raft.app.shared.SlockThreadAlignRightBoundsConnectedTest"
+  TEST_CLASS["thread-align-right-bounds"]="build.raft.app.shared.RaftThreadAlignRightBoundsConnectedTest"
   TEST_RUNNER["thread-align-right-bounds"]="$RUNNER_CONNECTED"
   TEST_RETRIES["thread-align-right-bounds"]=1
   TEST_OUTPUT["thread-align-right-bounds"]="thread-align-right-bounds-instrumentation.txt"
@@ -172,7 +172,7 @@ init_test_metadata() {
   TEST_OUTPUT["durable-partition-migration"]="durable-partition-migration-instrumentation.txt"
   TEST_CONDITION["durable-partition-migration"]="always"
 
-  TEST_CLASS["thread-newer-auto-pagination"]="build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest"
+  TEST_CLASS["thread-newer-auto-pagination"]="build.raft.app.shared.RaftThreadNewerAutoPaginationConnectedTest"
   TEST_RUNNER["thread-newer-auto-pagination"]="$RUNNER_CONNECTED"
   TEST_RETRIES["thread-newer-auto-pagination"]=1
   TEST_OUTPUT["thread-newer-auto-pagination"]="thread-newer-auto-pagination-instrumentation.txt"

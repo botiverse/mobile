@@ -123,7 +123,7 @@ private fun KimiCreateCapabilityVisualContent(capable: Boolean) {
                 defaultModel = "kimi-k2"
             )
         }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedCreateAgentDialog(
             submitting = false,
             errorMessage = null,

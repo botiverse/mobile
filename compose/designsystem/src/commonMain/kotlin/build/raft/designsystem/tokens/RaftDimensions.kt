@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-// Non-colour raft-ui tokens (styles.css, unchanged 0.7.1 -> 0.8.0), ported from compose/shared SlockDesignTokens.kt
+// Non-colour raft-ui tokens (styles.css, unchanged 0.7.1 -> 0.8.0), ported from compose/shared RaftDesignTokens.kt
 // (already aligned to raft-ui 0.6/0.7). CSS px map 1:1 to dp. Colours are generated:
 // see RaftUiColorTokens.g.kt and tools/design-tokens.
 

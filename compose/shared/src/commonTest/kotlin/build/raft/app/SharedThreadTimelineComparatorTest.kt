@@ -18,7 +18,7 @@ class SharedThreadTimelineComparatorTest {
         assertComparatorContract(values)
         assertEquals(
             listOf("canonical-a", "canonical-b", "sequence-pending"),
-            values.shuffledForSortProbe().sortedWith(SharedThreadTimelineComparator).map(KuiklyThreadMessageItem::id),
+            values.shuffledForSortProbe().sortedWith(SharedThreadTimelineComparator).map(RaftThreadMessageItem::id),
         )
     }
 
@@ -33,7 +33,7 @@ class SharedThreadTimelineComparatorTest {
             listOf("seq-4", "seq-5"),
             listOf(earlierClockLaterSequence, laterClockEarlierSequence)
                 .sortedWith(SharedThreadTimelineComparator)
-                .map(KuiklyThreadMessageItem::id),
+                .map(RaftThreadMessageItem::id),
         )
     }
 
@@ -59,14 +59,14 @@ class SharedThreadTimelineComparatorTest {
             expected,
             listOf(secondInstant, firstInstant)
                 .sortedWith(SharedThreadTimelineComparator)
-                .map(KuiklyThreadMessageItem::id),
+                .map(RaftThreadMessageItem::id),
         )
         assertEquals(
             expected,
             listOf(
                 secondInstant.copy(timestampLabel = "a"),
                 firstInstant.copy(timestampLabel = "z"),
-            ).sortedWith(SharedThreadTimelineComparator).map(KuiklyThreadMessageItem::id),
+            ).sortedWith(SharedThreadTimelineComparator).map(RaftThreadMessageItem::id),
         )
     }
 
@@ -93,7 +93,7 @@ class SharedThreadTimelineComparatorTest {
 
         assertEquals(
             listOf("local-send-thread-2", "local-send-thread-10"),
-            listOf(tenth, second).sortedWith(SharedThreadTimelineComparator).map(KuiklyThreadMessageItem::id),
+            listOf(tenth, second).sortedWith(SharedThreadTimelineComparator).map(RaftThreadMessageItem::id),
         )
     }
 
@@ -112,11 +112,11 @@ class SharedThreadTimelineComparatorTest {
         assertComparatorContract(values)
         assertEquals(
             listOf("canonical-1", "canonical-2", "pending-a", "pending-b", "local-2", "local-10"),
-            values.shuffledForSortProbe().sortedWith(SharedThreadTimelineComparator).map(KuiklyThreadMessageItem::id),
+            values.shuffledForSortProbe().sortedWith(SharedThreadTimelineComparator).map(RaftThreadMessageItem::id),
         )
     }
 
-    private fun assertComparatorContract(values: List<KuiklyThreadMessageItem>) {
+    private fun assertComparatorContract(values: List<RaftThreadMessageItem>) {
         values.forEach { left ->
             values.forEach { right ->
                 val forward = SharedThreadTimelineComparator.compare(left, right).normalizedSign()
@@ -147,8 +147,8 @@ class SharedThreadTimelineComparatorTest {
         label: String = "localized-display-only",
         localSendOrder: Long? = null,
         local: Boolean = false,
-    ): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    ): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "user-1",
             authorName = "User",
@@ -160,7 +160,7 @@ class SharedThreadTimelineComparatorTest {
             localSendOrder = localSendOrder,
         )
 
-    private fun List<KuiklyThreadMessageItem>.shuffledForSortProbe(): List<KuiklyThreadMessageItem> =
+    private fun List<RaftThreadMessageItem>.shuffledForSortProbe(): List<RaftThreadMessageItem> =
         indices.reversed().map { index -> get(index) }
 
     private fun Int.normalizedSign(): Int =

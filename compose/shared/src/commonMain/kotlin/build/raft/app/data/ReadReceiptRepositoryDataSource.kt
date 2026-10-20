@@ -13,13 +13,13 @@ private val readReceiptRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private suspend fun SlockNetworkClient.channelUnreadCounts(
+private suspend fun RaftNetworkClient.channelUnreadCounts(
     priority: DataRequestPriority,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/unread", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.markChannelReadToSeq(
+private suspend fun RaftNetworkClient.markChannelReadToSeq(
     priority: DataRequestPriority,
     channelId: ChannelId,
     bodyText: String,
@@ -33,7 +33,7 @@ private suspend fun SlockNetworkClient.markChannelReadToSeq(
         bodyText = bodyText
     )
 
-private suspend fun SlockNetworkClient.markChannelReadAll(
+private suspend fun RaftNetworkClient.markChannelReadAll(
     priority: DataRequestPriority,
     channelId: ChannelId,
     serverId: ServerId? = null
@@ -45,21 +45,21 @@ private suspend fun SlockNetworkClient.markChannelReadAll(
         serverIdOverride = serverId
     )
 
-private suspend fun SlockNetworkClient.markChannelUnread(
+private suspend fun RaftNetworkClient.markChannelUnread(
     priority: DataRequestPriority,
     channelId: ChannelId
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/unread", method = "POST")
 
-private suspend fun SlockNetworkClient.markInboxReadAll(
+private suspend fun RaftNetworkClient.markInboxReadAll(
     priority: DataRequestPriority,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(priority, "channels/inbox/read-all", method = "POST", serverIdOverride = serverId)
 
 class RealReadReceiptRepository(
-    private val sessionStore: SlockAuthSessionStore,
-    private val networkClient: SlockNetworkClient,
+    private val sessionStore: RaftAuthSessionStore,
+    private val networkClient: RaftNetworkClient,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : ReadReceiptRepository {
@@ -215,9 +215,9 @@ class RealReadReceiptRepository(
  * account's token for an old owner. The selected server is similarly fixed to the owner bucket.
  */
 internal class ReadReceiptOwnerAuthSessionStore(
-    private val delegate: SlockAuthSessionStore,
+    private val delegate: RaftAuthSessionStore,
     private val owner: ReadReceiptOwner
-) : SlockAuthSessionStore by delegate {
+) : RaftAuthSessionStore by delegate {
     override suspend fun readSession(): StoredAuthSession? {
         val session = delegate.readSession() ?: return null
         if (session.user.id != owner.accountId) return null

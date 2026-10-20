@@ -13,7 +13,7 @@ typedef void (^RaftBridgeCallback)(id _Nullable result);
  * `BridgeWireHostCapabilities`), one instance per page. Each method `-name:(NSDictionary *)args`
  * reads its params from args[RaftBridgeParamKey] and answers through args[RaftBridgeCallbackKey];
  * the synchronous methods ([HRBridgeModule isSynchronousMethod:]) return their value instead.
- * Driven by SlockCmpBridgeHost.
+ * Driven by RaftCmpBridgeHost.
  */
 @interface HRBridgeModule : NSObject
 
@@ -22,15 +22,15 @@ typedef void (^RaftBridgeCallback)(id _Nullable result);
  * stack, share-image capture root and the owner of page-bound native state (adaptive navigation,
  * conversation forward gesture). Weak: the page owns its bridge.
  */
-@property (nonatomic, weak, nullable) UIViewController *slockHostController;
+@property (nonatomic, weak, nullable) UIViewController *raftHostController;
 
 /** Methods answered synchronously on the calling thread (cheap and thread-safe). */
 + (BOOL)isSynchronousMethod:(NSString *)method;
 
 @end
 
-FOUNDATION_EXTERN void SlockIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message);
-FOUNDATION_EXTERN void SlockIosDiagnosticsRecordWithContext(
+FOUNDATION_EXTERN void RaftIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message);
+FOUNDATION_EXTERN void RaftIosDiagnosticsRecordWithContext(
     NSString *level,
     NSString *tag,
     NSString *message,
@@ -38,26 +38,26 @@ FOUNDATION_EXTERN void SlockIosDiagnosticsRecordWithContext(
     BOOL emitConsole,
     BOOL forceCritical
 );
-FOUNDATION_EXTERN void SlockIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message);
-FOUNDATION_EXTERN void SlockIosDiagnosticsRecordUnhandledException(
+FOUNDATION_EXTERN void RaftIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message);
+FOUNDATION_EXTERN void RaftIosDiagnosticsRecordUnhandledException(
     NSString *pageName,
     NSInteger mode,
     NSString *reason,
     NSString *stack
 );
-FOUNDATION_EXTERN void SlockIosInstallHandsReporting(void);
+FOUNDATION_EXTERN void RaftIosInstallHandsReporting(void);
 /** Installs the bridge-free temporary-file retirement handler used by shared draft persistence. */
-FOUNDATION_EXTERN void SlockIosInstallThreadComposerTemporaryFileRetirement(void);
-FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason);
-FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis);
-FOUNDATION_EXTERN NSString * _Nullable SlockIosPrepareDiagnosticsCrashAttachmentPath(void);
+FOUNDATION_EXTERN void RaftIosInstallThreadComposerTemporaryFileRetirement(void);
+FOUNDATION_EXTERN NSArray<NSString *> *RaftIosPrepareDiagnosticsAttachmentPaths(NSString *reason);
+FOUNDATION_EXTERN NSArray<NSString *> *RaftIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis);
+FOUNDATION_EXTERN NSString * _Nullable RaftIosPrepareDiagnosticsCrashAttachmentPath(void);
 /**
  * Classifies why an attachment share had no presenter. Pure function so it can be
  * unit-tested without a live app/scene. Returns "detached_root" when the render
  * page already left the window, "scene_inactive" when no foreground-active
  * UIWindowScene exists, otherwise "no_controller".
  */
-FOUNDATION_EXTERN NSString *SlockShareControllerFailureReason(
+FOUNDATION_EXTERN NSString *RaftShareControllerFailureReason(
     BOOL hasRootViewWindow,
     BOOL hasForegroundActiveScene
 );
@@ -66,7 +66,7 @@ FOUNDATION_EXTERN NSString *SlockShareControllerFailureReason(
  * frontmost-or-captured order: prefer the presenter captured at tap time, else
  * the current frontmost controller, else nil. Pure function for tests.
  */
-FOUNDATION_EXTERN UIViewController * _Nullable SlockSharePresenterController(
+FOUNDATION_EXTERN UIViewController * _Nullable RaftSharePresenterController(
     UIViewController * _Nullable capturedPresenter,
     UIViewController * _Nullable frontmostPresenter
 );
@@ -74,11 +74,11 @@ FOUNDATION_EXTERN UIViewController * _Nullable SlockSharePresenterController(
  * Sanitizes a single path component for the persistent attachment store key.
  * Pure function for tests.
  */
-FOUNDATION_EXTERN NSString *SlockAttachmentSafeComponent(NSString *raw);
+FOUNDATION_EXTERN NSString *RaftAttachmentSafeComponent(NSString *raw);
 /**
  * Builds the persistent attachment cache key `<ownerKey>-<safe(attachmentId)>`
  * (OHOS SlockOhosPrivateAttachmentStore scheme; empty owner yields just the id).
  */
-FOUNDATION_EXTERN NSString *SlockAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId);
+FOUNDATION_EXTERN NSString *RaftAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId);
 
 NS_ASSUME_NONNULL_END

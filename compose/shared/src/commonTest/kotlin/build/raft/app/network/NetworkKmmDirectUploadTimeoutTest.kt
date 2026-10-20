@@ -18,7 +18,7 @@ import kotlinx.coroutines.runBlocking
 class NetworkKmmDirectUploadTimeoutTest {
 
     private fun fileBody(contentLength: Long = 256L) =
-        SlockHttpFileBody(
+        RaftHttpFileBody(
             path = "native://large.bin",
             contentType = "application/octet-stream",
             contentLength = contentLength,
@@ -41,23 +41,23 @@ class NetworkKmmDirectUploadTimeoutTest {
 
     @Test
     fun directFileUploadCarriesThirtyMinuteBudget() = runBlocking {
-        val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
+        val coordinator = RaftNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
         coordinator.onProcessVisibilityChanged(foreground = true)
         var captured: NetworkRequest? = null
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 requestLifetimeCoordinator = coordinator,
                 requestStarterOverride =
-                    SlockNetworkRequestStarter { request, callback ->
+                    RaftNetworkRequestStarter { request, callback ->
                         captured = request
                         callback(okResponse(request))
-                        SlockNetworkRequestCancelHandle { }
+                        RaftNetworkRequestCancelHandle { }
                     },
             )
 
         val response =
             executor.executeFile(
-                priority = SlockRequestPriority.Foreground,
+                priority = RaftRequestPriority.Foreground,
                 url = "https://signed.example/object",
                 method = "PUT",
                 headers = emptyMap(),
@@ -75,23 +75,23 @@ class NetworkKmmDirectUploadTimeoutTest {
 
     @Test
     fun directFileUploadForwardsByteProgress() = runBlocking {
-        val coordinator = SlockNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
+        val coordinator = RaftNetworkRequestLifetimeCoordinator(nowMillis = { 1_000L })
         coordinator.onProcessVisibilityChanged(foreground = true)
-        val observed = mutableListOf<SlockTransferProgress>()
+        val observed = mutableListOf<RaftTransferProgress>()
         val executor =
-            NetworkKmmSlockHttpExecutor(
+            NetworkKmmRaftHttpExecutor(
                 requestLifetimeCoordinator = coordinator,
                 requestStarterOverride =
-                    SlockNetworkRequestStarter { request, callback ->
+                    RaftNetworkRequestStarter { request, callback ->
                         request.progress.uploadProgress?.invoke(NetworkTransferProgress(64L, 256L))
                         request.progress.uploadProgress?.invoke(NetworkTransferProgress(256L, 256L))
                         callback(okResponse(request))
-                        SlockNetworkRequestCancelHandle { }
+                        RaftNetworkRequestCancelHandle { }
                     },
             )
 
         executor.executeFile(
-            priority = SlockRequestPriority.Foreground,
+            priority = RaftRequestPriority.Foreground,
             url = "https://signed.example/object",
             method = "PUT",
             headers = emptyMap(),
@@ -100,7 +100,7 @@ class NetworkKmmDirectUploadTimeoutTest {
         )
 
         assertEquals(
-            listOf(SlockTransferProgress(64L, 256L), SlockTransferProgress(256L, 256L)),
+            listOf(RaftTransferProgress(64L, 256L), RaftTransferProgress(256L, 256L)),
             observed,
         )
     }

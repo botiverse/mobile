@@ -87,10 +87,10 @@ class AppShellRailSurfaceVisibilityTest {
     @Test
     fun `dms tab shows only dm conversations in its detail pane`() {
         // A channel selected on Home must not appear (with its composer) beside the DMs list.
-        assertTrue(appShellDmsTabShowsDetail(KuiklyThreadSurfaceKind.DirectMessage, null))
-        assertTrue(appShellDmsTabShowsDetail(KuiklyThreadSurfaceKind.ReplyThread, KuiklyThreadSurfaceKind.DirectMessage))
-        assertFalse(appShellDmsTabShowsDetail(KuiklyThreadSurfaceKind.Channel, null))
-        assertFalse(appShellDmsTabShowsDetail(KuiklyThreadSurfaceKind.ReplyThread, KuiklyThreadSurfaceKind.Channel))
+        assertTrue(appShellDmsTabShowsDetail(RaftThreadSurfaceKind.DirectMessage, null))
+        assertTrue(appShellDmsTabShowsDetail(RaftThreadSurfaceKind.ReplyThread, RaftThreadSurfaceKind.DirectMessage))
+        assertFalse(appShellDmsTabShowsDetail(RaftThreadSurfaceKind.Channel, null))
+        assertFalse(appShellDmsTabShowsDetail(RaftThreadSurfaceKind.ReplyThread, RaftThreadSurfaceKind.Channel))
         assertFalse(appShellDmsTabShowsDetail(null, null))
     }
 

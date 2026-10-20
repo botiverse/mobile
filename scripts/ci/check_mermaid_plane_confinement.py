@@ -2,15 +2,15 @@
 """Static contract: the mermaid consumer stays confined to one shared adapter.
 
 Incident-born gate (task #373 / PR #2497). Under Kuikly the mermaid renderer
-was copied per platform (SlockMermaidDiagramBlock.{android,ios}.kt) and one
+was copied per platform (RaftMermaidDiagramBlock.{android,ios}.kt) and one
 plane silently drifted. The Compose Multiplatform switch replaced those
-actuals with a single commonMain implementation: SlockMermaidDiagramBlock.kt
+actuals with a single commonMain implementation: RaftMermaidDiagramBlock.kt
 (parse + layout) and RaftMermaidCanvas.kt (Compose Canvas drawing). This gate
 keeps that shape:
 
 Assertions:
   1. The commonMain adapter files exist (an empty scope never passes).
-  2. No per-platform mermaid actual (SlockMermaidDiagramBlock.<plane>.kt or
+  2. No per-platform mermaid actual (RaftMermaidDiagramBlock.<plane>.kt or
      RaftMermaidCanvas.<plane>.kt) reappears in any source set — one
      implementation, so planes cannot drift again.
   3. Production (non-test) Kotlin sources import `build.raft.mermaid` only from
@@ -33,13 +33,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 ADAPTER_DIR = Path("compose/shared/src/commonMain/kotlin/build/raft/app/markdown")
 ADAPTER_FILES = (
-    ADAPTER_DIR / "SlockMermaidDiagramBlock.kt",
+    ADAPTER_DIR / "RaftMermaidDiagramBlock.kt",
     ADAPTER_DIR / "RaftMermaidCanvas.kt",
 )
 SOURCE_ROOTS = (Path("compose"),)
 
 IMPORT_RE = re.compile(r"^\s*import\s+(build\.raft\.mermaid(?:\.[A-Za-z0-9_]+)*)")
-PLANE_ACTUAL_RE = re.compile(r"^(SlockMermaidDiagramBlock|RaftMermaidCanvas)\.[A-Za-z0-9]+\.kt$")
+PLANE_ACTUAL_RE = re.compile(r"^(RaftMermaidDiagramBlock|RaftMermaidCanvas)\.[A-Za-z0-9]+\.kt$")
 TEST_SOURCE_SET_RE = re.compile(r"(Test|test)$")
 
 
@@ -102,7 +102,7 @@ def enforce(base: Path) -> int:
             if m:
                 violations.append(
                     f"{rel}:{lineno}: import {m.group(1)} outside the mermaid adapter "
-                    f"(route through SlockMermaidDiagramBlock instead)"
+                    f"(route through RaftMermaidDiagramBlock instead)"
                 )
 
     if violations:
@@ -114,7 +114,7 @@ CLEAN_BLOCK = """package build.raft.app.markdown
 
 import build.raft.mermaid.core.MermaidParser
 
-internal fun SlockMermaidDiagramBlock(code: String, fallback: () -> Unit) {
+internal fun RaftMermaidDiagramBlock(code: String, fallback: () -> Unit) {
     MermaidParser.parse(code)
 }
 """
@@ -129,7 +129,7 @@ internal fun RaftMermaidCanvas(scene: LayoutScene) = Unit
 CLEAN_CONSUMER = """package build.raft.app.markdown
 
 /** Mentions of build.raft.mermaid in kdoc are allowed. */
-internal fun renderFence(code: String) = SlockMermaidDiagramBlock(code) {}
+internal fun renderFence(code: String) = RaftMermaidDiagramBlock(code) {}
 """
 
 CLEAN_TEST = """package build.raft.app.markdown
@@ -154,7 +154,7 @@ def _write(base: Path, rel: Path | str, text: str) -> Path:
 def _write_clean_tree(base: Path) -> None:
     _write(base, ADAPTER_FILES[0], CLEAN_BLOCK)
     _write(base, ADAPTER_FILES[1], CLEAN_CANVAS)
-    _write(base, ADAPTER_DIR / "SlockMarkdown.kt", CLEAN_CONSUMER)
+    _write(base, ADAPTER_DIR / "RaftMarkdown.kt", CLEAN_CONSUMER)
     _write(
         base,
         "compose/shared/src/androidUnitTest/kotlin/build/raft/app/markdown/MermaidAdapterTest.kt",
@@ -187,14 +187,14 @@ def self_test() -> int:
 
         actual = _write(
             base,
-            "compose/shared/src/iosMain/kotlin/build/raft/app/markdown/SlockMermaidDiagramBlock.ios.kt",
+            "compose/shared/src/iosMain/kotlin/build/raft/app/markdown/RaftMermaidDiagramBlock.ios.kt",
             "package build.raft.app.markdown\n",
         )
         if expect(base, "per-platform actual reintroduced", False):
             return 1
         actual.unlink()
 
-        consumer = base / ADAPTER_DIR / "SlockMarkdown.kt"
+        consumer = base / ADAPTER_DIR / "RaftMarkdown.kt"
         consumer.write_text(
             CLEAN_CONSUMER.replace(
                 "/**", "import build.raft.mermaid.core.MermaidParser\n\n/**", 1

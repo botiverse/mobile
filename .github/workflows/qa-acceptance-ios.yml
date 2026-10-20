@@ -699,7 +699,7 @@ jobs:
 
       # task #14 iOS v1: self-describing perf.json every run (record-only,
       # advisory). Step timing windows + system-log lifecycle signals; the
-      # app-level frame-metric gap (SlockPerformanceDiagnostics is Android-only)
+      # app-level frame-metric gap (RaftPerformanceDiagnostics is Android-only)
       # is recorded explicitly in the file's known_gap field.
       - name: Collect perf summary
         if: always()

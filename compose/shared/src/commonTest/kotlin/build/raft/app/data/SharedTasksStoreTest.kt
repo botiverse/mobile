@@ -40,7 +40,7 @@ class SharedTasksStoreTest {
         val repository = FakeTasksRepository()
         val useCase =
             SharedTasksUseCase(
-                authStore = InMemorySlockAuthSessionStore(),
+                authStore = InMemoryRaftAuthSessionStore(),
                 repository = repository
             )
 
@@ -66,7 +66,7 @@ class SharedTasksStoreTest {
         val useCase =
             SharedTasksUseCase(
                 authStore =
-                    InMemorySlockAuthSessionStore(
+                    InMemoryRaftAuthSessionStore(
                         StoredAuthSession(
                             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                             accessToken = "token",
@@ -101,7 +101,7 @@ class SharedTasksStoreTest {
         val useCase =
             SharedTasksUseCase(
                 authStore =
-                    InMemorySlockAuthSessionStore(
+                    InMemoryRaftAuthSessionStore(
                         StoredAuthSession(
                             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                             accessToken = "token",
@@ -135,7 +135,7 @@ class SharedTasksStoreTest {
         val useCase =
             SharedTasksUseCase(
                 authStore =
-                    InMemorySlockAuthSessionStore(
+                    InMemoryRaftAuthSessionStore(
                         StoredAuthSession(
                             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                             accessToken = "token",
@@ -1174,7 +1174,7 @@ class SharedTasksStoreTest {
         )
         val repository = FakeTasksRepository(loadResult = DataResult.Content(snapshot))
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -1216,7 +1216,7 @@ class SharedTasksStoreTest {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-a", email = "a@slock.ai"),
                     accessToken = "token-a",
@@ -1665,7 +1665,7 @@ class SharedTasksStoreTest {
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val previousTask = task("task-1", TaskStatus.InReview)
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -1715,7 +1715,7 @@ class SharedTasksStoreTest {
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val previousTask = task("task-1", TaskStatus.InReview)
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -1776,7 +1776,7 @@ class SharedTasksStoreTest {
                     )
             )
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -1819,7 +1819,7 @@ class SharedTasksStoreTest {
                 updateResult = DataResult.Error(ScreenError(code = "tasks_500", retryable = true))
             )
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -2271,7 +2271,7 @@ class SharedTasksStoreTest {
     private fun noOpTasksDataSource(): SharedTasksDataSource =
         SharedTasksDataSource(
             api =
-                object : SlockTasksApi {
+                object : RaftTasksApi {
                     override suspend fun serverTasks(
                         serverId: ServerId,
                         priority: DataRequestPriority
@@ -2290,7 +2290,7 @@ class SharedTasksStoreTest {
         val previousTask = task("task-1", TaskStatus.Todo, revision = 4L)
         val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -2338,7 +2338,7 @@ class SharedTasksStoreTest {
         val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
         val previousTask = task("task-1", TaskStatus.Todo, assignee = assignee, revision = 4L)
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",
@@ -2373,7 +2373,7 @@ class SharedTasksStoreTest {
         val assignee = MemberProfile(MemberId("user-2"), "Nathan Peer", "nathan", MemberKind.Human)
         val previousTask = task("task-1", TaskStatus.Todo, assignee = assignee, revision = 4L)
         val authStore =
-            InMemorySlockAuthSessionStore(
+            InMemoryRaftAuthSessionStore(
                 StoredAuthSession(
                     user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
                     accessToken = "token",

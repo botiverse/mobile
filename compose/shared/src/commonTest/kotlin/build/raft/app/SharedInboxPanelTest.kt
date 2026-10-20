@@ -16,12 +16,12 @@ import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
-import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
 import build.raft.app.data.SharedActivityPresentationStore
-import build.raft.app.components.SlockBrutalTone
+import build.raft.app.components.RaftBrutalTone
 import build.raft.app.data.activityPendingUpdateIncrement
 import build.raft.app.data.activityPendingUpdateMarkers
 import build.raft.app.data.activityUpdatePresentation
@@ -36,10 +36,10 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.SlockTimeContext
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
-import build.raft.app.model.slockEpochDayForDate
+import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.model.threadIdentity
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
@@ -391,29 +391,29 @@ class SharedInboxPanelTest {
         assertEquals(
             true,
             activityAppLifecycleResumeShouldRefresh(
-                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+                action = RaftRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleVisibleResume
             )
         )
         assertEquals(
             true,
             activityAppLifecycleResumeShouldRefresh(
-                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleShow
+                action = RaftRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleVisibleShow
             )
         )
         assertEquals(
             false,
             activityAppLifecycleResumeShouldRefresh(
-                action = SlockRealtimeNotifyContract.ActionAppLifecycle,
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleHidden
+                action = RaftRealtimeNotifyContract.ActionAppLifecycle,
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleHidden
             )
         )
         assertEquals(
             false,
             activityAppLifecycleResumeShouldRefresh(
                 action = "realtime",
-                lifecycleEvent = SlockRealtimeNotifyContract.LifecycleVisibleResume
+                lifecycleEvent = RaftRealtimeNotifyContract.LifecycleVisibleResume
             )
         )
         assertEquals(
@@ -1362,9 +1362,9 @@ class SharedInboxPanelTest {
                 lastMessageAt = "2026-06-18T08:05:00Z"
             )
         val context =
-            SlockTimeContext(
+            RaftTimeContext(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 18)
+                todayEpochDay = raftEpochDayForDate(2026, 6, 18)
             )
 
         assertEquals("17:12", item.activityTimeLabel(context))
@@ -1378,7 +1378,7 @@ class SharedInboxPanelTest {
                 lastMessageAt = "2026-06-18T08:05:00Z"
             )
         val context =
-            SlockTimeContext(
+            RaftTimeContext(
                 localOffsetMinutes = 480,
                 nowEpochMillis = 1781760000000L
             )
@@ -1394,9 +1394,9 @@ class SharedInboxPanelTest {
                 lastMessageAt = "2026-06-17T23:05:00Z"
             )
         val context =
-            SlockTimeContext(
+            RaftTimeContext(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 18)
+                todayEpochDay = raftEpochDayForDate(2026, 6, 18)
             )
 
         assertEquals("07:05", item.activityTimeLabel(context))
@@ -1440,7 +1440,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityPreviewSenderSpanUsesSlockBoldFontWithoutSyntheticWeight() {
+    fun activityPreviewSenderSpanUsesRaftBoldFontWithoutSyntheticWeight() {
         val item =
             InboxItem(
                 key = "activity-1",
@@ -1457,8 +1457,8 @@ class SharedInboxPanelTest {
         assertEquals("Artin: Latest update", annotated.text)
         assertEquals(0, senderSpan.start)
         assertEquals("Artin: ".length, senderSpan.end)
-        assertEquals(SlockType.ButtonBold.fontFamily, senderSpan.item.fontFamily)
-        assertEquals(SlockType.ButtonBold.fontWeight, senderSpan.item.fontWeight)
+        assertEquals(RaftType.ButtonBold.fontFamily, senderSpan.item.fontFamily)
+        assertEquals(RaftType.ButtonBold.fontWeight, senderSpan.item.fontWeight)
     }
 
     @Test
@@ -1608,7 +1608,7 @@ class SharedInboxPanelTest {
         assertEquals(null, item.firstUnreadMessageId)
         assertEquals(listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Unfollowed), item.activityFooterSlots())
         assertEquals(
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.Stone, SlockLucideIconName.BellOff),
+            SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff),
             SharedActivityFooterSlot.Unfollowed.badgeVisual()
         )
         assertFalse(item.activityShowsDoneAction())
@@ -1635,37 +1635,37 @@ class SharedInboxPanelTest {
     fun activityFooterSlotsProjectEveryMetadataKindToSquareBadgeVisuals() {
         assertEquals(
             SharedActivityFooterBadgeVisual(
-                tone = SlockBrutalTone.Cyan,
-                leadingIcon = SlockLucideIconName.Play,
+                tone = RaftBrutalTone.Cyan,
+                leadingIcon = RaftLucideIconName.Play,
                 foregroundColor = TaskStatus.InProgress.sharedTaskStatusChipMeta().foregroundColor
             ),
             SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress)
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.White),
+            SharedActivityFooterBadgeVisual(RaftBrutalTone.White),
             SharedActivityFooterSlot.Replies.badgeVisual()
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign),
+            SharedActivityFooterBadgeVisual(RaftBrutalTone.Yellow, RaftLucideIconName.AtSign),
             SharedActivityFooterSlot.Mention.badgeVisual()
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.Pink),
+            SharedActivityFooterBadgeVisual(RaftBrutalTone.Pink),
             SharedActivityFooterSlot.New.badgeVisual()
         )
         assertEquals(
-            SharedActivityFooterBadgeVisual(SlockBrutalTone.White, SlockLucideIconName.Pencil),
+            SharedActivityFooterBadgeVisual(RaftBrutalTone.White, RaftLucideIconName.Pencil),
             SharedActivityFooterSlot.Draft.badgeVisual()
         )
     }
 
     @Test
     fun activityTaskBadgeVisualKeepsSharedStatusColors() {
-        assertEquals(SlockBrutalTone.Orange, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Todo).tone)
-        assertEquals(SlockBrutalTone.Cyan, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress).tone)
-        assertEquals(SlockBrutalTone.Lavender, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).tone)
-        assertEquals(SlockBrutalTone.Lime, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).tone)
-        assertEquals(SlockBrutalTone.Stone, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).tone)
+        assertEquals(RaftBrutalTone.Orange, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Todo).tone)
+        assertEquals(RaftBrutalTone.Cyan, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress).tone)
+        assertEquals(RaftBrutalTone.Lavender, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).tone)
+        assertEquals(RaftBrutalTone.Lime, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).tone)
+        assertEquals(RaftBrutalTone.Stone, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).tone)
     }
 
     @Test
@@ -2221,7 +2221,7 @@ class SharedInboxPanelTest {
                         canonicalChannelId = "channel-1",
                         aliases = setOf("channel-1"),
                         conversationKind = ConversationKind.Channel,
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         title = "general"
                     )
@@ -2232,7 +2232,7 @@ class SharedInboxPanelTest {
 
         assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversationIdentity.threadId)
-        assertEquals(KuiklyThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(null, request.anchorMessageId)
 
         // task #304/#307 (cae1eb2e4): with no directory entry the parent kind is

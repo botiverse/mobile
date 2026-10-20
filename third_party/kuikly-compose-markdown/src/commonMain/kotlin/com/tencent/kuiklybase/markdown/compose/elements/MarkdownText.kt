@@ -32,10 +32,10 @@ import com.tencent.kuiklybase.markdown.compose.LocalImageTransformer
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownAnimations
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownExtendedSpans
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownAnnotationRevision
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownAnnotatedStringMemoKeys
-import com.tencent.kuiklybase.markdown.compose.LocalSlockMarkdownRenderTiming
-import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownAnnotatedStringMemoKeys
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRenderTiming
+import com.tencent.kuiklybase.markdown.compose.raftMarkdownLogSubTrace
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import com.tencent.kuiklybase.markdown.compose.extendedspans.ExtendedSpans
@@ -73,9 +73,9 @@ fun MarkdownText(
     // rebuild-every-recomposition (identity-stable annotators may be
     // dynamic); revision provided = remember by actual inputs + revision.
     // Parse-tree identity is stable per content, so node works as a key.
-    val nodeTiming = LocalSlockMarkdownRenderTiming.current
-    val memoKeys = slockMarkdownAnnotatedStringMemoKeys(
-        content, childNode, style, annotatorSettings, LocalSlockMarkdownAnnotationRevision.current
+    val nodeTiming = LocalRaftMarkdownRenderTiming.current
+    val memoKeys = raftMarkdownAnnotatedStringMemoKeys(
+        content, childNode, style, annotatorSettings, LocalRaftMarkdownAnnotationRevision.current
     )
     val buildStyledText = {
         buildAnnotatedString {
@@ -120,7 +120,7 @@ fun MarkdownText(
     } else {
         content
     }
-    slockMarkdownLogSubTrace {
+    raftMarkdownLogSubTrace {
         "phase=markdown.text.annotated_input textHash=${extendedStyledText.text.hashCode().toString(16)} " +
             "textLength=${extendedStyledText.text.length} spanStyles=${extendedStyledText.spanStyles.size} " +
             "stringAnnotations=${extendedStyledText.getStringAnnotations(0, extendedStyledText.length).size} " +

@@ -13,13 +13,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 internal data class SharedThreadFilesState(
-    val basePayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
-    val payload: KuiklyThreadFilesPayload = KuiklyThreadFilesPayload(),
+    val basePayload: RaftThreadScreenPayload = RaftThreadScreenPayload(),
+    val payload: RaftThreadFilesPayload = RaftThreadFilesPayload(),
     val requestInFlight: Boolean = false
 )
 
 internal sealed interface SharedThreadFilesIntent {
-    data class Start(val basePayload: KuiklyThreadScreenPayload) : SharedThreadFilesIntent
+    data class Start(val basePayload: RaftThreadScreenPayload) : SharedThreadFilesIntent
 
     data class Refresh(val reason: String = "refresh") : SharedThreadFilesIntent
     data class LoadMore(val reason: String = "load_more") : SharedThreadFilesIntent
@@ -60,7 +60,7 @@ internal class SharedThreadFilesStore(
         resetInFlightFlag()
     }
 
-    private fun start(basePayload: KuiklyThreadScreenPayload) {
+    private fun start(basePayload: RaftThreadScreenPayload) {
         val current = _state.value
         val nextRouteKey = basePayload.threadFilesRouteKey()
         val currentRouteKey = current.basePayload.threadFilesRouteKey()
@@ -193,10 +193,10 @@ internal class SharedThreadFilesViewModel(
     }
 }
 
-private fun KuiklyThreadScreenPayload.threadFilesRouteKey(): String =
+private fun RaftThreadScreenPayload.threadFilesRouteKey(): String =
     sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() }
         ?: instanceId
 
-internal fun KuiklyThreadScreenPayload.initialThreadFilesRoutePayload(): KuiklyThreadFilesPayload =
-    KuiklyThreadFilesPayload(instanceId = instanceId)
+internal fun RaftThreadScreenPayload.initialThreadFilesRoutePayload(): RaftThreadFilesPayload =
+    RaftThreadFilesPayload(instanceId = instanceId)

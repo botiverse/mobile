@@ -100,7 +100,7 @@ const findings = [...byFile.entries()].map(([file, hits]) => {
       "### Glyph characters in UI strings",
       ...hits.map((h) => `- L${h.line} \`${h.text.slice(0, 160)}\``),
       "",
-      "UI affordances use Lucide icons (`SlockLucideIcon`), not unicode glyphs (task #494).",
+      "UI affordances use Lucide icons (`RaftLucideIcon`), not unicode glyphs (task #494).",
       "Typographic uses (separators, masking dots, content text) are FPs — close with a note or extend the lens exclusions.",
     ].join("\n"),
     labels: ["code-smell", "auto-triage", "severity:medium"],

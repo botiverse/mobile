@@ -34,8 +34,8 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         clearInteractionFailureEvidence(instrumentation)
         instrumentation.confirmImmersiveEducationDismissedForSuggestionTest()
         val intent =
-            Intent(context, SlockCmpActivity::class.java)
-                .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+            Intent(context, RaftCmpActivity::class.java)
+                .putExtra("pageName", RaftPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
                     JSONObject()
@@ -43,9 +43,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         .put("visualFixture", InteractionOracleFixture)
                         .toString()
                 )
-                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
+        ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
             try {
                 scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
                 // Visual pages clear native focus when their window first gains focus, then post
@@ -169,8 +169,8 @@ class ThreadComposerSuggestionPopoverConnectedTest {
 
         cases.forEachIndexed { index, case ->
             val intent =
-                Intent(context, SlockCmpActivity::class.java)
-                    .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+                Intent(context, RaftCmpActivity::class.java)
+                    .putExtra("pageName", RaftPages.THREAD_COMPOSER_VISUAL)
                     .putExtra(
                         "pageData",
                         JSONObject()
@@ -178,9 +178,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                             .put("visualFixture", "empty")
                             .toString()
                     )
-                    .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                    .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-            ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
+            ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
                 waitUntil("empty composer should attach before '${case.trigger}'") {
                     scenario.composerText() == ""
                 }
@@ -218,8 +218,8 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         val device = UiDevice.getInstance(instrumentation)
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockCmpActivity::class.java)
-                .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+            Intent(context, RaftCmpActivity::class.java)
+                .putExtra("pageName", RaftPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
                     JSONObject()
@@ -227,9 +227,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         .put("visualFixture", RepositionOracleFixture)
                         .toString()
                 )
-                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
+        ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
             instrumentation.waitForIdleSync()
 
@@ -305,8 +305,8 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
-            Intent(context, SlockCmpActivity::class.java)
-                .putExtra("pageName", SlockKuiklyPages.THREAD_COMPOSER_VISUAL)
+            Intent(context, RaftCmpActivity::class.java)
+                .putExtra("pageName", RaftPages.THREAD_COMPOSER_VISUAL)
                 .putExtra(
                     "pageData",
                     JSONObject()
@@ -314,9 +314,9 @@ class ThreadComposerSuggestionPopoverConnectedTest {
                         .put("visualFixture", "member_suggestions_scroll_oracle")
                         .toString()
                 )
-                .putExtra(SlockCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        ActivityScenario.launch<SlockCmpActivity>(intent).use { scenario ->
+        ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
             scenario.onActivity { activity -> activity.hideSystemBarsForSuggestionTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -390,7 +390,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         instrumentation.waitForIdleSync()
     }
 
-    private fun captureActivityBitmap(scenario: ActivityScenario<SlockCmpActivity>): Bitmap {
+    private fun captureActivityBitmap(scenario: ActivityScenario<RaftCmpActivity>): Bitmap {
         var bitmap: Bitmap? = null
         scenario.onActivity { activity ->
             val root = activity.window.decorView.rootView
@@ -449,7 +449,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
     }
 
     private fun waitForInteractionPanelUnderlayRatio(
-        scenario: ActivityScenario<SlockCmpActivity>,
+        scenario: ActivityScenario<RaftCmpActivity>,
         instrumentation: Instrumentation,
         visible: Boolean
     ): Double =
@@ -468,7 +468,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         }
 
     private fun captureInteractionFailureEvidence(
-        scenario: ActivityScenario<SlockCmpActivity>,
+        scenario: ActivityScenario<RaftCmpActivity>,
         instrumentation: Instrumentation,
         failure: Throwable
     ) {
@@ -551,7 +551,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
     }
 
     private fun waitForInteractionActionGreenRatio(
-        scenario: ActivityScenario<SlockCmpActivity>,
+        scenario: ActivityScenario<RaftCmpActivity>,
         instrumentation: Instrumentation
     ): Double =
         waitForColorRatio(
@@ -565,7 +565,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         }
 
     private fun waitForColorRatio(
-        scenario: ActivityScenario<SlockCmpActivity>,
+        scenario: ActivityScenario<RaftCmpActivity>,
         instrumentation: Instrumentation,
         target: Int,
         regionDp: DpRegion,
@@ -639,7 +639,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
      * Focuses the composer and puts the caret after its draft, as a user resuming typing would.
      * CMP renders the composer as a Compose BasicTextField, so this goes through its semantics.
      */
-    private fun ActivityScenario<SlockCmpActivity>.focusComposerAtEnd() {
+    private fun ActivityScenario<RaftCmpActivity>.focusComposerAtEnd() {
         val editor = requireNotNull(raftFirstTextField()) { "composer editor is not attached" }
         assertTrue("composer should accept focus", raftRequestTextFieldFocus(editor.id))
         // SetSelection reports false when the caret is already there, so assert the outcome.
@@ -651,11 +651,11 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         raftAwaitTextInputSession("thread composer")
     }
 
-    private fun ActivityScenario<SlockCmpActivity>.composerText(): String? = raftFirstTextField()?.text
+    private fun ActivityScenario<RaftCmpActivity>.composerText(): String? = raftFirstTextField()?.text
 
-    private fun ActivityScenario<SlockCmpActivity>.composerHasFocus(): Boolean = raftFirstTextField()?.focused == true
+    private fun ActivityScenario<RaftCmpActivity>.composerHasFocus(): Boolean = raftFirstTextField()?.focused == true
 
-    private fun ActivityScenario<SlockCmpActivity>.composerEditTextBounds(): Rect {
+    private fun ActivityScenario<RaftCmpActivity>.composerEditTextBounds(): Rect {
         val windowBounds = requireNotNull(raftFirstTextField()) { "composer editor is not attached" }.boundsInWindow
         val windowOrigin = IntArray(2)
         onActivity { activity -> activity.window.decorView.getLocationOnScreen(windowOrigin) }
@@ -683,7 +683,7 @@ class ThreadComposerSuggestionPopoverConnectedTest {
         throw AssertionError(message)
     }
 
-    private fun SlockCmpActivity.hideSystemBarsForSuggestionTest() {
+    private fun RaftCmpActivity.hideSystemBarsForSuggestionTest() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())

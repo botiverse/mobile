@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 class ReadReceiptRepositoryDataSourceTest {
     @Test
     fun ownerAuthViewPinsAccountAndServerAndFailsClosedAfterAccountSwitch() = runBlocking {
-        val delegate = InMemorySlockAuthSessionStore(sampleSession())
+        val delegate = InMemoryRaftAuthSessionStore(sampleSession())
         val owner = ReadReceiptOwner("production", "user-1", "server-b")
         val store = ReadReceiptOwnerAuthSessionStore(delegate, owner)
 
@@ -31,7 +31,7 @@ class ReadReceiptRepositoryDataSourceTest {
         val network = RecordingReadReceiptNetworkClient()
         val repository =
             RealReadReceiptRepository(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 networkClient = network
             )
 
@@ -56,7 +56,7 @@ class ReadReceiptRepositoryDataSourceTest {
         )
     }
 
-    private class RecordingReadReceiptNetworkClient : SlockNetworkClient {
+    private class RecordingReadReceiptNetworkClient : RaftNetworkClient {
         val calls = mutableListOf<ReadReceiptNetworkCall>()
 
         override suspend fun request(

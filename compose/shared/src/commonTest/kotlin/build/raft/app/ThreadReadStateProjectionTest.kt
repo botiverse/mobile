@@ -8,9 +8,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class ThreadReadStateProjectionTest {
-    private fun payload(count: Int = 4, replies: Int = 8) = KuiklyThreadScreenPayload(
+    private fun payload(count: Int = 4, replies: Int = 8) = RaftThreadScreenPayload(
         sourceThreadId = "parent-channel", instanceId = "parent", status = "content",
-        messages = listOf(KuiklyThreadMessageItem(id = "parent", authorId = "u2", authorName = "Peer", threadChannelId = "reply-channel",
+        messages = listOf(RaftThreadMessageItem(id = "parent", authorId = "u2", authorName = "Peer", threadChannelId = "reply-channel",
             replyCount = replies, unreadReplyCount = count, firstUnreadReplyMessageId = "unread-1")))
     private fun read(count: Int?, version: Long = 2, seq: Long = 10) =
         PerReceiverReadStateScope(ChannelId("reply-channel"), seq, version, count)

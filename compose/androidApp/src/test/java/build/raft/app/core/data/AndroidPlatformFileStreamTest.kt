@@ -12,7 +12,7 @@ class AndroidPlatformFileStreamTest {
     fun readsInBoundedChunksAndClosesExactlyOnce() = runTest {
         val input = CountingInputStream(ByteArray(PlatformFileStreamChunkBytes * 2 + 17) { 7 })
         val chunkSizes = mutableListOf<Int>()
-        val source = input.toSlockPlatformFileChunkSource()
+        val source = input.toRaftPlatformFileChunkSource()
 
         while (true) {
             val bytes = source.read(PlatformFileStreamChunkBytes)
@@ -30,8 +30,8 @@ class AndroidPlatformFileStreamTest {
     fun eachAttemptOwnsAnIndependentInputAndCancelClosesOnce() {
         val first = CountingInputStream(byteArrayOf(1))
         val second = CountingInputStream(byteArrayOf(2))
-        val firstSource = first.toSlockPlatformFileChunkSource()
-        val secondSource = second.toSlockPlatformFileChunkSource()
+        val firstSource = first.toRaftPlatformFileChunkSource()
+        val secondSource = second.toRaftPlatformFileChunkSource()
 
         firstSource.close()
         secondSource.close()
@@ -43,7 +43,7 @@ class AndroidPlatformFileStreamTest {
     @Test
     fun adapterNeverReturnsMoreThanRequestedAndExposesEof() = runTest {
         val input = CountingInputStream(ByteArray(10) { it.toByte() })
-        val source = input.toSlockPlatformFileChunkSource()
+        val source = input.toRaftPlatformFileChunkSource()
 
         assertEquals(3, source.read(3).size)
         assertEquals(3, source.read(3).size)

@@ -20,7 +20,7 @@ class JointBillingNoticeTest {
             canonicalChannelId = id,
             aliases = setOf(id),
             conversationKind = ConversationKind.Joint,
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
             channelKind = "joint",
             title = "joint",
             permissions = ConversationPermissions(),
@@ -34,7 +34,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Locked,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("joint-1"),
                 projections = projections
@@ -49,7 +49,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Grace,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("joint-1"),
                 projections = projections
@@ -64,7 +64,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Locked,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "joint-parent",
                 lookupIds = listOf("joint-parent", "thread-1"),
                 projections = projections
@@ -75,7 +75,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Grace,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "joint-parent",
                 lookupIds = listOf("joint-parent", "thread-1"),
                 projections = graceProjections
@@ -91,7 +91,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Grace,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("joint-1"),
                 projections = projections,
@@ -102,7 +102,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Locked,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("joint-1"),
                 projections = projections,
@@ -113,7 +113,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.Locked,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("joint-1"),
                 projections = projections,
@@ -128,7 +128,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.None,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("joint-1"),
                 projections = projections
@@ -144,7 +144,7 @@ class JointBillingNoticeTest {
                 canonicalChannelId = "ch-1",
                 aliases = setOf("ch-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "public",
                 title = "general",
                 permissions = ConversationPermissions(),
@@ -154,7 +154,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.None,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 parentChannelId = null,
                 lookupIds = listOf("ch-1"),
                 projections = mapOf("ch-1" to regular)
@@ -163,7 +163,7 @@ class JointBillingNoticeTest {
         assertEquals(
             JointBillingNotice.None,
             jointBillingNoticeState(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 parentChannelId = "missing-parent",
                 lookupIds = listOf("missing-parent", "thread-1"),
                 projections = emptyMap()

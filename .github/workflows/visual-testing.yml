@@ -791,7 +791,7 @@ jobs:
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
 
       # Pixel avatar drift gate (task #352): mobile's generated
-      # SlockPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
+      # RaftPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
       - name: Check pixel avatar drift
         working-directory: mobile
         env:

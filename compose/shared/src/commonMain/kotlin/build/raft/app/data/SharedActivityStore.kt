@@ -76,7 +76,7 @@ data class ActivityReplyThreadPrewarmMarker(
 )
 
 class SharedActivityStore internal constructor(
-    private var authStore: SlockAuthSessionStore,
+    private var authStore: RaftAuthSessionStore,
     private var inboxRepository: InboxRepository,
     private var readReceiptRepository: ReadReceiptRepository,
     private var conversationRepository: ConversationRepository,
@@ -106,7 +106,7 @@ class SharedActivityStore internal constructor(
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
 ) {
-    private val _state = slockStoreState(SharedActivityState(), "SharedActivityStore")
+    private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
     internal val presentationStore = SharedActivityPresentationStore()
 
@@ -152,7 +152,7 @@ class SharedActivityStore internal constructor(
     private val realtimeOwnerLock = SynchronizedObject()
 
     internal fun updateRuntimeIntegrations(
-        authStore: SlockAuthSessionStore = this.authStore,
+        authStore: RaftAuthSessionStore = this.authStore,
         inboxRepository: InboxRepository = this.inboxRepository,
         readReceiptRepository: ReadReceiptRepository = this.readReceiptRepository,
         conversationRepository: ConversationRepository = this.conversationRepository,

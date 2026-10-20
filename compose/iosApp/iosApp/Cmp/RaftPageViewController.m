@@ -1,6 +1,6 @@
 #import "RaftPageViewController.h"
-#import "SlockAdaptiveNavigationSession.h"
-#import "SlockAdaptiveEditorSnapshot.h"
+#import "RaftAdaptiveNavigationSession.h"
+#import "RaftAdaptiveEditorSnapshot.h"
 #import "HRBridgeModule.h"
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "iosApp-Swift.h"
@@ -8,15 +8,15 @@
 
 static const NSTimeInterval RaftPageMillisPerDay = 86400000.0;
 static const NSTimeInterval RaftPageMillisPerMinute = 60000.0;
-static NSString *const SlockAppShellPageName = @"compose_slock_app_shell";
-static NSString *const SlockConversationForwardPagerEvent = @"slockConversationForwardRequested";
-static NSString *const SlockAdaptivePanePagerEvent = @"slockAdaptivePaneChanged";
-static NSString *const SlockAdaptiveNativeCommitResultEvent = @"slockAdaptiveNativeCommitResult";
-// Shared contract (SlockSafeArea.kt): live window insets in pixels, keyed by pageData slockWindowId.
-static NSString *const SlockWindowInsetsPagerEvent = @"slockWindowInsetsChanged";
-static NSString *const SlockHostWindowIdKey = @"slockWindowId";
+static NSString *const RaftAppShellPageName = @"compose_slock_app_shell";
+static NSString *const RaftConversationForwardPagerEvent = @"slockConversationForwardRequested";
+static NSString *const RaftAdaptivePanePagerEvent = @"slockAdaptivePaneChanged";
+static NSString *const RaftAdaptiveNativeCommitResultEvent = @"slockAdaptiveNativeCommitResult";
+// Shared contract (RaftAppSafeArea.kt): live window insets in pixels, keyed by pageData slockWindowId.
+static NSString *const RaftWindowInsetsPagerEvent = @"slockWindowInsetsChanged";
+static NSString *const RaftHostWindowIdKey = @"slockWindowId";
 // Kuikly pager event the shared BasePager reads (`isNightMode`).
-static NSString *const SlockThemeDidChangePagerEvent = @"themeDidChanged";
+static NSString *const RaftThemeDidChangePagerEvent = @"themeDidChanged";
 
 static void RaftPagePutHostTimeContextIfMissing(NSMutableDictionary *pageData) {
     NSDate *now = [NSDate date];
@@ -76,40 +76,40 @@ static NSString *RaftPagePixelString(CGFloat points, CGFloat scale) {
     return [NSString stringWithFormat:@"%.3f", pixels];
 }
 
-/** Per-scene window id for the shared window-inset snapshots (SlockSafeArea.kt). */
+/** Per-scene window id for the shared window-inset snapshots (RaftAppSafeArea.kt). */
 static NSString *RaftPageWindowId(UIWindow *window) {
     NSString *session = window.windowScene.session.persistentIdentifier;
     return session.length > 0 ? [@"ios:" stringByAppendingString:session] : @"ios:default";
 }
 
 @implementation RaftPageViewController {
-    NSString *_slockControllerToken;
-    NSUInteger _slockNavigationRevision;
-    NSString *_slockNavigationGeometry;
-    SlockAdaptiveNavigationSession *_slockNavigationSession;
-    __weak RaftPageViewController *_slockNavigationTarget;
-    __weak UIWindow *_slockNavigationWindow;
+    NSString *_raftControllerToken;
+    NSUInteger _raftNavigationRevision;
+    NSString *_raftNavigationGeometry;
+    RaftAdaptiveNavigationSession *_raftNavigationSession;
+    __weak RaftPageViewController *_raftNavigationTarget;
+    __weak UIWindow *_raftNavigationWindow;
     NSString *_pageName;
     NSDictionary *_pageData;
     UIViewController *_contentController;
     void (^_sendEvent)(NSString *event, NSDictionary *data);
-    BOOL _slockConversationForwardGestureEnabled;
-    BOOL _slockAdaptivePanePublishingActive;
-    SlockIosAdaptivePanePublisher *_slockAdaptivePanePublisher;
+    BOOL _raftConversationForwardGestureEnabled;
+    BOOL _raftAdaptivePanePublishingActive;
+    RaftIosAdaptivePanePublisher *_raftAdaptivePanePublisher;
     NSString *_lastPublishedInsetsKey;
     NSNumber *_darkTheme;
 }
 
 - (instancetype)initWithPageName:(NSString *)pageName pageData:(NSDictionary *)pageData {
     if (self = [super initWithNibName:nil bundle:nil]) {
-        _slockControllerToken = NSUUID.UUID.UUIDString;
-        _slockNavigationSession = [SlockAdaptiveNavigationSession new];
+        _raftControllerToken = NSUUID.UUID.UUIDString;
+        _raftNavigationSession = [RaftAdaptiveNavigationSession new];
         [NSNotificationCenter.defaultCenter addObserver:self
-            selector:@selector(slockInvalidateAdaptiveNavigation)
+            selector:@selector(raftInvalidateAdaptiveNavigation)
             name:UIApplicationWillResignActiveNotification object:nil];
         _pageName = [pageName copy] ?: @"";
         _pageData = [[self p_mergeHostContextIntoPageData:pageData] copy];
-        _slockAdaptivePanePublisher = [[SlockIosAdaptivePanePublisher alloc] init];
+        _raftAdaptivePanePublisher = [[RaftIosAdaptivePanePublisher alloc] init];
         // Pages draw their own top bar; every pushed page can be swiped back from the leading
         // edge strip (the FD push swizzle reads both).
         // TODO(cmp-switch): full-screen back swipe (fd_interactivePopAllowsFullScreen = YES)
@@ -122,43 +122,43 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     return self;
 }
 
-- (NSString *)slockPageName {
+- (NSString *)raftPageName {
     return _pageName;
 }
 
-- (NSDictionary *)slockPageData {
+- (NSDictionary *)raftPageData {
     return _pageData;
 }
 
-- (BOOL)slockIsAppShellPage {
-    return [_pageName isEqualToString:SlockAppShellPageName];
+- (BOOL)raftIsAppShellPage {
+    return [_pageName isEqualToString:RaftAppShellPageName];
 }
 
-- (BOOL)slockIsLoginPage {
+- (BOOL)raftIsLoginPage {
     return [_pageName isEqualToString:@"compose_login"];
 }
 
-- (BOOL)slockConversationForwardGestureEnabled {
-    return _slockConversationForwardGestureEnabled;
+- (BOOL)raftConversationForwardGestureEnabled {
+    return _raftConversationForwardGestureEnabled;
 }
 
-- (void)setSlockConversationForwardGestureEnabled:(BOOL)enabled {
-    _slockConversationForwardGestureEnabled = enabled;
+- (void)setRaftConversationForwardGestureEnabled:(BOOL)enabled {
+    _raftConversationForwardGestureEnabled = enabled;
     [self.navigationController fd_setConversationForwardGestureEnabled:
-        enabled && self.slockIsAppShellPage];
+        enabled && self.raftIsAppShellPage];
 }
 
-- (void)slockRequestConversationForward {
-    if (!self.slockIsAppShellPage || !self.slockConversationForwardGestureEnabled) {
+- (void)raftRequestConversationForward {
+    if (!self.raftIsAppShellPage || !self.raftConversationForwardGestureEnabled) {
         return;
     }
-    self.slockConversationForwardGestureEnabled = NO;
-    [self slockSendEvent:SlockConversationForwardPagerEvent data:@{}];
+    self.raftConversationForwardGestureEnabled = NO;
+    [self raftSendEvent:RaftConversationForwardPagerEvent data:@{}];
 }
 
 #pragma mark - Content
 
-- (void)slockAttachContentController:(UIViewController *)content
+- (void)raftAttachContentController:(UIViewController *)content
                            sendEvent:(void (^)(NSString *event, NSDictionary *data))sendEvent {
     NSAssert(_contentController == nil, @"Page content is attached once");
     if (_contentController != nil) {
@@ -166,10 +166,10 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     }
     _contentController = content;
     _sendEvent = [sendEvent copy];
-    [self slockEmbedContentIfNeeded];
+    [self raftEmbedContentIfNeeded];
 }
 
-- (void)slockEmbedContentIfNeeded {
+- (void)raftEmbedContentIfNeeded {
     UIViewController *content = _contentController;
     if (content == nil || !self.isViewLoaded || content.parentViewController == self) {
         return;
@@ -181,7 +181,7 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     [content didMoveToParentViewController:self];
 }
 
-- (void)slockSendEvent:(NSString *)event data:(NSDictionary *)data {
+- (void)raftSendEvent:(NSString *)event data:(NSDictionary *)data {
     void (^sendEvent)(NSString *, NSDictionary *) = _sendEvent;
     if (sendEvent == nil || event.length == 0) {
         return;
@@ -189,7 +189,7 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     sendEvent(event, data ?: @{});
 }
 
-- (void)slockSetDarkTheme:(BOOL)dark {
+- (void)raftSetDarkTheme:(BOOL)dark {
     if (_darkTheme != nil && _darkTheme.boolValue == dark) {
         return;
     }
@@ -213,20 +213,20 @@ static NSString *RaftPageWindowId(UIWindow *window) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor whiteColor];
-    [self slockEmbedContentIfNeeded];
+    [self raftEmbedContentIfNeeded];
     [self.navigationController setNavigationBarHidden:YES animated:NO];
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    [self slockRefreshNavigationGeometry];
-    [self slockPublishAdaptivePaneForCurrentBounds:@"layout"];
-    [self slockPublishWindowInsets];
+    [self raftRefreshNavigationGeometry];
+    [self raftPublishAdaptivePaneForCurrentBounds:@"layout"];
+    [self raftPublishWindowInsets];
 }
 
 - (void)viewSafeAreaInsetsDidChange {
     [super viewSafeAreaInsetsDidChange];
-    [self slockPublishWindowInsets];
+    [self raftPublishWindowInsets];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -240,25 +240,25 @@ static NSString *RaftPageWindowId(UIWindow *window) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self.navigationController setNavigationBarHidden:YES animated:NO];
-    _slockAdaptivePanePublishingActive = YES;
-    [self slockPublishAdaptivePaneForCurrentBounds:@"appear"];
-    [self slockPublishWindowInsets];
+    _raftAdaptivePanePublishingActive = YES;
+    [self raftPublishAdaptivePaneForCurrentBounds:@"appear"];
+    [self raftPublishWindowInsets];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    _slockAdaptivePanePublishingActive = NO;
-    [self slockInvalidateAdaptiveNavigation];
+    _raftAdaptivePanePublishingActive = NO;
+    [self raftInvalidateAdaptiveNavigation];
 }
 
 - (void)viewWillTransitionToSize:(CGSize)size
        withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
-    [self slockInvalidateAdaptiveNavigation];
+    [self raftInvalidateAdaptiveNavigation];
     __weak typeof(self) weakSelf = self;
     [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
-        [weakSelf slockPublishAdaptivePaneForCurrentBounds:@"viewWillTransition"];
-        [weakSelf slockPublishWindowInsets];
+        [weakSelf raftPublishAdaptivePaneForCurrentBounds:@"viewWillTransition"];
+        [weakSelf raftPublishWindowInsets];
     }];
 }
 
@@ -267,40 +267,40 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     if (previousTraitCollection == nil ||
         previousTraitCollection.horizontalSizeClass != self.traitCollection.horizontalSizeClass ||
         previousTraitCollection.verticalSizeClass != self.traitCollection.verticalSizeClass) {
-        [self slockPublishAdaptivePaneForCurrentBounds:@"sizeClass"];
+        [self raftPublishAdaptivePaneForCurrentBounds:@"sizeClass"];
     }
     if (previousTraitCollection != nil &&
         previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
         // The CMP theme follows the trait itself (RaftTheme); this is the Kuikly pager event pages
         // that track night mode (BasePager.isNightMode) listen to.
         BOOL night = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
-        [self slockSendEvent:SlockThemeDidChangePagerEvent data:@{ @"isNightMode": @(night) }];
+        [self raftSendEvent:RaftThemeDidChangePagerEvent data:@{ @"isNightMode": @(night) }];
     }
 }
 
 #pragma mark - Adaptive navigation (A4 native primitives)
 
 // Shared admission remains false until the entire restore protocol works.
-- (void)slockInvalidateAdaptiveNavigation {
-    _slockNavigationRevision += 1;
+- (void)raftInvalidateAdaptiveNavigation {
+    _raftNavigationRevision += 1;
 }
 
-- (void)slockRefreshNavigationGeometry {
+- (void)raftRefreshNavigationGeometry {
     UIWindow *window = self.viewIfLoaded.window;
     NSString *geometry = [NSString stringWithFormat:@"%@|%@|%g", NSStringFromCGRect(window.bounds),
                           NSStringFromCGRect(self.viewIfLoaded.bounds), window.screen.scale];
-    if (![_slockNavigationGeometry isEqual:geometry]) {
-        _slockNavigationGeometry = geometry;
-        [self slockInvalidateAdaptiveNavigation];
+    if (![_raftNavigationGeometry isEqual:geometry]) {
+        _raftNavigationGeometry = geometry;
+        [self raftInvalidateAdaptiveNavigation];
     }
 }
 
-- (RaftPageViewController *)slockAdaptiveNavigationTarget {
+- (RaftPageViewController *)raftAdaptiveNavigationTarget {
     // Never fall back to the key window/top controller: a stale module must not acquire a new owner.
-    if (self.slockIsAppShellPage || ![_pageName isEqualToString:@"compose_thread"]) return nil;
+    if (self.raftIsAppShellPage || ![_pageName isEqualToString:@"compose_thread"]) return nil;
     UINavigationController *nav = self.navigationController;
     UIWindow *window = self.viewIfLoaded.window;
-    if (!_slockAdaptivePanePublishingActive || window == nil || !window.isKeyWindow ||
+    if (!_raftAdaptivePanePublishingActive || window == nil || !window.isKeyWindow ||
         window.windowScene.activationState != UISceneActivationStateForegroundActive ||
         nav.topViewController != self || nav.viewControllers.count < 2 ||
         nav.transitionCoordinator != nil || self.transitionCoordinator != nil ||
@@ -313,27 +313,27 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     }
     UIViewController *previous = nav.viewControllers[nav.viewControllers.count - 2];
     if (![previous isKindOfClass:RaftPageViewController.class] ||
-        !((RaftPageViewController *)previous).slockIsAppShellPage) return nil;
+        !((RaftPageViewController *)previous).raftIsAppShellPage) return nil;
     return (RaftPageViewController *)previous;
 }
 
-- (NSDictionary *)slockAdaptiveNavigationContext:(RaftPageViewController *)target {
-    [self slockRefreshNavigationGeometry];
-    return target ? @{ @"sourceControllerToken": _slockControllerToken,
-                       @"targetControllerToken": target->_slockControllerToken,
-                       @"sourceRevision": @(_slockNavigationRevision),
-                       @"geometry": _slockNavigationGeometry ?: @"" } : @{};
+- (NSDictionary *)raftAdaptiveNavigationContext:(RaftPageViewController *)target {
+    [self raftRefreshNavigationGeometry];
+    return target ? @{ @"sourceControllerToken": _raftControllerToken,
+                       @"targetControllerToken": target->_raftControllerToken,
+                       @"sourceRevision": @(_raftNavigationRevision),
+                       @"geometry": _raftNavigationGeometry ?: @"" } : @{};
 }
 
 // TODO(cmp-switch): the draft editor was the Kuikly KRTextAreaView (a UITextView) bound by ref
 // tag. CMP text fields are not UITextViews, so there is no native editor to snapshot: prepare
 // rejects with editor_drift and shared keeps the compact route (no native pop) until the shared
 // side hands the draft over itself.
-- (UITextView *)slockAdaptiveEditor {
+- (UITextView *)raftAdaptiveEditor {
     return nil;
 }
 
-- (NSDictionary *)slockAdaptiveNavigation:(NSDictionary *)params {
+- (NSDictionary *)raftAdaptiveNavigation:(NSDictionary *)params {
     NSAssert(NSThread.isMainThread, @"Adaptive navigation must execute on the main thread");
     NSString *(^string)(NSString *) = ^NSString *(NSString *key) {
         return [params[key] isKindOfClass:NSString.class] ? params[key] : @"";
@@ -341,24 +341,24 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     NSString *requestId = string(@"requestId");
     NSString *action = string(@"action");
     NSString *token = string(@"token");
-    if ([action isEqual:@"cancel"]) return [_slockNavigationSession cancel:requestId token:token];
-    RaftPageViewController *target = [self slockAdaptiveNavigationTarget];
-    NSDictionary *context = [self slockAdaptiveNavigationContext:target];
+    if ([action isEqual:@"cancel"]) return [_raftNavigationSession cancel:requestId token:token];
+    RaftPageViewController *target = [self raftAdaptiveNavigationTarget];
+    NSDictionary *context = [self raftAdaptiveNavigationContext:target];
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     if ([action isEqual:@"prepare"]) {
         NSDictionary *expectedEditor = [params[@"expectedEditor"] isKindOfClass:NSDictionary.class]
             ? params[@"expectedEditor"] : nil;
-        UITextView *editor = [self slockAdaptiveEditor];
-        NSDictionary *editorState = SlockAdaptiveEditorSnapshot(editor);
+        UITextView *editor = [self raftAdaptiveEditor];
+        NSDictionary *editorState = RaftAdaptiveEditorSnapshot(editor);
         NSString *expectedText = expectedEditor[@"text"];
         if (![expectedText isKindOfClass:NSString.class] || ![editorState[@"text"] isEqual:expectedText]) {
             editorState = nil;
         }
-        NSDictionary *result = [_slockNavigationSession prepare:requestId context:context
+        NSDictionary *result = [_raftNavigationSession prepare:requestId context:context
                                                          editor:editor editorState:editorState now:now];
         if ([result[@"status"] isEqual:@"prepared"]) {
-            _slockNavigationTarget = target;
-            _slockNavigationWindow = self.viewIfLoaded.window;
+            _raftNavigationTarget = target;
+            _raftNavigationWindow = self.viewIfLoaded.window;
         }
         return result;
     }
@@ -366,11 +366,11 @@ static NSString *RaftPageWindowId(UIWindow *window) {
         return @{ @"requestId": requestId, @"status": @"rejected", @"reason": @"invalid_action" };
     }
     // Keep the destination alive through pop. Never use a source callback as the success receipt.
-    RaftPageViewController *preparedTarget = _slockNavigationTarget;
-    if (target != preparedTarget || self.viewIfLoaded.window != _slockNavigationWindow) context = @{};
-    UITextView *editor = [self slockAdaptiveEditor];
-    NSDictionary *editorState = SlockAdaptiveEditorSnapshot(editor);
-    NSDictionary *result = [_slockNavigationSession commit:requestId token:token context:context
+    RaftPageViewController *preparedTarget = _raftNavigationTarget;
+    if (target != preparedTarget || self.viewIfLoaded.window != _raftNavigationWindow) context = @{};
+    UITextView *editor = [self raftAdaptiveEditor];
+    NSDictionary *editorState = RaftAdaptiveEditorSnapshot(editor);
+    NSDictionary *result = [_raftNavigationSession commit:requestId token:token context:context
                                                    editor:editor editorState:editorState now:now perform:^BOOL {
         UINavigationController *nav = self.navigationController;
         // Synchronous removal: UIKit stack mutation and its readback occur in this main-thread turn.
@@ -382,33 +382,33 @@ static NSString *RaftPageWindowId(UIWindow *window) {
             ![nav.viewControllers containsObject:self];
     }];
     NSMutableDictionary *receipt = [result mutableCopy];
-    receipt[@"sourceControllerToken"] = _slockControllerToken;
-    receipt[@"targetControllerToken"] = preparedTarget ? preparedTarget->_slockControllerToken : @"";
+    receipt[@"sourceControllerToken"] = _raftControllerToken;
+    receipt[@"targetControllerToken"] = preparedTarget ? preparedTarget->_raftControllerToken : @"";
     // The destination revalidates requestId/authority before consuming any recovery state.
     // Failure or a missing receipt never permits shared to consume the anchor.
     if (preparedTarget) {
-        [preparedTarget slockSendEvent:SlockAdaptiveNativeCommitResultEvent data:receipt];
+        [preparedTarget raftSendEvent:RaftAdaptiveNativeCommitResultEvent data:receipt];
     }
     return receipt;
 }
 
 #pragma mark - Host facts
 
-- (void)slockPublishAdaptivePaneForCurrentBounds:(NSString *)reason {
-    if (!_slockAdaptivePanePublishingActive) {
+- (void)raftPublishAdaptivePaneForCurrentBounds:(NSString *)reason {
+    if (!_raftAdaptivePanePublishingActive) {
         return;
     }
     UIWindow *window = self.view.window ?: RaftPageCurrentKeyWindow();
     CGSize size = window != nil ? window.bounds.size : self.view.bounds.size;
     CGFloat scale = window.screen.scale ?: UIScreen.mainScreen.scale;
     NSDictionary *payload =
-        [_slockAdaptivePanePublisher nextPayloadWithWidthPoints:size.width
+        [_raftAdaptivePanePublisher nextPayloadWithWidthPoints:size.width
                                                   heightPoints:size.height
                                                          scale:scale];
     if (payload == nil) {
         return;
     }
-    [self slockSendEvent:SlockAdaptivePanePagerEvent data:payload];
+    [self raftSendEvent:RaftAdaptivePanePagerEvent data:payload];
     NSString *message =
         [NSString stringWithFormat:
             @"ios_window_facts page=%@ widthPx=%@ heightPx=%@ density=%@ posture=flat hSizeClass=%ld vSizeClass=%ld reason=%@",
@@ -419,14 +419,14 @@ static NSString *RaftPageWindowId(UIWindow *window) {
             (long)self.traitCollection.horizontalSizeClass,
             (long)self.traitCollection.verticalSizeClass,
             reason ?: @"unknown"];
-    SlockIosDiagnosticsRecord(@"info", @"SlockAdaptivePane", message);
+    RaftIosDiagnosticsRecord(@"info", @"SlockAdaptivePane", message);
 }
 
 /**
  * Live window insets (the Android host's slockWindowInsetsChanged contract): status bar / top
  * safe area and bottom safe area in pixels, replacing the attach-time pageData seed. Deduplicated.
  */
-- (void)slockPublishWindowInsets {
+- (void)raftPublishWindowInsets {
     UIWindow *window = self.viewIfLoaded.window;
     if (window == nil || _sendEvent == nil) {
         return;
@@ -437,18 +437,18 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     CGFloat top = MAX(insets.top, statusBarHidden ? 0 : RaftPageStatusBarHeight(window));
     NSString *topPx = RaftPagePixelString(top, scale);
     NSString *bottomPx = RaftPagePixelString(insets.bottom, scale);
-    NSString *windowId = [_pageData[SlockHostWindowIdKey] isKindOfClass:NSString.class]
-        ? _pageData[SlockHostWindowIdKey] : RaftPageWindowId(window);
+    NSString *windowId = [_pageData[RaftHostWindowIdKey] isKindOfClass:NSString.class]
+        ? _pageData[RaftHostWindowIdKey] : RaftPageWindowId(window);
     NSString *key = [NSString stringWithFormat:@"%@:%@:%d:%@", topPx, bottomPx, statusBarHidden, windowId];
     if ([key isEqualToString:_lastPublishedInsetsKey]) {
         return;
     }
     _lastPublishedInsetsKey = key;
-    [self slockSendEvent:SlockWindowInsetsPagerEvent data:@{
+    [self raftSendEvent:RaftWindowInsetsPagerEvent data:@{
         @"statusBarHeightPx": topPx,
         @"navigationBarHeightPx": bottomPx,
         @"statusBarHidden": @(statusBarHidden),
-        SlockHostWindowIdKey: windowId,
+        RaftHostWindowIdKey: windowId,
     }];
 }
 
@@ -466,8 +466,8 @@ static NSString *RaftPageWindowId(UIWindow *window) {
     mParam[@"safeAreaTop"] = RaftPagePixelString(safeAreaInsets.top, scale);
     mParam[@"safeAreaBottom"] = RaftPagePixelString(safeAreaInsets.bottom, scale);
     mParam[@"statusBarHeight"] = RaftPagePixelString(statusBarHeight, scale);
-    if (![mParam[SlockHostWindowIdKey] isKindOfClass:NSString.class] && window != nil) {
-        mParam[SlockHostWindowIdKey] = RaftPageWindowId(window);
+    if (![mParam[RaftHostWindowIdKey] isKindOfClass:NSString.class] && window != nil) {
+        mParam[RaftHostWindowIdKey] = RaftPageWindowId(window);
     }
     return mParam;
 }

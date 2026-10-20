@@ -1,7 +1,7 @@
 package build.raft.app.network.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -183,11 +183,11 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
         context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-a", "channel-a")),
     )
 
-    private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

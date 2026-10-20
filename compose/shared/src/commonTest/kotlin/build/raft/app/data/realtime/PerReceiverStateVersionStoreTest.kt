@@ -1,6 +1,6 @@
 package build.raft.app.data.realtime
 
-import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class PerReceiverStateVersionStoreTest {
     @Test
     fun appliesOnlyStrictlyNewerVersionsPerServerMemberAndScope() {
-        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val server = ServerId("server-1")
         val member = MemberId("member-1")
 
@@ -58,7 +58,7 @@ class PerReceiverStateVersionStoreTest {
         // Server PR #4175: read_state versions live on the per-(user, channel)
         // cursor row, so channel A at version 9 must not swallow channel B's
         // version 3 — each scopeId carries its own counter.
-        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val server = ServerId("server-1")
         val member = MemberId("member-1")
         val channelA = ChannelId("channel-a")
@@ -101,7 +101,7 @@ class PerReceiverStateVersionStoreTest {
 
     @Test
     fun gatesTheSameReadScopeIndependentlyPerServer() {
-        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val member = MemberId("member-1")
         val channel = ChannelId("channel-shared-id")
         val serverA = ServerId("server-a")
@@ -130,7 +130,7 @@ class PerReceiverStateVersionStoreTest {
 
     @Test
     fun persistsReadStateVersionAndWatermarkCheckpointPerServerScope() {
-        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val member = MemberId("member-1")
         val channel = ChannelId("channel-shared-id")
         val serverA = ServerId("server-a")
@@ -155,7 +155,7 @@ class PerReceiverStateVersionStoreTest {
 
     @Test
     fun readStateFactUsesOneAuthorityAndAllowsExactProjectionReplay() {
-        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val server = ServerId("server-1")
         val member = MemberId("member-1")
         val channel = ChannelId("channel-1")
@@ -180,7 +180,7 @@ class PerReceiverStateVersionStoreTest {
 
     @Test
     fun readStateFactAcceptsHigherVersionCursorRewind() {
-        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
         val server = ServerId("server-1")
         val member = MemberId("member-1")
         val channel = ChannelId("channel-1")
@@ -198,7 +198,7 @@ class PerReceiverStateVersionStoreTest {
 
     @Test
     fun doesNotShareRealtimeSeqCursorKeysOrSemantics() {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val versionStore = PerReceiverStateVersionStore(keyValueStore)
         val seqCursor = RealtimeAppliedSeqCursorStore(keyValueStore)
         val server = ServerId("server-1")

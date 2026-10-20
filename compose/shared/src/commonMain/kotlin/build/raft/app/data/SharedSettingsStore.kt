@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
-import build.raft.app.SlockLucideIconName
+import build.raft.app.RaftLucideIconName
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RealtimeEvent
@@ -9,9 +9,9 @@ import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
-import build.raft.app.network.SlockCurlSocketIoPolicy
-import build.raft.app.network.currentSlockNetworkTransportController
-import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
+import build.raft.app.network.RaftCurlSocketIoPolicy
+import build.raft.app.network.currentRaftNetworkTransportController
+import build.raft.app.network.updateRaftNetworkKmmRecoveryEnvironment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -123,7 +123,7 @@ data class SharedSettingsNavItem(
     val destination: SharedSettingsDestination,
     val title: String,
     val subtitle: String,
-    val iconName: SlockLucideIconName,
+    val iconName: RaftLucideIconName,
     val value: String? = null,
     val productVisible: Boolean = true
 )
@@ -578,11 +578,11 @@ interface SharedSettingsPlatformCapabilities {
 
 private data class AccountAvatarRetirementCapture(
     val userId: String,
-    val capture: SlockAvatarSubjectRetirementCapture
+    val capture: RaftAvatarSubjectRetirementCapture
 )
 
 class SharedSettingsDataSource(
-    private val sessionStore: SlockAuthSessionStore,
+    private val sessionStore: RaftAuthSessionStore,
     private val settingsRepository: SettingsRepository? = null,
     private val computersSource: SharedSettingsComputersSource? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
@@ -603,19 +603,19 @@ class SharedSettingsDataSource(
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
     private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
-    private var avatarCacheRuntime: SlockAvatarCacheRuntime? = null
-    private var avatarCacheNativeCache: SlockAvatarNativeCache = UnsupportedSlockAvatarNativeCache
+    private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
+    private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
 
     internal fun withAvatarCacheRuntime(
-        runtime: SlockAvatarCacheRuntime?,
-        nativeCache: SlockAvatarNativeCache
+        runtime: RaftAvatarCacheRuntime?,
+        nativeCache: RaftAvatarNativeCache
     ): SharedSettingsDataSource = apply {
         avatarCacheRuntime = runtime
         avatarCacheNativeCache = nativeCache
     }
 
     val authSessionEvents: SharedFlow<AuthSessionEvent>?
-        get() = (sessionStore as? SlockAuthSessionEventSource)?.authSessionEvents
+        get() = (sessionStore as? RaftAuthSessionEventSource)?.authSessionEvents
 
     suspend fun currentMobileSettingsOwnerKey(): String? =
         sessionStore.readSession()?.let { session ->
@@ -915,7 +915,7 @@ class SharedSettingsDataSource(
         val avatarRetirement =
             if (serverId.isNotBlank() && cleanMemberId.isNotBlank() && memberKind != null) {
                 avatarCacheRuntime?.captureCurrentSubjectRetirement(
-                    subject = SlockAvatarCacheSubject.Member(memberKind, cleanMemberId),
+                    subject = RaftAvatarCacheSubject.Member(memberKind, cleanMemberId),
                     serverId = serverId
                 )
             } else {
@@ -1115,9 +1115,9 @@ class SharedSettingsDataSource(
                 ?: return DataResult.Error(ScreenError("settings_font_unavailable", retryable = false))
         val font = FontPreference.fromStorageKey(fontKey)
         repository.selectFontPreference(font)
-        // SlockDesignTokens already imports from this package, so reference the state by its
+        // RaftDesignTokens already imports from this package, so reference the state by its
         // fully-qualified name instead of adding another import edge.
-        build.raft.app.SlockFontFaceState.apply(font)
+        build.raft.app.RaftFontFaceState.apply(font)
         return loadMobilePreferences()
     }
 
@@ -1319,7 +1319,7 @@ class SharedSettingsDataSource(
      */
     private fun SettingsMobileSnapshot.withHttp3Preference(): SettingsMobileSnapshot {
         val store = http3PreferenceStore ?: return this
-        val controller = currentSlockNetworkTransportController() ?: return this
+        val controller = currentRaftNetworkTransportController() ?: return this
         val transport = controller.getPreferenceSync()
         if (transport.availability == NetworkTransportPreferenceAvailability.Http3Unsupported) return this
         val enabled = store.readHttp3UserChoiceSync() ?: transport.requestedHttp3Enabled
@@ -1335,15 +1335,15 @@ class SharedSettingsDataSource(
     }
 
     /**
-     * Task #154: the switch shows the effective value, i.e. SlockCurlSocketIoPolicy.isEnabledFor(currentServerId):
+     * Task #154: the switch shows the effective value, i.e. RaftCurlSocketIoPolicy.isEnabledFor(currentServerId):
      * the user's explicit choice when there is one, otherwise the server flag for the selected server.
      * The choice is read from this data source's own store so the row reflects a save immediately.
      */
     private suspend fun SettingsMobileSnapshot.withRealtimeCurlSocketIoPreference(): SettingsMobileSnapshot {
         val store = realtimeTransportPreferenceStore ?: return this
-        if (!SlockCurlSocketIoPolicy.platformSupported) return this
+        if (!RaftCurlSocketIoPolicy.platformSupported) return this
         val serverId = sessionStore.readSession()?.currentServerId?.trim()?.takeIf(String::isNotEmpty)
-        val enabled = store.readCurlSocketIoUserChoiceSync() ?: SlockCurlSocketIoPolicy.serverDefaultFor(serverId)
+        val enabled = store.readCurlSocketIoUserChoiceSync() ?: RaftCurlSocketIoPolicy.serverDefaultFor(serverId)
         return copy(
             realtimeCurlSocketIo =
                 SettingsMobileToggleSnapshot(
@@ -1371,10 +1371,10 @@ class SharedSettingsDataSource(
             }
         val result = nativeResult
             ?: return DataResult.Error(ScreenError("settings_storage_clear_failed", retryable = true))
-        if (receipt is SlockAvatarCacheClearReceipt.Success) return result
+        if (receipt is RaftAvatarCacheClearReceipt.Success) return result
         diagnosticsLogger?.invoke(
             "avatar_cache_clear result=failure stages=" +
-                (receipt as SlockAvatarCacheClearReceipt.Failed).stages.joinToString(",") { it.name.lowercase() }
+                (receipt as RaftAvatarCacheClearReceipt.Failed).stages.joinToString(",") { it.name.lowercase() }
         )
         return when (result) {
             is DataResult.Content ->
@@ -1458,7 +1458,7 @@ class SharedSettingsDataSource(
                     session = sessionStore.readSession()
                 )
             runCatching {
-                updateSlockNetworkKmmRecoveryEnvironment(
+                updateRaftNetworkKmmRecoveryEnvironment(
                     environmentKey = after.key,
                     apiBaseUrl = after.apiBaseUrl
                 )
@@ -1490,17 +1490,17 @@ class SharedSettingsDataSource(
         )
     }
 
-    private suspend fun captureCurrentAvatarOwnerRetirement(): SlockAvatarOwnerRetirementCapture? {
+    private suspend fun captureCurrentAvatarOwnerRetirement(): RaftAvatarOwnerRetirementCapture? {
         val environmentId = apiEnvironmentStore?.current()?.apiBaseUrl ?: return null
         val session = sessionStore.readSession() ?: return null
         val currentServerId = session.currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val owner =
-            slockCurrentAvatarCacheOwner(
+            raftCurrentAvatarCacheOwner(
                 environmentId = environmentId,
                 session = session,
                 requestedServerId = currentServerId
             ) ?: return null
-        return SlockAvatarOwnerRetirementCapture(setOf(owner))
+        return RaftAvatarOwnerRetirementCapture(setOf(owner))
     }
 
     private suspend fun captureCurrentAccountAvatarRetirement(): AccountAvatarRetirementCapture? {
@@ -1510,21 +1510,21 @@ class SharedSettingsDataSource(
         val serverId = session.currentServerId?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val capture =
             runtime.captureCurrentSubjectRetirement(
-                subject = SlockAvatarCacheSubject.Member(MemberKind.Human, userId),
+                subject = RaftAvatarCacheSubject.Member(MemberKind.Human, userId),
                 serverId = serverId
             ) ?: return null
         return AccountAvatarRetirementCapture(userId = userId, capture = capture)
     }
 
     private suspend fun retireCapturedAvatarOwners(
-        capture: SlockAvatarOwnerRetirementCapture?,
+        capture: RaftAvatarOwnerRetirementCapture?,
         source: String
     ) {
         val runtime = avatarCacheRuntime ?: return
         val captured = capture ?: return
         when (val receipt = runtime.retireOwners(captured, avatarCacheNativeCache)) {
-            SlockAvatarCacheClearReceipt.Success -> Unit
-            is SlockAvatarCacheClearReceipt.Failed ->
+            RaftAvatarCacheClearReceipt.Success -> Unit
+            is RaftAvatarCacheClearReceipt.Failed ->
                 diagnosticsLogger?.invoke(
                     "avatar_cache_retire result=failure source=$source stages=" +
                         receipt.stages.joinToString(",") { it.name.lowercase() }
@@ -1533,13 +1533,13 @@ class SharedSettingsDataSource(
     }
 
     private suspend fun retireCapturedAvatarSubject(
-        capture: SlockAvatarSubjectRetirementCapture,
+        capture: RaftAvatarSubjectRetirementCapture,
         source: String
     ) {
         val runtime = avatarCacheRuntime ?: return
         when (val receipt = runtime.retireSubject(capture, avatarCacheNativeCache)) {
-            SlockAvatarCacheClearReceipt.Success -> Unit
-            is SlockAvatarCacheClearReceipt.Failed ->
+            RaftAvatarCacheClearReceipt.Success -> Unit
+            is RaftAvatarCacheClearReceipt.Failed ->
                 diagnosticsLogger?.invoke(
                     "avatar_cache_retire result=failure source=$source stages=" +
                         receipt.stages.joinToString(",") { it.name.lowercase() }
@@ -1581,7 +1581,7 @@ class SharedSettingsDataSource(
         // Task #179: cold start. Publish the stored face to the observable state so the very
         // first composition renders the chosen font, not the default and then a swap.
         fontPreferenceRepository?.getFontPreference()?.current?.let { stored ->
-            build.raft.app.SlockFontFaceState.apply(stored)
+            build.raft.app.RaftFontFaceState.apply(stored)
         }
         val chatLayout = chatLayoutPreferenceRepository?.getChatLayoutPreference()
         val linkOpenMode = linkOpenPreferenceRepository?.getLinkOpenMode()
@@ -4351,18 +4351,18 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(): SharedSettingsHom
         subtitle = "",
         items =
             listOf(
-                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, this?.user?.bestDisplayName),
-                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null),
-                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null),
-                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null),
-                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, server?.role?.titleLabel()),
-                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, server?.plan?.titleLabel()),
-                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null),
-                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null),
-                nav(SharedSettingsDestination.About, "About", "Version and build information", SlockLucideIconName.BadgeInfo, null)
+                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", RaftLucideIconName.User, this?.user?.bestDisplayName),
+                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", RaftLucideIconName.Languages, null),
+                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", RaftLucideIconName.Type, null),
+                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", RaftLucideIconName.Bell, null),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", RaftLucideIconName.Smartphone, null),
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", RaftLucideIconName.Archive, null),
+                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", RaftLucideIconName.Building2, server?.role?.titleLabel()),
+                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", RaftLucideIconName.CreditCard, server?.plan?.titleLabel()),
+                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", RaftLucideIconName.Shield, null),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", RaftLucideIconName.Link2, null),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", RaftLucideIconName.Monitor, null),
+                nav(SharedSettingsDestination.About, "About", "Version and build information", RaftLucideIconName.BadgeInfo, null)
             )
     )
 }
@@ -4371,7 +4371,7 @@ private fun nav(
     destination: SharedSettingsDestination,
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: RaftLucideIconName,
     value: String?,
 ): SharedSettingsNavItem =
     SharedSettingsNavItem(

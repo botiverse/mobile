@@ -7,15 +7,15 @@ import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ProcessPresenceAuthContext
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.ThreadReplyCacheIdentityAuthority
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedThreadNetworkApi
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.data.SlockTasksApi
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTasksApi
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -192,10 +192,10 @@ internal class ThreadNewerAutoPaginationVisualPage : BasePager() {
 private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showComposer: Boolean) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    val provider = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val provider = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val storeScope =
         remember(runNonce) {
-            SlockShellStoreScope.create(
+            RaftShellStoreScope.create(
                 shellInstanceId = "thread-newer-auto-$runNonce",
                 initialServerId = ThreadNewerAutoServerId,
             )
@@ -203,7 +203,7 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
     val fixtureSession = remember(runNonce) { threadNewerAutoSession(runNonce) }
     val sessionStore =
         remember(runNonce) {
-            InMemorySlockAuthSessionStore(fixtureSession)
+            InMemoryRaftAuthSessionStore(fixtureSession)
         }
     // Task #1122: the data source has no private identity resolver any more; this fixture is its
     // own realm (own session store, own environment id), so it names its own authority — the
@@ -240,7 +240,7 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
     val tasksDataSource = remember { SharedTasksDataSource(ThreadNewerAutoTasksApi) }
     val initialPayload =
         remember(runNonce) {
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "thread-newer-auto-$runNonce",
                 title = "Newer pagination fixture",
                 sourceThreadId = ThreadNewerAutoChannelId,
@@ -262,7 +262,7 @@ private fun ThreadNewerAutoPaginationVisualContent(runNonce: String, showCompose
             provider.releaseShellStoreScope(storeScope)
         }
     }
-    val timeContextProvider = rememberLiveSlockTimeContext(initialPayload.toSlockTimeCapabilities())
+    val timeContextProvider = rememberLiveRaftTimeContext(initialPayload.toRaftTimeCapabilities())
 
     SharedThreadRouteContent(
         initialPayload = initialPayload,
@@ -399,7 +399,7 @@ private class ThreadNewerAutoPaginationNetworkApi(
     private fun okResponse(): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = "{}")
 }
 
-private object ThreadNewerAutoTasksApi : SlockTasksApi {
+private object ThreadNewerAutoTasksApi : RaftTasksApi {
     override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = "{\"tasks\":[]}")
 

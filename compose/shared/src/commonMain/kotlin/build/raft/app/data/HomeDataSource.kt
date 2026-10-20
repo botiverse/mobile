@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.slockAvatarDiagnosticsSource
+import build.raft.app.raftAvatarDiagnosticsSource
 import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
@@ -43,10 +43,10 @@ import kotlin.time.TimeSource
 private val homeApiJson = Json { ignoreUnknownKeys = true }
 
 class SharedHomeDataSource(
-    private val sessionStore: SlockAuthSessionStore,
-    private val api: SlockHomeApi,
-    announcementsApi: SlockAnnouncementsRemindersApi? = null,
-    computersApi: SlockComputersApi? = null,
+    private val sessionStore: RaftAuthSessionStore,
+    private val api: RaftHomeApi,
+    announcementsApi: RaftAnnouncementsRemindersApi? = null,
+    computersApi: RaftComputersApi? = null,
     private val appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val memberRepository: MemberRepository? = null,
@@ -54,9 +54,9 @@ class SharedHomeDataSource(
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) {
-    private val typedApi = SlockHomeApiClient(api, diagnosticsLogger)
-    private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
-    private val typedComputersApi = computersApi?.let(::SlockComputersApiClient)
+    private val typedApi = RaftHomeApiClient(api, diagnosticsLogger)
+    private val typedAnnouncementsApi = announcementsApi?.let(::RaftAnnouncementsRemindersApiClient)
+    private val typedComputersApi = computersApi?.let(::RaftComputersApiClient)
 
     internal val projectsAgentStatusFromMemberStore: Boolean
         get() = serverMembersStore != null
@@ -479,7 +479,7 @@ private fun String?.versionSegmentsOrNull(): List<Int>? {
  * arrays, unread counts are a root object, and server unread summary is a root
  * array. Guessed wrappers such as `items` or `data` are contract mismatches.
  */
-interface SlockHomeApi {
+interface RaftHomeApi {
     suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse
     suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse
     suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse
@@ -529,8 +529,8 @@ data class HomeNetworkResponse(
         get() = code in 200..299
 }
 
-internal class SlockHomeApiClient(
-    private val transport: SlockHomeApi,
+internal class RaftHomeApiClient(
+    private val transport: RaftHomeApi,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     suspend fun homePayload(
@@ -691,10 +691,10 @@ internal class SlockHomeApiClient(
         diagnosticsLogger(
             "home_parse_start source=home_$category " +
                 "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         val result =
-            withContext(SlockJsonParseDispatcher) {
+            withContext(RaftJsonParseDispatcher) {
                 response.decodeHomeBody(
                     contractCode = contractCode,
                     serializer = serializer,
@@ -704,7 +704,7 @@ internal class SlockHomeApiClient(
         diagnosticsLogger(
             "home_parse_result source=home_$category ${result.homeDiagnosticsSummary()} " +
                 "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
-                "dispatcher=$SLOCK_JSON_PARSE_DISPATCHER_LABEL"
+                "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         diagnosticsLogger(
             "home_endpoint category=$category code=${response.code} ${result.homeDiagnosticsSummary()}"
@@ -794,7 +794,7 @@ private fun List<MemberProfile>.homeDirectMessageAvatarSeedDiagnostics(
             .joinToString(separator = ";") { profile ->
                 val avatarWireValue = profile.avatar?.wireValue ?: profile.avatarUrl
                 "member=${profile.id.value.take(64)}:" +
-                    "avatar=${avatarWireValue.slockAvatarDiagnosticsSource()}"
+                    "avatar=${avatarWireValue.raftAvatarDiagnosticsSource()}"
             }
     return "home_dm_avatar_seed serverId=${serverId.value} store=$storeAvailable " +
         "peers=$size withAvatar=$withAvatar sample=$sample"

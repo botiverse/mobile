@@ -11,9 +11,9 @@ import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.network.SlockHttpExecutor
-import build.raft.app.network.SlockRequestPriority
-import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.RaftHttpExecutor
+import build.raft.app.network.RaftRequestPriority
+import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -56,11 +56,11 @@ internal fun PrivateDeploymentSheet(
     var pending by remember(visible) { mutableStateOf<SharedSettingsApiEnvironmentRequest?>(null) }
     var errorCode by remember(visible) { mutableStateOf<String?>(null) }
     // The sheet sits outside AuthScaffold, whose keyboard provider the fields would otherwise fall back to (a
-    // no-op), so the fields report here and the sheet lifts above the keyboard like SlockUnifiedDialog does.
+    // no-op), so the fields report here and the sheet lifts above the keyboard like RaftUnifiedDialog does.
     var keyboardHeightDp by remember(visible) { mutableStateOf(0f) }
     val onKeyboardHeightChange: (KeyboardParams) -> Unit = { keyboardHeightDp = it.height.coerceAtLeast(0f) }
 
-    val webProbe = remember { createPlatformSlockHttpExecutor {} }
+    val webProbe = remember { createPlatformRaftHttpExecutor {} }
     LaunchedEffect(pending) {
         val request = pending ?: return@LaunchedEffect
         // The server check below only covers the API; web login opens the web address, so it must answer too
@@ -94,12 +94,12 @@ internal fun PrivateDeploymentSheet(
 
     if (!visible) return
     // Read before entering Modal: its content is rehosted in a native window where the pager's locals are gone.
-    val bottomInset = slockBottomSafeAreaPadding()
+    val bottomInset = raftBottomSafeAreaPadding()
     // Not Kuikly's ModalBottomSheet: its Dialog hard-codes dismissOnClickOutside, which on iOS turns the whole
-    // window into one accessibility leaf and hides the fields (see slockModalDialogProperties).
+    // window into one accessibility leaf and hides the fields (see raftModalDialogPropertiesWithoutScrim).
     Modal(onWillDismiss = { if (!saving) onDismiss() }) {
         Box(modifier = Modifier.fillMaxSize()) {
-            SlockModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss, dismissEnabled = !saving)
+            RaftModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss, dismissEnabled = !saving)
             Box(
                 modifier =
                     Modifier
@@ -113,24 +113,24 @@ internal fun PrivateDeploymentSheet(
                                     // Android's reported height leaves the suggestion strip over the buttons (HuaTuo).
                                     keyboardHeightDp.dp + PRIVATE_DEPLOYMENT_KEYBOARD_GAP
                                 } else {
-                                    bottomInset + SlockSpacing.Sm
+                                    bottomInset + RaftAppSpacing.Sm
                                 },
                         )
-                        .slockDialogContentPointerBarrier()
+                        .raftDialogContentPointerBarrier()
             ) {
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceCream)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(SlockSpacing.Lg),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                            .background(RaftColor.SurfaceCream)
+                            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                            .padding(RaftAppSpacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
                 ) {
-                    Text(text = stringResource(MR.strings.auth_private_deployment_title), style = SlockType.PageTitle)
+                    Text(text = stringResource(MR.strings.auth_private_deployment_title), style = RaftType.PageTitle)
                     Text(
                         text = stringResource(MR.strings.auth_private_deployment_hint),
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     )
                     AuthTextField(
                         value = webValue,
@@ -157,7 +157,7 @@ internal fun PrivateDeploymentSheet(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                     )
                     AuthError(errorMessage)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
                         AuthActionButton(
                             text = stringResource(MR.strings.auth_private_deployment_save),
                             tone = AuthButtonTone.Pink,
@@ -207,12 +207,12 @@ private val PRIVATE_DEPLOYMENT_KEYBOARD_GAP = 48.dp
 private const val PRIVATE_DEPLOYMENT_WEB_PROBE_TIMEOUT_MS = 10_000L
 
 /** GET the web address: a 2xx/3xx answer is reachable; another status, a transport failure or a timeout is not. */
-internal suspend fun privateDeploymentWebReachable(executor: SlockHttpExecutor, webUrl: String): Boolean {
+internal suspend fun privateDeploymentWebReachable(executor: RaftHttpExecutor, webUrl: String): Boolean {
     val response =
         runCatchingPreservingCancellation {
             withTimeoutOrNull(PRIVATE_DEPLOYMENT_WEB_PROBE_TIMEOUT_MS) {
                 executor.execute(
-                    priority = SlockRequestPriority.Foreground,
+                    priority = RaftRequestPriority.Foreground,
                     url = webUrl,
                     method = "GET",
                     headers = emptyMap(),

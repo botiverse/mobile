@@ -29,7 +29,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalMessageRow
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -68,11 +68,11 @@ class OwnerCommitLinearizationTest {
         }
     }
 
-    private fun freshDb(): Pair<SlockSqlDatabase, WitnessingDriver> {
+    private fun freshDb(): Pair<RaftSqlDatabase, WitnessingDriver> {
         val driver = WitnessingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
-        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
+        build.raft.app.shared.data.local.RaftDatabase.Schema.create(driver).value
         driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
-        return SlockSqlDatabase(driver) to driver
+        return RaftSqlDatabase(driver) to driver
     }
 
     private val scope = SyncScopeKey(
@@ -81,9 +81,9 @@ class OwnerCommitLinearizationTest {
         scopeKind = "channel",
     )
 
-    private fun store(db: SlockSqlDatabase) = SqlDelightFoldPersistStore(db, now = { 100L })
+    private fun store(db: RaftSqlDatabase) = SqlDelightFoldPersistStore(db, now = { 100L })
 
-    private fun bound(db: SlockSqlDatabase, gate: OwnerCommitGate, store: FoldPersistStore) =
+    private fun bound(db: RaftSqlDatabase, gate: OwnerCommitGate, store: FoldPersistStore) =
         OwnerBoundFoldPersistenceAdapter(
             gate = gate,
             inner = DefaultFoldPersistenceAdapter(SqlDelightFoldPersistTransactionRunner(db), store),

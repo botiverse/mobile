@@ -2,7 +2,7 @@
 
 package build.raft.app.network.sync
 
-import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.data.RaftSqlDatabase
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -79,7 +79,7 @@ class ViewerOverlayIngressGate(
 
 /** SQLDelight binding: read/compare/write is one physical database transaction on the complete key. */
 internal class SqlDelightViewerOverlayStore(
-    private val database: SlockSqlDatabase,
+    private val database: RaftSqlDatabase,
 ) : ViewerOverlayStore {
     override suspend fun read(key: ViewerOverlayKey): VersionedViewerOverlayV1? =
         database.queries.selectMessageViewerOverlay(

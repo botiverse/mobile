@@ -143,7 +143,7 @@ class TasksAssignContractTest {
     @Test
     fun typedClientSendsAssignPatchToCanonicalRoute() = runBlocking {
         val transport = RecordingAssignApi()
-        val client = SlockTasksApiClient(transport)
+        val client = RaftTasksApiClient(transport)
 
         client.assignTask(
             ServerId("server-1"),
@@ -164,7 +164,7 @@ class TasksAssignContractTest {
     @Test
     fun typedClientUnassignSendsExplicitNullBody() = runBlocking {
         val transport = RecordingAssignApi()
-        val client = SlockTasksApiClient(transport)
+        val client = RaftTasksApiClient(transport)
 
         client.assignTask(ServerId("server-1"), TaskId("task-9"), assignee = null, expectedRevision = 3L)
 
@@ -172,7 +172,7 @@ class TasksAssignContractTest {
         assertEquals("""{"assignee":null,"expectedRevision":3}""", body)
     }
 
-    private class RecordingAssignApi : SlockTasksApi {
+    private class RecordingAssignApi : RaftTasksApi {
         val calls = mutableListOf<Pair<TaskId, String>>()
 
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =

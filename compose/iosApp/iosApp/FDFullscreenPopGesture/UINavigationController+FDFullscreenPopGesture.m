@@ -22,8 +22,8 @@
 
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "RaftPageViewController.h"
-#import "SlockConversationForwardGestureAdmission.h"
-#import "SlockInteractivePopGestureAdmission.h"
+#import "RaftConversationForwardGestureAdmission.h"
+#import "RaftInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
 
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
@@ -47,7 +47,7 @@
 
 @end
 
-static BOOL SlockConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
+static BOOL RaftConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
 {
     UIView *candidate = view;
     while (candidate && candidate != rootView) {
@@ -68,7 +68,7 @@ static BOOL SlockConversationForwardChildGestureConflict(UIView *view, UIView *r
     return NO;
 }
 
-static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
+static BOOL RaftInteractivePopTextInputConflict(UIView *view, UIView *rootView)
 {
     UIView *candidate = view;
     while (candidate && candidate != rootView) {
@@ -78,7 +78,7 @@ static BOOL SlockInteractivePopTextInputConflict(UIView *view, UIView *rootView)
     return NO;
 }
 
-static BOOL SlockInteractivePopHorizontalScrollCanConsumeDirection(
+static BOOL RaftInteractivePopHorizontalScrollCanConsumeDirection(
     UIView *view,
     UIView *rootView,
     BOOL movingRight
@@ -105,13 +105,13 @@ static BOOL SlockInteractivePopHorizontalScrollCanConsumeDirection(
     return NO;
 }
 
-static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
+static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
 {
     if (view.isFirstResponder && [view conformsToProtocol:@protocol(UITextInput)]) {
         return YES;
     }
     for (UIView *subview in view.subviews) {
-        if (SlockConversationForwardHasActiveTextInput(subview)) {
+        if (RaftConversationForwardHasActiveTextInput(subview)) {
             return YES;
         }
     }
@@ -122,7 +122,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
 {
-    return !SlockConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view);
+    return !RaftConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view);
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIScreenEdgePanGestureRecognizer *)gestureRecognizer
@@ -138,21 +138,21 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     UIGestureRecognizerState popState = navigationController.fd_fullscreenPopGestureRecognizer.state;
     BOOL interactivePopActive =
         popState == UIGestureRecognizerStateBegan || popState == UIGestureRecognizerStateChanged;
-    SlockConversationForwardGestureAdmission admission = {
-        .enabled = topViewController.slockConversationForwardGestureEnabled,
-        .appShellIsTop = topViewController.slockIsAppShellPage,
+    RaftConversationForwardGestureAdmission admission = {
+        .enabled = topViewController.raftConversationForwardGestureEnabled,
+        .appShellIsTop = topViewController.raftIsAppShellPage,
         .navigationStackAtRoot = navigationController.viewControllers.count == 1,
         .transitioning = transitioning,
         .modalPresented = topViewController.presentedViewController != nil || navigationController.presentedViewController != nil,
         .interactivePopActive = interactivePopActive,
         .childGestureConflict = NO,
-        .textInputActive = SlockConversationForwardHasActiveTextInput(navigationController.view),
+        .textInputActive = RaftConversationForwardHasActiveTextInput(navigationController.view),
         .translationX = translation.x,
         .translationY = translation.y,
         .velocityX = velocity.x,
         .velocityY = velocity.y,
     };
-    return SlockConversationForwardGestureShouldBegin(admission);
+    return RaftConversationForwardGestureShouldBegin(admission);
 }
 
 @end
@@ -166,14 +166,14 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     // to either accept the back direction or yield to consumable scrolling.
     if (gestureRecognizer.numberOfTouches > 0) return YES;
     self.touchView = touch.view;
-    if (SlockInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
+    if (RaftInteractivePopTextInputConflict(touch.view, gestureRecognizer.view)) {
         self.touchBeganInEdgeZone = NO;
         return NO;
     }
     UINavigationController *navigationController = self.navigationController;
     UIViewController *topViewController = navigationController.viewControllers.lastObject;
     CGPoint location = [touch locationInView:gestureRecognizer.view];
-    SlockInteractivePopTouchAdmission admission = {
+    RaftInteractivePopTouchAdmission admission = {
         .navigationStackCount = navigationController.viewControllers.count,
         .interactivePopDisabled = topViewController.fd_interactivePopDisabled,
         .allowsFullScreen = topViewController.fd_interactivePopAllowsFullScreen,
@@ -183,7 +183,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .viewWidth = CGRectGetWidth(gestureRecognizer.view.bounds),
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
-    self.touchBeganInEdgeZone = SlockInteractivePopTouchBeginsInEdgeZone(admission);
+    self.touchBeganInEdgeZone = RaftInteractivePopTouchBeginsInEdgeZone(admission);
     return YES;
 }
 
@@ -191,7 +191,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
 {
     CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
     CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
-    SlockInteractivePopGestureAdmission admission = {
+    RaftInteractivePopGestureAdmission admission = {
         .touchBeganInEdgeZone = self.touchBeganInEdgeZone,
         .transitioning = [[self.navigationController valueForKey:@"_isTransitioning"] boolValue],
         .translationX = translation.x,
@@ -200,13 +200,13 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
         .velocityY = velocity.y,
         .isLeftToRight = [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight,
     };
-    if (!SlockInteractivePopGestureShouldBegin(admission)) {
+    if (!RaftInteractivePopGestureShouldBegin(admission)) {
         return NO;
     }
     // Admission has established the back direction: physically right in LTR,
     // left in RTL. Scroll consumption is expressed in physical coordinates.
     BOOL movingRight = admission.isLeftToRight;
-    if (SlockInteractivePopHorizontalScrollCanConsumeDirection(
+    if (RaftInteractivePopHorizontalScrollCanConsumeDirection(
             self.touchView,
             gestureRecognizer.view,
             movingRight
@@ -232,7 +232,7 @@ static BOOL SlockConversationForwardHasActiveTextInput(UIView *view)
     // can otherwise prevent admitted pop; when direction/consumption rejects
     // pop, the waiting scroll pan proceeds. Custom gestures keep their existing
     // arbitration rather than being forced to wait for navigation.
-    return SlockInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentScrollPan);
+    return RaftInteractivePopShouldBeRequiredToFailBy(self.touchBeganInEdgeZone, otherIsContentScrollPan);
 }
 
 @end
@@ -351,7 +351,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         renderViewController.fd_interactivePopAllowsFullScreen = NO;
     }
     [self fd_setConversationForwardGestureEnabled:
-        renderViewController.slockConversationForwardGestureEnabled && renderViewController.slockIsAppShellPage];
+        renderViewController.raftConversationForwardGestureEnabled && renderViewController.raftIsAppShellPage];
 
     // Handle perferred navigation bar appearance.
     [self fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:viewController];
@@ -378,7 +378,7 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         [self.topViewController isKindOfClass:RaftPageViewController.class]
             ? (RaftPageViewController *)self.topViewController
             : nil;
-    [topViewController slockRequestConversationForward];
+    [topViewController raftRequestConversationForward];
 }
 
 - (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled

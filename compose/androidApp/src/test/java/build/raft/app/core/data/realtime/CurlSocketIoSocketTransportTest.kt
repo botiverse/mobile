@@ -6,9 +6,9 @@ import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.data.realtime.RealtimeSocketTransport
 import build.raft.app.model.ServerId
-import build.raft.app.network.SlockCurlSocketIoListener
-import build.raft.app.network.SlockCurlSocketIoSession
-import build.raft.app.network.SlockCurlSocketIoState
+import build.raft.app.network.RaftCurlSocketIoListener
+import build.raft.app.network.RaftCurlSocketIoSession
+import build.raft.app.network.RaftCurlSocketIoState
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -19,8 +19,8 @@ class CurlSocketIoSocketTransportTest {
     private class FakeSession(
         val serverUrl: String,
         val authJson: String,
-        val listener: SlockCurlSocketIoListener,
-    ) : SlockCurlSocketIoSession {
+        val listener: RaftCurlSocketIoListener,
+    ) : RaftCurlSocketIoSession {
         var started = 0
         var closed = 0
         val emitted = mutableListOf<Pair<String, String>>()
@@ -99,11 +99,11 @@ class CurlSocketIoSocketTransportTest {
         transport.connect(mapOf("token" to "t", "serverId" to "s1"), context("s1"))
         val native = sessions.single().listener
 
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.Connected, 0, "")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.Connected, 0, "")
         native.onEvent(RealtimeSocketEvents.MessageNew, """{"serverId":"s1","id":"m1"}""")
         native.onEvent(RealtimeSocketEvents.MessageNew, """{"serverId":"s1","id":"m2"}""")
-        native.onState(SlockCurlSocketIoState.Disconnected, 0, "transport_closed")
+        native.onState(RaftCurlSocketIoState.Disconnected, 0, "transport_closed")
 
         assertTrue(lifecycle.first().startsWith("transport_connect_start stack=curl serverId=s1 hasToken=true"))
         assertTrue(lifecycle.any { it.startsWith("transport_state stack=curl state=Connected") })
@@ -121,9 +121,9 @@ class CurlSocketIoSocketTransportTest {
         transport.connect(mapOf("token" to "t"), context("s1"))
         val native = sessions.single().listener
 
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.EngineOpen, 0, "")
-        native.onState(SlockCurlSocketIoState.Connected, 0, "")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.EngineOpen, 0, "")
+        native.onState(RaftCurlSocketIoState.Connected, 0, "")
         // raft.44: `42["rooms:joined"]` arrives with payload "null".
         native.onEvent(RealtimeSocketEvents.RoomsJoined, "null")
         native.onEvent(RealtimeSocketEvents.MessageNew, """{"serverId":"s1","id":"m1"}""")
@@ -144,18 +144,18 @@ class CurlSocketIoSocketTransportTest {
         val transport = transport()
         transport.connect(mapOf("token" to "t"), context("s1"))
         val native = sessions.single().listener
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.Connected, 0, "")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.Connected, 0, "")
         delivered.clear()
 
-        native.onState(SlockCurlSocketIoState.Disconnected, 0, "transport_closed")
-        native.onState(SlockCurlSocketIoState.Reconnecting, 0, "500")
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.Error, 6, "websocket_connect")
-        native.onState(SlockCurlSocketIoState.Reconnecting, 0, "1000")
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.EngineOpen, 0, "")
-        native.onState(SlockCurlSocketIoState.Connected, 0, "")
+        native.onState(RaftCurlSocketIoState.Disconnected, 0, "transport_closed")
+        native.onState(RaftCurlSocketIoState.Reconnecting, 0, "500")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.Error, 6, "websocket_connect")
+        native.onState(RaftCurlSocketIoState.Reconnecting, 0, "1000")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.EngineOpen, 0, "")
+        native.onState(RaftCurlSocketIoState.Connected, 0, "")
 
         assertEquals(
             listOf(
@@ -172,10 +172,10 @@ class CurlSocketIoSocketTransportTest {
 
         // A later cycle counts attempts from 1 again and reports no stale reconnect.
         delivered.clear()
-        native.onState(SlockCurlSocketIoState.Disconnected, 0, "transport_closed")
-        native.onState(SlockCurlSocketIoState.Reconnecting, 0, "500")
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.Connected, 0, "")
+        native.onState(RaftCurlSocketIoState.Disconnected, 0, "transport_closed")
+        native.onState(RaftCurlSocketIoState.Reconnecting, 0, "500")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.Connected, 0, "")
         assertEquals(1, delivered.single { it.first == RealtimeSocketEvents.ReconnectAttempt }.third)
     }
 
@@ -185,12 +185,12 @@ class CurlSocketIoSocketTransportTest {
         transport.connect(mapOf("token" to "t"), context("s1"))
         val native = sessions.single().listener
 
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.Error, 7, "websocket_connect")
-        native.onState(SlockCurlSocketIoState.Reconnecting, 0, "500")
-        native.onState(SlockCurlSocketIoState.Connecting, 0, "")
-        native.onState(SlockCurlSocketIoState.EngineOpen, 0, "")
-        native.onState(SlockCurlSocketIoState.Error, 0, """{"message":"invalid token"}""")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.Error, 7, "websocket_connect")
+        native.onState(RaftCurlSocketIoState.Reconnecting, 0, "500")
+        native.onState(RaftCurlSocketIoState.Connecting, 0, "")
+        native.onState(RaftCurlSocketIoState.EngineOpen, 0, "")
+        native.onState(RaftCurlSocketIoState.Error, 0, """{"message":"invalid token"}""")
 
         assertEquals(
             listOf(RealtimeSocketEvents.ConnectError, RealtimeSocketEvents.ReconnectAttempt, RealtimeSocketEvents.ConnectError),
@@ -204,8 +204,8 @@ class CurlSocketIoSocketTransportTest {
         val transport = transport()
         transport.connect(mapOf("token" to "t"), context("s1"))
         val native = sessions.single().listener
-        native.onState(SlockCurlSocketIoState.Error, 0, "binary_frame_unsupported")
-        native.onState(SlockCurlSocketIoState.Disconnected, 0, "closed")
+        native.onState(RaftCurlSocketIoState.Error, 0, "binary_frame_unsupported")
+        native.onState(RaftCurlSocketIoState.Disconnected, 0, "closed")
         assertTrue(delivered.isEmpty())
     }
 
@@ -218,11 +218,11 @@ class CurlSocketIoSocketTransportTest {
         val second = sessions.last()
 
         assertEquals(1, first.closed)
-        first.listener.onState(SlockCurlSocketIoState.Connected, 0, "")
+        first.listener.onState(RaftCurlSocketIoState.Connected, 0, "")
         first.listener.onEvent(RealtimeSocketEvents.MessageNew, "{}")
         assertTrue(delivered.isEmpty())
 
-        second.listener.onState(SlockCurlSocketIoState.Connected, 0, "")
+        second.listener.onState(RaftCurlSocketIoState.Connected, 0, "")
         assertEquals(listOf(Triple(RealtimeSocketEvents.Connect, "s2", null)), delivered)
 
         transport.disconnect()

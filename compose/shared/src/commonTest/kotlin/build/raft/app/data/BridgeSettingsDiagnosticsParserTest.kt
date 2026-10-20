@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.toSlockJsonString
+import build.raft.app.toRaftJsonString
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.JsonArray
@@ -15,7 +15,7 @@ class BridgeSettingsDiagnosticsParserTest {
         val response =
             buildJsonObject {
                 put("status", "ok")
-                put("entriesJson", entriesJson(tag = "SlockAuth/refresh").toSlockJsonString())
+                put("entriesJson", entriesJson(tag = "SlockAuth/refresh").toRaftJsonString())
             }
 
         val snapshot = response.toDiagnosticsHostSnapshot()
@@ -32,7 +32,7 @@ class BridgeSettingsDiagnosticsParserTest {
             buildJsonObject {
                 put("status", "ok")
                 put("entries", entriesJson(tag = "structured"))
-                put("entriesJson", entriesJson(tag = "fallback").toSlockJsonString())
+                put("entriesJson", entriesJson(tag = "fallback").toRaftJsonString())
             }
 
         val snapshot = response.toDiagnosticsHostSnapshot()
@@ -79,7 +79,7 @@ class BridgeSettingsDiagnosticsParserTest {
                     }
                 )
             }
-        val response = buildJsonObject { put("diagnosticFeatureFlagOverridesJson", flags.toSlockJsonString()) }
+        val response = buildJsonObject { put("diagnosticFeatureFlagOverridesJson", flags.toRaftJsonString()) }
 
         val parsed = response.toDiagnosticsHostSnapshot().featureFlagOverrides
 

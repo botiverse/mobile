@@ -6,7 +6,7 @@ The Home Tasks tab already uses the shared Tasks stack:
 
 `SharedTasksScreen -> SharedTasksPanel -> SharedTasksViewModel -> SharedTasksUseCase -> SharedTasksRepository -> SharedTasksDataSource`.
 
-The Thread Tasks tab currently reuses `SharedTasksPanel` only as a presentation shell. It builds a `TasksUiState` from `KuiklyThreadScreenPayload.tasks` through `ThreadTasksTabCache`, then ignores `Start`, `Refresh`, and `CreateTasks` route intents. That means channel-scoped tasks can look like the Home Tasks UI, but they cannot reliably load from the canonical channel tasks API, refresh, or create tasks through the shared Tasks data path.
+The Thread Tasks tab currently reuses `SharedTasksPanel` only as a presentation shell. It builds a `TasksUiState` from `RaftThreadScreenPayload.tasks` through `ThreadTasksTabCache`, then ignores `Start`, `Refresh`, and `CreateTasks` route intents. That means channel-scoped tasks can look like the Home Tasks UI, but they cannot reliably load from the canonical channel tasks API, refresh, or create tasks through the shared Tasks data path.
 
 This explains the current failure mode: tasks can appear stale or empty in a thread even when the Home Tasks tab works.
 

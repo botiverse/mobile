@@ -68,9 +68,9 @@ internal object AndroidLoginTransitionRouting {
             sourceRetired = source.retired,
             setSourceRetired = { setRetired(activity, source, it) },
             startLogin = { token ->
-                SlockCmpActivity.start(
+                RaftCmpActivity.start(
                     activity,
-                    SlockCmpActivity.PAGE_LOGIN,
+                    RaftCmpActivity.PAGE_LOGIN,
                     pageData,
                     loginTransitionToken = token,
                 )
@@ -117,12 +117,12 @@ internal object AndroidLoginTransitionRouting {
 
     fun isPostAuthReplacement(sourcePage: String?, destination: String, replaceCurrent: Boolean): Boolean =
         replaceCurrent &&
-            destination in setOf(SlockKuiklyPages.APP_SHELL, SlockKuiklyPages.AUTH_CHOOSE_SERVER) &&
+            destination in setOf(RaftPages.APP_SHELL, RaftPages.AUTH_CHOOSE_SERVER) &&
             sourcePage in setOf(
-                SlockKuiklyPages.LOGIN,
-                SlockKuiklyPages.REGISTER,
-                SlockKuiklyPages.AUTH_LEGAL_ACCEPTANCE,
-                SlockKuiklyPages.AUTH_CHOOSE_SERVER,
+                RaftPages.LOGIN,
+                RaftPages.REGISTER,
+                RaftPages.AUTH_LEGAL_ACCEPTANCE,
+                RaftPages.AUTH_CHOOSE_SERVER,
                 "compose_auth_profile_setup",
             )
 }

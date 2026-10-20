@@ -44,8 +44,8 @@ internal fun <T> displayedThreadComposerSuggestions(
 
 internal fun immediateThreadComposerMemberSuggestions(
     query: String,
-    suggestions: List<KuiklyComposerMemberItem>
-): List<KuiklyComposerMemberItem> {
+    suggestions: List<RaftComposerMemberItem>
+): List<RaftComposerMemberItem> {
     if (query.isNotBlank()) return emptyList()
     // The panel renders the same three exclusive groups: thread participants, current-channel
     // members not already in the thread group, then everyone else. Reuse the panel's identity-key
@@ -83,13 +83,13 @@ internal fun immediateThreadComposerMemberSuggestions(
 }
 
 private fun immediateThreadComposerMemberSuggestionsBySource(
-    suggestions: List<KuiklyComposerMemberItem>,
+    suggestions: List<RaftComposerMemberItem>,
     limit: Int
-): List<KuiklyComposerMemberItem> {
+): List<RaftComposerMemberItem> {
     if (suggestions.isEmpty() || limit <= 0) return emptyList()
     if (suggestions.size <= limit) return suggestions
 
-    val groups = LinkedHashMap<String, ArrayDeque<KuiklyComposerMemberItem>>()
+    val groups = LinkedHashMap<String, ArrayDeque<RaftComposerMemberItem>>()
     suggestions.forEach { suggestion ->
         groups.getOrPut(suggestion.threadComposerSuggestionSourceKey()) { ArrayDeque() }.addLast(suggestion)
     }
@@ -127,22 +127,22 @@ private fun immediateThreadComposerMemberSuggestionsBySource(
     }
 }
 
-private fun KuiklyComposerMemberItem.threadComposerSuggestionSourceKey(): String =
+private fun RaftComposerMemberItem.threadComposerSuggestionSourceKey(): String =
     sourceServerId?.trim()?.takeIf { it.isNotBlank() }
         ?: sourceServerLabel?.trim()?.takeIf { it.isNotBlank() }
         ?: "local"
 
 internal fun filterThreadComposerMemberSuggestions(
     query: String,
-    suggestions: List<KuiklyComposerMemberItem>
-): List<KuiklyComposerMemberItem> =
+    suggestions: List<RaftComposerMemberItem>
+): List<RaftComposerMemberItem> =
     rankThreadComposerMemberSuggestionEntries(
         query = query,
         entries = suggestions.toThreadComposerMemberSuggestionSearchEntries()
     )
 
-internal fun List<KuiklyComposerMemberItem>.toThreadComposerMemberSuggestionSearchEntries():
-    List<ThreadComposerSuggestionSearchEntry<KuiklyComposerMemberItem>> =
+internal fun List<RaftComposerMemberItem>.toThreadComposerMemberSuggestionSearchEntries():
+    List<ThreadComposerSuggestionSearchEntry<RaftComposerMemberItem>> =
     mapIndexed { index, member ->
         ThreadComposerSuggestionSearchEntry(
             index = index,
@@ -159,8 +159,8 @@ internal fun List<KuiklyComposerMemberItem>.toThreadComposerMemberSuggestionSear
 
 internal fun rankThreadComposerMemberSuggestionEntries(
     query: String,
-    entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerMemberItem>>
-): List<KuiklyComposerMemberItem> =
+    entries: List<ThreadComposerSuggestionSearchEntry<RaftComposerMemberItem>>
+): List<RaftComposerMemberItem> =
     rankThreadComposerSuggestions(
         query = query,
         entries = entries
@@ -168,8 +168,8 @@ internal fun rankThreadComposerMemberSuggestionEntries(
 
 internal suspend fun rankThreadComposerMemberSuggestionEntriesCancellable(
     query: String,
-    entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerMemberItem>>
-): List<KuiklyComposerMemberItem> {
+    entries: List<ThreadComposerSuggestionSearchEntry<RaftComposerMemberItem>>
+): List<RaftComposerMemberItem> {
     val coroutineContext = currentCoroutineContext()
     return rankThreadComposerSuggestions(
         query = query,
@@ -208,15 +208,15 @@ internal fun <T> filterPeopleSuggestions(
 
 internal fun filterThreadComposerChannelSuggestions(
     query: String,
-    suggestions: List<KuiklyComposerChannelItem>
-): List<KuiklyComposerChannelItem> =
+    suggestions: List<RaftComposerChannelItem>
+): List<RaftComposerChannelItem> =
     rankThreadComposerChannelSuggestionEntries(
         query = query,
         entries = suggestions.toThreadComposerChannelSuggestionSearchEntries()
     )
 
-internal fun List<KuiklyComposerChannelItem>.toThreadComposerChannelSuggestionSearchEntries():
-    List<ThreadComposerSuggestionSearchEntry<KuiklyComposerChannelItem>> =
+internal fun List<RaftComposerChannelItem>.toThreadComposerChannelSuggestionSearchEntries():
+    List<ThreadComposerSuggestionSearchEntry<RaftComposerChannelItem>> =
     mapIndexed { index, channel ->
         ThreadComposerSuggestionSearchEntry(
             index = index,
@@ -231,8 +231,8 @@ internal fun List<KuiklyComposerChannelItem>.toThreadComposerChannelSuggestionSe
 
 internal fun rankThreadComposerChannelSuggestionEntries(
     query: String,
-    entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerChannelItem>>
-): List<KuiklyComposerChannelItem> =
+    entries: List<ThreadComposerSuggestionSearchEntry<RaftComposerChannelItem>>
+): List<RaftComposerChannelItem> =
     rankThreadComposerSuggestions(
         query = query,
         entries = entries
@@ -249,8 +249,8 @@ internal fun <T> rankThreadComposerSuggestionEntries(
 
 internal suspend fun rankThreadComposerChannelSuggestionEntriesCancellable(
     query: String,
-    entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerChannelItem>>
-): List<KuiklyComposerChannelItem> {
+    entries: List<ThreadComposerSuggestionSearchEntry<RaftComposerChannelItem>>
+): List<RaftComposerChannelItem> {
     val coroutineContext = currentCoroutineContext()
     return rankThreadComposerSuggestions(
         query = query,

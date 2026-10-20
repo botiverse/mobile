@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.slockLogInfo
+import build.raft.app.raftLogInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,10 +79,10 @@ private fun percentDecodeStrict(raw: String): String? {
 /**
  * Hosts hand a browser login callback here (Android `MainActivity`, iOS `onOpenURL` / the web auth
  * session, the HarmonyOS KNOI export). The exchange runs in the background; the login page observes
- * [SlockWebLoginCompletion]. On a cold start the shared store registry may not exist yet, so the
+ * [RaftWebLoginCompletion]. On a cold start the shared store registry may not exist yet, so the
  * callback is retried briefly in memory (the pending request itself survives on disk).
  */
-object SlockAppLoginBridge {
+object RaftAppLoginBridge {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** Parses [uri]; false (and nothing started) when it is not a well-formed login callback. */
@@ -98,18 +98,18 @@ object SlockAppLoginBridge {
         scope.launch {
             repeat(APP_LOGIN_CALLBACK_RETRIES) { attempt ->
                 val result =
-                    runCatchingPreservingCancellation { SlockAppLogin.complete(returnUri, requestId, code, error) }
-                        .onFailure { slockLogInfo("SlockAppLogin", "app_login_callback_threw type=${it::class.simpleName}") }
+                    runCatchingPreservingCancellation { RaftAppLogin.complete(returnUri, requestId, code, error) }
+                        .onFailure { raftLogInfo("SlockAppLogin", "app_login_callback_threw type=${it::class.simpleName}") }
                         .getOrDefault("login_error")
                 if (result != "retry") {
-                    slockLogInfo("SlockAppLogin", "app_login_callback_result result=$result attempt=$attempt")
-                    if (result != "ignored") SlockWebLoginCompletion.publish(result)
+                    raftLogInfo("SlockAppLogin", "app_login_callback_result result=$result attempt=$attempt")
+                    if (result != "ignored") RaftWebLoginCompletion.publish(result)
                     return@launch
                 }
                 delay(APP_LOGIN_CALLBACK_RETRY_DELAY_MS)
             }
-            slockLogInfo("SlockAppLogin", "app_login_callback_result result=login_error reason=retries_exhausted")
-            SlockWebLoginCompletion.publish("login_error")
+            raftLogInfo("SlockAppLogin", "app_login_callback_result result=login_error reason=retries_exhausted")
+            RaftWebLoginCompletion.publish("login_error")
         }
         return true
     }

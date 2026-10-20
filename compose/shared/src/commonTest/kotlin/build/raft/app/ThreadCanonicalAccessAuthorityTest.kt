@@ -16,21 +16,21 @@ class ThreadCanonicalAccessAuthorityTest {
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
                 conversationKind = ConversationKind.Channel,
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "new-channel",
                 joined = false,
                 permissions = ConversationPermissions(canRead = true, canSend = false),
             ).toConversationAccessCandidate()
         val canonical =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 instanceId = "channel-1",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = "channel-1",
                 streamChannelId = "channel-1",
                 joined = true,
                 canSend = true,
-                composer = KuiklyThreadComposerPayload(enabled = true),
+                composer = RaftThreadComposerPayload(enabled = true),
             )
 
         val beforeCanonical =

@@ -7,7 +7,7 @@ import androidx.compose.ui.window.DialogProperties
  * Window setup for [Modal], which CMP renders as a platform `Dialog` window.
  *
  * Kuikly's Modal was a full-screen in-window overlay: no window dim (`scrimColor` was transparent
- * because Slock draws its own [SlockModalDismissBarrier]), drawn edge to edge under the system bars,
+ * because Slock draws its own [RaftModalDismissBarrier]), drawn edge to edge under the system bars,
  * and the keyboard handled by the page through `keyboardHeightChange`. The platform defaults of a
  * CMP Dialog differ on every point (Android: dimmed window fitted between the system bars with its
  * own navigation-bar background and IME padding; iOS: default scrim, safe-area and keyboard

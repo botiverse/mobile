@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataResult
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SavedMessageStatusSnapshot
 import build.raft.app.data.SavedStatusRepository
@@ -43,7 +43,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
         val storeJob = SupervisorJob()
         val storeScope = CoroutineScope(coroutineContext + storeJob)
         val accountASession = session("account-a")
-        val authStore = InMemorySlockAuthSessionStore(accountASession)
+        val authStore = InMemoryRaftAuthSessionStore(accountASession)
         val refreshStarted = CompletableDeferred<Unit>()
         val releaseRefresh = CompletableDeferred<Unit>()
         val repository =
@@ -148,7 +148,7 @@ class SharedThreadSecondaryTimelineProvenanceTest {
         val storeJob = SupervisorJob()
         val storeScope = CoroutineScope(coroutineContext + storeJob)
         val accountASession = session("account-a")
-        val authStore = InMemorySlockAuthSessionStore(accountASession)
+        val authStore = InMemoryRaftAuthSessionStore(accountASession)
         val summaryStarted = CompletableDeferred<Unit>()
         val releaseSummary = CompletableDeferred<Unit>()
         val repository =
@@ -326,13 +326,13 @@ class SharedThreadSecondaryTimelineProvenanceTest {
                     ),
             )
 
-        fun routePayload(): KuiklyThreadScreenPayload =
-            KuiklyThreadScreenPayload(
+        fun routePayload(): RaftThreadScreenPayload =
+            RaftThreadScreenPayload(
                 instanceId = "secondary-provenance-channel-1",
                 status = "loading",
                 title = "general",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                channelKind = KuiklyThreadSurfaceKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftThreadSurfaceKind.Channel,
                 sourceThreadId = ThreadIdValue,
                 streamChannelId = ThreadIdValue,
             )

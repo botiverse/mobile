@@ -10,11 +10,11 @@ This notes the current gap between Kuikly's default Android host/router implemen
 - Kuikly upstream page data parser: `core/src/commonMain/kotlin/com/tencent/kuikly/core/pager/PagerData.kt`
 - Kuikly upstream Android demo host: `androidApp/src/main/java/com/tencent/kuikly/android/demo/KuiklyRenderActivity.kt`
 - Kuikly upstream Android router: `androidApp/src/main/java/com/tencent/kuikly/android/demo/adapter/KRRouterAdapter.kt`
-- Slock Android host: `compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt`
-- Slock Android host contract: `compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyHostContract.kt`
+- Slock Android host: `compose/androidApp/src/main/java/build/raft/app/shared/RaftLegacyHostActivity.kt`
+- Slock Android host contract: `compose/androidApp/src/main/java/build/raft/app/shared/RaftHostContract.kt`
 - Slock OHOS host: `compose/ohosApp/entry/src/main/ets/pages/Index.ets`
 - Slock OHOS router: `compose/ohosApp/entry/src/main/ets/kuikly/adapter/RouterAdapter.ets`
-- Shared safe area consumer: `compose/shared/src/commonMain/kotlin/build/raft/app/SlockSafeArea.kt`
+- Shared safe area consumer: `compose/shared/src/commonMain/kotlin/build/raft/app/RaftAppSafeArea.kt`
 - Slock bridge contract: `docs/kuikly-bridge-module-contract.md`
 
 ## Kuikly Default Behavior
@@ -47,17 +47,17 @@ The upstream Android demo host keeps the host thin:
 
 Slock's Android host is close but not equivalent:
 
-- `SlockKuiklyActivity` is a separate host instead of reusing the demo shape directly.
-- `SlockKuiklyPageData.toKuiklyMap()` merges raw pageData and adds `appId`.
+- `RaftLegacyHostActivity` is a separate host instead of reusing the demo shape directly.
+- `RaftPageData.toKuiklyMap()` merges raw pageData and adds `appId`.
 - A short-lived `createPageSpec()` hotfix injected `safeAreaTop/statusBarHeight/safeAreaBottom/navigationBarHeight` from Android resources. That has been removed in `c218a15 fix: align safe area with kuikly page data`, which is correct: Kuikly already injects root `statusBarHeight/safeAreaInsets`.
 - Slock's extra safe-area keys, where still needed, are passed inside user pageData/`param`, while Kuikly root fields are separate root fields.
-- `SlockSafeArea.kt` is the shared consumption point and now separates units:
+- `RaftAppSafeArea.kt` is the shared consumption point and now separates units:
   - Kuikly root `pageData.statusBarHeight` and `pageData.safeAreaInsets` are dp on Android.
   - Slock custom `safeAreaTop/statusBarHeight/safeAreaBottom/navigationBarHeight` from OHOS are raw px.
   - `c218a15` fixed the earlier bug where Android root fields were treated as px and converted with `toDp()` a second time.
-- Back forwarding was recently added in `SlockKuiklyActivity.onBackPressed()`, matching the intent of the upstream demo.
+- Back forwarding was recently added in `RaftLegacyHostActivity.onBackPressed()`, matching the intent of the upstream demo.
 - Immersive mode is simpler than upstream: it uses deprecated system UI flags and does not currently mirror `setDecorFitsSystemWindows(false)`, cutout mode, or navigation bar contrast handling.
-- Adapter registration is always assigned once through `SlockKuiklyAdapters.init(...)`. This is acceptable for the app process, but it differs from upstream's "only set if null" pattern and could matter if tests/demo host and app host coexist.
+- Adapter registration is always assigned once through `RaftAdapters.init(...)`. This is acceptable for the app process, but it differs from upstream's "only set if null" pattern and could matter if tests/demo host and app host coexist.
 - The old Android Compose Kuikly island host has been removed. Current Thread work should stay in the shared shell/page route instead of reintroducing local Android page islands.
 
 Slock's OHOS host is also custom:
@@ -72,10 +72,10 @@ Slock's OHOS host is also custom:
 
 | Area | Kuikly Android default | Slock current | Risk | Recommendation |
 | --- | --- | --- | --- | --- |
-| Router entry | `KRRouterAdapter -> KuiklyRenderActivity.start(pageName,pageData)` | Similar `SlockKuiklyRouterAdapter -> SlockKuiklyActivity.start(...)` | Low | Keep the shape, but align `SlockKuiklyActivity` internals with the demo host. |
+| Router entry | `KRRouterAdapter -> KuiklyRenderActivity.start(pageName,pageData)` | Similar `SlockKuiklyRouterAdapter -> RaftLegacyHostActivity.start(...)` | Low | Keep the shape, but align `RaftLegacyHostActivity` internals with the demo host. |
 | PageData system fields | Render view injects root `statusBarHeight/safeAreaInsets/density/platform` | Slock app pageData adds app data under params; Android resource safe-area injection has been removed | Low/Medium | Keep Android on Kuikly root fields; keep custom keys only as OHOS/host fallback. |
-| Safe-area units | Android root fields are dp | OHOS/custom fallback keys are px | Medium | Current `SlockSafeArea` split is correct; keep tests so future host keys cannot regress units. |
-| Immersive window | Uses `setDecorFitsSystemWindows(false)`, cutout, light status/nav, contrast handling | Simpler deprecated flags | Medium | Port upstream window handling into `SlockKuiklyActivity` unless product has a reason not to. |
+| Safe-area units | Android root fields are dp | OHOS/custom fallback keys are px | Medium | Current `RaftAppSafeArea` split is correct; keep tests so future host keys cannot regress units. |
+| Immersive window | Uses `setDecorFitsSystemWindows(false)`, cutout, light status/nav, contrast handling | Simpler deprecated flags | Medium | Port upstream window handling into `RaftLegacyHostActivity` unless product has a reason not to. |
 | Back handling | `dispatchKeyEvent` delegates to Kuikly | `onBackPressed` now delegates | Low | Current fix is acceptable; consider modern `OnBackPressedDispatcher` later. |
 | Adapter registration | Set adapters only when null | Slock sets once using its own guard | Low/Medium | Keep Slock-specific adapters, but avoid overwriting external/demo adapters in mixed debug processes. |
 | Error UI | Demo has loading/error placeholders | Slock root only has container; Kuikly exceptions may surface in shared overlay/OHOS text | Medium | Add a controlled host error surface that logs diagnostics but does not expose raw stack to users. |
@@ -110,7 +110,7 @@ Slock Android currently registers:
 - `krUncaughtExceptionHandlerAdapter = SlockKuiklyExceptionAdapter`
 - `krFontAdapter = SlockKuiklyFontAdapter`
 - `krRouterAdapter = SlockKuiklyRouterAdapter`
-- `krThreadAdapter = SlockKuiklyThreadAdapter`
+- `krThreadAdapter = RaftThreadAdapter`
 
 Slock Android does not currently register:
 
@@ -137,7 +137,7 @@ Kuikly upstream demo exposes:
 
 Slock Android exposes:
 
-- `HRBridgeModule` (`SlockKuiklyBridgeModule`): Slock production bridge. It includes auth/session storage, selected server/session actions, event dispatch back to Android islands, logging/toast, `authRequest`, and other Slock-specific capabilities.
+- `HRBridgeModule` (`RaftBridgeModule`): Slock production bridge. It includes auth/session storage, selected server/session actions, event dispatch back to Android islands, logging/toast, `authRequest`, and other Slock-specific capabilities.
 
 Slock OHOS exposes:
 
@@ -190,9 +190,9 @@ Recommendation:
 1. **Keep shared safe-area units pinned.**
    - Android: consume `PagerData.statusBarHeight` / `safeAreaInsets` as dp.
    - OHOS/custom host fallbacks: consume `safeAreaTop/statusBarHeight/safeAreaBottom/navigationBarHeight` from `pageData.params` as px and convert to dp.
-   - This is already implemented in `c218a15`; keep `SlockSafeAreaTest` as the regression gate.
+   - This is already implemented in `c218a15`; keep `RaftSafeAreaTest` as the regression gate.
 
-2. **Align `SlockKuiklyActivity` with upstream Android window handling.**
+2. **Align `RaftLegacyHostActivity` with upstream Android window handling.**
    - Bring over `setDecorFitsSystemWindows(false)` for API 30+.
    - Mirror cutout mode and status/navigation contrast handling.
    - Keep Slock colors and product-specific theme decisions separate.
@@ -230,7 +230,7 @@ Recommendation:
 ## Immediate Follow-Ups
 
 - Rename or separate Slock custom safe-area fallback keys to make units explicit.
-- Open a follow-up for `SlockKuiklyActivity` window handling parity with Kuikly upstream.
+- Open a follow-up for `RaftLegacyHostActivity` window handling parity with Kuikly upstream.
 - Add Android/OHOS parity tests/checks for the required `HRBridgeModule` methods documented in `docs/kuikly-bridge-module-contract.md`.
 - Decide whether to add `krTextPostProcessorAdapter` / `krColorParseAdapter` for Android text/color parity.
 - Open a follow-up to retire remaining Android Compose islands from main navigation once shared app shell covers the route.

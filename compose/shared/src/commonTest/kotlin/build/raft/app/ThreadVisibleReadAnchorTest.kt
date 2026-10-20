@@ -9,7 +9,7 @@ class ThreadVisibleReadAnchorTest {
     @Test
     fun visibleFrontierUsesHighestCanonicalSeqAndIgnoresPendingRows() {
         val timeline =
-            KuiklyThreadScreenPayload(
+            RaftThreadScreenPayload(
                 status = "content",
                 messages =
                     listOf(
@@ -27,8 +27,8 @@ class ThreadVisibleReadAnchorTest {
         assertNull(timeline.visibleThreadReadAnchor(listOf(first + 1)))
     }
 
-    private fun message(id: String, seq: Long?): KuiklyThreadMessageItem =
-        KuiklyThreadMessageItem(
+    private fun message(id: String, seq: Long?): RaftThreadMessageItem =
+        RaftThreadMessageItem(
             id = id,
             authorId = "author",
             authorName = "Author",

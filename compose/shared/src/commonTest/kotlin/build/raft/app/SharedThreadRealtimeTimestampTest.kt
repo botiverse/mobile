@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InMemorySlockAuthSessionStore
+import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
@@ -26,13 +26,13 @@ class SharedThreadRealtimeTimestampTest {
             val dataSource =
                 testSharedThreadDataSource(
                     networkApi = SharedThreadStoreTest.FakeThreadApi(bodyText = canonicalMessagesResponse()),
-                    sessionStore = InMemorySlockAuthSessionStore(authSessionFixture(userId = "u1")),
+                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
                     cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
                 )
             val store = SharedThreadStore(dataSource = dataSource, scope = storeScope)
             store.accept(
                 SharedThreadIntent.Start(
-                    KuiklyThreadScreenPayload(
+                    RaftThreadScreenPayload(
                         instanceId = "task906-thread-channel-1",
                         title = "general",
                         sourceThreadId = "channel-1",

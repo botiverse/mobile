@@ -216,7 +216,7 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
     }
 
     private class Rig(
-        private val database: SlockSqlDatabase,
+        private val database: RaftSqlDatabase,
         writerLogger: ((String) -> Unit)? = null,
     ) {
         val logs: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
@@ -345,11 +345,11 @@ class CanonicalMessageV2CanaryExternalCommitRoundTripTest {
         override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? = delegate.readCursor(scope)
     }
 
-    private fun <T> withFreshDatabase(block: (SlockSqlDatabase) -> T): T {
+    private fun <T> withFreshDatabase(block: (RaftSqlDatabase) -> T): T {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            return block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            return block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

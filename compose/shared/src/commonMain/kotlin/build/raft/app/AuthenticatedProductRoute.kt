@@ -3,8 +3,8 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.MR
 import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -20,7 +20,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     HomeActivity(HOME_ACTIVITY_PAGE),
     Members(MEMBERS_PAGE),
     MemberDetail(MEMBER_DETAIL_PAGE),
-    FilePreview(SLOCK_FILE_PREVIEW_PAGE),
+    FilePreview(RAFT_FILE_PREVIEW_PAGE),
     SettingsAccount(SETTINGS_ACCOUNT_PAGE),
     SettingsHandsFeedback(SETTINGS_HANDS_FEEDBACK_PAGE),
     SettingsNativeDetail(SETTINGS_NATIVE_DETAIL_PAGE),
@@ -33,9 +33,9 @@ internal val authenticatedProductRoutePageNames: Set<String> =
     AuthenticatedProductRoute.entries.mapTo(linkedSetOf()) { it.pageName }
 
 internal enum class AuthenticatedRouteExemption(val pageName: String, val authorityOwner: String) {
-    AppShell(SLOCK_APP_SHELL_PAGE, "app-shell-auth-gate"),
-    AppShellChild(SLOCK_APP_SHELL_CHILD_TAB_PAGE, "parent-app-shell-auth-gate"),
-    HomeChild(SLOCK_HOME_PAGE, "parent-app-shell-auth-gate"),
+    AppShell(RAFT_APP_SHELL_PAGE, "app-shell-auth-gate"),
+    AppShellChild(RAFT_APP_SHELL_CHILD_TAB_PAGE, "parent-app-shell-auth-gate"),
+    HomeChild(RAFT_HOME_PAGE, "parent-app-shell-auth-gate"),
     SettingsChild(SETTINGS_HOME_PAGE, "parent-app-shell-auth-gate"),
 }
 
@@ -45,8 +45,8 @@ internal abstract class AuthenticatedProductPager(
     protected fun setAuthenticatedContent(content: @Composable () -> Unit) {
         setContent {
             AuthenticatedProductRouteEffect(this@AuthenticatedProductPager, authenticatedRoute)
-            SlockTimestampDisplayScope(
-                state = retainedSlockTimestampDisplayState(this@AuthenticatedProductPager.pagerId),
+            RaftTimestampDisplayScope(
+                state = retainedRaftTimestampDisplayState(this@AuthenticatedProductPager.pagerId),
                 content = content
             )
         }
@@ -61,12 +61,12 @@ internal fun AuthenticatedProductRouteEffect(
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val params = pager.pageData.params
     val storeScope = remember(params.toString(), pager.pagerId) {
-        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     val hasExplicitShellScope = remember(params.toString()) {
-        params.slockShellStoreScopeOrNull() != null
+        params.raftShellStoreScopeOrNull() != null
     }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val sessionExpiredMessage = stringResource(MR.strings.auth_error_session_expired)
     AuthSessionTerminalRouteEffect(

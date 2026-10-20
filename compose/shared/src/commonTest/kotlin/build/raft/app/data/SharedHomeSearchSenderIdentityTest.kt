@@ -43,7 +43,7 @@ class SharedHomeSearchSenderIdentityTest {
     @Test
     fun accountAndServerSwitchDiscardsCompletionFromOldOwnerWithoutASecondLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(sessionFixture("user-a", "server-a"))
+        val authStore = InMemoryRaftAuthSessionStore(sessionFixture("user-a", "server-a"))
         val members = DeferredMemberRepository()
         val store = store(scope, authStore, members)
 
@@ -61,7 +61,7 @@ class SharedHomeSearchSenderIdentityTest {
     @Test
     fun successorLoadWinsWhenSameHandleExistsOnTwoServersAndOldProducerIgnoresCancellation() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val authStore = InMemorySlockAuthSessionStore(sessionFixture("user-a", "server-a"))
+        val authStore = InMemoryRaftAuthSessionStore(sessionFixture("user-a", "server-a"))
         val members = DeferredMemberRepository()
         val store = store(scope, authStore, members)
 
@@ -83,7 +83,7 @@ class SharedHomeSearchSenderIdentityTest {
 
     private fun store(
         scope: CoroutineScope,
-        authStore: SlockAuthSessionStore,
+        authStore: RaftAuthSessionStore,
         members: MemberRepository,
     ): SharedHomeSearchSavedStore =
         SharedHomeSearchSavedStore(

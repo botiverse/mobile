@@ -11,7 +11,7 @@ import kotlin.test.assertIs
 class ExternalSharePersistenceTest {
     @Test
     fun durableDraftRoundTripsAllResumeAndDeliveryIdentity() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val repository = KeyValueExternalShareDraftRepository(keyValueStore, ownerAccountId = "account-a")
         val target =
             ForwardMessageTarget(
@@ -61,7 +61,7 @@ class ExternalSharePersistenceTest {
     fun invalidTokenCannotAddressDurableStorage() = runBlocking {
         val repository =
             KeyValueExternalShareDraftRepository(
-                InMemorySlockKeyValueStore(),
+                InMemoryRaftKeyValueStore(),
                 ownerAccountId = "account-a"
             )
 
@@ -76,7 +76,7 @@ class ExternalSharePersistenceTest {
 
     @Test
     fun durableDraftsAreIsolatedByCanonicalAccount() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+        val keyValueStore = InMemoryRaftKeyValueStore()
         val accountA = KeyValueExternalShareDraftRepository(keyValueStore, "account-a")
         val accountB = KeyValueExternalShareDraftRepository(keyValueStore, "account-b")
         val draft =
@@ -97,7 +97,7 @@ class ExternalSharePersistenceTest {
     fun unknownTargetKindFailsClosedInsteadOfDefaulting() = runBlocking {
         val token = "opaque-token_1234567890"
         val keyValueStore =
-            InMemorySlockKeyValueStore(
+            InMemoryRaftKeyValueStore(
                 mapOf(
                     "external-share:draft:v1:account-a:$token" to
                         """{"envelope":{"token":"$token","createdAtEpochMillis":1,"sourcePlatform":"android","text":"private"},"serverId":"server-a","stage":"Confirming","selectedTargets":[{"serverId":{"value":"server-a"},"kind":"UnknownKind","id":"channel-a","title":"general"}]}"""

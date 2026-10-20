@@ -8,12 +8,12 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.AtomicFile
-import build.raft.app.data.SlockExternalShareEnvelopeHost
-import build.raft.app.data.SlockExternalShareEnvelopeHostItem
-import build.raft.app.data.SlockExternalShareEnvelopeHostMutationResult
-import build.raft.app.data.SlockExternalShareEnvelopeHostProvider
-import build.raft.app.data.SlockExternalShareEnvelopeHostReadResult
-import build.raft.app.data.SlockExternalShareEnvelopeHostRecord
+import build.raft.app.data.RaftExternalShareEnvelopeHost
+import build.raft.app.data.RaftExternalShareEnvelopeHostItem
+import build.raft.app.data.RaftExternalShareEnvelopeHostMutationResult
+import build.raft.app.data.RaftExternalShareEnvelopeHostProvider
+import build.raft.app.data.RaftExternalShareEnvelopeHostReadResult
+import build.raft.app.data.RaftExternalShareEnvelopeHostRecord
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -135,7 +135,7 @@ internal object AndroidExternalShareProcessOwner {
 
 fun installAndroidExternalShareInbox(context: Context) {
     val appContext = context.applicationContext
-    SlockExternalShareEnvelopeHostProvider.installAppScopeHost {
+    RaftExternalShareEnvelopeHostProvider.installAppScopeHost {
         AndroidExternalShareProcessOwner.inbox(appContext)
     }
 }
@@ -148,7 +148,7 @@ internal class AndroidExternalShareInbox(
     private val clock: () -> Long = System::currentTimeMillis,
     private val atomicWriter: (File, ByteArray) -> Unit = ::writeAtomic,
     private val atomicReader: (File) -> String = ::readAtomicText
-) : SlockExternalShareEnvelopeHost {
+) : RaftExternalShareEnvelopeHost {
     constructor(
         context: Context,
         tokenFactory: () -> String = { UUID.randomUUID().toString() },
@@ -232,19 +232,19 @@ internal class AndroidExternalShareInbox(
         }
     }
 
-    override suspend fun load(token: String): SlockExternalShareEnvelopeHostReadResult =
+    override suspend fun load(token: String): RaftExternalShareEnvelopeHostReadResult =
         withContext(Dispatchers.IO) {
             if (!isSafeToken(token)) {
-                return@withContext SlockExternalShareEnvelopeHostReadResult.Failure(
+                return@withContext RaftExternalShareEnvelopeHostReadResult.Failure(
                     "external_share_identity_invalid",
                     retryable = false
                 )
             }
-            if (isConsumed(token)) return@withContext SlockExternalShareEnvelopeHostReadResult.Missing
-            val file = liveEnvelopeFile(token, clock()) ?: return@withContext SlockExternalShareEnvelopeHostReadResult.Missing
+            if (isConsumed(token)) return@withContext RaftExternalShareEnvelopeHostReadResult.Missing
+            val file = liveEnvelopeFile(token, clock()) ?: return@withContext RaftExternalShareEnvelopeHostReadResult.Missing
             runCatching { decodeEnvelope(token, file) }
                 .getOrElse {
-                    SlockExternalShareEnvelopeHostReadResult.Failure(
+                    RaftExternalShareEnvelopeHostReadResult.Failure(
                         "external_share_envelope_decode_failed",
                         retryable = false
                     )
@@ -254,44 +254,44 @@ internal class AndroidExternalShareInbox(
     override suspend fun consume(
         token: String,
         consumptionId: String
-    ): SlockExternalShareEnvelopeHostMutationResult =
+    ): RaftExternalShareEnvelopeHostMutationResult =
         withContext(Dispatchers.IO) {
             if (!isSafeToken(token) || consumptionId != "external-share-consume:$token") {
-                return@withContext SlockExternalShareEnvelopeHostMutationResult.Failure(
+                return@withContext RaftExternalShareEnvelopeHostMutationResult.Failure(
                     "external_share_consumption_identity_invalid",
                     retryable = false
                 )
             }
             val directory = directory(token)
-            if (!directory.isDirectory) return@withContext SlockExternalShareEnvelopeHostMutationResult.Missing
+            if (!directory.isDirectory) return@withContext RaftExternalShareEnvelopeHostMutationResult.Missing
             val marker = consumedFile(token)
             val markerWasPresent = marker.exists()
             val existingConsumption = runCatching { atomicReader(marker) }.getOrNull()
             if (existingConsumption != null) {
                 return@withContext if (existingConsumption == consumptionId) {
-                    SlockExternalShareEnvelopeHostMutationResult.Success
+                    RaftExternalShareEnvelopeHostMutationResult.Success
                 } else {
-                    SlockExternalShareEnvelopeHostMutationResult.Failure(
+                    RaftExternalShareEnvelopeHostMutationResult.Failure(
                         "external_share_consumption_conflict",
                         retryable = false
                     )
                 }
             }
             if (markerWasPresent) {
-                return@withContext SlockExternalShareEnvelopeHostMutationResult.Failure(
+                return@withContext RaftExternalShareEnvelopeHostMutationResult.Failure(
                     "external_share_consumption_marker_invalid",
                     retryable = false
                 )
             }
             if (liveEnvelopeFile(token, clock()) == null) {
-                return@withContext SlockExternalShareEnvelopeHostMutationResult.Missing
+                return@withContext RaftExternalShareEnvelopeHostMutationResult.Missing
             }
             runCatching {
                 atomicWriter(marker, consumptionId.toByteArray(Charsets.UTF_8))
                 clearPendingIfMatches(token)
-                SlockExternalShareEnvelopeHostMutationResult.Success
+                RaftExternalShareEnvelopeHostMutationResult.Success
             }.getOrElse {
-                SlockExternalShareEnvelopeHostMutationResult.Failure(
+                RaftExternalShareEnvelopeHostMutationResult.Failure(
                     "external_share_consume_failed",
                     retryable = true
                 )
@@ -306,7 +306,7 @@ internal class AndroidExternalShareInbox(
         }
     }
 
-    private fun decodeEnvelope(token: String, file: File): SlockExternalShareEnvelopeHostReadResult {
+    private fun decodeEnvelope(token: String, file: File): RaftExternalShareEnvelopeHostReadResult {
         val json = JSONObject(atomicReader(file))
         if (json.optString("token") != token) error("token mismatch")
         val itemsJson = json.optJSONArray("items") ?: JSONArray()
@@ -329,7 +329,7 @@ internal class AndroidExternalShareInbox(
                     totalBytes += sizeBytes
                     if (totalBytes > limits.maxTotalBytes) error("invalid total size")
                     add(
-                        SlockExternalShareEnvelopeHostItem(
+                        RaftExternalShareEnvelopeHostItem(
                             localRef = localFile.toURI().toString(),
                             displayName = sanitizeDisplayName(item.optString("displayName"), index),
                             mimeType = sanitizeMimeType(item.optString("mimeType")),
@@ -338,8 +338,8 @@ internal class AndroidExternalShareInbox(
                     )
                 }
             }
-        return SlockExternalShareEnvelopeHostReadResult.Content(
-            SlockExternalShareEnvelopeHostRecord(
+        return RaftExternalShareEnvelopeHostReadResult.Content(
+            RaftExternalShareEnvelopeHostRecord(
                 token = token,
                 createdAtEpochMillis = json.optLong("createdAtEpochMillis"),
                 sourcePlatform = "android",

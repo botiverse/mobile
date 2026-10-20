@@ -43,10 +43,10 @@ The server-side `/actions/{messageId}/mark-executed` endpoint does not create th
 
 KMP currently wires `ThreadActionCardView` button clicks to `commitThreadActionCard`:
 
-- `agent:create` calls `SlockAgentsApiClient.createAgent(...)` directly with the card name/description.
+- `agent:create` calls `RaftAgentsApiClient.createAgent(...)` directly with the card name/description.
 - `channel:create` calls `ChannelRepository.createChannel(...)` directly.
 - `channel:add_member` calls `MemberRepository.addChannelMember(...)` directly.
-- All three then call `SlockIntegrationsActionsPushApiClient.markActionExecuted(...)`.
+- All three then call `RaftIntegrationsActionsPushApiClient.markActionExecuted(...)`.
 
 This is typed, but it is the wrong interaction shape for dialog-driven action cards. It skips the dialog layer, hides required choices for `agent:create`, and cannot present dialog-level validation errors such as missing computer, unsupported runtime, quota, or duplicate name before submit.
 
@@ -76,7 +76,7 @@ sealed interface ThreadActionCardEffect {
 
 The dialog layer then owns the regular create flow:
 
-- `agent:create`: open or reuse the shared Create Agent dialog with editable name/description prefilled, require machine/runtime/model selection, submit through the existing typed `SlockAgentsApiClient.createAgent` body with `model`, `runtime`, `reasoningEffort`, `machineId`, `envVars`, `avatarUrl`, and `onboarding`.
+- `agent:create`: open or reuse the shared Create Agent dialog with editable name/description prefilled, require machine/runtime/model selection, submit through the existing typed `RaftAgentsApiClient.createAgent` body with `model`, `runtime`, `reasoningEffort`, `machineId`, `envVars`, `avatarUrl`, and `onboarding`.
 - `channel:create`: open or reuse the shared Create Channel dialog with prefilled name/description/visibility/members, submit through `ChannelRepository.createChannel`.
 - `channel:add_member`: open or reuse the shared Add Members dialog with preselected humans/agents, submit through `MemberRepository.addChannelMember`.
 
@@ -123,7 +123,7 @@ Do not log tokens, bearer headers, env var values, or raw secret payloads.
 - Tapping an `agent:create` card opens a Create Agent dialog instead of directly calling `POST /agents`.
 - Create Agent name/description are prefilled from card metadata but editable.
 - The user must choose a valid online machine/runtime/model before submit, matching React.
-- Successful dialog submit creates the agent through typed `SlockAgentsApiClient` / repository boundary and then calls `mark-executed`.
+- Successful dialog submit creates the agent through typed `RaftAgentsApiClient` / repository boundary and then calls `mark-executed`.
 - The card flips to Done using server-returned metadata and remains Done after refresh/realtime update.
 - Create failure is visible in the dialog and does not mark the card executed.
 - Mark-executed failure is visible enough for debugging and triggers a metadata refresh path.

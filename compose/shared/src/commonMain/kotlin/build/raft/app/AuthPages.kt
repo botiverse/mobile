@@ -10,10 +10,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
-import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.DataResult
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.ScreenLoadState
@@ -21,7 +21,7 @@ import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthRuntimeCapabilities
 import build.raft.app.data.MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
-import build.raft.app.data.SlockMobileWebLoginGate
+import build.raft.app.data.RaftMobileWebLoginGate
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
@@ -29,9 +29,9 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
-import build.raft.app.data.SlockSharedStoreProvider
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreProvider
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -144,11 +144,11 @@ private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvid
 
 @Composable
 private fun rememberCurrentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, bridgeCallScope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
@@ -272,7 +272,7 @@ private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     val paramsSignature = pager.pageData.params.toString()
     // Seed host capabilities synchronously and observe subsequent host updates.
@@ -286,13 +286,13 @@ private fun LoginScreen() {
     // Follows the stored environment so a deployment saved from the sheet below is evaluated at once.
     val apiEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
     val apiBaseUrl = apiEnvironment.apiBaseUrl
-    var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(SlockMobileWebLoginGate.isEnabled(apiBaseUrl)) }
+    var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(RaftMobileWebLoginGate.isEnabled(apiBaseUrl)) }
     // Per server: inputs on the previous deployment must not keep a newly saved one's answer from applying.
     var loginPageInteracted by remember(apiBaseUrl) { mutableStateOf(false) }
     LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
         if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
             val openedAt = TimeSource.Monotonic.markNow()
-            val enabled = SlockMobileWebLoginGate.refresh(apiBaseUrl)
+            val enabled = RaftMobileWebLoginGate.refresh(apiBaseUrl)
             if (
                 shouldApplyFreshLoginPageChoice(
                     elapsedMs = openedAt.elapsedNow().inWholeMilliseconds,
@@ -323,10 +323,10 @@ private fun LoginScreen() {
         return
     }
     val linkNavigator =
-        rememberSlockLinkNavigator(
+        rememberRaftLinkNavigator(
             pager = pager,
             bridge = bridge,
-            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+            routeScope = RaftInAppBrowserRouteScope.Unscoped,
         )
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
@@ -338,7 +338,7 @@ private fun LoginScreen() {
     var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
     val socialProviders = remember(authRuntimeCapabilities) {
         authRuntimeCapabilities.socialAuthProviders(
-            applePlatformSupported = slockPlatformSupportsAppleSignIn()
+            applePlatformSupported = raftPlatformSupportsAppleSignIn()
         )
     }
     val routeMessage = remember(paramsSignature) {
@@ -420,7 +420,7 @@ private fun LoginScreen() {
     }
 
     fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
-        slockLogDebug(
+        raftLogDebug(
             "SlockAuth",
             "login_submit_entry surface=auth_page emailLength=${emailValue.length} passwordPresent=${passwordValue.isNotBlank()}"
         )
@@ -431,12 +431,12 @@ private fun LoginScreen() {
                 socialSubmitting = socialSubmittingProvider != null
             )
         ) {
-            slockLogDebug("SlockAuth", "login_submit_skip surface=auth_page reason=in_flight")
+            raftLogDebug("SlockAuth", "login_submit_skip surface=auth_page reason=in_flight")
             return
         }
         errorPresentation = null
         val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
-        slockLogDebug(
+        raftLogDebug(
             "SlockAuth",
             "login_submit_reduce surface=auth_page emailError=${update.state.emailFormatError != null} passwordError=${update.state.passwordError != null} effect=${update.effect.loginEffectName()}"
         )
@@ -579,17 +579,17 @@ private fun AuthLegalAcceptanceScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
     )
     val linkNavigator =
-        rememberSlockLinkNavigator(
+        rememberRaftLinkNavigator(
             pager = pager,
             bridge = bridge,
-            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+            routeScope = RaftInAppBrowserRouteScope.Unscoped,
         )
     val paramsSignature = pager.pageData.params.toString()
     val providerId = remember(paramsSignature) {
@@ -1012,18 +1012,18 @@ private fun ForgotPasswordScreen() {
 internal fun rememberAuthSettingsDataSource(
     pager: Pager,
     bridge: BridgeModule,
-    sharedStores: SlockSharedStoreProvider,
-    linkNavigator: SlockLinkNavigator =
-        rememberSlockLinkNavigator(
+    sharedStores: RaftSharedStoreProvider,
+    linkNavigator: RaftLinkNavigator =
+        rememberRaftLinkNavigator(
             pager = pager,
             bridge = bridge,
-            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+            routeScope = RaftInAppBrowserRouteScope.Unscoped,
         ),
 ): SharedSettingsDataSource {
     val bridgeCallScope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, bridgeCallScope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
@@ -1045,9 +1045,9 @@ internal fun rememberAuthSettingsDataSource(
 
 private fun authSettingsDataSource(
     bridge: BridgeModule,
-    sharedStores: SlockSharedStoreProvider,
+    sharedStores: RaftSharedStoreProvider,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    avatarNativeCache: BridgeSlockAvatarNativeCache,
+    avatarNativeCache: BridgeRaftAvatarNativeCache,
 ): SharedSettingsDataSource =
     SharedSettingsDataSource(
         sessionStore = sharedStores.authStore,
@@ -1072,16 +1072,16 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
     rememberKmmResourceLocaleSeed(pager)
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val linkNavigator =
-        rememberSlockLinkNavigator(
+        rememberRaftLinkNavigator(
             pager = pager,
             bridge = bridge,
-            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+            routeScope = RaftInAppBrowserRouteScope.Unscoped,
         )
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, bridgeCallScope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
@@ -1146,8 +1146,8 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         pendingEnvironment = null
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.Canvas)) {
-        SlockTopPageHeader(
+    Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
+        RaftTopPageHeader(
             title =
                 when (destination) {
                     AuthAboutDestination.About -> stringResource(MR.strings.settings_about_title)
@@ -1162,13 +1162,13 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 },
             iconName =
                 when (destination) {
-                    AuthAboutDestination.About -> SlockLucideIconName.BadgeInfo
-                    AuthAboutDestination.ApiEnvironment -> SlockLucideIconName.Server
-                    AuthAboutDestination.Diagnostics -> SlockLucideIconName.ClipboardList
+                    AuthAboutDestination.About -> RaftLucideIconName.BadgeInfo
+                    AuthAboutDestination.ApiEnvironment -> RaftLucideIconName.Server
+                    AuthAboutDestination.Diagnostics -> RaftLucideIconName.ClipboardList
                 },
             leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
+                RaftBrutalIconButton(
+                    iconName = RaftLucideIconName.ArrowLeft,
                     onClick = {
                         if (destination != AuthAboutDestination.About && initialDestination == AuthAboutDestination.About) {
                             destination = AuthAboutDestination.About
@@ -1186,7 +1186,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         val reportFailedDiagnosticsCopiedMessage = stringResource(MR.strings.auth_notice_report_failed_diagnostics_copied)
         // task #177: standalone page outside the app shell; the lists reserve the
         // system navigation bar themselves.
-        val aboutBottomContentPadding = slockBottomSafeAreaPadding() + SlockSpacing.Lg
+        val aboutBottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg
         when (destination) {
             AuthAboutDestination.About ->
                 SharedSettingsAboutContent(
@@ -1200,7 +1200,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     onCopyValue = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     webUrl = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl.orEmpty(),
-                    onOpenSlock = { url -> linkNavigator.open(url) },
+                    onOpenRaft = { url -> linkNavigator.open(url) },
                     onCheckHandsUpdate = {
                         bridgeCallScope.launch {
                             developerState =
@@ -1516,8 +1516,8 @@ internal fun LoginContent(
         AuthCenterMark()
         Text(
             text = stringResource(MR.strings.auth_title_sign_in),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
@@ -1714,8 +1714,8 @@ internal fun RegisterContent(
         AuthCenterMark()
         Text(
             text = stringResource(MR.strings.auth_title_create_account),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
@@ -1796,14 +1796,14 @@ internal fun AuthProfileSetupContent(
         AuthCenterMark()
         Text(
             text = stringResource(MR.strings.auth_title_profile_setup),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
             text = stringResource(MR.strings.auth_hint_profile_setup),
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
@@ -1820,8 +1820,8 @@ internal fun AuthProfileSetupContent(
             )
             Text(
                 text = stringResource(MR.strings.auth_hint_username),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 modifier = Modifier.authPageStaticTextFocus()
             )
             AuthTextField(
@@ -1837,8 +1837,8 @@ internal fun AuthProfileSetupContent(
             )
             Text(
                 text = stringResource(MR.strings.auth_hint_display_name),
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
+                color = RaftColor.TextMutedGray,
                 modifier = Modifier.authPageStaticTextFocus()
             )
             AuthError(errorMessage)
@@ -1876,14 +1876,14 @@ internal fun ForgotPasswordContent(
         AuthCenterMark()
         Text(
             text = stringResource(MR.strings.auth_title_reset_password),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
             text = stringResource(MR.strings.auth_hint_reset_password),
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
             modifier = Modifier.authPageStaticTextFocus()
         )
@@ -1954,14 +1954,14 @@ private fun AuthLegalAcceptanceContent(
                     MR.strings.auth_title_provider_sign_in,
                     listOf(providerName)
                 ).localized(),
-            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
             text = stringResource(MR.strings.auth_hint_legal_acceptance),
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
         )
@@ -2065,11 +2065,11 @@ internal fun AuthTermsAgreement(
                 .size(18.dp)
                 // raft-ui Checkbox: sticker radius, 1.5dp ink edge; checked fills with
                 // foreground and an inverse check.
-                .background(if (checked) SlockColor.TextBlack else SlockColor.Card, RoundedCornerShape(SlockRadius.Sticker))
-                .border(SlockStroke.Control, if (checked) SlockColor.TextBlack else SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sticker)),
+                .background(if (checked) RaftColor.TextBlack else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Sticker))
+                .border(RaftAppStroke.Control, if (checked) RaftColor.TextBlack else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
             contentAlignment = Alignment.Center
         ) {
-            if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp), color = slockArgbHex(SlockColor.ForegroundInverse))
+            if (checked) RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(13.dp), color = raftArgbHex(RaftColor.ForegroundInverse))
         }
         Spacer(Modifier.width(10.dp))
         Text(
@@ -2120,18 +2120,18 @@ internal fun authTermsAgreementText(
 // the last policy word to the following connector and sentence at layout time.
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
-private val AuthLegalNoticeTextColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.60f)
+private val AuthLegalNoticeTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.60f)
 // Task #179: getter, not val -- a captured style would keep the face active at class-init and
 // ignore the Settings font option.
 private val AuthLegalNoticeTextStyle: TextStyle
-    get() = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
+    get() = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
 private val AuthLegalNoticeLinkStyle: TextStyle
-    get() = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
-private val AuthTermsTextColor: Color get() = SlockColor.TextBlack.copy(alpha = 0.70f)
+    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
+private val AuthTermsTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.70f)
 private val AuthTermsTextStyle: TextStyle
-    get() = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
+    get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
 private val AuthTermsLinkStyle: TextStyle
-    get() = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
+    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 @Composable
 private fun LoginContentPreview() {
@@ -2179,7 +2179,7 @@ internal fun Pager.openAuthPage(pageName: String, destination: String? = null) {
     val pageData =
         authPageData(
             pageName = pageName,
-            replaceCurrent = pageName == SLOCK_APP_SHELL_PAGE
+            replaceCurrent = pageName == RAFT_APP_SHELL_PAGE
         ).apply {
             destination?.takeIf { it.isNotBlank() }?.let { put(AUTH_DESTINATION_KEY, it) }
         }
@@ -2205,12 +2205,12 @@ internal fun Pager.openAuthProfileSetupReplacingCurrentPage() {
 internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthRouteDestination =
     if (session != null && (session.user.emailVerified == false || session.user.requiresProfileSetup)) {
         AuthRouteDestination(
-            pageName = SLOCK_APP_SHELL_PAGE,
+            pageName = RAFT_APP_SHELL_PAGE,
             pageData = appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)
         )
     } else if (!session?.selectedServerId.isNullOrBlank()) {
         AuthRouteDestination(
-            pageName = SLOCK_APP_SHELL_PAGE,
+            pageName = RAFT_APP_SHELL_PAGE,
             pageData = appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)
         )
     } else {
@@ -2223,7 +2223,7 @@ internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthR
             pageData =
                 authChooseServerPageData(
                     replaceCurrent = true,
-                    storeScope = SlockShellStoreScope.Legacy
+                    storeScope = RaftShellStoreScope.Legacy
                 )
         )
     }

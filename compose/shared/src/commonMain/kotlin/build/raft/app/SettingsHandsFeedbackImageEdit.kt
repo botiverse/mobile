@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
 import build.raft.app.compat.json.JSONObject
@@ -18,8 +18,8 @@ import kotlinx.atomicfu.locks.synchronized
 
 internal data class SettingsHandsFeedbackImageEditRequest(
     val session: SettingsHandsFeedbackImageEditSession,
-    val previewPayload: SlockFilePreviewPayload,
-    val sourceStoreScope: SlockShellStoreScope
+    val previewPayload: RaftFilePreviewPayload,
+    val sourceStoreScope: RaftShellStoreScope
 )
 
 internal data class SettingsHandsFeedbackImageEditSession(
@@ -29,8 +29,8 @@ internal data class SettingsHandsFeedbackImageEditSession(
     val pageGeneration: String,
     val expectedCount: Int,
     val previewSessionId: String = "",
-    val groupState: SlockImageEditGroupState =
-        SlockImageEditGroupState(
+    val groupState: RaftImageEditGroupState =
+        RaftImageEditGroupState(
             expectedGroupId = groupId,
             expectedCount = expectedCount
         ),
@@ -297,8 +297,8 @@ internal fun settingsHandsFeedbackImageEditEventMatchesSession(
  * the page tracker there would strand the still-valid sibling actions.
  */
 internal fun settingsHandsFeedbackRejectedAdmissionIsTerminal(
-    admission: SlockFilePreviewComposerImageEventAdmission.Rejected,
-    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry()
+    admission: RaftFilePreviewComposerImageEventAdmission.Rejected,
+    registry: RaftFilePreviewEphemeralActionRegistry = raftFilePreviewEphemeralActionRegistry()
 ): Boolean =
     admission.orphanedTemporaryFileRefs.isNotEmpty() ||
         admission.sessionId.isBlank() ||
@@ -313,8 +313,8 @@ internal fun settingsHandsFeedbackRejectedAdmissionIsTerminal(
  */
 internal fun abortSettingsHandsFeedbackImageEditSessions(
     sessionIds: Collection<String>,
-    registry: SlockFilePreviewEphemeralActionRegistry = slockFilePreviewEphemeralActionRegistry(),
-    cleanupLedger: SlockFilePreviewEphemeralCleanupLedger = slockFilePreviewEphemeralCleanupLedger(),
+    registry: RaftFilePreviewEphemeralActionRegistry = raftFilePreviewEphemeralActionRegistry(),
+    cleanupLedger: RaftFilePreviewEphemeralCleanupLedger = raftFilePreviewEphemeralCleanupLedger(),
     retire: (sessionId: String, fileRefs: Set<String>) -> Unit = { id, refs ->
         ThreadComposerTemporaryFileRetirement.retire(id, refs)
     }
@@ -322,7 +322,7 @@ internal fun abortSettingsHandsFeedbackImageEditSessions(
     val normalizedIds = sessionIds.map(String::trim).filter(String::isNotBlank).toSet()
     val cleanupRefs = linkedSetOf<String>()
     normalizedIds.forEach { sessionId ->
-        val refs = slockFilePreviewAbortComposerImageEventSession(
+        val refs = raftFilePreviewAbortComposerImageEventSession(
             sessionId = sessionId,
             registry = registry,
             cleanupLedger = cleanupLedger
@@ -345,7 +345,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
     accountId: String,
     pageGeneration: String,
     files: List<PlatformFile>,
-    sourceStoreScope: SlockShellStoreScope,
+    sourceStoreScope: RaftShellStoreScope,
     groupId: String = newSettingsHandsFeedbackImageEditId()
 ): SettingsHandsFeedbackImageEditRequest? {
     if (groupId.isBlank() || pageGeneration.isBlank() || files.isEmpty()) return null
@@ -365,7 +365,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
         session = session,
         sourceStoreScope = sourceStoreScope,
         previewPayload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 kind = "image",
                 titleDesc = MR.strings.file_preview_image.desc(),
                 subtitle = firstFile.fileName,
@@ -398,7 +398,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
                     files.filter(PlatformFile::isComposerImageOwnedTemporary)
                         .mapNotNull(PlatformFile::fileRef),
                 // Feedback has no "original image" control. Freeze the product default here
-                // instead of inheriting SlockFilePreviewPayload's non-composer-safe false
+                // instead of inheriting RaftFilePreviewPayload's non-composer-safe false
                 // default: editor PNG output must receive the same JPEG pass as composer images.
                 composerImageCompressAfterEdit = true,
                 composerImageCanComplete = true,
@@ -418,7 +418,7 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
     accountId: String,
     pageGeneration: String,
     file: PlatformFile,
-    sourceStoreScope: SlockShellStoreScope,
+    sourceStoreScope: RaftShellStoreScope,
     groupId: String = newSettingsHandsFeedbackImageEditId()
 ): SettingsHandsFeedbackImageEditRequest? {
     if (groupId.isBlank() || pageGeneration.isBlank() || file.fileRef.isNullOrBlank()) return null
@@ -436,7 +436,7 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
         session = session,
         sourceStoreScope = sourceStoreScope,
         previewPayload =
-            SlockFilePreviewPayload(
+            RaftFilePreviewPayload(
                 kind = "image",
                 requestedKind = "image",
                 titleDesc = MR.strings.file_preview_image.desc(),
@@ -498,7 +498,7 @@ internal fun normalizeSettingsHandsFeedbackPickerFiles(
                 "image/webp" -> ".webp"
                 else -> null
             }
-        if (extension == null || slockComposerImagePickerIsStrictImage(file.fileName, normalizedMimeType)) {
+        if (extension == null || raftComposerImagePickerIsStrictImage(file.fileName, normalizedMimeType)) {
             file
         } else {
             file.copy(fileName = "${file.fileName.ifBlank { "image" }}$extension")
@@ -512,7 +512,7 @@ internal fun parseSettingsHandsFeedbackImageEditEvent(
     // Keep Settings and Thread on one strict parser.  In particular, group metadata and the
     // explicit source/compressed finalization proof must not drift between consumers.
     val payload =
-        parseSlockFilePreviewComposerImageEvent(
+        parseRaftFilePreviewComposerImageEvent(
             data = data,
             requireGroup = true
         ) ?: return null
@@ -577,7 +577,7 @@ internal fun foldSettingsHandsFeedbackImageEditEvent(
     }
     val previousItems = session.groupState.itemsByIndex
     val nextGroupState =
-        SlockImageEditGroupReconcile.fold(
+        RaftImageEditGroupReconcile.fold(
             state = session.groupState,
             actualGroupId = event.groupId,
             index = event.index,

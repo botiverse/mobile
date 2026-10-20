@@ -1,7 +1,7 @@
 package build.raft.app
 
-import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalCard
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftBrutalCard
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
@@ -40,24 +40,24 @@ import kotlinx.serialization.Serializable
 // Opened from the Settings "Workspace" section through the single production
 // Settings WebView page. Rendering inside the retained multi-tab child pager
 // previously caused the header/WebView attach-order flash (task #227).
-internal fun Pager.openSettingsBillingPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
+internal fun Pager.openSettingsBillingPage(storeScope: build.raft.app.data.RaftShellStoreScope) {
     openSettingsWebViewPage(SettingsWebViewSurface.Billing, storeScope)
 }
 
 @Serializable
-internal data class KuiklySettingsBillingPayload(
+internal data class RaftSettingsBillingPayload(
     val instanceId: String = "",
     val status: String = "content",
-    val currentPlan: KuiklySettingsCurrentPlan = KuiklySettingsCurrentPlan(),
-    val plans: List<KuiklySettingsBillingPlan> = emptyList(),
-    val notices: List<KuiklySettingsBillingNotice> = emptyList(),
-    val actions: List<KuiklySettingsBillingAction> = emptyList(),
+    val currentPlan: RaftSettingsCurrentPlan = RaftSettingsCurrentPlan(),
+    val plans: List<RaftSettingsBillingPlan> = emptyList(),
+    val notices: List<RaftSettingsBillingNotice> = emptyList(),
+    val actions: List<RaftSettingsBillingAction> = emptyList(),
     val comparePlansUrl: String = "https://raft.build/#pricing",
-    val labels: KuiklySettingsBillingLabels = KuiklySettingsBillingLabels()
+    val labels: RaftSettingsBillingLabels = RaftSettingsBillingLabels()
 )
 
 @Serializable
-internal data class KuiklySettingsBillingLabels(
+internal data class RaftSettingsBillingLabels(
     val trialActive: String = "Free Trial Active",
     val trialDetail: String = "Your workspace can keep testing Raft with all core collaboration features enabled.",
     val currentPlan: String = "CURRENT PLAN",
@@ -71,9 +71,9 @@ internal data class KuiklySettingsBillingLabels(
 )
 
 @Serializable
-internal data class KuiklySettingsCurrentPlan(
+internal data class RaftSettingsCurrentPlan(
     val planName: String = "Hobby",
-    val usageRows: List<KuiklySettingsPlanUsageRow> = emptyList(),
+    val usageRows: List<RaftSettingsPlanUsageRow> = emptyList(),
     val trialActive: Boolean = false,
     val description: String = "",
     val includedFeatures: List<String> = emptyList(),
@@ -81,13 +81,13 @@ internal data class KuiklySettingsCurrentPlan(
 )
 
 @Serializable
-internal data class KuiklySettingsPlanUsageRow(
+internal data class RaftSettingsPlanUsageRow(
     val label: String = "",
     val value: String = ""
 )
 
 @Serializable
-internal data class KuiklySettingsBillingPlan(
+internal data class RaftSettingsBillingPlan(
     val id: String = "",
     val name: String = "",
     val price: String = "",
@@ -98,16 +98,16 @@ internal data class KuiklySettingsBillingPlan(
 )
 
 @Serializable
-internal data class KuiklySettingsBillingNotice(
+internal data class RaftSettingsBillingNotice(
     val key: String = "",
     val title: String = "",
     val detail: String = "",
     val tone: String = "info",
-    val rows: List<KuiklySettingsPlanUsageRow> = emptyList()
+    val rows: List<RaftSettingsPlanUsageRow> = emptyList()
 )
 
 @Serializable
-internal data class KuiklySettingsBillingAction(
+internal data class RaftSettingsBillingAction(
     val key: String = "",
     val label: String = "",
     val detail: String = "",
@@ -119,10 +119,10 @@ internal data class KuiklySettingsBillingAction(
 )
 
 internal val settingsBillingSmokePayload =
-    KuiklySettingsBillingPayload(
+    RaftSettingsBillingPayload(
         instanceId = "settings-billing-smoke",
         currentPlan =
-            KuiklySettingsCurrentPlan(
+            RaftSettingsCurrentPlan(
                 planName = "Hobby",
                 trialActive = true,
                 description = "Get started in minutes.",
@@ -136,14 +136,14 @@ internal val settingsBillingSmokePayload =
                 excludedFeatures = listOf("Unlimited message history"),
                 usageRows =
                     listOf(
-                        KuiklySettingsPlanUsageRow("Messages", "4,120 / 10,000"),
-                        KuiklySettingsPlanUsageRow("Members", "8 / 20"),
-                        KuiklySettingsPlanUsageRow("AI agents", "5 active")
+                        RaftSettingsPlanUsageRow("Messages", "4,120 / 10,000"),
+                        RaftSettingsPlanUsageRow("Members", "8 / 20"),
+                        RaftSettingsPlanUsageRow("AI agents", "5 active")
                     )
             ),
         notices =
             listOf(
-                KuiklySettingsBillingNotice(
+                RaftSettingsBillingNotice(
                     key = "trial",
                     title = "Final Trial Period",
                     detail = "All features are currently unlocked during the free trial.",
@@ -152,12 +152,12 @@ internal val settingsBillingSmokePayload =
             ),
         actions =
             listOf(
-                KuiklySettingsBillingAction(
+                RaftSettingsBillingAction(
                     key = "portal",
                     label = "Billing portal",
                     detail = "Paid plans are not available yet."
                 ),
-                KuiklySettingsBillingAction(
+                RaftSettingsBillingAction(
                     key = "compare",
                     label = "See all features and compare plans",
                     detail = "Open public pricing comparison."
@@ -165,7 +165,7 @@ internal val settingsBillingSmokePayload =
             ),
         plans =
             listOf(
-                KuiklySettingsBillingPlan(
+                RaftSettingsBillingPlan(
                     id = "hobby",
                     name = "Hobby",
                     price = "$0 / month",
@@ -177,13 +177,13 @@ internal val settingsBillingSmokePayload =
                         ),
                     current = true
                 ),
-                KuiklySettingsBillingPlan(
+                RaftSettingsBillingPlan(
                     id = "team",
                     name = "Team",
                     price = "$29 / month",
                     features = listOf("Shared team spaces", "More AI agent capacity", "Priority workspace controls")
                 ),
-                KuiklySettingsBillingPlan(
+                RaftSettingsBillingPlan(
                     id = "business",
                     name = "Business",
                     price = "Custom",
@@ -206,12 +206,12 @@ internal val settingsBillingWebViewSpec =
 
 @Composable
 internal fun SettingsBillingContent(
-    payload: KuiklySettingsBillingPayload,
-    bottomContentPadding: Dp = SlockSpacing.Lg,
+    payload: RaftSettingsBillingPayload,
+    bottomContentPadding: Dp = RaftAppSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (payload.status) {
@@ -219,7 +219,7 @@ internal fun SettingsBillingContent(
             "error" -> item { SettingsBillingStatusPanel(payload.labels.error) }
             "noPermission" ->
                 item {
-                    SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Billing")
+                    SettingsBillingSectionHeader(RaftLucideIconName.CreditCard, "Billing")
                     SettingsBillingStatusPanel(payload.labels.noPermission)
                 }
             else -> {
@@ -227,7 +227,7 @@ internal fun SettingsBillingContent(
                     payload.notices.ifEmpty {
                         if (payload.currentPlan.trialActive) {
                             listOf(
-                                KuiklySettingsBillingNotice(
+                                RaftSettingsBillingNotice(
                                     key = "trial",
                                     title = payload.labels.trialActive,
                                     detail = payload.labels.trialDetail,
@@ -241,9 +241,9 @@ internal fun SettingsBillingContent(
                 notices.forEach { notice ->
                     item(key = "notice-${notice.key}") { BillingNoticeCard(notice) }
                 }
-                item { SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, payload.labels.currentPlan) }
+                item { SettingsBillingSectionHeader(RaftLucideIconName.CreditCard, payload.labels.currentPlan) }
                 item { CurrentPlanCard(payload, onEvent) }
-                item { SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, payload.planSectionLabel()) }
+                item { SettingsBillingSectionHeader(RaftLucideIconName.CreditCard, payload.planSectionLabel()) }
                 items(payload.plans.size, key = { index -> "plan-$index-${payload.plans[index].id}" }) { index ->
                     val plan = payload.plans[index]
                     PlanCard(
@@ -283,30 +283,30 @@ internal fun settingsBillingWebViewInjectedJavaScript(
 }
 
 @Composable
-private fun BillingNoticeCard(notice: KuiklySettingsBillingNotice) {
+private fun BillingNoticeCard(notice: RaftSettingsBillingNotice) {
     val background = billingNoticeBackground(notice.tone)
     val iconName =
         when (notice.tone) {
-            "warning" -> SlockLucideIconName.TriangleAlert
-            else -> SlockLucideIconName.BadgeInfo
+            "warning" -> RaftLucideIconName.TriangleAlert
+            else -> RaftLucideIconName.BadgeInfo
         }
     Column(
         modifier =
             Modifier.fillMaxWidth()
                 .background(background)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                 .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SlockLucideIcon(iconName, modifier = Modifier.size(16.dp))
-            Text(notice.title, style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            RaftLucideIcon(iconName, modifier = Modifier.size(16.dp))
+            Text(notice.title, style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
         }
-        Text(notice.detail, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(notice.detail, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
         notice.rows.forEach { row ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(row.label, style = SlockType.TabLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, modifier = Modifier.weight(1f))
-                Text(row.value, style = SlockType.TabLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(row.label, style = RaftType.TabLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, modifier = Modifier.weight(1f))
+                Text(row.value, style = RaftType.TabLabel.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
             }
         }
     }
@@ -314,17 +314,17 @@ private fun BillingNoticeCard(notice: KuiklySettingsBillingNotice) {
 
 private fun billingNoticeBackground(tone: String): Color =
     when (tone) {
-        "warning" -> SlockColor.AccentOrange
-        "success" -> SlockColor.AccentLime
-        "trial" -> SlockColor.BrandYellow
-        else -> SlockColor.SurfaceCream
+        "warning" -> RaftColor.AccentOrange
+        "success" -> RaftColor.AccentLime
+        "trial" -> RaftColor.BrandYellow
+        else -> RaftColor.SurfaceCream
     }
 
 private val SettingsBillingSoftDivider = Color(0x1A000000)
 private const val SettingsBillingIncludedIconColor = "#FF15803D"
 private const val SettingsBillingExcludedIconColor = "#FFF97264"
 
-private fun KuiklySettingsBillingPayload.planSectionLabel(): String =
+private fun RaftSettingsBillingPayload.planSectionLabel(): String =
     if (plans.any { !it.current && it.name.equals("Pro", ignoreCase = true) }) {
         "UPGRADE TO PRO"
     } else {
@@ -333,10 +333,10 @@ private fun KuiklySettingsBillingPayload.planSectionLabel(): String =
 
 @Composable
 private fun CurrentPlanCard(
-    payload: KuiklySettingsBillingPayload,
+    payload: RaftSettingsBillingPayload,
     onEvent: (String, String?) -> Unit
 ) {
-    SlockBrutalCard(
+    RaftBrutalCard(
         shadowOffset = 2.dp,
         contentPadding = 0.dp,
         verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -345,26 +345,26 @@ private fun CurrentPlanCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
+                    .background(RaftColor.SurfaceCream)
                     .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 payload.currentPlan.planName,
-                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
+                style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             payload.currentPlan.description.takeIf { it.isNotBlank() }?.let { description ->
                 Text(
                     description,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
+                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+                    color = RaftColor.TextMutedGray
                 )
             }
         }
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
 
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -377,7 +377,7 @@ private fun CurrentPlanCard(
         }
 
         if (payload.currentPlan.usageRows.isNotEmpty()) {
-            Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SettingsBillingSoftDivider))
+            Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(SettingsBillingSoftDivider))
             Column(
                 modifier =
                     Modifier
@@ -389,16 +389,16 @@ private fun CurrentPlanCard(
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             row.label,
-                            style = SlockType.TabLabel.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                            color = SlockColor.TextBlack,
+                            style = RaftType.TabLabel.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
+                            color = RaftColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             row.value,
-                            style = SlockType.TabLabel.copy(color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
+                            style = RaftType.TabLabel.copy(color = RaftColor.TextMutedGray),
+                            color = RaftColor.TextMutedGray,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -407,7 +407,7 @@ private fun CurrentPlanCard(
             }
         }
 
-        Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SettingsBillingSoftDivider))
+        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(SettingsBillingSoftDivider))
         Column(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -428,20 +428,20 @@ private fun BillingFeatureSection(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             title,
-            style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = if (included) SlockColor.TextBlack else SlockColor.TextMutedGray),
-            color = if (included) SlockColor.TextBlack else SlockColor.TextMutedGray
+            style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = if (included) RaftColor.TextBlack else RaftColor.TextMutedGray),
+            color = if (included) RaftColor.TextBlack else RaftColor.TextMutedGray
         )
         features.forEach { feature ->
             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockLucideIcon(
-                    if (included) SlockLucideIconName.Check else SlockLucideIconName.X,
+                RaftLucideIcon(
+                    if (included) RaftLucideIconName.Check else RaftLucideIconName.X,
                     modifier = Modifier.padding(top = 2.dp).size(14.dp),
                     color = if (included) SettingsBillingIncludedIconColor else SettingsBillingExcludedIconColor
                 )
                 Text(
                     feature,
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
+                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
+                    color = RaftColor.TextBlack,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -451,7 +451,7 @@ private fun BillingFeatureSection(
 
 @Composable
 private fun BillingActions(
-    payload: KuiklySettingsBillingPayload,
+    payload: RaftSettingsBillingPayload,
     onEvent: (String, String?) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -459,7 +459,7 @@ private fun BillingActions(
             BillingActionButton(action) { onEvent(action.key, null) }
         }
         BillingActionButton(
-            KuiklySettingsBillingAction(
+            RaftSettingsBillingAction(
                 key = "comparePlans",
                 label = stringResource(MR.strings.settings_billing_action_compare_plans),
                 enabled = payload.comparePlansUrl.isNotBlank()
@@ -469,9 +469,9 @@ private fun BillingActions(
 }
 
 @Composable
-private fun BillingActionButton(action: KuiklySettingsBillingAction, onClick: () -> Unit) {
+private fun BillingActionButton(action: RaftSettingsBillingAction, onClick: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalActionButton(
+        RaftBrutalActionButton(
             label = action.status.ifBlank { action.label },
             onClick = onClick,
             enabled = action.enabled && !action.inProgress,
@@ -481,10 +481,10 @@ private fun BillingActionButton(action: KuiklySettingsBillingAction, onClick: ()
             shadowOffset = 2.dp
         )
         action.detail.takeIf { it.isNotBlank() }?.let { detail ->
-            Text(detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            Text(detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         }
         action.errorCode?.takeIf { it.isNotBlank() }?.let { errorCode ->
-            Text(errorCode, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+            Text(errorCode, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
         }
     }
 }
@@ -492,9 +492,9 @@ private fun BillingActionButton(action: KuiklySettingsBillingAction, onClick: ()
 internal fun SettingsBillingActionSnapshot.toBillingActionPayload(
     actionState: SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings
-): KuiklySettingsBillingAction {
+): RaftSettingsBillingAction {
     val isCurrentAction = actionState?.action == key
-    return KuiklySettingsBillingAction(
+    return RaftSettingsBillingAction(
         key = key,
         label = label,
         detail = detail,
@@ -516,7 +516,7 @@ internal fun SettingsBillingActionSnapshot.toBillingActionPayload(
 private fun SettingsBillingLoadingContent() {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SettingsBillingSectionHeader(
-            SlockLucideIconName.CreditCard,
+            RaftLucideIconName.CreditCard,
             stringResource(MR.strings.settings_section_billing_title)
         )
         HardShadowCard {
@@ -525,13 +525,13 @@ private fun SettingsBillingLoadingContent() {
                     modifier =
                         Modifier.fillMaxWidth()
                             .height(if (index == 0) 28.dp else 18.dp)
-                            .background(if (index == 0) SlockColor.EmptyStateGray else SlockColor.SurfaceCream)
-                            .border(1.dp, SlockColor.BorderBlack)
+                            .background(if (index == 0) RaftColor.EmptyStateGray else RaftColor.SurfaceCream)
+                            .border(1.dp, RaftColor.BorderBlack)
                 )
             }
         }
         SettingsBillingSectionHeader(
-            SlockLucideIconName.CreditCard,
+            RaftLucideIconName.CreditCard,
             stringResource(MR.strings.settings_billing_plans_title)
         )
         repeat(3) {
@@ -539,14 +539,14 @@ private fun SettingsBillingLoadingContent() {
                 modifier =
                     Modifier.fillMaxWidth()
                         .height(112.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(RaftColor.SurfaceWhite)
+                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
                         .padding(14.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth().height(18.dp).background(SlockColor.EmptyStateGray))
-                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.SurfaceCream))
-                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.SurfaceCream))
+                    Box(Modifier.fillMaxWidth().height(18.dp).background(RaftColor.EmptyStateGray))
+                    Box(Modifier.fillMaxWidth().height(14.dp).background(RaftColor.SurfaceCream))
+                    Box(Modifier.fillMaxWidth().height(14.dp).background(RaftColor.SurfaceCream))
                 }
             }
         }
@@ -555,8 +555,8 @@ private fun SettingsBillingLoadingContent() {
 
 @Composable
 private fun PlanCard(
-    plan: KuiklySettingsBillingPlan,
-    labels: KuiklySettingsBillingLabels,
+    plan: RaftSettingsBillingPlan,
+    labels: RaftSettingsBillingLabels,
     onChoosePlan: () -> Unit
 ) {
     val enabled = !plan.current && !plan.comingSoon
@@ -564,10 +564,10 @@ private fun PlanCard(
         Column(
             modifier =
                 Modifier.fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
+                    .background(RaftColor.SurfaceWhite)
                     .border(
-                        SlockStroke.Default,
-                        if (plan.comingSoon) SlockColor.TextMutedGray else SlockColor.BorderBlack
+                        RaftAppStroke.Default,
+                        if (plan.comingSoon) RaftColor.TextMutedGray else RaftColor.BorderBlack
                     )
                     .alpha(if (plan.comingSoon) 0.68f else 1f)
                     .padding(14.dp),
@@ -581,23 +581,23 @@ private fun PlanCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         plan.name.uppercase(),
-                        style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         plan.price,
-                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
+                        style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextMutedGray),
+                        color = RaftColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 if (plan.current) {
-                    SettingsStatusBadge(plan.badgeLabel ?: labels.currentPlanButton, SlockColor.AccentLime)
+                    SettingsStatusBadge(plan.badgeLabel ?: labels.currentPlanButton, RaftColor.AccentLime)
                 } else if (plan.comingSoon) {
-                    SettingsStatusBadge(plan.badgeLabel ?: labels.comingSoon, SlockColor.EmptyStateGray)
+                    SettingsStatusBadge(plan.badgeLabel ?: labels.comingSoon, RaftColor.EmptyStateGray)
                 }
             }
             plan.features.forEach { feature ->
@@ -605,11 +605,11 @@ private fun PlanCard(
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.padding(top = 3.dp).size(14.dp))
+                    RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.padding(top = 3.dp).size(14.dp))
                     Text(
                         feature,
-                        style = SlockType.Body.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
+                        style = RaftType.Body.copy(color = RaftColor.TextBlack),
+                        color = RaftColor.TextBlack,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -631,7 +631,7 @@ private fun PlanCard(
         Box(modifier = Modifier.fillMaxWidth()) { content() }
     } else {
         Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
-            Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+            Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(RaftColor.ShadowBlack))
             content()
         }
     }
@@ -646,11 +646,11 @@ private fun PlanActionButton(
 ) {
     val background =
         when {
-            current -> SlockColor.AccentLime
-            enabled -> SlockColor.AccentPink
-            else -> SlockColor.EmptyStateGray
+            current -> RaftColor.AccentLime
+            enabled -> RaftColor.AccentPink
+            else -> RaftColor.EmptyStateGray
     }
-    SlockBrutalActionButton(
+    RaftBrutalActionButton(
         label = text,
         onClick = onClick,
         enabled = enabled,
@@ -659,21 +659,21 @@ private fun PlanActionButton(
         disabledBackgroundColor = background,
         minWidth = 0.dp,
         minHeight = 42.dp,
-        textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
+        textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
     )
 }
 
 @Composable
-private fun SettingsBillingSectionHeader(iconName: SlockLucideIconName, label: String) {
+private fun SettingsBillingSectionHeader(iconName: RaftLucideIconName, label: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+        RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
         Text(
             label,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
+            style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -683,13 +683,13 @@ private fun SettingsBillingSectionHeader(iconName: SlockLucideIconName, label: S
 @Composable
 private fun SettingsStatusBadge(text: String, color: Color) {
     Box(
-        modifier = Modifier.background(color).border(1.dp, SlockColor.BorderBlack).padding(horizontal = 8.dp, vertical = 3.dp),
+        modifier = Modifier.background(color).border(1.dp, RaftColor.BorderBlack).padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text,
-            style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = RaftType.TabLabel.copy(color = RaftColor.TextBlack),
+            color = RaftColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -701,15 +701,15 @@ private fun SettingsBillingStatusPanel(title: String) {
     HardShadowCard {
         Text(
             title,
-            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
+            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
+            color = RaftColor.TextMutedGray
         )
     }
 }
 
 @Composable
 private fun HardShadowCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    SlockBrutalCard(
+    RaftBrutalCard(
         shadowOffset = 2.dp,
         contentPadding = 14.dp,
         verticalArrangement = Arrangement.spacedBy(8.dp),

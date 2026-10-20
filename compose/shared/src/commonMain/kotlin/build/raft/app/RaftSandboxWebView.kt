@@ -5,7 +5,7 @@ import androidx.compose.ui.Modifier
 import build.raft.app.compat.json.JSONObject
 
 /**
- * Attributes of the sandbox WebView (formerly the Kuikly `SlockSandboxWebView` view attrs).
+ * Attributes of the sandbox WebView (formerly the Kuikly `RaftSandboxWebView` view attrs).
  * [allowedNavigationSchemes] is already normalized (lower case, no trailing ':').
  */
 internal data class RaftWebViewConfig(
@@ -31,7 +31,7 @@ internal class RaftWebViewEvents {
     var onLoadFailure: (String) -> Unit = {}
     var onNavigationBlocked: (String) -> Unit = {}
     var onUrlChange: (String) -> Unit = {}
-    var onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {}
+    var onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {}
     var onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 
     /** Raw `raftHostPort` message from the page: validated and mapped to an accepted kind. */
@@ -67,13 +67,13 @@ internal const val RaftWebViewMaxRuntimeJavaScriptLength = 64 * 1024
 
 /**
  * Platform sandbox WebView: Android `AndroidView(WebView)` (port of `SlockSandboxWebViewRenderView`),
- * iOS `UIKitView(WKWebView)` (port of `SlockSandboxWebView.m`). Commands from [controller] are the
+ * iOS `UIKitView(WKWebView)` (port of `RaftSandboxWebView.m`). Commands from [controller] are the
  * Kuikly `navigationCommand` strings (`goBack`, `reload`, `evaluateJavaScript:<js>`, ...).
  */
 @Composable
 internal expect fun RaftSandboxWebViewHost(
     config: RaftWebViewConfig,
     events: RaftWebViewEvents,
-    controller: SlockWebViewController,
+    controller: RaftWebViewController,
     modifier: Modifier,
 )

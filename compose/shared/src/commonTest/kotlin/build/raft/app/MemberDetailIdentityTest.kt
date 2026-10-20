@@ -59,7 +59,7 @@ class MemberDetailIdentityTest {
             JSONObject().apply {
                 put("memberId", "human-artin")
             }
-                .toKuiklyMemberDetailPayload()
+                .toRaftMemberDetailPayload()
 
         assertEquals(null, payload.identity)
     }

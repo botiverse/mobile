@@ -78,7 +78,7 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
         }
     }
 
-    private class Rig(database: SlockSqlDatabase) {
+    private class Rig(database: RaftSqlDatabase) {
         val logs = mutableListOf<String>()
         private val network = PathNetworkClient(
             mutableMapOf(
@@ -114,11 +114,11 @@ class CanonicalMessageV2ReplyThreadRoundTripTest {
         )
     }
 
-    private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {
+    private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
-            SlockSqlDatabase.Schema.create(driver).value
-            block(SlockSqlDatabase(driver))
+            RaftSqlDatabase.Schema.create(driver).value
+            block(RaftSqlDatabase(driver))
         } finally {
             driver.close()
         }

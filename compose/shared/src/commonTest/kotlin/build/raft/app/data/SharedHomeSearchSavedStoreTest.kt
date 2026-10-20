@@ -22,11 +22,11 @@ import kotlin.test.assertEquals
 class SharedHomeSearchSavedStoreTest {
     @Test
     fun searchPersonalizationHydratesAndClearPreservesFrequentUsage() = runBlocking {
-        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
         val now = 1_800_000_000_000L
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = FakeSearchRepository(),
                 scope = this,
@@ -64,7 +64,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = DeferredSearchRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = this,
@@ -89,11 +89,11 @@ class SharedHomeSearchSavedStoreTest {
 
     @Test
     fun searchPersonalizationPrewarmsSynchronouslyAtStoreConstruction() = runBlocking {
-        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
         val now = 1_800_000_000_000L
         val writerStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = FakeSearchRepository(),
                 scope = this,
@@ -117,7 +117,7 @@ class SharedHomeSearchSavedStoreTest {
         // runs and without yielding to the async refresh.
         val readerStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = FakeSearchRepository(),
                 scope = this,
@@ -144,7 +144,7 @@ class SharedHomeSearchSavedStoreTest {
 
     @Test
     fun latePersonalizationReadCannotCrossAccountBoundary() = runBlocking {
-        val auth = InMemorySlockAuthSessionStore(sampleSession("user-a"))
+        val auth = InMemoryRaftAuthSessionStore(sampleSession("user-a"))
         val repository = DeferredSearchPersonalizationRepository()
         val store =
             SharedHomeSearchSavedStore(
@@ -174,11 +174,11 @@ class SharedHomeSearchSavedStoreTest {
 
     @Test
     fun rapidSuccessfulOpensPersistInDispatchOrder() = runBlocking {
-        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
         var now = 1_800_000_000_000L
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = FakeSearchRepository(),
                 scope = this,
@@ -198,8 +198,8 @@ class SharedHomeSearchSavedStoreTest {
 
     @Test
     fun samePrincipalOnAnotherServerNeverSeesThePreviousServerHistory() = runBlocking {
-        val auth = InMemorySlockAuthSessionStore(sampleSession(serverId = "server-a"))
-        val repository = PersistentSearchPersonalizationRepository(InMemorySlockKeyValueStore())
+        val auth = InMemoryRaftAuthSessionStore(sampleSession(serverId = "server-a"))
+        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
         val store =
             SharedHomeSearchSavedStore(
                 authStore = auth,
@@ -243,7 +243,7 @@ class SharedHomeSearchSavedStoreTest {
         }
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(items = listOf(unreadItem)),
                 searchRepository = FakeSearchRepository(items = listOf(unreadItem)),
                 scope = scope,
@@ -276,7 +276,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -299,7 +299,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = DeferredSavedRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -323,7 +323,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = DeferredMutationSavedRepository(items = listOf(inboxItem("message-1")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -349,7 +349,7 @@ class SharedHomeSearchSavedStoreTest {
             )
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -380,7 +380,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = DeferredMutationSavedRepository(items = listOf(canonicalItem))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -419,7 +419,7 @@ class SharedHomeSearchSavedStoreTest {
             val saved = DeferredMutationSavedRepository(items = canonicalItems)
             val store =
                 SharedHomeSearchSavedStore(
-                    authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                     savedRepository = saved,
                     searchRepository = FakeSearchRepository(),
                     savedStateCache = cache,
@@ -451,7 +451,7 @@ class SharedHomeSearchSavedStoreTest {
         val primaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val primaryStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -464,7 +464,7 @@ class SharedHomeSearchSavedStoreTest {
         val secondaryRepository = DeferredSavedRepository()
         val secondaryStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = secondaryRepository,
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -483,7 +483,7 @@ class SharedHomeSearchSavedStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -509,7 +509,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -534,7 +534,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -552,7 +552,7 @@ class SharedHomeSearchSavedStoreTest {
         val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val preloadStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -564,7 +564,7 @@ class SharedHomeSearchSavedStoreTest {
         val standaloneSaved = DeferredSavedRepository()
         val standaloneStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = standaloneSaved,
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -589,7 +589,7 @@ class SharedHomeSearchSavedStoreTest {
         val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val preloadStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -600,7 +600,7 @@ class SharedHomeSearchSavedStoreTest {
         val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val standaloneStore =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2")),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession(userId = "user-2")),
                 savedRepository = DeferredSavedRepository(),
                 searchRepository = FakeSearchRepository(),
                 savedStateCache = cache,
@@ -621,7 +621,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = DeferredSavedRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -650,7 +650,7 @@ class SharedHomeSearchSavedStoreTest {
         val saved = DeferredSavedRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = saved,
                 searchRepository = FakeSearchRepository(),
                 scope = scope
@@ -678,7 +678,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-2")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -718,7 +718,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-auto")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -740,7 +740,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-phrase")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -764,7 +764,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-pending")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -784,7 +784,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-preselect")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -805,7 +805,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = QueuedSearchRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -834,7 +834,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = QueuedSearchRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -869,7 +869,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-filter-only")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -891,7 +891,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-clear")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -913,7 +913,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = DeferredSearchRepository()
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -936,7 +936,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-3")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -976,7 +976,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-4")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -1000,7 +1000,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-multi-sender")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -1026,7 +1026,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-scope")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
@@ -1053,7 +1053,7 @@ class SharedHomeSearchSavedStoreTest {
         val search = FakeSearchRepository(items = listOf(inboxItem("message-scope-clear")))
         val store =
             SharedHomeSearchSavedStore(
-                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,

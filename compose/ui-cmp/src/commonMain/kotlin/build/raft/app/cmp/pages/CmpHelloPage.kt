@@ -25,9 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import build.raft.app.cmp.host.LocalSlockHost
-import build.raft.app.cmp.host.LocalSlockPageArgs
-import build.raft.app.toSlockJsonString
+import build.raft.app.cmp.host.LocalRaftHost
+import build.raft.app.cmp.host.LocalRaftPageArgs
+import build.raft.app.toRaftJsonString
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -37,14 +37,14 @@ import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 
 /**
- * Debug-only end-to-end check of a CMP host (`compose_cmp_hello`, see SlockCmpPages.debugOnly):
+ * Debug-only end-to-end check of a CMP host (`compose_cmp_hello`, see RaftCmpPages.debugOnly):
  * Raft theme and fonts, the route args, a HostCapabilities call (toast) and host navigation
  * (close). Not a product page; its copy is intentionally not localized.
  */
 @Composable
 internal fun CmpHelloPage() {
-    val host = LocalSlockHost.current
-    val args = LocalSlockPageArgs.current
+    val host = LocalRaftHost.current
+    val args = LocalRaftPageArgs.current
     val colors = RaftTheme.colors
     val type = RaftTheme.typography
     Column(
@@ -72,7 +72,7 @@ internal fun CmpHelloPage() {
             RaftText("pageName", style = type.footnote.copy(fontWeight = FontWeight.Bold), color = colors.foregroundMuted)
             RaftText(args.pageName, style = type.monoCode)
             RaftText("pageData", style = type.footnote.copy(fontWeight = FontWeight.Bold), color = colors.foregroundMuted)
-            RaftText(args.pageData.toSlockJsonString(), style = type.monoCode)
+            RaftText(args.pageData.toRaftJsonString(), style = type.monoCode)
         }
         HelloButton("Show toast", primary = true) {
             host.capabilities.toast("Hello from Compose Multiplatform")

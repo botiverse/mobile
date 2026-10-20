@@ -13,7 +13,7 @@ class AnnouncementsRemindersApiTest {
     @Test
     fun typedAnnouncementsRemindersApiAcceptsCanonicalUpstreamShapes() = runBlocking {
         val transport = RecordingAnnouncementsRemindersApi()
-        val client = SlockAnnouncementsRemindersApiClient(transport)
+        val client = RaftAnnouncementsRemindersApiClient(transport)
         val agentId = MemberId("agent-1")
 
         val announcements = assertIs<DataResult.Content<AnnouncementsPage>>(client.activeAnnouncements()).data
@@ -57,7 +57,7 @@ class AnnouncementsRemindersApiTest {
 
     @Test
     fun announcementPresentationFieldsAreRetainedAndUnsafeCtaIsDropped() = runBlocking {
-        val client = SlockAnnouncementsRemindersApiClient(
+        val client = RaftAnnouncementsRemindersApiClient(
             RecordingAnnouncementsRemindersApi(
                 activeBody = """{"announcements":[
                     {"id":"announcement-1","title":"Release notes","label":"Latest","image":{"assetId":"550e8400-e29b-41d4-a716-446655440000","alt":"Release image"},"cta":{"label":"Open","href":"/releases/1"},"pages":[{"body":"One"}],"publishedAt":"2026-05-22T00:00:00.000Z"},
@@ -77,7 +77,7 @@ class AnnouncementsRemindersApiTest {
     @Test
     fun typedAnnouncementsRemindersApiRejectsGuessedWrappersAndUnsupportedCommands() = runBlocking {
         val client =
-            SlockAnnouncementsRemindersApiClient(
+            RaftAnnouncementsRemindersApiClient(
                 RecordingAnnouncementsRemindersApi(
                     activeBody = """{"items":[{"id":"announcement-1","title":"Release notes"}]}""",
                     dismissBody = """{"success":true}""",
@@ -101,9 +101,9 @@ class AnnouncementsRemindersApiTest {
     }
 
     @Test
-    fun networkAnnouncementsRemindersApiUsesSlockNetworkClientRoutes() = runBlocking {
+    fun networkAnnouncementsRemindersApiUsesRaftNetworkClientRoutes() = runBlocking {
         val networkClient = RecordingAnnouncementsRemindersNetworkClient()
-        val client = SlockAnnouncementsRemindersApiClient(NetworkSlockAnnouncementsRemindersApi(networkClient))
+        val client = RaftAnnouncementsRemindersApiClient(NetworkRaftAnnouncementsRemindersApi(networkClient))
         val agentId = MemberId("agent-1")
 
         assertIs<DataResult.Content<AnnouncementsPage>>(client.activeAnnouncements())
@@ -126,7 +126,7 @@ class AnnouncementsRemindersApiTest {
         private val dismissBody: String = """{"ok":true}""",
         private val remindersBody: String =
             """{"reminders":[{"reminderId":"reminder-1","title":"standup","fireAt":"2026-05-22T00:00:00.000Z","status":"scheduled"}]}"""
-    ) : SlockAnnouncementsRemindersApi {
+    ) : RaftAnnouncementsRemindersApi {
         val calls = mutableListOf<String>()
 
         override suspend fun activeAnnouncements(): HomeNetworkResponse {
@@ -148,7 +148,7 @@ class AnnouncementsRemindersApiTest {
             HomeNetworkResponse(code = 200, bodyText = body)
     }
 
-    private class RecordingAnnouncementsRemindersNetworkClient : SlockNetworkClient {
+    private class RecordingAnnouncementsRemindersNetworkClient : RaftNetworkClient {
         val calls = mutableListOf<String>()
 
         override suspend fun request(

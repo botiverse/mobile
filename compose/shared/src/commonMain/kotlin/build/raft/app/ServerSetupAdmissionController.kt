@@ -1,11 +1,11 @@
 package build.raft.app
 
-import build.raft.app.data.SlockServerSetupProjectionRepository
+import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.model.ServerId
 
 /** Async admission controller kept separate from Compose so stale request behavior is testable. */
 internal class ServerSetupAdmissionController(
-    private val repository: SlockServerSetupProjectionRepository,
+    private val repository: RaftServerSetupProjectionRepository,
 ) {
     private val reducer = ServerSetupAdmissionReducer()
 

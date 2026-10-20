@@ -9,15 +9,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.AuthenticatedRouteOwner
-import build.raft.app.data.BridgeSlockAvatarNativeCache
+import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.normalizedOrNull
-import build.raft.app.data.SlockSharedStoreRegistry
-import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.data.slockSharedPreferenceStore
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
@@ -46,10 +46,10 @@ private fun AuthChooseServerPageContent() {
         authChooseServerUsesScopedStore(pager.pageData.params)
     }
     val sourceStoreScope = remember(pager.pageData.params.toString(), pager.pagerId) {
-        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
     }
     val sourceDocumentShell = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
+        pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
     }
     val skipInitialLoad = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, false)
@@ -57,7 +57,7 @@ private fun AuthChooseServerPageContent() {
     val closeChooser = remember(pager) {
         { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
@@ -65,7 +65,7 @@ private fun AuthChooseServerPageContent() {
     val bridgeCallScope = rememberCoroutineScope()
     val avatarNativeCache =
         remember(bridge, bridgeCallScope) {
-            BridgeSlockAvatarNativeCache(
+            BridgeRaftAvatarNativeCache(
                 bridge = bridge,
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
@@ -145,8 +145,8 @@ private fun AuthChooseServerPageContent() {
                 skipInitialLoad = skipInitialLoad,
                 onReady = { readySession ->
                     val multiShellHostEnabled =
-                        slockPlatformSupportsMultiShellHost() &&
-                            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                        raftPlatformSupportsMultiShellHost() &&
+                            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                                 .readMultiShellHostEnabledSync()
                     val opensDocumentShell =
                         isMultiShellCrossServerSelection(

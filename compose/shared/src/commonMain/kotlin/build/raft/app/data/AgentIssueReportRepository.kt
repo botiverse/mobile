@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.slockEpochMillisUtcIso
+import build.raft.app.model.raftEpochMillisUtcIso
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 
-const val SLOCK_AGENT_FEEDBACK_BASE_URL = "https://slock-trace-upload.botiverse.dev"
+const val RAFT_AGENT_FEEDBACK_BASE_URL = "https://slock-trace-upload.botiverse.dev"
 
 private const val AGENT_FEEDBACK_SCOPE = "feedback-report:create"
 private const val AGENT_FEEDBACK_CONTENT_TYPE = "application/json"
@@ -44,11 +44,11 @@ internal data class AgentIssueReportResult(
 )
 
 internal class AgentIssueReportRepository(
-    private val sessionStore: SlockAuthSessionStore,
+    private val sessionStore: RaftAuthSessionStore,
     private val selectedServerStore: SelectedServerStore,
-    private val networkClient: SlockNetworkClient,
+    private val networkClient: RaftNetworkClient,
     private val sha256Hex: (String) -> String,
-    private val feedbackBaseUrl: String = SLOCK_AGENT_FEEDBACK_BASE_URL,
+    private val feedbackBaseUrl: String = RAFT_AGENT_FEEDBACK_BASE_URL,
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val logger: (String) -> Unit = {}
 ) {
@@ -451,7 +451,7 @@ private fun AgentIssueReportSubmission.toBundle(
             .filterNot { it.id.startsWith("realtime:") }
             .map { it.toIssueBundleActivity() }
     return AgentIssueReportBundle(
-        generatedAt = slockEpochMillisUtcIso(generatedAtEpochMs),
+        generatedAt = raftEpochMillisUtcIso(generatedAtEpochMs),
         generatedAtEpochMs = generatedAtEpochMs,
         daemonVersion = summary?.daemonVersion,
         issue = AgentIssueBundleIssue(description.trim().takeIf { it.isNotBlank() }),

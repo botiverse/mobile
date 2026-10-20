@@ -147,7 +147,7 @@ node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android -
 
 ## font-audit lens
 
-`scripts/patrol/font_audit.mjs` flags typography-contract suspects: naked `fontWeight = FontWeight.X` with no family dispatch on the line (Kuikly encodes weight in the family NAME — naked weight renders the original family, see SlockDesignTokens.kt), and raw `FontFamily(...)` constructed outside the tokens file. The markdown pipeline auto-repairs via `withResolvedSlockFontFamily`; plain `Text()` does not. Cap 5/run nightly.
+`scripts/patrol/font_audit.mjs` flags typography-contract suspects: naked `fontWeight = FontWeight.X` with no family dispatch on the line (Kuikly encodes weight in the family NAME — naked weight renders the original family, see RaftDesignTokens.kt), and raw `FontFamily(...)` constructed outside the tokens file. The markdown pipeline auto-repairs via `withResolvedRaftFontFamily`; plain `Text()` does not. Cap 5/run nightly.
 
 ## glyph-audit lens
 

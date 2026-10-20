@@ -30,7 +30,7 @@ class ThreadCameraCaptureRecoveryTest {
 
     @Test
     fun activityWiresCameraIdentityThroughSaveRestoreAndTerminalCleanup() {
-        val source = productionSource("androidApp/src/main/java/build/raft/app/shared/SlockCmpActivity.kt")
+        val source = productionSource("androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt")
 
         assertTrue(
             "camera identity must be persisted before the external Activity can recreate the host",
@@ -65,7 +65,7 @@ class ThreadCameraCaptureRecoveryTest {
 private fun productionSource(relativePath: String): String {
     var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
     repeat(10) {
-        val direct = File(current, "src/main/java/build/raft/app/shared/SlockCmpActivity.kt")
+        val direct = File(current, "src/main/java/build/raft/app/shared/RaftCmpActivity.kt")
         if (relativePath.startsWith("androidApp/") && direct.isFile) return direct.readText()
         val candidate = File(current, relativePath)
         if (candidate.isFile) return candidate.readText()
