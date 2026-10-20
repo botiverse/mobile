@@ -143,7 +143,11 @@ internal fun RaftForwardPickerSearchField(
     val focusRequester = remember { FocusRequester() }
     if (autoFocus) {
         LaunchedEffect(focusKey) {
-            runCatching { focusRequester.requestFocus() }
+            // The field may not be attached on the first frame; retry briefly.
+            repeat(10) {
+                kotlinx.coroutines.delay(50)
+                if (runCatching { focusRequester.requestFocus() }.isSuccess) return@LaunchedEffect
+            }
         }
     }
     RaftTextField(
