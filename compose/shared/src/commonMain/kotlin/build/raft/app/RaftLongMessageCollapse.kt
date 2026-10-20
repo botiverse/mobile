@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -255,11 +256,23 @@ internal class RaftLongMessageCollapseController {
  * measure pass, before any row is measured: the threshold follows the visible list area and is
  * known on the first frame.
  */
+@Composable
 internal fun Modifier.raftLongMessageCollapseViewport(
     controller: RaftLongMessageCollapseController,
     verticalContentPaddingPx: Int
 ): Modifier =
-    layout { measurable, constraints ->
+    this then
+        remember(controller, verticalContentPaddingPx) {
+            raftLongMessageCollapseViewportModifier(controller, verticalContentPaddingPx)
+        }
+
+// Remembered by the caller: a fresh `layout {}` lambda per recomposition would make the
+// LazyColumn's modifier chain unequal and re-run its layout node update every time.
+private fun raftLongMessageCollapseViewportModifier(
+    controller: RaftLongMessageCollapseController,
+    verticalContentPaddingPx: Int
+): Modifier =
+    Modifier.layout { measurable, constraints ->
         if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
             controller.onViewportMeasured(
                 constraints.maxWidth,
@@ -438,6 +451,9 @@ internal fun rememberRaftLongMessageCollapseConversationSetting(
         remember(store, serverId, conversationId, revision) {
             store.readConversation(serverId, conversationId)
         }
+    LaunchedEffect(store, serverId, conversationId, revision) {
+        store.pruneVoidOverride(serverId, conversationId)
+    }
     return remember(store, preference, serverId, conversationId) {
         RaftLongMessageCollapseConversationSetting(
             preference = preference,

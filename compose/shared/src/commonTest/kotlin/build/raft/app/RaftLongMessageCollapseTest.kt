@@ -8,6 +8,7 @@ import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.raftLongMessageCollapseEffective
 import build.raft.app.data.raftLongMessageCollapseOverrideAfterSet
 import build.raft.app.data.raftLongMessageCollapseOverrideKey
+import build.raft.app.data.raftLongMessageCollapseParseOverride
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -299,7 +300,27 @@ class RaftLongMessageCollapseTest {
         val afterOn = store.readConversation("srv", "ch")
         assertTrue(afterOn.followsGlobal)
         assertTrue(afterOn.effective)
+        // Reads are pure; the void entry is removed by the explicit prune.
+        assertEquals("off@0", kv.getString(raftLongMessageCollapseOverrideKey("srv", "ch")))
+        store.pruneVoidOverride("srv", "ch")
         assertNull(kv.getString(raftLongMessageCollapseOverrideKey("srv", "ch")))
+    }
+
+    @Test
+    fun bareOnOffOverridesFromTheFirstReleaseStayLiveAtRevisionZero() = runBlocking {
+        val kv =
+            InMemoryRaftKeyValueStore(
+                mapOf(raftLongMessageCollapseOverrideKey("srv", "ch") to "off")
+            )
+        val store = RaftLongMessageCollapsePreferenceStore(kv)
+        assertEquals(false, store.readChannelOverride("srv", "ch"))
+        store.pruneVoidOverride("srv", "ch")
+        assertEquals("off", kv.getString(raftLongMessageCollapseOverrideKey("srv", "ch")))
+        // The next global change voids it like any other override.
+        KeyValueChatLayoutPreferenceStore(kv).saveLongMessageCollapseEnabled(false)
+        assertNull(store.readChannelOverride("srv", "ch"))
+        assertNull(raftLongMessageCollapseParseOverride("maybe"))
+        assertNull(raftLongMessageCollapseParseOverride("on@x"))
     }
 
     @Test

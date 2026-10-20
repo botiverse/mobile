@@ -61,14 +61,16 @@ internal fun raftLongMessageCollapseOverrideAfterSet(globalEnabled: Boolean, req
 
 internal fun raftLongMessageCollapseParseOverride(raw: String?): RaftLongMessageCollapseStoredOverride? {
     val parts = raw?.trim()?.split('@') ?: return null
-    if (parts.size != 2) return null
+    if (parts.size !in 1..2) return null
     val enabled =
         when (parts[0]) {
             OVERRIDE_ON -> true
             OVERRIDE_OFF -> false
             else -> return null
         }
-    val revision = parts[1].toLongOrNull() ?: return null
+    // #3233 (Android build 2) stored bare "on"/"off": treat as set under global revision 0, the
+    // revision every install had until the global switch first changed after this build.
+    val revision = if (parts.size == 1) 0L else parts[1].toLongOrNull() ?: return null
     return RaftLongMessageCollapseStoredOverride(enabled, revision)
 }
 
@@ -136,23 +138,31 @@ internal class RaftLongMessageCollapsePreferenceStore(
     fun readGlobalEnabled(): Boolean = chatLayout.readLongMessageCollapseEnabledSync()
 
     /**
-     * The live override of one conversation. An override set before the global switch last changed
-     * is void (the global switch now equals it) and is removed here, so the conversation keeps
-     * following the global switch from then on, also if the global switch changes back.
+     * The live override of one conversation (a pure read). An override set before the global switch
+     * last changed is void (the global switch now equals it): the conversation follows the global
+     * switch from then on, also if the global switch changes back. [pruneVoidOverride] removes it.
      */
     fun readChannelOverride(serverId: String?, channelId: String?): Boolean? {
+        val key = overrideKeyOrNull(serverId, channelId) ?: return null
+        return raftLongMessageCollapseLiveStoredOverride(
+            globalEnabled = readGlobalEnabled(),
+            globalRevision = store.raftLongMessageCollapseGlobalRevision(),
+            stored = raftLongMessageCollapseParseOverride(store.getString(key))
+        )
+    }
+
+    /** Deletes a stored override that is no longer live (housekeeping; reads already ignore it). */
+    fun pruneVoidOverride(serverId: String?, channelId: String?) {
+        val key = overrideKeyOrNull(serverId, channelId) ?: return
+        if (store.getString(key) != null && readChannelOverride(serverId, channelId) == null) {
+            store.putString(key, null)
+        }
+    }
+
+    private fun overrideKeyOrNull(serverId: String?, channelId: String?): String? {
         val server = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val channel = channelId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val key = raftLongMessageCollapseOverrideKey(server, channel)
-        val stored = raftLongMessageCollapseParseOverride(store.getString(key))
-        val live =
-            raftLongMessageCollapseLiveStoredOverride(
-                globalEnabled = readGlobalEnabled(),
-                globalRevision = store.raftLongMessageCollapseGlobalRevision(),
-                stored = stored
-            )
-        if (live == null && store.getString(key) != null) store.putString(key, null)
-        return live
+        return raftLongMessageCollapseOverrideKey(server, channel)
     }
 
     fun readConversation(serverId: String?, channelId: String?): RaftLongMessageCollapseConversationPreference =

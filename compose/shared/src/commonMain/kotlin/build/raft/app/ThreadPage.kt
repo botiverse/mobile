@@ -19004,22 +19004,30 @@ private fun ThreadMessagesListContent(
             null
         }
     val activeInlineSearchMessageId = activeInlineSearchMatch?.messageId
-    LaunchedEffect(longMessageCollapseController, activeInlineSearchMessageId, inlineSearchQuery) {
-        val messageId = activeInlineSearchMessageId ?: return@LaunchedEffect
-        val message =
+    val activeInlineSearchMessage =
+        activeInlineSearchMessageId?.let { messageId ->
             renderPayload.originMessage?.takeIf { it.id == messageId }
                 ?: renderPayload.messages.firstOrNull { it.id == messageId }
-                ?: return@LaunchedEffect
-        // The body as shown: the translation when one is displayed, plus the original.
-        val shownTranslation =
-            if (translationStore != null) {
-                resolveThreadMessageTranslationUi(message, translationState)?.displayBody
-            } else {
-                null
-            }
+        }
+    // The body as shown: the translation when one is displayed (keys the effect), plus the original.
+    val activeInlineSearchShownTranslation =
+        if (translationStore != null && activeInlineSearchMessage != null) {
+            resolveThreadMessageTranslationUi(activeInlineSearchMessage, translationState)?.displayBody
+        } else {
+            null
+        }
+    LaunchedEffect(
+        longMessageCollapseController,
+        activeInlineSearchMessage?.id,
+        activeInlineSearchMessage?.body,
+        activeInlineSearchShownTranslation,
+        inlineSearchQuery
+    ) {
+        val message = activeInlineSearchMessage ?: return@LaunchedEffect
+        val shownTranslation = activeInlineSearchShownTranslation
         // Search matches are per message; a hit in the body may sit in the clipped part.
         if (listOfNotNull(message.body, shownTranslation).any { body -> raftLongMessageSearchHitInBody(body, inlineSearchQuery) }) {
-            longMessageCollapseController.autoExpand(messageId)
+            longMessageCollapseController.autoExpand(message.id)
         }
     }
     val latestMessageLayoutKey = remember(
