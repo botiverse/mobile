@@ -20604,7 +20604,7 @@ internal fun SharedHomeSearchPanel(
     var sortAnchorResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
     var activePinMenu by remember { mutableStateOf<SharedHomeSearchPinMenuState?>(null) }
     var historyEditing by remember(initialHistoryEditing) { mutableStateOf(initialHistoryEditing) }
-    // web filter popups (Base UI, `align="start"`, 4dp side offset): when the popup would run
+    // web filter popups (Base UI, `align="start"`, 3dp under the chip): when the popup would run
     // past the panel edge its alignment flips to the chip's end edge.
     var filterChipWidths by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var searchPanelWidthPx by remember { mutableStateOf(0) }
@@ -20942,7 +20942,7 @@ internal fun SharedHomeSearchPanel(
                     RaftFilterPopover(
                         anchor = scopeAnchor,
                         horizontalOffsetDp = filterPopoverOffsetDp("scope", scopeAnchor, 180f),
-                        verticalOffsetDp = 4f,
+                        verticalOffsetDp = 3f,
                         title = stringResource(MR.strings.search_filter_scope),
                         searchPlaceholder = "",
                         searchText = "",
@@ -20968,7 +20968,7 @@ internal fun SharedHomeSearchPanel(
                     RaftFilterPopover(
                         anchor = senderAnchor,
                         horizontalOffsetDp = filterPopoverOffsetDp("sender", senderAnchor, 220f),
-                        verticalOffsetDp = 4f,
+                        verticalOffsetDp = 3f,
                         title = stringResource(MR.strings.search_filter_from),
                         searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
                         searchText = senderSearch,
@@ -21007,7 +21007,7 @@ internal fun SharedHomeSearchPanel(
                     RaftFilterPopover(
                         anchor = channelAnchor,
                         horizontalOffsetDp = filterPopoverOffsetDp("channel", channelAnchor, 220f),
-                        verticalOffsetDp = 4f,
+                        verticalOffsetDp = 3f,
                         title = stringResource(MR.strings.search_filter_channels),
                         searchPlaceholder = stringResource(MR.strings.search_filter_search),
                         searchText = channelSearch,
@@ -21030,7 +21030,7 @@ internal fun SharedHomeSearchPanel(
                     RaftFilterPopover(
                         anchor = timeAnchor,
                         horizontalOffsetDp = filterPopoverOffsetDp("time", timeAnchor, 168f),
-                        verticalOffsetDp = 4f,
+                        verticalOffsetDp = 3f,
                         title = stringResource(MR.strings.search_filter_time),
                         searchPlaceholder = "",
                         searchText = "",
@@ -21055,7 +21055,7 @@ internal fun SharedHomeSearchPanel(
                     RaftFilterPopover(
                         anchor = sortAnchor,
                         horizontalOffsetDp = filterPopoverOffsetDp("sort", sortAnchor, 148f),
-                        verticalOffsetDp = 4f,
+                        verticalOffsetDp = 3f,
                         title = stringResource(MR.strings.search_filter_sort),
                         searchPlaceholder = "",
                         searchText = "",
@@ -22814,9 +22814,10 @@ private fun SharedHomeSearchMessageResultRow(
     ) {
         if (!sender.isNullOrBlank()) {
             RaftAppAvatar(
-                // web AvatarSlot: a sender without a picture is the person placeholder.
+                // web AvatarSlot (no name passed): a sender without a picture is the person
+                // placeholder, not initials.
                 avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
-                label = sender,
+                label = "",
                 avatarSize = RaftSearchMetrics.EntityLeading,
                 cacheSubject = avatarCacheIdentity?.subject,
                 cacheServerId = avatarCacheIdentity?.serverId

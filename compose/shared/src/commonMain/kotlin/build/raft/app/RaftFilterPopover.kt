@@ -326,7 +326,8 @@ private fun RaftLookFilterPopover(
             }
             RaftLookSeparator()
             if (searchField != null) {
-                searchField()
+                // `h-10`: the field frame would lift a 40dp field to the 44dp input height.
+                Box(modifier = Modifier.fillMaxWidth().height(RaftFilterSearchHeight)) { searchField() }
                 RaftLookSeparator()
             }
             if (filtered.isEmpty()) {
