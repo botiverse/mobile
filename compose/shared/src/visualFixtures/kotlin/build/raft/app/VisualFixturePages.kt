@@ -581,7 +581,7 @@ internal class ComposeHomeSavedVisualPage : BasePager() {
     }
 }
 
-// Activity as the second bottom tab: head, four segments (pageData `segment`), 5-tab bar + badge.
+// Activity as the second bottom tab: head, three segments (pageData `segment`), 5-tab bar + badge.
 @Page("compose_activity_tab_visual", supportInLocal = true)
 internal class ComposeRaftActivityTabVisualPage : BasePager() {
     override fun willInit() {

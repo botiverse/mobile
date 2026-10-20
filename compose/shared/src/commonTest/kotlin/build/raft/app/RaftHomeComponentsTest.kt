@@ -2122,6 +2122,38 @@ class RaftHomeComponentsTest {
     }
 
     @Test
+    fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
+        // 56dp raft panel head + the 4dp popover gap.
+        assertEquals(60.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
+        assertEquals(84.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
+    }
+
+    @Test
+    fun notificationPopoverDismissesWhenSelectingAnotherBottomTab() {
+        assertTrue(
+            shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = true,
+                selectedTabKey = "home",
+                targetTabKey = "tasks"
+            )
+        )
+        assertFalse(
+            shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = true,
+                selectedTabKey = "home",
+                targetTabKey = "home"
+            )
+        )
+        assertFalse(
+            shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = false,
+                selectedTabKey = "home",
+                targetTabKey = "tasks"
+            )
+        )
+    }
+
+    @Test
     fun notificationActionButtonsUseBoldFontFamily() {
         assertEquals(raftFontFamilyForWeight(FontWeight.Bold), HomeNotificationActionButtonTextStyle.fontFamily)
         assertEquals(RaftType.ButtonBold.fontWeight, HomeNotificationActionButtonTextStyle.fontWeight)
