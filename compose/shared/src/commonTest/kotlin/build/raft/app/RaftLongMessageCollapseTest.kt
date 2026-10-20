@@ -2,10 +2,13 @@ package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.RaftLongMessageCollapseDetailKind
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
+import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.raftLongMessageCollapseEffective
 import build.raft.app.data.raftLongMessageCollapseOverrideAfterSet
 import build.raft.app.data.raftLongMessageCollapseOverrideKey
+import build.raft.app.data.raftLongMessageCollapseParseOverride
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -54,7 +57,7 @@ class RaftLongMessageCollapseTest {
     // --- one-way re-evaluation -------------------------------------------------------------
 
     @Test
-    fun lateLoadingImageTurnsBodyCollapsibleAndShrinkingNeverFlapsItBack() {
+    fun lateLoadingImageTurnsBodyCollapsibleAndSmallShrinksDoNotFlapIt() {
         val controller = RaftLongMessageCollapseController()
         controller.onViewportMeasured(1080, 2000) // threshold 1600
         assertFalse(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 900, minHiddenPx = 48))
@@ -62,9 +65,29 @@ class RaftLongMessageCollapseTest {
         // Image finishes loading: taller than the threshold.
         assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 2400, minHiddenPx = 48))
         assertTrue(controller.isCollapsible("m1:a"))
-        // A later smaller measurement (placeholder swap) must not un-collapse it.
-        assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1000, minHiddenPx = 48))
-        assertTrue(controller.isCollapsible("m1:a"))
+        // A small shrink inside the hysteresis band (placeholder swap) keeps it collapsible...
+        assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1620, minHiddenPx = 48))
+        // ...while a fresh body of that height would not have collapsed.
+        assertFalse(controller.recordMeasurement("m2", "m2:a", contentHeightPx = 1620, minHiddenPx = 48))
+    }
+
+    @Test
+    fun toggleDisappearsWhenTheThresholdGrowsPastTheContent() {
+        val controller = RaftLongMessageCollapseController()
+        controller.onViewportMeasured(1080, 1000) // threshold 800
+        assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 48))
+        // Rotation to a taller viewport: threshold 1600 > content, nothing left to hide.
+        controller.onViewportMeasured(1200, 2000)
+        assertFalse(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 48))
+        assertFalse(controller.isCollapsible("m1:a"))
+        assertEquals(1200, raftLongMessageVisibleBodyHeight(1200, 1600, collapsible = false, expanded = false))
+    }
+
+    @Test
+    fun collapsibleOnlyWhileContentExceedsThreshold() {
+        assertTrue(raftLongMessageCollapsible(true, contentHeightPx = 1601, thresholdPx = 1600, minHiddenPx = 48))
+        assertFalse(raftLongMessageCollapsible(true, contentHeightPx = 1600, thresholdPx = 1600, minHiddenPx = 48))
+        assertFalse(raftLongMessageCollapsible(true, contentHeightPx = 5000, thresholdPx = 0, minHiddenPx = 48))
     }
 
     @Test
@@ -243,21 +266,84 @@ class RaftLongMessageCollapseTest {
         val off = store.setConversationEnabled("srv-1", "ch-1", enabled = false)
         assertEquals(false, off.channelOverride)
         assertFalse(off.effective)
-        assertEquals("off", kv.getString(raftLongMessageCollapseOverrideKey("srv-1", "ch-1")))
+        assertEquals("off@0", kv.getString(raftLongMessageCollapseOverrideKey("srv-1", "ch-1")))
         // Other channel / other server follow the global switch.
         assertTrue(store.readConversation("srv-1", "ch-2").effective)
         assertTrue(store.readConversation("srv-2", "ch-1").effective)
 
-        // Global off: the overridden channel stays off, another channel follows.
-        chatLayout.saveLongMessageCollapseEnabled(false)
-        assertFalse(store.readConversation("srv-1", "ch-2").effective)
-        // Setting the channel to the global value clears the override.
-        val follow = store.setConversationEnabled("srv-1", "ch-1", enabled = false)
+        // Setting the channel back to the global value clears the override.
+        val follow = store.setConversationEnabled("srv-1", "ch-1", enabled = true)
         assertTrue(follow.followsGlobal)
         assertNull(kv.getString(raftLongMessageCollapseOverrideKey("srv-1", "ch-1")))
+
+        // Global off: the other channel follows; an ON override set now is live.
+        chatLayout.saveLongMessageCollapseEnabled(false)
+        assertFalse(store.readConversation("srv-1", "ch-2").effective)
         val on = store.setConversationEnabled("srv-1", "ch-1", enabled = true)
         assertEquals(true, on.channelOverride)
         assertTrue(on.effective)
+    }
+
+    @Test
+    fun globalChangeVoidsOverridesAndTheyStayVoidWhenGlobalChangesBack() = runBlocking {
+        val kv = InMemoryRaftKeyValueStore()
+        val store = RaftLongMessageCollapsePreferenceStore(kv)
+        val chatLayout = KeyValueChatLayoutPreferenceStore(kv)
+        store.setConversationEnabled("srv", "ch", enabled = false) // global on, channel off
+
+        chatLayout.saveLongMessageCollapseEnabled(false) // global now equals the override
+        val afterOff = store.readConversation("srv", "ch")
+        assertTrue(afterOff.followsGlobal)
+        assertFalse(afterOff.effective)
+
+        chatLayout.saveLongMessageCollapseEnabled(true) // and back: the channel follows, now on
+        val afterOn = store.readConversation("srv", "ch")
+        assertTrue(afterOn.followsGlobal)
+        assertTrue(afterOn.effective)
+        // Reads are pure; the void entry is removed by the explicit prune.
+        assertEquals("off@0", kv.getString(raftLongMessageCollapseOverrideKey("srv", "ch")))
+        store.pruneVoidOverride("srv", "ch")
+        assertNull(kv.getString(raftLongMessageCollapseOverrideKey("srv", "ch")))
+    }
+
+    @Test
+    fun bareOnOffOverridesFromTheFirstReleaseStayLiveAtRevisionZero() = runBlocking {
+        val kv =
+            InMemoryRaftKeyValueStore(
+                mapOf(raftLongMessageCollapseOverrideKey("srv", "ch") to "off")
+            )
+        val store = RaftLongMessageCollapsePreferenceStore(kv)
+        assertEquals(false, store.readChannelOverride("srv", "ch"))
+        store.pruneVoidOverride("srv", "ch")
+        assertEquals("off", kv.getString(raftLongMessageCollapseOverrideKey("srv", "ch")))
+        // The next global change voids it like any other override.
+        KeyValueChatLayoutPreferenceStore(kv).saveLongMessageCollapseEnabled(false)
+        assertNull(store.readChannelOverride("srv", "ch"))
+        assertNull(raftLongMessageCollapseParseOverride("maybe"))
+        assertNull(raftLongMessageCollapseParseOverride("on@x"))
+    }
+
+    @Test
+    fun voidedOverrideIsIgnoredEvenIfNeverReadBetweenTwoGlobalFlips() = runBlocking {
+        val kv = InMemoryRaftKeyValueStore()
+        val store = RaftLongMessageCollapsePreferenceStore(kv)
+        val chatLayout = KeyValueChatLayoutPreferenceStore(kv)
+        store.setConversationEnabled("srv", "ch", enabled = false)
+        chatLayout.saveLongMessageCollapseEnabled(false)
+        chatLayout.saveLongMessageCollapseEnabled(true)
+        assertTrue(store.readConversation("srv", "ch").followsGlobal)
+        assertTrue(store.readConversation("srv", "ch").effective)
+    }
+
+    @Test
+    fun detailLineComesFromBothGlobalAndOverride() {
+        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOn, raftLongMessageCollapseDetailKind(true, null))
+        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOff, raftLongMessageCollapseDetailKind(false, null))
+        assertEquals(RaftLongMessageCollapseDetailKind.OverrideOff, raftLongMessageCollapseDetailKind(true, false))
+        assertEquals(RaftLongMessageCollapseDetailKind.OverrideOn, raftLongMessageCollapseDetailKind(false, true))
+        // An override equal to the global switch is not an override.
+        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOn, raftLongMessageCollapseDetailKind(true, true))
+        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOff, raftLongMessageCollapseDetailKind(false, false))
     }
 
     @Test
