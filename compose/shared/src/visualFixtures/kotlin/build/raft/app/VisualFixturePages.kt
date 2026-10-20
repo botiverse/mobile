@@ -300,6 +300,14 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
                             enabled = disabledKey != "home"
                         ),
                         RaftBottomTabItemPayload(
+                            "activity",
+                            "Activity",
+                            RaftLucideIconName.Activity,
+                            selected = selectedKey == "activity",
+                            enabled = disabledKey != "activity",
+                            badgeCount = 12
+                        ),
+                        RaftBottomTabItemPayload(
                             "tasks",
                             "Tasks",
                             RaftLucideIconName.SquareCheckBig,
@@ -570,6 +578,15 @@ internal class ComposeHomeSavedVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeSavedVisualContent() }
+    }
+}
+
+// Activity as the second bottom tab: head, four segments (pageData `segment`), 5-tab bar + badge.
+@Page("compose_activity_tab_visual", supportInLocal = true)
+internal class ComposeRaftActivityTabVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { RaftActivityTabVisualContent() }
     }
 }
 

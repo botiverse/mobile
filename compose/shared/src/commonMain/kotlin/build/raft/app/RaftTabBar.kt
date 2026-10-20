@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.designsystem.components.RaftUnreadCount
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -60,7 +61,9 @@ internal data class RaftBottomTabItemPayload(
     val label: String = "",
     val iconName: RaftLucideIconName = RaftLucideIconName.Circle,
     val selected: Boolean = false,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** Unread count drawn as the pink raft-ui count on the tab icon; 0 draws nothing. */
+    val badgeCount: Int = 0
 )
 
 internal enum class RaftTabBarPresentation {
@@ -257,6 +260,10 @@ internal fun RaftBottomTabBar(
                             strokeWidth = 2f,
                             modifier = Modifier.size(22.dp)
                         )
+                        RaftTabIconBadge(
+                            count = item.badgeCount,
+                            modifier = Modifier.align(Alignment.TopStart).offset(x = 33.dp, y = (-4).dp)
+                        )
                     }
                     Text(
                         text = item.label,
@@ -372,15 +379,21 @@ private fun RaftSharedAndroidFloatingBottomTabBarHost(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    RaftLucideIcon(
-                        name = item.iconName,
-                        color = when {
-                            !item.enabled -> "#42000000"
-                            selected -> "#FF000000"
-                            else -> "#73000000"
-                        },
-                        modifier = Modifier.size(17.dp)
-                    )
+                    Box {
+                        RaftLucideIcon(
+                            name = item.iconName,
+                            color = when {
+                                !item.enabled -> "#42000000"
+                                selected -> "#FF000000"
+                                else -> "#73000000"
+                            },
+                            modifier = Modifier.size(17.dp)
+                        )
+                        RaftTabIconBadge(
+                            count = item.badgeCount,
+                            modifier = Modifier.align(Alignment.TopStart).offset(x = 11.dp, y = (-8).dp)
+                        )
+                    }
                     Text(
                         text = item.label.raftDisplayUppercase(),
                         style = RaftType.Caption.copy(
@@ -649,8 +662,22 @@ private fun RaftNavigationRailTabItem(
                     modifier = Modifier.size(RaftNavigationRailIconSize)
                 )
             }
+            RaftTabIconBadge(
+                count = item.badgeCount,
+                modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp)
+            )
         }
     }
+}
+
+/**
+ * The unread count on a tab icon (Activity tab): raft-ui's pink count sticker, the same one the
+ * Home sidebar rows wear. Nothing for 0; `99+` above 99.
+ */
+@Composable
+private fun RaftTabIconBadge(count: Int, modifier: Modifier = Modifier) {
+    if (count <= 0) return
+    RaftUnreadCount(count = count, modifier = modifier.zIndex(1f))
 }
 
 @Composable

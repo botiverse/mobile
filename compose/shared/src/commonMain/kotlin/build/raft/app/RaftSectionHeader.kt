@@ -64,6 +64,8 @@ internal enum class RaftMainTabHeaderSurface(
 ) {
     Members(RaftLucideIconName.Users),
     Tasks(RaftLucideIconName.SquareCheckBig),
+    // Activity as a bottom tab: the same Lucide `activity` glyph as the web Activity nav item.
+    Activity(RaftLucideIconName.Activity),
     Settings(RaftLucideIconName.Settings),
     Dms(RaftLucideIconName.MessageSquare),
     More(RaftLucideIconName.Ellipsis)

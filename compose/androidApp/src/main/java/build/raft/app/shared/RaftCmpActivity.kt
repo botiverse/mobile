@@ -867,6 +867,13 @@ internal open class RaftCmpActivity :
             finish()
             return
         }
+        raftLegacyAppShellTabRedirect(pageName, JSONObject(resolvedPageData(intent).text))?.let { shellPageData ->
+            // Old page name of an app-shell tab (the Home 动态 page): open the shell on that tab.
+            RaftAppLog.record("SlockKuiklyActivity", "legacy_tab_page_redirect page=$pageName")
+            startAppShell(this, shellPageData)
+            finish()
+            return
+        }
         if (pageName == PAGE_LOGIN) {
             loginTransitionToken = AndroidLoginTransitionRouting.bindLogin(
                 this,
@@ -2947,6 +2954,10 @@ internal open class RaftCmpActivity :
             loginTransitionToken: String? = null,
         ) {
             RaftAdapters.init(context.applicationContext)
+            raftLegacyAppShellTabRedirect(pageName, pageData)?.let { shellPageData ->
+                startAppShell(context, shellPageData, clearTask)
+                return
+            }
             val hostPageData = pageData.withAndroidHostPageData(pageName)
             val starter =
                     Intent(context, hostActivityClass ?: raftHostActivityClass(pageName))
@@ -3011,12 +3022,17 @@ internal open class RaftCmpActivity :
             start(context, PAGE_AUTH_LEGAL_ACCEPTANCE, pageData, clearTask)
         }
 
-        internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject =
-                if (resolvedPageName(intent) == PAGE_APP_SHELL) {
+        internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject {
+                val pageName = resolvedPageName(intent)
+                return if (pageName == PAGE_APP_SHELL) {
                     JSONObject(resolvedPageData(intent).text)
                 } else {
-                    JSONObject()
+                    // An old page name that is an app-shell tab now (the Home 动态 page) opens
+                    // the shell on that tab.
+                    raftLegacyAppShellTabRedirect(pageName, JSONObject(resolvedPageData(intent).text))
+                        ?: JSONObject()
                 }
+        }
 
         private fun resolvedPageName(intent: Intent?): String =
                 if (intent.isDiagnosticsDeepLinkIntent()) {
