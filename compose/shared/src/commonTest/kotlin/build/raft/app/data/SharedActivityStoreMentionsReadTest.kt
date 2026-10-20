@@ -64,6 +64,7 @@ class SharedActivityStoreMentionsReadTest {
             runCurrent()
 
             assertEquals(1, read.inboxReadAllServerIds.size, "filter=$filter")
+            assertEquals(2, inbox.initialLoadCount, "a confirmed read-all refreshes once, like web; filter=$filter")
             assertEquals(expectedRows, store.state.value.items.size, "filter=$filter")
             assertEquals(expectedRows, store.state.value.totalCount, "filter=$filter")
             assertEquals(0, store.state.value.totalUnreadCount, "filter=$filter")

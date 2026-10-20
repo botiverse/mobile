@@ -1717,7 +1717,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun markAllReadCommitsOptimisticPatchWithoutRefreshingActivity() = runBlocking {
+    fun markAllReadCommitsOptimisticPatchThenRefreshesOnceLikeWeb() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val read = FakeReadReceiptRepository()
         val inbox =
@@ -1743,7 +1743,7 @@ class SharedActivityStoreTest {
         assertEquals(listOf(ServerId("server-1")), read.inboxReadAllServerIds)
         assertEquals(1, unreadRefreshRequests)
         assertEquals(0, store.state.value.totalUnreadCount)
-        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(2, inbox.initialLoadCount, "web inboxStore.ts:1405-1408 refreshes after read-all")
         scope.cancel()
     }
 

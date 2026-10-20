@@ -1862,6 +1862,10 @@ class SharedActivityStore internal constructor(
                 if (selected || result is DataResult.Content || result is DataResult.Empty) {
                     readOverlay.confirmAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
+                    // Web refreshes in the background after a successful read-all
+                    // (slock 1bb70cbeb, inboxStore.ts:1405-1408); the read hold keeps a
+                    // lagging copy from undoing the local clear.
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
                 } else {
                     readOverlay.forgetAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
