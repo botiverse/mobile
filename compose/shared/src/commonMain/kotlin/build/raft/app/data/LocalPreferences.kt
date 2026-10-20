@@ -478,6 +478,7 @@ class KeyValueChatLayoutPreferenceStore(
         readLongMessageCollapseEnabledSync()
 
     override suspend fun saveLongMessageCollapseEnabled(enabled: Boolean) {
+        if (readLongMessageCollapseEnabledSync() != enabled) store.advanceRaftLongMessageCollapseGlobalRevision()
         store.putBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, enabled)
         RaftLongMessageCollapsePreferenceRevision.bump()
     }

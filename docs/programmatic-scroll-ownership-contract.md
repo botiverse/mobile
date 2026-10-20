@@ -41,7 +41,7 @@ above and update the inventory when they establish a new ownership pattern.
 | Quiver Feedback conversation tail | parked bottom feed + genuine conversation append | busy-only changes excluded; busy sentinel included; task #541 |
 | Members selected tab reveal | user/route tab selection | active-scroll fence; compliant |
 | Members Agent Activity tail | parked bottom feed | leaving tail/drag retires ownership; compliant |
-| Thread long-message expand/collapse anchor | direct expand/collapse action | toggled row visible + active-scroll fence; collapse yields to FollowingLatest; same-frame `requestScrollToItem` + controller `Anchor(message top)`; compliant |
+| Thread long-message expand/collapse anchor | direct expand/collapse action | toggled row visible + active-scroll fence; collapse yields to FollowingLatest; same-frame `requestScrollToItem` + controller `Anchor(message top)`; expanding (even the newest row) replaces FollowingLatest with that anchor, so auto-follow of new messages stops until the user returns to the bottom; compliant |
 | Thread header, inline search, back-to-bottom | direct user action | explicit viewport replacement; compliant |
 | Thread share capture | bounded capture workflow | capture session owns viewport; compliant |
 | Thread older-page restore | key/offset restoration | captured/current user-scroll generation; compliant |
