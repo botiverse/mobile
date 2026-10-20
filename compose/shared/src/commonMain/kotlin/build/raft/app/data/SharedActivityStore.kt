@@ -2682,8 +2682,14 @@ data class SharedActivityState(
         get() = snapshot?.nextOffset
 }
 
+/**
+ * Web `isUnreadInboxFilter` (slock 1bb70cbeb, inboxStore.ts:124): only Unread
+ * drops a row once it is read. The server keeps read rows in Mentions (an
+ * independent `message_mentions` EXISTS, channelService.ts:13136-13168), so a
+ * read / mark-all-read clears the row's attention there instead of removing it.
+ */
 private fun InboxFilter.keepsReadActivityRows(): Boolean =
-    this == InboxFilter.All
+    this != InboxFilter.Unread
 
 sealed interface SharedActivityIntent {
     data object ClearSummary : SharedActivityIntent

@@ -1807,7 +1807,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun markAllReadRemovesRowsInMentionsFilter() = runBlocking {
+    fun markAllReadKeepsReadRowsInMentionsFilter() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
         val row = activityItem("channel-1", unreadCount = 2).copy(hasMention = true)
@@ -1828,8 +1828,9 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
         store.dispatch(SharedActivityIntent.MarkAllRead)
 
-        assertEquals(emptyList(), store.state.value.items)
-        assertEquals(0, store.state.value.totalCount)
+        // slock channelService.ts:13136-13168: read mentions stay in Mentions.
+        assertEquals(listOf(row.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)), store.state.value.items)
+        assertEquals(1, store.state.value.totalCount)
         assertEquals(0, store.state.value.totalUnreadCount)
         pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
         scope.cancel()
