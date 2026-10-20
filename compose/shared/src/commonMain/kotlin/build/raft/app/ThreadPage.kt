@@ -10910,6 +10910,9 @@ private fun SharedThreadRouteContentContent(
                         accountId = currentSession?.user?.id,
                         storeScope = storeScope,
                         active = active && threadHostForeground,
+                        onOpenAgentProfile = { identity ->
+                            onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
+                        },
                     )
                 }
             },

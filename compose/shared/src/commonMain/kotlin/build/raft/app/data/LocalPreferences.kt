@@ -5,6 +5,9 @@ import build.raft.app.network.RaftCurlSocketIoPolicy
 import build.raft.app.network.HTTP3_PREFERENCE_KEY
 import build.raft.app.network.RaftHttp3Policy
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
 /**
@@ -923,6 +926,33 @@ class KeyValueHttp3PreferenceStore(
 
     override suspend fun saveHttp3UserChoice(enabled: Boolean) {
         store.putBoolean(HTTP3_PREFERENCE_KEY, enabled)
+    }
+}
+
+/**
+ * Task #22: the agent-profile tab order the user set (on web or here) for each server, kept so the
+ * profile's first frame already shows that order. The server copy stays canonical; this is only the
+ * last known value, refreshed on every sidebar-order load or save.
+ */
+class KeyValueAgentPanelTabOrderPreferenceRepository(
+    private val store: SharedPreferenceStore
+) : SharedAgentPanelTabOrderCache {
+    override fun readOrder(serverId: String): List<String>? {
+        val raw = store.getString(key(serverId)) ?: return null
+        return runCatching { agentPanelTabOrderJson.decodeFromString(agentPanelTabOrderSerializer, raw) }.getOrNull()
+    }
+
+    override fun writeOrder(serverId: String, order: List<String>) {
+        store.putString(key(serverId), agentPanelTabOrderJson.encodeToString(agentPanelTabOrderSerializer, order))
+    }
+
+    private fun key(serverId: String): String = "$KEY_PREFIX${serverId.trim()}"
+
+    private companion object {
+        const val KEY_PREFIX = "members:agentPanelTabOrder:"
+        val agentPanelTabOrderJson = Json { ignoreUnknownKeys = true }
+        val agentPanelTabOrderSerializer =
+            ListSerializer(String.serializer())
     }
 }
 

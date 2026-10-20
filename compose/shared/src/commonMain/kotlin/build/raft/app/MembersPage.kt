@@ -300,6 +300,7 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -950,6 +951,26 @@ internal val MembersAgentDetailTab.serverOrderKey: String
 internal fun List<MembersAgentDetailTab>.toMembersAgentPanelTabOrderWireKeys(): List<String> =
     map { it.serverOrderKey }
 
+/** The active agent tab: an explicit selection while it is visible, else the first ordered tab. */
+internal fun membersAgentDetailSelectedTab(
+    override: MembersAgentDetailTab?,
+    visibleTabs: List<MembersAgentDetailTab>
+): MembersAgentDetailTab =
+    override?.takeIf { it in visibleTabs }
+        ?: visibleTabs.firstOrNull()
+        ?: MembersAgentDetailTab.Profile
+
+/**
+ * Task #22: the selection to keep. While the strip is hidden (order still unknown) nothing is
+ * pinned, so the order that arrives decides the default tab; once shown, the visible tab is pinned.
+ */
+internal fun membersAgentDetailPinnedSelection(
+    override: MembersAgentDetailTab?,
+    shownTab: MembersAgentDetailTab,
+    stripShown: Boolean
+): MembersAgentDetailTab? =
+    if (stripShown && override == null) shownTab else override
+
 /**
  * Pager index the agent-detail [TabPager] must show for [selectedTab]. Index-
  * aligned with [visibleTabs] exactly like the pager's pages; a selection that
@@ -1070,18 +1091,48 @@ internal fun membersInitialAgentDetailTabForLaunch(
         ?: agentPanelTabOrder.firstNotNullOfOrNull { it.toMembersAgentDetailTabOrNull() }
 }
 
+/**
+ * Initial agent tab. With the order known the first ordered tab is the default (null), like web's
+ * AgentDetailPanel; only an open that gave up waiting for the order pins Profile, so the order
+ * arriving later reorders the strip without moving the selection.
+ */
 internal fun membersInitialAgentDetailTabForRender(
     expectedKind: MemberKind?,
     explicitInitialTab: MembersAgentDetailTab?,
     payloadAgentPanelTabOrder: List<String>,
-    storeServerMatches: Boolean,
-    storeLoaded: Boolean
+    orderKnown: Boolean
 ): MembersAgentDetailTab? {
     if (expectedKind != MemberKind.Agent) return explicitInitialTab
     explicitInitialTab?.let { return it }
     payloadAgentPanelTabOrder.firstNotNullOfOrNull { it.toMembersAgentDetailTabOrNull() }?.let { return it }
-    return if (!storeServerMatches || !storeLoaded) MembersAgentDetailTab.Profile else null
+    return if (!orderKnown) MembersAgentDetailTab.Profile else null
 }
+
+/** How long a cold-start agent profile waits for the user's tab order before showing the default. */
+internal const val MembersAgentTabOrderWaitMillis = 1_200L
+
+/** Task #22: the agent tab order to draw and whether it is the user's order (not a guess). */
+internal data class MembersAgentTabOrderRender(
+    val order: List<String>,
+    val known: Boolean
+)
+
+/**
+ * [orderServerId] is null when the detail shows no private agent tabs (only Profile), so there is
+ * nothing to wait for. Otherwise the store/device order wins, then the launch payload's order; with
+ * neither the order is unknown and the tab strip waits.
+ */
+internal fun membersAgentTabOrderForRender(
+    orderServerId: String?,
+    knownOrder: List<String>?,
+    payloadOrder: List<String>
+): MembersAgentTabOrderRender =
+    when {
+        orderServerId == null -> MembersAgentTabOrderRender(payloadOrder, known = true)
+        knownOrder != null -> MembersAgentTabOrderRender(knownOrder, known = true)
+        payloadOrder.isNotEmpty() -> MembersAgentTabOrderRender(payloadOrder, known = true)
+        else -> MembersAgentTabOrderRender(emptyList(), known = false)
+    }
 
 internal fun memberDetailAgentPanelTabOrderServerId(
     routeServerId: String?,
@@ -3862,19 +3913,34 @@ internal fun MemberDetailPageContent(
             logger = { message -> bridge.log(message) }
         )
     }
-    val agentPanelTabOrder =
-        if (agentPanelTabOrderState.serverId == agentPanelTabOrderServerId) {
-            agentPanelTabOrderState.order
-        } else {
-            payload.agentPanelTabOrder
+    // Task #22: the user's tab order (synced from the server's sidebar order) must be on screen
+    // from the first frame. knownOrderFor reads the store, or the order persisted on device when
+    // the store is not bound to this server yet, synchronously during composition.
+    val agentTabOrderRender =
+        remember(agentPanelTabOrderState, agentPanelTabOrderServerId, payload.agentPanelTabOrder) {
+            membersAgentTabOrderForRender(
+                orderServerId = agentPanelTabOrderServerId,
+                knownOrder = provider.agentPanelTabOrderStore.knownOrderFor(agentPanelTabOrderServerId),
+                payloadOrder = payload.agentPanelTabOrder
+            )
         }
-    val initialAgentTabForRender = remember(memberIdentity) {
+    val agentPanelTabOrder = agentTabOrderRender.order
+    // Cold start with nothing on device: hold the tab strip until the order is known, so it never
+    // draws the default order and then reorders. Latched per member; a bounded wait keeps an
+    // offline open from hiding the tabs (the selection is pinned once shown, see MembersDetailContent).
+    var agentTabOrderReady by remember(memberIdentity) { mutableStateOf(agentTabOrderRender.known) }
+    if (!agentTabOrderReady && agentTabOrderRender.known) agentTabOrderReady = true
+    LaunchedEffect(memberIdentity, agentTabOrderReady) {
+        if (agentTabOrderReady) return@LaunchedEffect
+        delay(MembersAgentTabOrderWaitMillis)
+        agentTabOrderReady = true
+    }
+    val initialAgentTabForRender = remember(memberIdentity, agentTabOrderReady) {
         membersInitialAgentDetailTabForRender(
             expectedKind = expectedKind,
             explicitInitialTab = initialAgentTab,
             payloadAgentPanelTabOrder = payload.agentPanelTabOrder,
-            storeServerMatches = agentPanelTabOrderState.serverId == agentPanelTabOrderServerId,
-            storeLoaded = agentPanelTabOrderState.loaded
+            orderKnown = agentTabOrderRender.known
         )
     }
     val agentStatusResolver =
@@ -4020,18 +4086,16 @@ internal fun MemberDetailPageContent(
                     logger = { message -> bridge.log(message) }
                 )
             is DataResult.Error -> {
-                provider.agentPanelTabOrderStore.applyLoaded(
+                provider.agentPanelTabOrderStore.applyLoadFailed(
                     serverId = statusLookupServerId,
-                    order = emptyList(),
                     source = "member_detail_sidebar_order_error_fallback",
                     logger = { message -> bridge.log(message) }
                 )
                 bridge.log("member_detail_agent_tab_order_load_failed code=${result.error.code}")
             }
             is DataResult.NoPermission -> {
-                provider.agentPanelTabOrderStore.applyLoaded(
+                provider.agentPanelTabOrderStore.applyLoadFailed(
                     serverId = statusLookupServerId,
-                    order = emptyList(),
                     source = "member_detail_sidebar_order_blocked_fallback",
                     logger = { message -> bridge.log(message) }
                 )
@@ -4427,6 +4491,7 @@ internal fun MemberDetailPageContent(
                                     MembersAgentDetailTab.Profile
                                 },
                             agentPanelTabOrder = agentPanelTabOrder,
+                            agentPanelTabOrderReady = agentTabOrderReady,
                             onAgentPanelTabOrderChange = { orderedTabs ->
                                 val previousOrder = agentPanelTabOrder
                                 val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
@@ -5774,6 +5839,8 @@ private class MembersAgentDetailPresentation(
     val initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     val initialAgentTab: MembersAgentDetailTab? = null,
     val agentPanelTabOrder: List<String> = emptyList(),
+    /** False while a cold-start open still waits for the user's tab order (task #22). */
+    val agentPanelTabOrderReady: Boolean = true,
     val onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     val initialAgentScopeSet: AgentScopeSet? = null,
     val stableVisualCapture: Boolean = false
@@ -5846,6 +5913,7 @@ private fun MembersDetailContent(
     val initialVisualMode = presentation.initialVisualMode
     val initialAgentTab = presentation.initialAgentTab
     val agentPanelTabOrder = presentation.agentPanelTabOrder
+    val agentPanelTabOrderReady = presentation.agentPanelTabOrderReady
     val onAgentPanelTabOrderChange = presentation.onAgentPanelTabOrderChange
     val initialAgentScopeSet = presentation.initialAgentScopeSet
     val stableVisualCapture = presentation.stableVisualCapture
@@ -6039,9 +6107,17 @@ private fun MembersDetailContent(
             listOf(MembersAgentDetailTab.Profile)
         }
     }
-    val selectedTab = selectedTabOverride?.takeIf { it in visibleTabs }
-        ?: visibleTabs.firstOrNull()
-        ?: MembersAgentDetailTab.Profile
+    val selectedTab = membersAgentDetailSelectedTab(selectedTabOverride, visibleTabs)
+    // Task #22: once the tab strip is on screen the tab it shows is the selection, so a later
+    // order change (web sync, a reorder) moves the strip around it instead of selecting whatever
+    // tab became first.
+    val pinnedSelectedTab =
+        membersAgentDetailPinnedSelection(
+            override = selectedTabOverride,
+            shownTab = selectedTab,
+            stripShown = member.kind == MemberKind.Agent && agentPanelTabOrderReady
+        )
+    if (pinnedSelectedTab != selectedTabOverride) selectedTabOverride = pinnedSelectedTab
     var visitedAgentTabs by remember(member.id.value) {
         mutableStateOf(setOf(selectedTab))
     }
@@ -6349,7 +6425,15 @@ private fun MembersDetailContent(
                     onCopyInfo = { copyDiagnostics() }
                 )
             }
-            if (member.kind == MemberKind.Agent) {
+            if (member.kind == MemberKind.Agent && !agentPanelTabOrderReady) {
+                // Task #22: cold start without a known tab order. Draw no strip rather than the
+                // default order that would reorder a moment later.
+                RaftCenteredLoading(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            } else if (member.kind == MemberKind.Agent) {
                 // task #232 PR2: the six agent tabs share TabPager with Activity
                 // (PR1, #2224). The tab bar stays the tap surface and selection
                 // owner; a horizontal swipe on the body settles on a neighbour
@@ -6364,6 +6448,9 @@ private fun MembersDetailContent(
                 // previous single `when (selectedTab)`. State that must survive
                 // a swipe is hoisted above: workspace tree, chat tick, profile
                 // editing, and (agentTabListStates) each tab's scroll position.
+                // Keyed by the order: a reorder rebuilds the pager on the selected tab's new index
+                // instead of animating across pages that now hold other tabs.
+                key(visibleTabs) {
                 TabPager(
                     selectedIndex = membersAgentDetailPagerIndex(visibleTabs, selectedTab),
                     onSelectedIndexChange = { index ->
@@ -6583,6 +6670,7 @@ private fun MembersDetailContent(
                             }
                         }
                     }
+                }
                 }
             } else {
                 LazyColumn(

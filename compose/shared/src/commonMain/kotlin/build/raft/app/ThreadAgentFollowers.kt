@@ -67,11 +67,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import build.raft.app.model.MemberId
+import build.raft.app.model.ServerId
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftListRow
 
 @Composable
 internal fun ThreadAgentFollowersRoute(
     threadId: String?, serverId: String?, accountId: String?,
     storeScope: RaftShellStoreScope, active: Boolean,
+    onOpenAgentProfile: (MemberDetailIdentity) -> Unit = {},
 ) {
     if (threadId.isNullOrBlank() || serverId.isNullOrBlank() || accountId.isNullOrBlank()) return
     val pager = LocalActivity.current.getPager() as Pager
@@ -109,13 +122,14 @@ internal fun ThreadAgentFollowersRoute(
         if (active) store.dispatch(ThreadAgentFollowersIntent.Refresh)
         else store.dispatch(ThreadAgentFollowersIntent.Close)
     }
-    ThreadAgentFollowersHeader(state, store::dispatch)
+    ThreadAgentFollowersHeader(state, store::dispatch, onOpenAgentProfile)
 }
 
 private data class FollowersOverlay(
     val state: ThreadAgentFollowersState,
     val anchor: RaftPopoverAnchorResolver?,
     val dispatch: (ThreadAgentFollowersIntent) -> Unit,
+    val openAgentProfile: (ThreadAgentFollower) -> Unit,
 )
 private class FollowersOverlayOwner {
     var value by mutableStateOf<FollowersOverlay?>(null)
@@ -131,7 +145,7 @@ internal fun ThreadFollowersOverlayHost(content: @Composable () -> Unit) {
             content()
             owner.value?.let { overlay ->
                 val anchor = if (overlay.state.open) overlay.anchor?.resolveCurrentPlacement() else null
-                if (anchor != null) FollowersPopover(overlay.state, anchor, overlay.dispatch)
+                if (anchor != null) FollowersPopover(overlay.state, anchor, overlay.dispatch, overlay.openAgentProfile)
                 overlay.state.notice?.let { notice ->
                     FollowerNoticeView(
                         notice = notice,
@@ -195,6 +209,7 @@ private fun FollowerNoticeView(
 internal fun ThreadAgentFollowersHeader(
     state: ThreadAgentFollowersState,
     dispatch: (ThreadAgentFollowersIntent) -> Unit,
+    onOpenAgentProfile: (MemberDetailIdentity) -> Unit = {},
 ) {
     val agents = state.roster?.agents.orEmpty()
     val owner = LocalFollowersOverlay.current
@@ -202,7 +217,16 @@ internal fun ThreadAgentFollowersHeader(
     var resolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
     val latestDispatch by rememberUpdatedState(dispatch)
     val stableDispatch = remember { { intent: ThreadAgentFollowersIntent -> latestDispatch(intent) } }
-    SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch) }
+    val latestOpenAgentProfile by rememberUpdatedState(onOpenAgentProfile)
+    // Web ThreadAgentFollowerRow: the row opens the agent's profile (a peer agent's too). The
+    // popover closes first so the profile is not opened under it.
+    val openAgentProfile = remember {
+        { agent: ThreadAgentFollower ->
+            latestDispatch(ThreadAgentFollowersIntent.Close)
+            latestOpenAgentProfile(threadFollowerProfileIdentity(agent))
+        }
+    }
+    SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch, openAgentProfile) }
     DisposableEffect(owner) { onDispose { owner?.value = null } }
     if (agents.isEmpty() && !state.open && state.error != ThreadFollowersError.Load) return
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
@@ -239,15 +263,19 @@ internal fun ThreadAgentFollowersHeader(
 }
 
 @Composable
-private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopoverAnchor, dispatch: (ThreadAgentFollowersIntent) -> Unit) {
+private fun FollowersPopover(
+    state: ThreadAgentFollowersState,
+    anchor: RaftPopoverAnchor,
+    dispatch: (ThreadAgentFollowersIntent) -> Unit,
+    onOpenAgentProfile: (ThreadAgentFollower) -> Unit,
+) {
     val agents = state.roster?.agents.orEmpty()
     val theme = LocalRaftTheme.current
     val density = LocalDensity.current
-    var peerHint by remember { mutableStateOf<String?>(null) }
     val width = 288.dp
     // Real measured height replaces this estimate after the first layout.
     var measuredSize by remember { mutableStateOf(Size.Zero) }
-    val estimatedHeight = (44 + if (agents.isEmpty()) 80 else agents.take(6).size * 48).dp
+    val estimatedHeight = (44 + if (agents.isEmpty()) 80 else 8 + agents.take(5).size * 64).dp
     val size = if (measuredSize != Size.Zero) measuredSize else with(density) { Size(width.toPx(), estimatedHeight.toPx()) }
     RaftAnchoredPopover(
         anchor = anchor, contentSize = size,
@@ -289,41 +317,60 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopov
                     Text(stringResource(MR.strings.thread_followers_empty), style = RaftType.Caption, color = theme.inkMuted)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 12.dp)) {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(vertical = 4.dp)) {
                     items(agents, key = { it.id }) { agent ->
                         val server = agent.serverName?.takeIf { it.isNotBlank() }
                             ?: agent.serverSlug?.takeIf { it.isNotBlank() }
                             ?: stringResource(MR.strings.thread_followers_peer_server)
-                        val peerExplanation = stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
                         val canManage = state.roster?.canManage == true
                         val canRemove = agent.canRemove && agent.isCurrentServer
+                        // Web: the X names the action, or why a peer server's agent cannot be removed here.
+                        val removeLabel =
+                            if (canRemove) stringResource(MR.strings.thread_followers_remove, agent.label)
+                            else stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
                         val indicator = followerStatusIndicator(agent.status)
-                        // Sharing member-row presentation must not replace follower-specific permissions.
-                        RaftModalCompactMemberRow(
+                        // raft-ui ListRow (web ChannelMemberRow with onRowClick): the whole row opens
+                        // the profile and shows the pressed overlay; the remove X is its own ghost button.
+                        RaftListRow(
                             title = agent.label,
+                            onClick = { onOpenAgentProfile(agent) },
                             subtitle = indicator?.localizedMemberStatusLabel() ?: agent.status,
-                            avatarWireValue = agent.avatarUrl,
-                            avatarLabel = agent.label,
-                            avatarFill = raftAvatarFallbackFill(MemberKind.Agent),
-                            statusColor = indicator?.color,
-                            statusPulsing = indicator?.pulsing == true,
-                            cacheServerId = agent.serverId,
-                            sourceBadgeLabel = server.takeUnless { agent.isCurrentServer },
-                            clickEnabled = false,
-                            trailingIcon = RaftLucideIconName.X.takeIf { canManage },
-                            trailingMuted = !canRemove,
-                            onTrailingClick = if (canManage) ({
-                                if (!state.mutating && (state.undo == null || !canRemove)) {
-                                    if (canRemove) dispatch(ThreadAgentFollowersIntent.Remove(agent.id))
-                                    else peerHint = peerExplanation
+                            leading = {
+                                RaftAvatarWithStatus(
+                                    statusColor = indicator?.color,
+                                    avatarSize = RaftAvatarSize.Md.edge,
+                                    statusPulsing = indicator?.pulsing == true,
+                                    cutoutColor = theme.surface,
+                                ) {
+                                    RaftAppAvatar(
+                                        avatarWireValue = agent.avatarUrl,
+                                        label = agent.label,
+                                        avatarSize = RaftAvatarSize.Md.edge,
+                                        cacheServerId = agent.serverId,
+                                        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
+                                    )
                                 }
-                            }) else null,
+                            },
+                            badge = if (agent.isCurrentServer) null else {
+                                { RaftBadge(server, appearance = RaftBadgeAppearance.Outline, variant = RaftBadgeVariant.Muted) }
+                            },
+                            trailing = if (canManage) {
+                                {
+                                    // 44dp: the touch target of a control at the row's edge.
+                                    RaftIconButton(
+                                        onClick = { dispatch(ThreadAgentFollowersIntent.Remove(agent.id)) },
+                                        tooltip = removeLabel,
+                                        variant = RaftButtonVariant.Ghost,
+                                        size = RaftIconButtonSize.Lg,
+                                        enabled = threadFollowerRemoveEnabled(agent, state),
+                                    ) {
+                                        RaftGlyphIcon(RaftGlyph.X, size = 18.dp)
+                                    }
+                                }
+                            } else {
+                                null
+                            },
                         )
-                    }
-                }
-                peerHint?.let { hint ->
-                    Box(Modifier.fillMaxWidth().background(theme.surfaceMuted).padding(12.dp).clickable { peerHint = null }) {
-                        Text(hint, style = RaftType.Caption, color = theme.inkMuted)
                     }
                 }
             }
@@ -331,6 +378,20 @@ private fun FollowersPopover(state: ThreadAgentFollowersState, anchor: RaftPopov
     }
     }
 }
+
+/** The member detail a follower row opens: the agent on its own server (peer agents read-only). */
+internal fun threadFollowerProfileIdentity(agent: ThreadAgentFollower): MemberDetailIdentity =
+    MemberDetailIdentity(
+        memberId = MemberId(agent.id),
+        kind = MemberKind.Agent,
+        sourceServerId = agent.serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId),
+    )
+
+/** Web: removable only on this server, and not while a removal (or its undo window) is pending. */
+internal fun threadFollowerRemoveEnabled(agent: ThreadAgentFollower, state: ThreadAgentFollowersState): Boolean =
+    state.roster?.canManage == true &&
+        agent.canRemove && agent.isCurrentServer &&
+        !state.mutating && state.undo == null
 
 @Composable
 private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {

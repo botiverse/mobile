@@ -379,15 +379,14 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentDetailUsesProfileWhileServerTabOrderIsPending() {
+    fun agentDetailPinsProfileWhenTabOrderIsStillUnknown() {
         assertEquals(
             MembersAgentDetailTab.Profile,
             membersInitialAgentDetailTabForRender(
                 expectedKind = MemberKind.Agent,
                 explicitInitialTab = null,
                 payloadAgentPanelTabOrder = emptyList(),
-                storeServerMatches = true,
-                storeLoaded = false
+                orderKnown = false
             )
         )
     }
@@ -400,8 +399,7 @@ class SharedMembersParserTest {
                 expectedKind = MemberKind.Agent,
                 explicitInitialTab = MembersAgentDetailTab.Activity,
                 payloadAgentPanelTabOrder = emptyList(),
-                storeServerMatches = false,
-                storeLoaded = false
+                orderKnown = false
             )
         )
         assertEquals(
@@ -410,8 +408,7 @@ class SharedMembersParserTest {
                 expectedKind = MemberKind.Agent,
                 explicitInitialTab = null,
                 payloadAgentPanelTabOrder = listOf("activity", "profile"),
-                storeServerMatches = false,
-                storeLoaded = false
+                orderKnown = false
             )
         )
         assertEquals(
@@ -420,8 +417,7 @@ class SharedMembersParserTest {
                 expectedKind = MemberKind.Agent,
                 explicitInitialTab = null,
                 payloadAgentPanelTabOrder = emptyList(),
-                storeServerMatches = true,
-                storeLoaded = true
+                orderKnown = true
             )
         )
     }
@@ -459,8 +455,7 @@ class SharedMembersParserTest {
                 expectedKind = MemberKind.Human,
                 explicitInitialTab = null,
                 payloadAgentPanelTabOrder = emptyList(),
-                storeServerMatches = false,
-                storeLoaded = false
+                orderKnown = false
             )
         )
     }
