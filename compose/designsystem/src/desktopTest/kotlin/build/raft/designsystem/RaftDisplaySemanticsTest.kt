@@ -66,6 +66,8 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftPulseClock
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftSidebarItemVariant
+import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
@@ -189,6 +191,39 @@ class RaftDisplaySemanticsTest {
             setContent(themed { RaftSidebarItem(name, onClick = {}) })
             val text = onNodeWithText("直子").fetchSemanticsNode().config[SemanticsProperties.Text].single()
             assertTrue(text.spanStyles.any { it.item.localeList == ja }, "spans: ${text.spanStyles}")
+        }
+
+    /** Home's entry rows: a 20dp icon 12dp from the name; a place row: 16dp in a 19dp slot, 8dp. */
+    @Test
+    fun aSidebarEntryRowHasA20dpIcon12dpFromItsName() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(320.dp)) {
+                        RaftSidebarItem(
+                            "Search",
+                            onClick = {},
+                            variant = RaftSidebarItemVariant.Entry,
+                            leading = { Box(Modifier.size(raftSidebarItemIconSize()).testTag("entry-icon")) },
+                        )
+                        RaftSidebarItem(
+                            "general",
+                            onClick = {},
+                            leading = { Box(Modifier.size(raftSidebarItemIconSize()).testTag("place-icon")) },
+                        )
+                    }
+                },
+            )
+            val d = density.density
+            val entryIcon = onNodeWithTag("entry-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val entryTitle = onNodeWithText("Search", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(20f, entryIcon.width / d, 0.5f)
+            assertEquals(12f, (entryTitle.left - entryIcon.right) / d, 0.5f)
+            val placeIcon = onNodeWithTag("place-icon", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val placeTitle = onNodeWithText("general", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(16f, placeIcon.width / d, 0.5f)
+            // 1.5dp of the 19dp slot on each side of the 16dp icon, then gap-2.
+            assertEquals(9.5f, (placeTitle.left - placeIcon.right) / d, 0.5f)
         }
 
     @Test

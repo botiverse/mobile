@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -76,6 +77,30 @@ internal object RaftSidebarItemMetrics {
     val Icon = 16.dp
 }
 
+/** The icon size [RaftSidebarItemIcon] draws at: the enclosing row's [RaftSidebarItemVariant]. */
+private val LocalRaftSidebarItemIconSize = staticCompositionLocalOf { RaftSidebarItemMetrics.Icon }
+
+/** Which kind of sidebar row: it sets the leading slot and the gap after it. */
+enum class RaftSidebarItemVariant(
+    internal val leadingBox: Dp,
+    internal val icon: Dp,
+    internal val leadingGap: Dp,
+) {
+    /**
+     * A place in a group (a channel, a pinned row, a DM): `SidebarItemIcon` /
+     * `SidebarItemChannelIcon`, a 19dp slot with a 16dp icon or a 19dp avatar, `gap-2` (8dp)
+     * to the name.
+     */
+    Default(RaftSidebarItemMetrics.IconBox, RaftSidebarItemMetrics.Icon, RaftSidebarItemMetrics.Gap),
+
+    /**
+     * An entry row at the top of the phone Home (Search, Activity, Saved; web
+     * `SIDEBAR_ENTRY_ROW_CLASS` / `SIDEBAR_ENTRY_ICON_CLASS`, raft-ui ListRow `entry` +
+     * `ListRowIcon`): a 20dp icon, `gap-3` (12dp) to the name. Never selected (Home rules).
+     */
+    Entry(20.dp, 20.dp, 12.dp),
+}
+
 /**
  * raft-ui SidebarItem at its phone size: one place in the Home list (Search, Activity,
  * Saved, a channel, a DM). The whole row is the target.
@@ -84,7 +109,9 @@ internal object RaftSidebarItemMetrics {
  *   inside a 1.5dp edge that is always there (transparent at rest), control radius, gap 8,
  *   1dp above and below. The row fills the width it is given.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
- *   in `foreground-hint` ([LocalRaftContentColor]).
+ *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
+ *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
+ *   12dp from the name.
  * - [title]: `text-body` (16/24) at 600, one line with an ellipsis; 700 when
  *   [RaftRowTone.Unread] or [selected]. [RaftRowTone.Muted] writes it in
  *   `foreground-muted`, [RaftRowTone.Away] in `foreground-hint`.
@@ -124,6 +151,7 @@ fun RaftSidebarItem(
     onLongClickLabel: String? = null,
     menuOpen: Boolean = false,
     titleTrailing: (@Composable () -> Unit)? = null,
+    variant: RaftSidebarItemVariant = RaftSidebarItemVariant.Default,
 ) {
     RaftSidebarItemLayout(
         titleText = { textModifier, style, ink ->
@@ -141,6 +169,7 @@ fun RaftSidebarItem(
         onLongClickLabel = onLongClickLabel,
         menuOpen = menuOpen,
         titleTrailing = titleTrailing,
+        variant = variant,
     )
 }
 
@@ -164,6 +193,7 @@ fun RaftSidebarItem(
     onLongClickLabel: String? = null,
     menuOpen: Boolean = false,
     titleTrailing: (@Composable () -> Unit)? = null,
+    variant: RaftSidebarItemVariant = RaftSidebarItemVariant.Default,
 ) {
     RaftSidebarItemLayout(
         titleText = { textModifier, style, ink ->
@@ -181,6 +211,7 @@ fun RaftSidebarItem(
         onLongClickLabel = onLongClickLabel,
         menuOpen = menuOpen,
         titleTrailing = titleTrailing,
+        variant = variant,
     )
 }
 
@@ -201,6 +232,7 @@ private fun RaftSidebarItemLayout(
     onLongClickLabel: String?,
     menuOpen: Boolean,
     titleTrailing: (@Composable () -> Unit)?,
+    variant: RaftSidebarItemVariant,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -224,6 +256,7 @@ private fun RaftSidebarItemLayout(
         LocalRaftContentColor provides hintInk,
         LocalRaftSidebarItemHint provides hintInk,
         LocalRaftSurfaceColor provides surface,
+        LocalRaftSidebarItemIconSize provides variant.icon,
     ) {
         Row(
             modifier
@@ -263,7 +296,12 @@ private fun RaftSidebarItemLayout(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (leading != null) {
-                Box(Modifier.size(RaftSidebarItemMetrics.IconBox), contentAlignment = Alignment.Center) { leading() }
+                Box(
+                    Modifier
+                        .padding(end = variant.leadingGap - RaftSidebarItemMetrics.Gap)
+                        .size(variant.leadingBox),
+                    contentAlignment = Alignment.Center,
+                ) { leading() }
             }
             Row(
                 Modifier.weight(1f),
@@ -311,13 +349,20 @@ private fun RaftSidebarItemLayout(
 }
 
 /**
- * A 16dp [glyph] for a sidebar row's leading slot (`SidebarItemIcon`), in the row's icon
- * ink (`foreground-hint`, `sticker-ink` when selected). Decorative.
+ * A [glyph] for a sidebar row's leading slot (`SidebarItemIcon`), in the row's icon ink
+ * (`foreground-hint`, `sticker-ink` when selected), at the row's icon size: 16dp, 20dp in
+ * a [RaftSidebarItemVariant.Entry] row. Decorative. An app icon in that slot reads the
+ * size the same way: [raftSidebarItemIconSize].
  */
 @Composable
 fun RaftSidebarItemIcon(glyph: RaftGlyph, modifier: Modifier = Modifier) {
-    RaftGlyphIcon(glyph, modifier = modifier, size = RaftSidebarItemMetrics.Icon)
+    RaftGlyphIcon(glyph, modifier = modifier, size = raftSidebarItemIconSize())
 }
+
+/** The icon size of the enclosing sidebar row's leading slot (16dp; 20dp in an entry row). */
+@Composable
+@ReadOnlyComposable
+fun raftSidebarItemIconSize(): Dp = LocalRaftSidebarItemIconSize.current
 
 /**
  * A channel row: [RaftSidebarItem] led by the bare `hash` (`lock` when [isPrivate]) in
@@ -455,6 +500,7 @@ private fun RaftSidebarChannelItemLayout(
         onLongClickLabel = onLongClickLabel,
         menuOpen = menuOpen,
         titleTrailing = titleTrailing,
+        variant = RaftSidebarItemVariant.Default,
     )
 }
 

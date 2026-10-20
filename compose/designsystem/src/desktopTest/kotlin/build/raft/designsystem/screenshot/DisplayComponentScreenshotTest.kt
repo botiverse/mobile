@@ -79,6 +79,7 @@ import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarItemIcon
 import build.raft.designsystem.components.RaftSidebarItemMeta
+import build.raft.designsystem.components.RaftSidebarItemVariant
 import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftSkeleton
@@ -636,8 +637,9 @@ class DisplayComponentScreenshotTest {
         }
 
     /**
-     * raft-ui Sidebar rows at the phone size (Home): nav rows, group headers (collapsed,
-     * with attention, expanded with controls) and channel rows in every state: mention plus
+     * raft-ui Sidebar rows at the phone size (Home): the entry rows (20dp icon, 12dp gap),
+     * group headers (collapsed, with attention, expanded with controls) and channel rows in
+     * every state: mention plus
      * threads, unread plus threads, muted with unread, plain unread, selected (the yellow
      * sticker), private, away, a subtitle, pressed, a row and a header whose press-and-hold
      * menu is open (pressed; the header's attention pixel hidden), focused, a truncated
@@ -648,14 +650,23 @@ class DisplayComponentScreenshotTest {
     fun sidebar() =
         capture("sidebar") {
             Column(Modifier.width(360.dp)) {
-                RaftSidebarItem("Search", onClick = {}, leading = { RaftSidebarItemIcon(RaftGlyph.Search) })
+                // Home's entry rows: a 20dp icon, 12dp to the name.
+                val entry = RaftSidebarItemVariant.Entry
+                RaftSidebarItem("Search", onClick = {}, variant = entry, leading = { RaftSidebarItemIcon(RaftGlyph.Search) })
                 RaftSidebarItem(
                     "Activity",
                     onClick = {},
+                    variant = entry,
                     leading = { RaftSidebarItemIcon(RaftGlyph.Info) },
                     trailing = { RaftUnreadCount(41) },
                 )
-                RaftSidebarItem("Saved", onClick = {}, leading = { RaftSidebarItemIcon(RaftGlyph.Copy) }, trailing = { RaftSidebarItemMeta("2") })
+                RaftSidebarItem(
+                    "Saved",
+                    onClick = {},
+                    variant = entry,
+                    leading = { RaftSidebarItemIcon(RaftGlyph.Copy) },
+                    trailing = { RaftSidebarItemMeta("2") },
+                )
                 RaftSidebarSectionHeader(
                     "Pinned",
                     expanded = false,
