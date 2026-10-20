@@ -2838,7 +2838,7 @@ private fun List<SettingsComputerAgentSnapshot>.enrichWithMembers(
     }
 }
 
-private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
+internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
     SettingsComputerSnapshot(
         id = id,
         name = name,
@@ -2854,7 +2854,11 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         createdAt = createdAt,
         lastHeartbeat = lastHeartbeat,
         apiKeyPrefix = apiKeyPrefix,
-        statusVersion = statusVersion
+        statusVersion = statusVersion,
+        creatorUserId = creatorUserId,
+        attachedByCurrentUser = attachedByCurrentUser,
+        agentCount = agentCount,
+        upgradeAvailable = isComputer && computerUpgradeAvailable == true
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

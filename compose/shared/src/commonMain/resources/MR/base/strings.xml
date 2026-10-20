@@ -1855,10 +1855,6 @@
     <string name="settings_computers_workspace_scan_title">Workspaces not scanned</string>
     <string name="settings_computers_workspace_scan_detail">Scan on demand to inspect workspace directories on this computer.</string>
     <string name="settings_computers_section_actions">Actions</string>
-    <string name="settings_computers_rotate_key_title">Rotate API key</string>
-    <string name="settings_computers_rotate_key_detail">Generate a new key for the daemon to reconnect. The old key stops working immediately.</string>
-    <string name="settings_computers_rotate_key_action">Rotate key</string>
-    <string name="settings_computers_rotate_key_busy">Rotating...</string>
     <string name="settings_computers_delete_title">Delete Computer</string>
     <string name="settings_computers_delete_detail">Permanently remove this computer. All agents must be deleted first.</string>
     <string name="settings_computers_delete_action">Delete Computer</string>
@@ -1896,6 +1892,14 @@
     <string name="settings_computers_create_agent_error_empty">Empty response</string>
     <string name="settings_computers_create_agent_error_failed">Failed to create agent: %1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">You do not have permission to create agents.</string>
+    <string name="settings_computers_update_available">Update available</string>
+    <string name="settings_computers_last_seen">Last seen %1$s</string>
+    <string name="settings_computers_online_count">%1$d of %2$d online</string>
+    <string name="settings_computers_workspace_status_active">Active</string>
+    <string name="settings_computers_workspace_status_orphan">Orphaned</string>
+    <string name="settings_computers_cannot_delete_message_one">This computer has %1$d agent assigned. Remove all agents before deleting the computer.</string>
+    <string name="settings_computers_cannot_delete_message_many">This computer has %1$d agents assigned. Remove all agents before deleting the computer.</string>
+    <string name="settings_computers_error_refresh_title">Couldn\'t refresh</string>
     <string name="settings_connected_apps_loading">Loading integrations, marketplace apps, and OAuth clients.</string>
     <string name="settings_connected_apps_empty">No Connected Apps</string>
     <string name="settings_connected_apps_error">Connected Apps Error</string>

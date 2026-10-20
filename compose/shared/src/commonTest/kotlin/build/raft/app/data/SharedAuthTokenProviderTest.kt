@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.settingsAdministrationWebViewInjectedJavaScript
 import build.raft.app.settingsBillingWebViewInjectedJavaScript
-import build.raft.app.settingsComputersWebViewInjectedJavaScript
 import build.raft.app.settingsMarketplaceWebViewInjectedJavaScript
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -294,7 +293,6 @@ class SharedAuthTokenProviderTest {
         val store = InMemoryRaftAuthSessionStore(original)
         val scripts =
             listOf(
-                settingsComputersWebViewInjectedJavaScript(original),
                 settingsBillingWebViewInjectedJavaScript(original),
                 settingsMarketplaceWebViewInjectedJavaScript(original),
                 settingsAdministrationWebViewInjectedJavaScript(original),

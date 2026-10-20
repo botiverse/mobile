@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -8,9 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import androidx.compose.runtime.setValue
@@ -142,24 +138,11 @@ private fun SettingsWebViewScreen() {
         remember(pager.pageData.params) {
             settingsWebViewSurfaceFromPageData(pager.pageData.params)
         }
-    val computerTarget =
-        remember(pager.pageData.params.toString(), surface) {
-            if (surface == SettingsWebViewSurface.Computers) {
-                settingsComputerRouteIdentityFromPageData(pager.pageData.params)
-            } else {
-                null
-            }
-        }
-    val computerSpec = remember(computerTarget) { computerTarget?.let(::settingsComputerWebViewSpec) }
     when (surface) {
         SettingsWebViewSurface.Onboarding -> SettingsWebViewInvalidRoute(pager)
-        SettingsWebViewSurface.Computers ->
-            StandaloneSettingsWebViewPage(
-                pager = pager,
-                title = stringResource(MR.strings.settings_computers_title),
-                iconName = RaftLucideIconName.Monitor,
-                spec = computerSpec ?: settingsComputersWebViewSpec,
-            )
+        // Computers is a native page now; keep old settings-webview route payloads
+        // (list, or one machine via settingsComputerId) compatible by rendering it here.
+        SettingsWebViewSurface.Computers -> RaftSettingsComputersRoute()
         SettingsWebViewSurface.Billing ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
@@ -266,7 +249,6 @@ internal fun StandaloneSettingsWebViewPage(
     title: String,
     iconName: RaftLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
-    isComputerDetail: Boolean = false,
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
 ) {
     SettingsWebViewPageScaffold(
@@ -281,7 +263,6 @@ internal fun StandaloneSettingsWebViewPage(
             spec = spec,
             controller = controller,
             onNavigationStateChange = onNavigationStateChange,
-            isComputerDetail = isComputerDetail,
             onHostMessage = onHostMessage,
         )
     }
@@ -439,7 +420,6 @@ private fun StandaloneSettingsWebViewBody(
     spec: StandaloneSettingsWebViewSpec,
     controller: RaftWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
-    isComputerDetail: Boolean = false,
     onHostMessage: (String, JSONObject) -> Unit,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -457,41 +437,8 @@ private fun StandaloneSettingsWebViewBody(
         }
     val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
-    val navigationScope = rememberCoroutineScope()
-    val session = authSnapshot.session
-    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
-    val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
-    val serverId = session?.currentServerId
-    val serverSlug = session?.servers?.firstOrNull { it.id == serverId }?.slug
-    val computerNavigation = remember(webBaseUrl, serverId, serverSlug, authSnapshot.sessionGeneration, storeScope, selectedServerId) {
-        if (spec.surface == SettingsWebViewSurface.Computers) {
-            computerNavigationForSelection(webBaseUrl, serverSlug, serverId, selectedServerId, bridge::log)
-        } else null
-    }
-    LaunchedEffect(computerNavigation, selectedServerId, serverId, serverSlug) {
-        if (spec.surface == SettingsWebViewSurface.Computers) {
-            val reason = when {
-                serverId.isNullOrBlank() -> "no_session_server"
-                selectedServerId != serverId -> "selection_mismatch"
-                serverSlug.isNullOrBlank() -> "no_slug"
-                webBaseUrl.isNullOrBlank() -> "no_origin"
-                else -> "enabled"
-            }
-            bridge.log("computer_native_nav_state reason=$reason")
-        }
-    }
     LaunchedEffect(spec.surface, spec) {
-        // Computers opens two distinct pages (list vs machine detail) that share one
-        // surface name; tagging the target keeps the diagnostic unambiguous (#336).
-        val targetTag = when {
-            spec.surface != SettingsWebViewSurface.Computers -> null
-            isComputerDetail -> "detail"
-            else -> "list"
-        }
-        bridge.log(
-            "settings_${spec.surface.diagnosticsName}_open" +
-                (targetTag?.let { " target=$it" } ?: "")
-        )
+        bridge.log("settings_${spec.surface.diagnosticsName}_open")
     }
     StandaloneSettingsWebViewContent(
         authSnapshot = authSnapshot,
@@ -503,50 +450,6 @@ private fun StandaloneSettingsWebViewBody(
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url ->
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$url")
-            when (val action = computerNavigation?.takeIf { selectedServerStore.isSelected(serverId) }?.accept(url)) {
-                is ComputerNavigationAction.RestoreComputer -> {
-                    bridge.log("computer_native_restore ticket=${action.ticket}")
-                    controller.goBack()
-                    navigationScope.launch {
-                        delay(1000)
-                        // replaceState and missing history need an explicit return location.
-                        // Check session authority again after the asynchronous wait.
-                        if (authStore.readSession() == session && selectedServerStore.isSelected(serverId)) {
-                            computerNavigation?.fallbackUrl(action.ticket)?.let { returnUrl ->
-                                controller.evaluateJavaScript(
-                                    "window.location.replace(" + Json.encodeToString(returnUrl) + ");"
-                                )
-                            }
-                        }
-                    }
-                }
-                is ComputerNavigationAction.Open -> {
-                    val target = action.target
-                    bridge.log("computer_native_open kind=${target.kind}")
-                    val pageData = if (target.kind == "agent") {
-                        RaftMembersPayload(instanceId = "computer-agent").toMemberDetailPageData(
-                            MemberDetailIdentity(
-                                build.raft.app.model.MemberId(target.id),
-                                build.raft.app.model.MemberKind.Agent,
-                                serverId?.let { build.raft.app.model.ServerId(it) },
-                            )
-                        )
-                    } else {
-                        WireThreadLaunchPayload(
-                            instanceId = "computer-dm-${target.id}",
-                            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                            streamChannelId = target.id,
-                        ).toThreadPageData()
-                    }
-                    if (pageData != null) pager.openRaftPage(
-                        pageName = if (target.kind == "agent") MEMBER_DETAIL_PAGE else THREAD_PAGE,
-                        pageData = pageData,
-                        storeScopeOverride = storeScope,
-                        onMissingScope = { bridge.log("computer_native_open_skip reason=missing_shell_scope") },
-                    )
-                }
-                null -> Unit
-            }
         },
         onLoadCommit = {
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
@@ -621,7 +524,6 @@ internal fun StandaloneSettingsWebViewContent(
         generationKey = hostAuthBinding?.webViewGeneration,
         onLoadCommit = onLoadCommit,
         onUrlChange = onUrlChange,
-        filterStaleUrlCallbacks = spec.surface == SettingsWebViewSurface.Computers,
         onLoadFailure = onLoadFailure,
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = { kind, payload ->

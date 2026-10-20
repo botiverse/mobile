@@ -1555,6 +1555,51 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun loadPageContentWithItemIdLoadsTheComputerDetailOfThatMachine() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, " machine-42 "))
+
+        val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
+        assertEquals("machine-42", detail.computer.id)
+        assertEquals(listOf("computerDetail:machine-42"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun loadPageContentWithoutItemIdFailsTheComputerDetailClosed() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "  "))
+
+        val error = assertIs<ScreenLoadState.Error>(store.state.value.computerDetail).error
+        assertEquals("settings_computer_required", error.code)
+        assertEquals(emptyList(), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun scanComputerWorkspacesUpdatesOnlyTheWorkspaceSection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -2831,7 +2876,7 @@ class SharedSettingsStoreTest {
         scope.cancel()
     }
 
-    private class FakeSettingsRepository(
+    internal class FakeSettingsRepository(
         var accountResult: DataResult<AccountSettingsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var connectedAppsResult: DataResult<SettingsConnectedAppsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -3526,7 +3571,7 @@ class SharedSettingsStoreTest {
         }
     }
 
-    private class FakeSettingsComputersSource(
+    internal class FakeSettingsComputersSource(
         var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
     ) : SharedSettingsComputersSource {
@@ -4035,17 +4080,7 @@ class SharedSettingsStoreTest {
 
     }
 
-    internal fun sampleSession(role: String = "owner"): StoredAuthSession =
-        StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
-            accessToken = "token-a",
-            refreshToken = "token-r",
-            selectedServerId = "server-1",
-            servers =
-                listOf(
-                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = role, plan = "team")
-                )
-        )
+    internal fun sampleSession(role: String = "owner"): StoredAuthSession = settingsStoreSampleSession(role)
 
     private fun computersSnapshot(machineId: String): SettingsComputersSnapshot =
         SettingsComputersSnapshot(
@@ -4256,7 +4291,7 @@ class SharedSettingsStoreTest {
             connectedAccounts = emptyList()
         )
 
-    private class BlockingCall {
+    internal class BlockingCall {
         private val started = CompletableDeferred<Unit>()
         private val released = CompletableDeferred<Unit>()
 
@@ -4618,3 +4653,16 @@ internal fun settingsServer(id: String): ServerSummary =
 
 internal fun settingsMember(id: String, name: String): MemberProfile =
     MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)
+
+/** The settings store suites' signed-in session: user-1 on server-1 with [role]. */
+internal fun settingsStoreSampleSession(role: String = "owner"): StoredAuthSession =
+    StoredAuthSession(
+        user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
+        accessToken = "token-a",
+        refreshToken = "token-r",
+        selectedServerId = "server-1",
+        servers =
+            listOf(
+                StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = role, plan = "team")
+            )
+    )

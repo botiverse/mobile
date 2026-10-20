@@ -1855,10 +1855,6 @@
     <string name="settings_computers_workspace_scan_title">尚未扫描工作区</string>
     <string name="settings_computers_workspace_scan_detail">按需扫描此计算机上的工作区目录。</string>
     <string name="settings_computers_section_actions">操作</string>
-    <string name="settings_computers_rotate_key_title">轮换 API 密钥</string>
-    <string name="settings_computers_rotate_key_detail">生成新密钥供守护进程重新连接，旧密钥会立即失效。</string>
-    <string name="settings_computers_rotate_key_action">轮换密钥</string>
-    <string name="settings_computers_rotate_key_busy">正在轮换…</string>
     <string name="settings_computers_delete_title">删除计算机</string>
     <string name="settings_computers_delete_detail">永久移除此计算机。必须先删除所有 Agent。</string>
     <string name="settings_computers_delete_action">删除计算机</string>
@@ -1896,6 +1892,14 @@
     <string name="settings_computers_create_agent_error_empty">空响应</string>
     <string name="settings_computers_create_agent_error_failed">创建 Agent 失败：%1$s</string>
     <string name="settings_computers_create_agent_error_forbidden">你没有创建 Agent 的权限。</string>
+    <string name="settings_computers_update_available">有可用更新</string>
+    <string name="settings_computers_last_seen">最后在线 %1$s</string>
+    <string name="settings_computers_online_count">%2$d 台中 %1$d 台在线</string>
+    <string name="settings_computers_workspace_status_active">活跃</string>
+    <string name="settings_computers_workspace_status_orphan">已孤立</string>
+    <string name="settings_computers_cannot_delete_message_one">这台 Computer 还有 %1$d 个 Agent。请先移除所有 Agent，再删除 Computer。</string>
+    <string name="settings_computers_cannot_delete_message_many">这台 Computer 还有 %1$d 个 Agent。请先移除所有 Agent，再删除 Computer。</string>
+    <string name="settings_computers_error_refresh_title">刷新失败</string>
     <string name="settings_connected_apps_loading">正在加载集成、应用市场项目和 OAuth 客户端。</string>
     <string name="settings_connected_apps_empty">暂无已连接应用</string>
     <string name="settings_connected_apps_error">已连接应用出错</string>
